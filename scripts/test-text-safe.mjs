@@ -911,5 +911,51 @@ await t("6.13 取り込み: クラウドの方が新しくて取り込んだ語�
   ok("js/wordList.js（どこからも読まれていない一覧）は無い", !fs.existsSync(path.join(ROOT, "js", "wordList.js")));
 }
 
+// ===== 8. ショートカットキーの札と絵と画面の組み立て（Batch 92。js/shortcutsArt.js・js/shortcutsPage.js。docs/SPEC_SHORTCUTS.md） =====
+// 新しい組み立て（キーの札・キーボードの絵・前と後の絵・一覧の札・選択肢・結果の行）も 7 の見張りの対象（js/*.js を全部見る）。
+// ここでは、その組み立てが見張りの目に入っている（HTML のテンプレートの式がある）ことと、表の字と読み上げの文を esc して出すことを確かめる
+{
+  const H = await import("./lib/htmlTemplates.mjs");
+  const files = ["shortcutsArt.js", "shortcutsPage.js"];
+  const seen = files.map((f) => {
+    const p = path.join(ROOT, "js", f);
+    if (!fs.existsSync(p)) return [f, -1, 0];
+    const src = fs.readFileSync(p, "utf8");
+    const r = H.scanHtmlTemplates(src);
+    const q = H.scanHtmlParams(src);
+    return [f, r.exprs, r.hits.length + q.hits.length];
+  });
+  ok("ショートカットキー: 札と絵と画面の組み立て（js/shortcutsArt.js・js/shortcutsPage.js）は HTML の見張りの目に入る（テンプレートの式がある）・語や名前の字を守らずに出す所は 0",
+    seen.every(([, n, hits]) => n > 10 && hits === 0), show(seen));
+  let A = null;
+  try {
+    A = await import("../js/shortcutsArt.js");
+  } catch {
+    A = null;
+  }
+  const bad = '<img src=x onerror="alert(1)">&\'';
+  const caps = typeof A?.capsHtml === "function" ? A.capsHtml([bad, "C"]) : "";
+  const pair = typeof A?.scenePairHtml === "function" ? A.scenePairHtml({ id: "x", ja: bad, short: bad, say: [bad, bad], scene: { k: "doc", a: { t: bad }, b: { t: bad, clip: bad } } }, "ctrl") : "";
+  ok("ショートカットキー: キーの札・前と後の絵の字と読み上げの文は esc して出す（タグも属性も作らない）",
+    caps.includes("&lt;img") && !caps.includes("<img") && pair.includes("&lt;img") && !pair.includes("<img") && !/onerror="/.test(pair), show({ caps: caps.slice(0, 120), pair: pair.slice(0, 200) }));
+  // 画面の組み立て（一覧の札・詳しい欄・回の終わりの行・結果の行・近い組の文）も js/shortcutsArt.js の純な関数にして、毒の字を通す（Batch 92 のレビュー:
+  // 7 の見張りの字の名前に入らない欄〔short・注・押したキーの字〕の esc を外しても、見張りは黙っていた）
+  const it = { id: "x", g: "pc", p: "A", ja: bad, short: bad, say: [bad, bad], scene: { k: "doc", a: { t: bad }, b: { t: bad } },
+    keys: { ctrl: { show: [[bad, "C"]], how: "choice", why: "os", src: ["os-ctrl"], note: bad, alt: [[bad]] } } };
+  const builders = ["tileHtml", "detailHtml", "missedRowHtml", "resultHtml", "nearHtml"];
+  const missing = builders.filter((f) => typeof A?.[f] !== "function");
+  const outs = missing.length ? [] : [
+    A.tileHtml(it, "ctrl", { state: 1, choice: true, open: true, arr: "jis" }),
+    A.detailHtml(it, "ctrl", "us"),
+    A.missedRowHtml(it, "ctrl"),
+    A.resultHtml({ head: bad, right: [bad, "C"], pressed: [bad, "V"], lines: [bad] }),
+    A.resultHtml({ head: bad, right: [bad], picked: [bad], lines: [bad, bad] }),
+    A.nearHtml([bad, "Z"], [bad, "Y"])
+  ];
+  const leaks = outs.map((h, i) => (String(h).includes("<img") || /onerror="/.test(h) || !String(h).includes("&lt;img") ? i : -1)).filter((i) => i >= 0);
+  ok("ショートカットキー（レビュー）: 一覧の札・詳しい欄の注・回の終わりの行（short）・結果の行（押したキー・選んだ組・ほかの項目の組の文）・近い組の文も純な関数で組み、字は esc して出す",
+    missing.length === 0 && outs.length === 6 && leaks.length === 0, show({ missing, leaks }));
+}
+
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

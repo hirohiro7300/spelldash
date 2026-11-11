@@ -44,7 +44,8 @@ function reasonText(reason) {
 }
 
 // その領域に学んだ記録があるか（元の名前 → 値）。js/sync.js の前の確認と同じ物を数える: 語・XP・マイ単語帳・メモ・Battle・学んだ跡のある成長ログ・今日のセットの履歴・
-// スラングの状態（spelldash_slang。Batch 80。スラングだけを学んだゲストも「移す？」を聞く）。
+// スラングの状態（spelldash_slang。Batch 80。スラングだけを学んだゲストも「移す？」を聞く）・ショートカットキーの練習の記録（spelldash_shortcuts の it。Batch 92。
+// ショートカットだけ練習したゲストにも聞く。端末の設定 spelldash_shortcut_device は数えない）。
 // 成長ログはホームを開いただけで 0 語の行が 1 つ書かれるので、学んだ跡のある行だけ数える
 export function hasRecords(rec) {
   const json = (name, fallback) => {
@@ -63,6 +64,7 @@ export function hasRecords(rec) {
     (Number(rec?.spelldash_xp) || 0) > 0 ||
     nonEmpty(json("my_words", [])) ||
     nonEmpty(json("slang", {})) ||
+    nonEmpty(json("shortcuts", {})?.it ?? {}) ||
     nonEmpty(json("word_notes", {})) ||
     (Number(battle?.wins) || 0) + (Number(battle?.losses) || 0) + (Number(battle?.draws) || 0) > 0 ||
     rows.some((row) => row && (row.active === true || Number(row.learned) > 0 || Number(row.mastered) > 0)) ||

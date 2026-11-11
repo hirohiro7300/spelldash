@@ -25,7 +25,8 @@ export const BACKUP_VERSION = 1;
 // ログアウトの時刻と 3 状態の初めの埋めの印（この端末とアカウントの同期の印。js/sync.js。Batch 78）も入れない。
 // Pro の状態の控え（spelldash_plan）と支払いの印（spelldash_funnel_paid）も入れない（生の user id を持つ。開けばサーバーから作り直す。Batch 78-7）。
 // 最高到達ランク（spelldash_rank_peak）と語ごとの 3 状態の欄（spelldash_word_stats の ls・lsd・lsAt）は入れる（js/rank.js・js/learnState.js）
-const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid"]);
+// ショートカットキーの練習の端末の設定（spelldash_shortcut_device。キーボードの種類と届かなかった組。Batch 92）は端末のことなので入れない。練習の記録（spelldash_shortcuts）は入れる
+const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid", "spelldash_shortcut_device"]);
 // 行の中の欄を外して書き出す鍵（Batch 78-7）: 送れなかったご意見の行（js/feedback.js の spelldash_feedback_queue）は、送ろうとした時のセッションの生の user id を
 // user_id に持つ。行は残し（本文は失わない）、その欄だけ外す。戻すときも外す（行に user_id のある古いファイルを戻しても、別の人のログインで前の人の名前を送らない）。
 // 見張り（js/areaGuard.js の SpellDashAreaKeys.exportValueOf。復旧の画面・使えないブラウザの書き出し）と同じ決まり（scripts/test-areas.mjs U7 が同じ値を返すか見る）
@@ -331,6 +332,7 @@ function keepRankPeak(before, backup) {
 // applyBackup と同じく spelldash_* を消す。残すのは端末の設定（人の記録ではないもの）だけ:
 //   theme（表示の色）・audio（音声の設定）・osk（専用キーボード）・after_correct（正解のあとの長さ）・list_compact／setup_open／stats_tab／trend_range／weak_only（画面の開き方）、
 //   typing_kind／typing_game_course（タイピング練習の種類・タイピングゲームのコースの記憶。この端末の開き方の好みで、バックアップにも入れない。Batch 65）、
+//   shortcut_device（ショートカットキーの練習のキーボードの種類と届かなかった組。端末のことで、バックアップにも入れない。Batch 92）、
 //   installed（ホーム画面に追加の案内）・onboarded（この端末でトップページを見た）・schema_version（保存形式の版。消すと移行が走り直す）、
 //   test_*（E2E のスタブのログイン状態）
 // 消すもの（主なもの）: word_stats・xp・xp_synced・streak・best_score・best_by_category・battle・pending_battles・study_mix・
@@ -352,7 +354,8 @@ const KEEP_ON_CLEAR = new Set([
   "spelldash_onboarded",
   "spelldash_schema_version",
   "spelldash_typing_kind",
-  "spelldash_typing_game_course"
+  "spelldash_typing_game_course",
+  "spelldash_shortcut_device"
 ]);
 
 export function clearLocalRecords() {
