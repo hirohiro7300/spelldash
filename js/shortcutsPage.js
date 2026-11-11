@@ -35,12 +35,14 @@ const HOW_TEXT = { press: "キーを本当に押して答える。", guard: "キ
 const LONE_KEYS = new Set(["CapsLock", "NumLock", "ScrollLock", "ContextMenu", "Fn", "FnLock", "Unidentified"]);
 const reduced = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 const live = createLive(() => $("scLive"), { gap: 50 });
+// 保存の口は getItem・setItem だけを渡す（localStorage を値として渡さない。scripts/test-areas.mjs U1）
+const store = { getItem: (k) => localStorage.getItem(k), setItem: (k, v) => localStorage.setItem(k, v) };
 
 const S = {
-  dev: readDevice(localStorage),
+  dev: readDevice(store),
   keyboard: !isTouchDevice(),
   group: "",
-  progress: readProgress(localStorage),
+  progress: readProgress(store),
   round: null,
   q: null,
   guard: { ignore: 0, pushed: false },
@@ -144,7 +146,7 @@ for (const r of document.querySelectorAll('input[name="scLayout"]')) {
   r.addEventListener("change", () => {
     if (!r.checked) return;
     S.dev = { ...S.dev, layout: r.value };
-    writeDevice(localStorage, S.dev);
+    writeDevice(store, S.dev);
     renderHome();
   });
 }
@@ -152,7 +154,7 @@ for (const r of document.querySelectorAll('input[name="scArr"]')) {
   r.addEventListener("change", () => {
     if (!r.checked) return;
     S.dev = { ...S.dev, arr: r.value };
-    writeDevice(localStorage, S.dev);
+    writeDevice(store, S.dev);
     renderHome();
   });
 }
@@ -165,7 +167,7 @@ $("scFilter").addEventListener("click", (e) => {
 });
 $("scMissReset").addEventListener("click", () => {
   S.dev = clearMiss(S.dev);
-  writeDevice(localStorage, S.dev);
+  writeDevice(store, S.dev);
   renderHome();
   $("scStart").focus();
 });
@@ -351,7 +353,7 @@ function lost() {
   q.force = "choice";
   if (r.persist) {
     S.dev = addMiss(S.dev, q.layout, r.combos);
-    writeDevice(localStorage, S.dev);
+    writeDevice(store, S.dev);
     renderMode(false);
     setResult("miss", esc("ブラウザかパソコンが先に受け取ったようだ。この組は、この端末では選んで答える。"));
   } else {
@@ -424,7 +426,7 @@ function answer(result, how, { combo = null, code = "", picked = null, dunno = f
   let saved = true;
   if (r.recorded) {
     S.progress = R.st.progress;
-    saved = writeProgress(localStorage, S.progress);
+    saved = writeProgress(store, S.progress);
   }
   clearGuard();
   const variants = capsOf(q.item, q.layout, q.nth);
@@ -495,7 +497,7 @@ $("scSwitch").addEventListener("click", () => {
   const other = $("scSwitch").dataset.layout;
   if (!LAYOUTS.includes(other)) return;
   S.dev = { ...S.dev, layout: other };
-  writeDevice(localStorage, S.dev);
+  writeDevice(store, S.dev);
   if (S.round) S.round.layout = other;
   $("scSuggest").hidden = true;
   live.say(`${LAYOUT_LABEL[other]}にした。`);
@@ -596,7 +598,7 @@ function reloadCheck() {
   history.replaceState(withoutReload(st), "");
   if (!hit) return;
   S.progress = applyAnswer(S.progress, hit.id, hit.layout, true, Date.now(), "p");
-  writeProgress(localStorage, S.progress);
+  writeProgress(store, S.progress);
   const x = SHORTCUTS.find((y) => y.id === hit.id);
   const n = $("scNotice");
   n.textContent = `読み込み直した。さっきの問い（${x?.ja ?? ""}）は押せた。`;
