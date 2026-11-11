@@ -212,6 +212,11 @@ html[data-theme] .sc-detail__kb {
   container-type: inline-size;
 }
 
+/* 指の端末の 40px より後・同じ強さ */
+html[data-theme] .sc-detail .sc-detail__replay {
+  min-height: 44px;
+}
+
 html[data-theme] .sc-detail__note {
   margin: 0;
   font-size: 13px;
@@ -716,6 +721,10 @@ html[data-theme] .sc-cell--after.is-play [data-r="f"] {
 @media (prefers-reduced-motion: reduce) {
   html[data-theme] .sc-cell--after.is-play [data-r] {
     animation: none;
+  }
+  html[data-theme] #scReplay,
+  html[data-theme] .sc-detail .sc-detail__replay {
+    display: none;
   }
 }
 
