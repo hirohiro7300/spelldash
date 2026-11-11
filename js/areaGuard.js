@@ -14,9 +14,9 @@
   // ===== 鍵の決まり（純な部分。js/areaSwitch.js と scripts/test-areas.mjs も使う） =====
   const PREFIX = "spelldash_";
   const TEST_PREFIX = "spelldash_test_";
-  // 端末の鍵（人ごとに分けない）: 端末の設定 13 と端末の計測 10。ほかの spelldash_ の鍵は、後から足した鍵も、人の記録として分ける
+  // 端末の鍵（人ごとに分けない）: 端末の設定 14（14 個目はショートカットキーの練習のキーボードの種類 shortcut_device: Batch 92）と端末の計測 10。ほかの spelldash_ の鍵は、後から足した鍵も、人の記録として分ける
   const DEVICE_NAMES = Object.freeze([
-    "theme", "audio", "osk", "after_correct", "list_compact", "setup_open", "stats_tab", "trend_range", "weak_only", "installed", "onboarded", "typing_kind", "typing_game_course",
+    "theme", "audio", "osk", "after_correct", "list_compact", "setup_open", "stats_tab", "trend_range", "weak_only", "installed", "onboarded", "typing_kind", "typing_game_course", "shortcut_device",
     "device_id", "funnel_first", "funnel_paid", "funnel_paid_send", "funnel_queue", "funnel_sent", "funnel_tgame", "funnel_typing", "billing_open", "pro_intent"
   ]);
   const DEVICE = new Set(DEVICE_NAMES.map((name) => PREFIX + name));
@@ -37,8 +37,9 @@
   const PAGE_LOCK = "spelldash-page";
   const SWITCH_LOCK = "spelldash-area-switch";
   // 書き出し（復旧の画面・使えないブラウザ）に入れない鍵。js/backup.js の EXCLUDE と同じ（単体で固定する）: 持ち主の鍵（同期が書く生の user id）・
-  // 同期の印・送信待ち・ログアウトの時刻・3 状態の初めの埋めの印・このタブの同期の印・端末の開き方の好み・Pro の状態の控えと支払いの印（生の user id を持つ）
-  const EXPORT_EXCLUDE = Object.freeze(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid"]);
+  // 同期の印・送信待ち・ログアウトの時刻・3 状態の初めの埋めの印・このタブの同期の印・端末の開き方の好み・Pro の状態の控えと支払いの印（生の user id を持つ）・
+  // ショートカットキーの練習の端末の設定（キーボードの種類と届かなかった組。端末のこと。Batch 92）
+  const EXPORT_EXCLUDE = Object.freeze(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid", "spelldash_shortcut_device"]);
   const AREA_KEY_RE = /^sd2\.(guest|u:[^.#\s]+)\.(.+)$/;
   // 書き出しで行の中の欄を外す鍵（js/backup.js の EXPORT_SCRUB と同じ。単体で固定する）: 送れなかったご意見の行は、送ろうとした時のセッションの生の user id を持つ
   const EXPORT_SCRUB = Object.freeze({ spelldash_feedback_queue: Object.freeze(["user_id"]) });

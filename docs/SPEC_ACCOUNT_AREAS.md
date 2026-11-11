@@ -45,7 +45,7 @@
 - 領域 id: `guest` か `u:<user id>`。
 - 人の記録の鍵: `sd2.<領域>.<名前>`（例 `sd2.guest.word_stats`）。コードは今までどおり `spelldash_<名前>` で読み書きし、見張りが読み替える。
 - 人の記録 = `spelldash_` の鍵のうち、次を除く全部（後から足した鍵も既定で人ごと。単体 U1 が一覧を固定する）:
-  - 端末の設定 13 個: theme・audio・osk・after_correct・list_compact・setup_open・stats_tab・trend_range・weak_only・installed・onboarded・typing_kind・typing_game_course。
+  - 端末の設定 14 個: theme・audio・osk・after_correct・list_compact・setup_open・stats_tab・trend_range・weak_only・installed・onboarded・typing_kind・typing_game_course・shortcut_device（ショートカットキーの練習のキーボードの種類と届かなかった組。Batch 92。バックアップと書き出しにも入れない）。
   - 端末の計測 10 個: device_id・funnel_first・funnel_paid・funnel_paid_send・funnel_queue・funnel_sent・funnel_tgame・funnel_typing・billing_open・pro_intent。
   - `spelldash_test_*`。
   - schema_version は人ごと（人ごとに移行の段が違いうるため）。
