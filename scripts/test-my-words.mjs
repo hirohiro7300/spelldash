@@ -857,7 +857,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
 {
   const X = await import("../js/myWordsChoice.js");
   const sharedOf = typeof X.sharedAnswersOf === "function" ? X.sharedAnswersOf : () => undefined; // 直す前の木には無い（渡さないのと同じ）
-  const { createHash } = await import("node:crypto");
+  const { createHash } = await import("crypto");
   const at = "2026-11-11T00:00:00.000Z";
   const sceneJa = (side, i) => `試しの場面 ${side}の${i}。数は上か下か`;
   const sceneWord = (answer, side, i) => (i === 1 ? { en: answer, ja: sceneJa(side, i), addedAt: at } : { en: `${answer}~${C.jaHash(sceneJa(side, i))}`, ja: sceneJa(side, i), text: answer, addedAt: at });
@@ -924,7 +924,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const U = await import("../js/userItemsSync.js");
   const M = await import("../js/myWords.js");
   const SL = await import("../js/slang.js");
-  const fs = await import("node:fs");
+  const fs = await import("fs");
   const missing = (name) => () => `${name} が無い`; // 直す前の木には無い: 呼ぶと字を返して検査が落ちる
   const coreFn = (name) => (typeof C[name] === "function" ? C[name] : missing(name));
   const countMyGain = coreFn("countMyGain");
