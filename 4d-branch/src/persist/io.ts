@@ -51,7 +51,11 @@ const nameKey = (name: string) => normalizeText(name.trim());
  * 追加の取り込み: 取り込む側の ID をすべて振り直して足す（今のデータを上書きしない）。
  * プロジェクト・シナリオは名前が同じならまとめる。位置は今のグラフの右に並べる
  */
-export function mergeDocs(base: DocData, incoming: DocData): { doc: DocData; added: ReturnType<typeof docCounts>; reusedProjects: number; reusedScenarios: number } {
+export function mergeDocs(
+  base: DocData,
+  incoming: DocData,
+  opts: { offset?: { dx: number; dy: number } } = {},
+): { doc: DocData; added: ReturnType<typeof docCounts>; reusedProjects: number; reusedScenarios: number } {
   const doc = cloneDocShallow(base);
   const pMap = new Map<ID, ID>();
   const sMap = new Map<ID, ID>();
@@ -98,12 +102,12 @@ export function mergeDocs(base: DocData, incoming: DocData): { doc: DocData; add
     }
   }
 
-  // 位置: 今のグラフの右端の、さらに右へ（上をそろえる）
+  // 位置: 今のグラフの右端の、さらに右へ（上をそろえる）。offset を渡されたらその分だけずらす（差し替えで同じ場所に置く）
   const baseNodes = Object.values(base.nodes);
   const inNodes = Object.values(incoming.nodes);
-  let dx = 0;
-  let dy = 0;
-  if (baseNodes.length && inNodes.length) {
+  let dx = opts.offset?.dx ?? 0;
+  let dy = opts.offset?.dy ?? 0;
+  if (!opts.offset && baseNodes.length && inNodes.length) {
     const baseMaxX = Math.max(...baseNodes.map((n) => n.x));
     const baseMinY = Math.min(...baseNodes.map((n) => n.y));
     const inMinX = Math.min(...inNodes.map((n) => n.x));

@@ -23,10 +23,24 @@ export function futureData(): FutureData {
   return JSON.parse(raw) as FutureData;
 }
 
+let version: string | null = null;
+/** 同梱データの版（中身の指紋。中身が変わると変わる）。読み込んだ未来の道筋の入口に残し、新しい版があるかを見分ける（初めて使うときに 1 度だけ数える） */
+export function futureVersion(): string {
+  if (version === null) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < raw.length; i++) {
+      h ^= raw.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    version = `${raw.length.toString(36)}-${h.toString(36)}`;
+  }
+  return version;
+}
+
 /** 読み込む前の確認に出す文書と数（取り込みと同じ検証を通す） */
 export function buildFuture(today = new Date()): { pv: ImportPreview; stats: FutureStats } {
   const data = futureData();
-  const { doc, report } = normalizeDoc(buildFutureDoc(data, today));
+  const { doc, report } = normalizeDoc(buildFutureDoc(data, today, futureVersion()));
   const c = countFuture(data);
   const fc = computeForecast(doc, buildIndex(doc).out);
   const shortest = fc.ends.length ? Math.min(...fc.ends.map((id) => fc.reach.get(id)!.minSteps)) : 0;

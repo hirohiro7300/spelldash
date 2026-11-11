@@ -39,6 +39,8 @@ export interface Prefs {
   wishlistOffered: boolean;
   /** 「未来の道筋」を知らせた（ようこそ画面か、一度だけのお知らせで） */
   futureOffered: boolean;
+  /** 「未来の道筋の新しい版があります」を知らせた版（同じ版では二度知らせない） */
+  futureNotified: string;
   persistAsked: boolean;
   lastType: "goal" | "action" | "branch" | "result";
 }
@@ -64,6 +66,7 @@ export const DEFAULT_PREFS: Prefs = {
   onboardingDone: false,
   wishlistOffered: false,
   futureOffered: false,
+  futureNotified: "",
   persistAsked: false,
   lastType: "action",
 };

@@ -1433,7 +1433,7 @@ async function main() {
   await check("未来の道筋: メニューから確かめて読み込み（置き換え）、今日の近くに寄り、行き先の見込みが合計 100% で並ぶ", async () => {
     const before = await state(fp);
     await fp.getByRole("button", { name: "メニュー", exact: true }).click();
-    await fp.getByRole("menuitem", { name: /未来の道筋/ }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋（仕事・10 年）を読み込む/ }).click();
     const dlg = fp.getByRole("dialog", { name: "未来の道筋を読み込む" });
     await dlg.waitFor();
     await shot("e2e-14-future-dialog", fp);
@@ -1552,6 +1552,47 @@ async function main() {
     await fp.reload({ waitUntil: "networkidle" });
     await fp.waitForTimeout(1200 + 1000);
     assert((await fp.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を用意しました" }).count()) === 0, "二度目のお知らせが出た");
+  });
+
+  await check("未来の道筋: 古い版が入っていれば一度だけ知らせ、「差し替える」で未来の道筋だけを新しい版に入れ替える（自分のノードは残る）", async () => {
+    // 古い版で読み込んだ状態を作る: 入口の版を古くし、自分のメモを 1 つ足す
+    const prep = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+      f.app.cmd.updateNode(root.id, { meta: { ...root.meta, futureVersion: "old" } });
+      const own = f.app.cmd.createNode("goal", { x: root.x - 2000, y: root.y - 2000 }, { title: "自分で足したメモ", exact: true });
+      return { own, nodes: Object.keys(f.store.doc.nodes).length, rootPos: [root.x, root.y] };
+    });
+    await fp.waitForTimeout(800);
+    await fp.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      delete p.futureNotified;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+    });
+    await fp.reload({ waitUntil: "networkidle" });
+    const notice = fp.locator(".toast", { hasText: "未来の道筋の新しい版があります" });
+    await notice.waitFor({ timeout: 8000 });
+    await notice.getByRole("button", { name: "差し替える" }).click();
+    const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版に差し替えますか？" });
+    await confirm.waitFor();
+    await confirm.getByRole("button", { name: "差し替える" }).click();
+    await fp.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true && n.meta.futureVersion !== "old"));
+    const after = await fp.evaluate((own) => {
+      const f = window.__fourD;
+      const roots = Object.values(f.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true);
+      const fc = f.app.vm.forecast;
+      return { own: f.store.doc.nodes[own]?.title, roots: roots.length, pos: [roots[0].x, roots[0].y], nodes: Object.keys(f.store.doc.nodes).length, sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0), toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / ") };
+    }, prep.own);
+    assert(after.own === "自分で足したメモ", `自分のノードが消えた: ${after.own}`);
+    assert(after.roots === 1 && after.pos[0] === prep.rootPos[0] && after.pos[1] === prep.rootPos[1], `入口: ${JSON.stringify(after)}`);
+    assert(after.nodes === prep.nodes, `ノードの数 ${after.nodes} / ${prep.nodes}`);
+    assert(Math.abs(after.sum - 1) < 1e-6, `行き先の見込みの合計 ${after.sum}`);
+    assert(after.toast.includes("差し替えました"), after.toast);
+    // 同じ版ではもう知らせない
+    await fp.waitForTimeout(600);
+    await fp.reload({ waitUntil: "networkidle" });
+    await fp.waitForTimeout(2600 + 1200);
+    assert((await fp.locator(".toast", { hasText: "未来の道筋の新しい版があります" }).count()) === 0, "差し替えた後も知らせた");
   });
   await fctx.close();
 

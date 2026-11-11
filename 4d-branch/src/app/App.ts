@@ -29,6 +29,8 @@ import { Commands } from "./commands";
 import type { AppContext, LoadOpts } from "./context";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
+import { buildFuture, futureVersion } from "../demo/futureBundle";
+import { futureMaps, staleFutureMaps, swapFutureDoc } from "../demo/futureSwap";
 
 export interface AppOptions {
   store: Store;
@@ -218,6 +220,7 @@ export class App implements AppContext {
       for (const n of opts.notices) toast(n, { tone: "warn", ms: 9000 });
       if (opts.firstRun && !this.ui.prefs.onboardingDone && !this.ephemeral) openWelcome(this);
       else this.offerOnce();
+      this.offerFutureUpdate();
       this.afterTour = () => void this.askPersistOnce();
     });
     void this.refreshLastBackup();
@@ -762,6 +765,67 @@ export class App implements AppContext {
     if (this.store.readOnly) return;
     if (!this.ui.prefs.futureOffered) this.ui.setPrefs({ futureOffered: true });
     openFutureDialog(this);
+  }
+
+  /** 文書に入っている未来の道筋だけを、同梱の新しい版に差し替える（ほかのノードはそのまま。元に戻せる） */
+  async swapFuture(): Promise<void> {
+    if (this.store.readOnly) return;
+    const maps = futureMaps(this.store.doc);
+    if (!maps.length) return this.loadFuture();
+    let built: ReturnType<typeof buildFuture>;
+    try {
+      built = buildFuture();
+    } catch {
+      toast("未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください", { tone: "warn" });
+      return;
+    }
+    const n = (v: number) => v.toLocaleString("ja-JP");
+    const old = maps.reduce((k, m) => k + m.nodes.size, 0);
+    const { stats } = built;
+    const ok = await confirmDialog({
+      title: "未来の道筋を新しい版に差し替えますか？",
+      body: `今の地図にある未来の道筋（ノード ${n(old)} 件）を、新しい版（歩み ${n(stats.steps)} 件・分かれ道 ${n(stats.forks)} 個・行き先 ${stats.ends}・今日から ${stats.shortest}〜${stats.longest} 歩）に入れ替えます。ほかのノードはそのままです。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+      ok: "差し替える",
+    });
+    if (!ok || this.store.readOnly) return;
+    const label = "未来の道筋を新しい版に差し替える";
+    void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
+    const res = swapFutureDoc(this.store.doc, built.pv.doc);
+    this.store.replaceDoc(res.doc, label);
+    this.ui.setPrefs({ futureNotified: futureVersion(), futureOffered: true });
+    this.ui.clearSelection();
+    const root = res.root ? this.store.doc.nodes[res.root] : undefined;
+    if (root) {
+      const near = Object.values(this.store.doc.nodes).filter((x) => x.x >= root.x && x.x <= root.x + 5 * 300 && Math.abs(x.y - root.y) <= 600).map((x) => x.id);
+      this.view.fit(near.length ? near : [root.id]);
+    }
+    toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件）`, { tone: "ok", action: this.cmd.undoAction() });
+    void this.refreshLastBackup();
+  }
+
+  /**
+   * 文書に入っている未来の道筋が同梱の版より古ければ、一度だけ知らせて差し替えを勧める（版ごとに 1 回）。
+   * 閲覧のみのタブでは、編集できるようになってから
+   */
+  private offerFutureUpdate(): void {
+    if (this.ephemeral) return;
+    const show = (): void => {
+      if (this.store.readOnly) return;
+      if (!Object.values(this.store.doc.nodes).some((x) => x.meta?.forecastRoot === true)) return;
+      const v = futureVersion();
+      if (this.ui.prefs.futureNotified === v || this.ui.storedPrefs().futureNotified === v) return;
+      if (!staleFutureMaps(this.store.doc, v).length) return;
+      this.ui.setPrefs({ futureNotified: v });
+      toast("未来の道筋の新しい版があります。今の地図の未来の道筋だけを入れ替えられます（ほかのノードはそのまま）", { action: { label: "差し替える", run: () => void this.swapFuture() }, ms: 20000 });
+    };
+    setTimeout(() => {
+      if (!this.store.readOnly) return show();
+      const off = this.persistence.on("writer", (w) => {
+        if (!w) return;
+        off();
+        setTimeout(show, 1200);
+      });
+    }, 2600);
   }
 
   /**

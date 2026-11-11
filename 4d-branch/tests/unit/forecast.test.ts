@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildFutureDoc, countFuture, type FutureData } from "../../src/demo/future";
-import { buildFuture, futureData } from "../../src/demo/futureBundle";
+import { buildFuture, futureData, futureVersion } from "../../src/demo/futureBundle";
+import { futureMaps, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
+import { buildDemoDoc } from "../../src/demo/demo";
+import { mergeDocs } from "../../src/persist/io";
 import { NODE_H, NODE_W } from "../../src/model/constants";
 import { computeForecast, edgeProb, formatPercent } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
@@ -305,5 +308,67 @@ describe("同梱の未来の道筋", () => {
         expect(Math.abs(a.y - b.y) >= NODE_H, `${a.title} / ${b.title}`).toBe(true);
       }
     for (const e of Object.values(doc.edges)) expect(doc.nodes[e.target]!.x, e.id).toBeGreaterThan(doc.nodes[e.source]!.x);
+  });
+});
+
+describe("未来の道筋の差し替え", () => {
+  const TODAY = new Date(2026, 10, 10);
+
+  it("入口からたどれるノードを未来の道筋として見つけ、版を読む（古い版で読み込んだものは版が無い）", () => {
+    const doc = buildFutureDoc(sample(), TODAY, "v1");
+    const maps = futureMaps(doc);
+    expect(maps.length).toBe(1);
+    expect(maps[0]!.version).toBe("v1");
+    expect(maps[0]!.nodes.size).toBe(Object.keys(doc.nodes).length);
+    expect(staleFutureMaps(doc, "v1")).toEqual([]);
+    expect(staleFutureMaps(doc, "v2").length).toBe(1);
+    expect(futureMaps(buildFutureDoc(sample(), TODAY))[0]!.version).toBeNull();
+    // 同梱の版は入口に残る
+    const { pv } = buildFuture(TODAY);
+    expect(futureMaps(pv.doc)[0]!.version).toBe(futureVersion());
+  });
+
+  it("未来の道筋だけを消して新しい版を同じ場所に入れ、ほかのノードとプロジェクト・シナリオはそのまま", () => {
+    const base = buildDemoDoc();
+    const own = makeNode({ title: "自分で足したメモ", x: -5000, y: -5000 });
+    base.nodes[own.id] = own;
+    const merged = mergeDocs(base, buildFutureDoc(sample(), TODAY, "old")).doc;
+    const oldRoot = Object.values(merged.nodes).find((n) => n.meta.forecastRoot === true)!;
+    const before = Object.keys(merged.nodes).length;
+    const projects = merged.projectOrder.length;
+    const scenarios = merged.scenarioOrder.length;
+    // 新しい版: 歩みを 1 つ足したもの
+    const next = sample();
+    next.steps.push(["t2b", "action", "足した歩み", "", 2, "fc", ["1時間"], [], "S0"]);
+    next.links = next.links.filter((l) => !(l[0] === "t1" && l[1] === "t2"));
+    next.links.push(["t1", "t2b", "", null, ""], ["t2b", "t2", "", null, ""]);
+    const res = swapFutureDoc(merged, buildFutureDoc(next, TODAY, "new"));
+    const doc = res.doc;
+    expect(res.removed).toBe(sample().states.length + sample().steps.length);
+    expect(res.added).toBe(next.states.length + next.steps.length);
+    expect(Object.keys(doc.nodes).length).toBe(before + 1);
+    expect(doc.nodes[own.id]?.title).toBe("自分で足したメモ");
+    for (const id of Object.keys(base.nodes)) expect(doc.nodes[id], id).toBeDefined();
+    expect(Object.values(doc.nodes).some((n) => n.title === "足した歩み")).toBe(true);
+    const roots = Object.values(doc.nodes).filter((n) => n.meta.forecastRoot === true);
+    expect(roots.length).toBe(1);
+    expect(roots[0]!.meta.futureVersion).toBe("new");
+    expect([roots[0]!.x, roots[0]!.y]).toEqual([oldRoot.x, oldRoot.y]);
+    expect(doc.projectOrder.length).toBe(projects);
+    expect(doc.scenarioOrder.length).toBe(scenarios);
+    // 消した道筋の線は残らない
+    for (const e of Object.values(doc.edges)) expect(doc.nodes[e.source] && doc.nodes[e.target], e.id).toBeTruthy();
+    // 見込みは新しい版で計算できる
+    const r = computeForecast(doc, buildIndex(doc).out);
+    expect(r.ends.reduce((n, id) => n + r.reach.get(id)!.p, 0)).toBeCloseTo(1);
+  });
+
+  it("未来の道筋が無い文書では、ふつうの追加と同じく右側に足す", () => {
+    const base = buildDemoDoc();
+    const res = swapFutureDoc(base, buildFutureDoc(sample(), TODAY, "v1"));
+    expect(res.removed).toBe(0);
+    expect(Object.keys(res.doc.nodes).length).toBe(Object.keys(base.nodes).length + res.added);
+    const maxX = Math.max(...Object.values(base.nodes).map((n) => n.x));
+    expect(res.doc.nodes[res.root!]!.x).toBeGreaterThan(maxX);
   });
 });

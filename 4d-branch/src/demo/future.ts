@@ -71,7 +71,7 @@ interface Window {
 }
 
 /** 未来の道筋の文書を組み立てる（期限は today の月から数える） */
-export function buildFutureDoc(data: FutureData, today = new Date()): DocData {
+export function buildFutureDoc(data: FutureData, today = new Date(), version = ""): DocData {
   const doc = createEmptyDoc(data.title || FUTURE_TITLE);
   for (const a of Object.values(AREAS)) {
     const p = makeProject(a);
@@ -245,7 +245,7 @@ export function buildFutureDoc(data: FutureData, today = new Date()): DocData {
       scenarioIds: scenOf(key),
       x: p.x,
       y: p.y,
-      meta: line === "start" ? { forecastRoot: true } : {},
+      meta: line === "start" ? { forecastRoot: true, futureVersion: version } : {},
     });
     doc.nodes[n.id] = n;
   }

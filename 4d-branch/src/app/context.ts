@@ -53,6 +53,8 @@ export interface AppContext {
   loadWishlist(): void;
   /** 未来の道筋（仕事・10 年）を読み込む前の確認を開く */
   loadFuture(): void;
+  /** 文書に入っている未来の道筋だけを、同梱の新しい版に差し替える（確かめてから。無ければ読み込みの確認を開く） */
+  swapFuture(): Promise<void>;
   newEmptyDoc(): Promise<void>;
   /** 文書を入れ替える（label は元に戻す・安全用バックアップの名前） */
   replaceDocSafely(doc: DocData, label: string, opts?: LoadOpts): Promise<void>;
