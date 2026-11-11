@@ -224,19 +224,20 @@ function renderMode(focus) {
   play.dataset.mode = q.mode;
   play.dataset.state = q.state;
   const press = q.mode !== "choice";
+  const waiting = q.state === "waiting";
   const k = q.item.keys[q.layout];
   const hold = k.how === "choice" && (k.why === "browser" || k.why === "os");
   $("scHow").textContent = press ? HOW_TEXT.press : hold ? HOW_TEXT.hold : HOW_TEXT.choice;
   $("scPad").hidden = !press;
-  $("scChoices").hidden = press;
-  $("scHold").hidden = press || !hold;
-  $("scKb").hidden = !press && q.state !== "done";
-  if (!press) {
+  // 答えた後は札を隠す（仕様 §2.3）
+  $("scChoices").hidden = press || !waiting;
+  $("scHold").hidden = press || !hold || !waiting;
+  $("scKb").hidden = !press && waiting;
+  if (!press && waiting) {
     if (!q.choices) q.choices = buildChoices(q.item, q.layout, SHORTCUTS, Math.random, q.nth);
     $("scChoices").innerHTML = q.choices.map((c, i) => `<button type="button" class="sc-choice" data-ok="${c.correct ? "1" : "0"}" data-i="${i}" aria-label="${esc(`${i + 1}. ${spokenCaps(c.caps, "and")}`)}">` +
       `<span class="sc-choice__n" aria-hidden="true">${i + 1}</span><span class="sc-choice__keys">${capsHtml(c.caps)}</span></button>`).join("");
   }
-  const waiting = q.state === "waiting";
   $("scChoose").hidden = !(waiting && press);
   $("scDunno").hidden = !waiting;
   $("scNext").hidden = waiting;
@@ -426,11 +427,12 @@ function answer(result, how, { combo = null, code = "", picked = null, dunno = f
   if (result === "ok" && combo) right = [...variants, ...(k.alt ?? [])].find((caps) => sigOfCaps(caps, q.layout) === comboString(combo)) ?? variants[0];
   const wrong = result !== "ok" && !dunno;
   const pressed = wrong && combo ? capsOfCombo(combo, q.layout) : null;
+  const pickedCaps = wrong && !combo ? picked?.caps ?? null : null;
   const aw = wrong && combo ? afterWrong(q.item, q.layout, combo, q.nth, SHORTCUTS) : null;
   const head = result === "ok" ? "正解" : dunno ? "こう押す" : "ちがう";
   let say = `${head}。${wrong ? "正しくは " : ""}${spokenCaps(right, "hold")}${pressed ? `。押したのは ${spokenCaps(pressed, "hold")}` : ""}`;
   const lines = [aw?.own ? ownText(aw.own) : "", said, saved ? "" : "この端末に保存できなかった。"].filter(Boolean);
-  setResult(dunno ? "dunno" : result, resultHtml({ head, right, pressed, picked: wrong && !combo ? picked?.caps : null, lines }));
+  setResult(dunno ? "dunno" : result, resultHtml({ head, right, pressed, picked: pickedCaps, lines }));
   if (aw?.suggest) {
     const other = aw.suggest;
     $("scSuggestText").textContent = `${LAYOUT_LABEL[other]}の押し方だった。切り替える？`;
@@ -441,7 +443,7 @@ function answer(result, how, { combo = null, code = "", picked = null, dunno = f
   const notes = notesOf(q.item, q.layout);
   $("scNotes").textContent = notes.join(" ");
   $("scNotes").hidden = notes.length === 0;
-  q.paint = { target: tokensOfCaps(right, q.layout), wrong: result === "wrong" && combo ? tokensOfCaps(capsOfCombo(combo, q.layout), q.layout) : [] };
+  q.paint = { target: tokensOfCaps(right, q.layout), wrong: tokensOfCaps(pressed ?? pickedCaps ?? [], q.layout) };
   const kb = $("scKb");
   kb.hidden = false;
   kb.innerHTML = keyboardSvg(q.layout, S.dev.arr, { frames: focusWindows(q.layout, S.dev.arr, q.paint.target) }) + focusSvg(q.layout, S.dev.arr, q.paint.target);
