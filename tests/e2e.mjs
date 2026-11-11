@@ -29908,9 +29908,11 @@ console.log("shortcuts (92.1):");
       await page.focus("#scPad");
       await page.keyboard.press("Control+KeyC");
       await waitState(page, "done");
-      const n = await page.evaluate(() => document.getAnimations().length);
+      // 動き = CSS のアニメーションと、1 ms より長いトランジション（動きを減らす設定の全体の決まり〔css/game.css の * に 0.01ms〕が、どの字の色の替わりにも作る 0.01ms のトランジションは動きでない。82.2 の節と同じ数え方）
+      const n = await page.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSAnimation || Number(a.effect?.getTiming?.().duration ?? 0) > 1).length);
+      const scene = await page.evaluate(() => document.querySelector("#scScene .sc-cell--after")?.getAnimations({ subtree: true }).filter((a) => a instanceof CSSAnimation).length ?? 0);
       const done = await page.evaluate(() => document.querySelector("#scScene .sc-cell--after")?.classList.contains("is-done") ?? false);
-      check(reduced ? "92.1 減らした動きの設定: 答えた後も動き 0（後の絵の枠を金にするだけ）" : "92.1 動きあり: 正解の後、後の絵の中の物が動く（動き 1 以上）", reduced ? n === 0 && done : n >= 1, JSON.stringify({ n, done }));
+      check(reduced ? "92.1 減らした動きの設定: 答えた後も動き 0（後の絵の枠を金にするだけ）" : "92.1 動きあり: 正解の後、後の絵の中の物が動く（動き 1 以上）", reduced ? n === 0 && scene === 0 && done : scene >= 1, JSON.stringify({ n, scene, done }));
       await closeCtx(page);
     }
   });
