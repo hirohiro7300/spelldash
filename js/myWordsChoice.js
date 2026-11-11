@@ -81,10 +81,24 @@ export function seededRandom(seed) {
   };
 }
 
+// 組の答えの集まり（純。Batch 91。docs/SPEC_MY_WORDS.md §12.2）: 範囲（scope）で 2 語以上にある答え（answerKeyOf を enKey の形で比べる）。場面カードは入れない。
+// 答えが同じ行（場面の問い）の単語帳で、問いの答えが組のどれかのとき、違う答えをまず組のほかの答えから選ぶ（buildChoice の shared）。
+// 選ぶ回の始めに 1 回だけ作る（mountChoice。範囲の並びは答えるたびに作り直されるので、並びの参照ごとには覚えない）
+export function sharedAnswersOf(scope = []) {
+  const count = new Map();
+  for (const w of Array.isArray(scope) ? scope : []) {
+    if (!isWordEntry(w)) continue;
+    const k = enKey(answerKeyOf(w));
+    count.set(k, (count.get(k) ?? 0) + 1);
+  }
+  return new Set([...count].filter(([, n]) => n >= 2).map(([k]) => k));
+}
+
 // 1 問の選択肢（純）。entry = 問いの語（保存の形）、scope = 範囲の語（その単語帳。場面カードを含んでよい）、others = 範囲の外の語（ほかの単語帳）、
-// dir = 向き、rand = 乱数、fill = 組み込みの一覧。返り値 { ok, prompt（問いの字）, options: [{ text（画面の字）, en（その選択肢の答えの英語）, correct }], from（違う答えの出どころ） }。
+// dir = 向き、rand = 乱数、fill = 組み込みの一覧、shared = 組の答えの集まり（sharedAnswersOf。渡さなければ前と同じ）。
+// 返り値 { ok, prompt（問いの字）, options: [{ text（画面の字）, en（その選択肢の答えの英語）, correct }], from（違う答えの出どころ） }。
 // 作れないときは { ok: false, prompt }
-export function buildChoice({ entry, scope = [], others = [], dir = CHOICE_EN, rand = Math.random, fill = CHOICE_FILL, max = CHOICE_MAX } = {}) {
+export function buildChoice({ entry, scope = [], others = [], dir = CHOICE_EN, rand = Math.random, fill = CHOICE_FILL, max = CHOICE_MAX, shared = null } = {}) {
   if (!isWordEntry(entry)) return { ok: false, prompt: "" };
   const toJa = dir === CHOICE_JA;
   const prompt = toJa ? displayOf(entry) : entry.ja;
@@ -105,10 +119,12 @@ export function buildChoice({ entry, scope = [], others = [], dir = CHOICE_EN, r
     const seen = new Set();
     const out = [];
     for (const w of list) {
-      if (toJa && enKey(answerKeyOf(w)) === qEn) continue; // 訳の選択肢は、問いと違う英語の語から
+      const ek = toJa ? enKey(answerKeyOf(w)) : null;
+      if (toJa && ek === qEn) continue; // 訳の選択肢は、問いと違う英語の語から
       const o = optionOf(w);
       if (!o.key || banned.has(o.key) || seen.has(o.key)) continue;
       seen.add(o.key);
+      o.ek = toJa ? ek : o.key; // その選択肢の答えの英語（比べる形。組の答えを見分ける）
       out.push(o);
     }
     return out;
@@ -125,7 +141,19 @@ export function buildChoice({ entry, scope = [], others = [], dir = CHOICE_EN, r
   }
   if (pool.length === 0) return { ok: false, prompt };
   const right = optionOf(entry);
-  const wrong = shuffle(pool, rand).slice(0, Math.max(1, max - 1));
+  const room = Math.max(1, max - 1);
+  let wrong = null;
+  // 組の答え（Batch 91）: 問いの答えが組の答えで、違う答えを範囲から選ぶときは、まず組のほかの答え（訳を選ぶ向きはその行の訳）から選び、
+  // 足りない分を今の混ぜ方で埋める（答えが選択肢の形から分からないように。数は今の 2〜4 個のまま）
+  if (shared instanceof Set && shared.has(qEn) && from === "scope") {
+    const pairs = pool.filter((o) => o.ek !== qEn && shared.has(o.ek));
+    if (pairs.length > 0) {
+      const first = shuffle(pairs, rand).slice(0, room);
+      const rest = first.length < room ? shuffle(pool.filter((o) => !first.includes(o)), rand).slice(0, room - first.length) : [];
+      wrong = [...first, ...rest];
+    }
+  }
+  wrong ??= shuffle(pool, rand).slice(0, room);
   const options = shuffle([{ text: right.text, en: right.en, correct: true }, ...wrong.map((o) => ({ text: o.text, en: o.en, correct: false }))], rand);
   return { ok: true, prompt, options, from };
 }
@@ -196,6 +224,7 @@ export function mountChoice(deps) {
   const switchLabel = () => `${CHOICE_DIRS[otherDir()]}に替える`;
   const guard = createChoiceGuard();
   let built = null;
+  let shared = null; // 組の答えの集まり（Batch 91。最初の問いで 1 回だけ作り、回の間は持つ）
   let word = null;
   let serial = 0;
   let picked = 0; // この回で答えた数（始めの切り替えは 1 問目に答えるまで）
@@ -266,7 +295,8 @@ export function mountChoice(deps) {
     const scope = deps.scope();
     const inScope = new Set((Array.isArray(scope) ? scope : []).map(entryRefOf));
     const others = (deps.all() ?? []).filter((w) => w && !inScope.has(entryRefOf(w)));
-    built = buildChoice({ entry, scope, others, dir });
+    shared ??= sharedAnswersOf(scope);
+    built = buildChoice({ entry, scope, others, dir, shared });
     const q = document.getElementById("japanese");
     if (q && built.prompt && q.textContent !== built.prompt) q.textContent = built.prompt; // 訳を見て英語を選ぶは出題の行のまま（読み上げを重ねない）
     const label = document.querySelector("#gameCard .label");
