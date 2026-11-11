@@ -241,9 +241,11 @@ function renderMode(focus) {
   const press = q.mode !== "choice";
   const waiting = q.state === "waiting";
   const k = q.item.keys[q.layout];
-  const hold = k.how === "choice" && (k.why === "browser" || k.why === "os");
+  // キーの無い端末には「押さずに」を言わない（仕様 §14）
+  const hold = S.keyboard && k.how === "choice" && (k.why === "browser" || k.why === "os");
   $("scHow").textContent = press ? HOW_TEXT.press : hold ? HOW_TEXT.hold : HOW_TEXT.choice;
   $("scPad").hidden = !press;
+  $("scPadHint").hidden = !waiting;
   // 答えた後は札を隠す（仕様 §2.3）
   $("scChoices").hidden = press || !waiting;
   $("scHold").hidden = press || !hold || !waiting;
@@ -353,9 +355,8 @@ function lost() {
 }
 $("scPad").addEventListener("blur", lost);
 document.addEventListener("visibilitychange", () => (document.hidden ? lost() : refresh()));
-// 押す枠の案内は焦点の有無で替える
-$("scPad").addEventListener("focus", () => ($("scPadHint").textContent = PAD_HINT[1]));
-$("scPad").addEventListener("blur", () => ($("scPadHint").textContent = PAD_HINT[0]));
+// 押す枠の案内は焦点の有無で替える（待つ間だけ）
+for (const [type, i] of [["focus", 1], ["blur", 0]]) $("scPad").addEventListener(type, () => S.q?.state === "waiting" && ($("scPadHint").textContent = PAD_HINT[i]));
 
 // 答えた後も #scPlay の中で止める（仕様 §5）
 $("scPlay").addEventListener("keydown", (e) => {
