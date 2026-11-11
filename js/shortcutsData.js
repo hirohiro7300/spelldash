@@ -1,4 +1,4 @@
-// ショートカットキーの表（Batch 92）。形と答え方の決まりは docs/SPEC_SHORTCUTS.md §11。項目を足すときは行と絵の状態を足すだけ。
+// ショートカットキーの表（Batch 92。docs/SPEC_SHORTCUTS.md §11）。項目は行と絵の状態を足すだけ
 
 export const CHECKED_AT = "2026-11-11";
 export const SOURCES = Object.freeze({
@@ -100,17 +100,17 @@ const ITEMS = [
   ["「名前」の欄にいる", "次の「メール」の欄へ移った"]),
   item("pc.cancel", "pc", "B", "やめる・小窓を閉じる", {
     ctrl: C([["Esc"]], "screen", ["os-ctrl", "web-e"]),
-    cmd: C([["Esc"]], "screen", ["os-cmd"])
+    cmd: C([["Esc"]], "screen", ["web-e"])
   }, { k: "doc", a: { title: "報告書", t: "今月の売上", panel: "print" }, b: { title: "報告書", t: "今月の売上" } },
   ["印刷の小窓が開いている", "小窓が閉じた"]),
   item("pc.open", "pc", "B", "ファイルを開く（開く画面を出す）", {
     ctrl: P([["Ctrl", "O"]], ["ctrl+o"], ["doc", "web-g", "web-e"]),
-    cmd: P([["⌘", "O"]], ["meta+o"], ["os-cmd", "doc"])
+    cmd: P([["⌘", "O"]], ["meta+o"], ["os-cmd"])
   }, { k: "doc", a: { t: MEET }, b: { t: MEET, panel: "open" } },
   ["文書を開いている", "開くファイルを選ぶ画面が出た"]),
   item("pc.new", "pc", "B", "新しいウィンドウ（書類）を開く", {
     ctrl: C([["Ctrl", "N"]], "browser", ["doc", "os-ctrl", "web-g", "web-e"]),
-    cmd: C([["⌘", "N"]], "browser", ["doc", "web-g", "web-e"])
+    cmd: C([["⌘", "N"]], "browser", ["web-g", "web-e"])
   }, { k: "desk", a: { wins: ["報告書"] }, b: { wins: ["新しい書類", "報告書"], fresh: true } },
   ["報告書の窓が開いている", "新しい書類の窓が前に開いた"]),
   item("pc.close-window", "pc", "B", "いまのウィンドウを閉じる", {
@@ -128,8 +128,8 @@ const ITEMS = [
     cmd: C([["⌃", "↑"]], "os", ["os-cmd"])
   }, { k: "desk", a: { wins: ["文書", "メモ", "地図"] }, b: { wins: ["文書", "メモ", "地図"], tile: true } },
   ["窓が重なっている", "窓が全部、重ならずに並んだ"]),
-  item("pc.show-desktop", "pc", "B", "デスクトップを見せる（もう一度で戻す）", {
-    ctrl: C([["⊞", "D"]], "os", ["os-ctrl"]),
+  item("pc.show-desktop", "pc", "B", "デスクトップを見せる", {
+    ctrl: C([["⊞", "D"]], "os", ["os-ctrl"], { note: "もう一度押すと元に戻る。" }),
     cmd: C([["Fn", "H"]], "os", ["os-cmd"], { alt: [["Fn", "F11"]], note: "ほかに Fn + F11 でも同じ。" })
   }, { k: "desk", a: { wins: ["文書", "地図"] }, b: { wins: [], icons: true } },
   ["窓が開いている", "窓がよけられ、デスクトップが見えた"]),
@@ -155,7 +155,7 @@ const ITEMS = [
   ["文書の窓が開いている", "鍵の絵の画面になった。開くにはパスワードが要る"]),
   item("pc.emoji", "pc", "B", "絵文字・記号の一覧を出す", {
     ctrl: C([["⊞", "."]], "os", ["os-ctrl"], { alt: [["⊞", ";"]], note: "ほかに ⊞ + ; でも同じ。" }),
-    cmd: C([["⌃", "⌘", "Space"]], "os", ["os-cmd"])
+    cmd: C([["⌃", "⌘", "Space"]], "os", ["os-cmd"], { alt: [["Fn", "E"]], note: "ほかに Fn + E でも同じ。" })
   }, { k: "doc", a: { t: "ありがとう", car: 5 }, b: { t: "ありがとう", car: 5, panel: "emoji" } },
   ["文を打っている", "絵文字と記号の一覧が出た"]),
   item("pc.clipboard-history", "pc", "B", "前にコピーしたものの一覧から貼り付ける（最初は切ってある）", {
@@ -164,7 +164,7 @@ const ITEMS = [
   ["カーソルが「場所:」の後ろにある", "前にコピーした物の一覧が出た"]),
   item("pc.search", "pc", "B", "パソコンの中を検索する（アプリやファイルを名前で開く）", {
     ctrl: C([["⊞", "S"]], "os", ["os-ctrl"]),
-    cmd: C([["⌘", "Space"]], "os", ["os-cmd"])
+    cmd: C([["⌘", "Space"]], "os", ["os-cmd"], { note: "入力の切り替えに ⌘ + Space を使う設定もある。" })
   }, { k: "desk", a: { wins: ["文書"] }, b: { wins: ["文書"], over: "search" } },
   ["文書の窓", "検索の欄が出た"]),
   item("pc.task-manager", "pc", "B", "動かないアプリを止める画面を開く", {
@@ -202,8 +202,8 @@ const ITEMS = [
   item("br.tab-n", "br", "B", "左から n 番目のタブへ跳ぶ", {
     ctrl: P([["Ctrl", "1〜8"]], ["ctrl+#"], ["web-g", "web-e"], { note: "数のキーは 1〜8。その番目のタブへ跳ぶ。" }),
     cmd: P([["⌘", "1〜8"]], ["meta+#"], ["web-g", "web-s"], { note: "数のキーは 1〜8。その番目のタブへ跳ぶ。" })
-  }, { k: "web", a: { tabs: ["1", "2", "3", "4", "5", "6", "7", "8"], on: 7 }, b: { tabs: ["1", "2", "3", "4", "5", "6", "7", "8"], on: "n" } },
-  ["いちばん右のタブを見ている", "左から n 番目のタブへ跳んだ"]),
+  }, { k: "web", a: { tabs: ["1", "2", "3", "4", "5", "6", "7", "8"], on: 0 }, b: { tabs: ["1", "2", "3", "4", "5", "6", "7", "8"], on: "n" } },
+  ["いちばん左のタブを見ている", "左から n 番目のタブへ跳んだ"]),
   item("br.back", "br", "A", "前のページに戻る", {
     ctrl: G([["Alt", "←"]], ["alt+ArrowLeft"], ["web-g", "web-e", "os-ctrl"]),
     cmd: G([["⌘", "["]], ["meta+["], ["web-g", "web-s"], { near: ["meta+ArrowLeft"], note: "⌘ + ← を使うブラウザもある。" })
@@ -211,7 +211,7 @@ const ITEMS = [
   ["2 ページ目を見ている", "前の 1 ページ目に戻った"]),
   item("br.forward", "br", "B", "次のページに進む（戻った後）", {
     ctrl: G([["Alt", "→"]], ["alt+ArrowRight"], ["web-g", "web-e", "os-ctrl"]),
-    cmd: G([["⌘", "]"]], ["meta+]"], ["web-g", "web-s"])
+    cmd: G([["⌘", "]"]], ["meta+]"], ["web-g", "web-s"], { near: ["meta+ArrowRight"], note: "⌘ + → を使うブラウザもある。" })
   }, { k: "web", a: { tabs: ["予定"], page: 1 }, b: { tabs: ["予定"], page: 2 } },
   ["1 ページ目に戻ってきた", "次の 2 ページ目に進んだ"]),
   item("br.reload", "br", "A", "ページを読み込み直す", {
@@ -237,12 +237,12 @@ const ITEMS = [
   item("br.zoom-in", "br", "A", "ページを大きく表示する", {
     ctrl: P([["Ctrl", "+"]], ["ctrl+?shift+plus"], ["web-g", "web-e"], { note: `日本語の並びでは ; + のキー。テンキーの + でもよい。${ZOOM_NOTE}` }),
     cmd: P([["⌘", "+"]], ["meta+?shift+plus"], ["web-g", "web-s"], { note: `日本語の並びでは ; + のキー。${ZOOM_NOTE}` })
-  }, { k: "web", a: { tabs: ["予定"], zoom: 1 }, b: { tabs: ["予定"], zoom: 1.3, pct: "130%" } },
+  }, { k: "web", a: { tabs: ["予定"], zoom: 1 }, b: { tabs: ["予定"], zoom: 1.1, pct: "110%" } },
   ["ふつうの大きさ", "ページの字が大きくなった"]),
   item("br.zoom-out", "br", "A", "ページを小さく表示する", {
     ctrl: P([["Ctrl", "-"]], ["ctrl+?shift+minus"], ["web-g", "web-e"], { note: ZOOM_NOTE }),
     cmd: P([["⌘", "-"]], ["meta+?shift+minus"], ["web-g", "web-s"], { note: ZOOM_NOTE })
-  }, { k: "web", a: { tabs: ["予定"], zoom: 1 }, b: { tabs: ["予定"], zoom: 0.8, pct: "80%" } },
+  }, { k: "web", a: { tabs: ["予定"], zoom: 1 }, b: { tabs: ["予定"], zoom: 0.9, pct: "90%" } },
   ["ふつうの大きさ", "ページの字が小さくなった"]),
   item("br.zoom-reset", "br", "B", "表示の大きさを元に戻す", {
     ctrl: P([["Ctrl", "0"]], ["ctrl+0"], ["web-g", "web-e"]),
@@ -261,7 +261,7 @@ const ITEMS = [
   ["ページを開いている", "見たページの履歴の一覧が出た"]),
   item("br.downloads", "br", "B", "ダウンロードの一覧を開く", {
     ctrl: C([["Ctrl", "J"]], "browser", ["web-g", "web-e"]),
-    cmd: C([["⌥", "⌘", "L"], ["⇧", "⌘", "J"]], "differ", ["web-g"], { note: "ブラウザによって組が違う（⌥ + ⌘ + L か ⇧ + ⌘ + J）。" })
+    cmd: C([["⌥", "⌘", "L"], ["⇧", "⌘", "J"]], "differ", ["web-g", "web-e"], { note: "ブラウザによって組が違う（⌥ + ⌘ + L か ⇧ + ⌘ + J）。" })
   }, { k: "web", a: { tabs: ["予定"] }, b: { tabs: ["予定"], panel: "downloads" } },
   ["ページを開いている", "ダウンロードした物の一覧が出た"]),
   item("br.private-window", "br", "B", "履歴を残さない新しいウィンドウを開く", {

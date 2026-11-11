@@ -1,4 +1,4 @@
-// ショートカットキーの練習の純な部分（Batch 92。docs/SPEC_SHORTCUTS.md）。DOM なし。3 状態は js/learnState.js の nextLearnState。
+// ショートカットキーの純な部分（Batch 92。docs/SPEC_SHORTCUTS.md）。DOM なし
 
 import { nextLearnState, learnDayOf, LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED } from "./learnState.js";
 
@@ -15,7 +15,7 @@ export const RELOAD_WINDOW_MS = 120000;
 const MOD_ORDER = ["ctrl", "alt", "shift", "meta"];
 const MOD_KEY_NAMES = new Set(["Control", "Alt", "Shift", "Meta", "AltGraph", "OS", "Hyper", "Super", "Fn", "FnLock"]);
 
-// ===== キーの読み方（仕様 §4） =====
+// == キーの読み方（仕様 §4）
 const CODE_SYMBOL = { BracketLeft: "[", BracketRight: "]", Comma: ",", Period: ".", Slash: "/", Semicolon: ";", Quote: "'", Backquote: "`", Backslash: "\\" };
 
 export function mainKey(e) {
@@ -84,10 +84,13 @@ export function judge(item, layout, combo, nth = null) {
   return "wrong";
 }
 
-// × の後: ほかの項目の正解なら { own }、もう一方のキーボードの正解なら { suggest }（仕様 §7）
+// × の後: ほかの項目の組なら { own }、他方のキーボードの組なら { suggest }（仕様 §7）
 export function afterWrong(item, layout, combo, nth, all = []) {
   if (judge(item, layout, combo, nth) !== "wrong") return null;
-  const own = all.find((y) => y.id !== item.id && answersOf(y.keys?.[layout]).some((a) => matchesAccept(a, combo, nth)));
+  const sig = sigOfCaps(capsOfCombo(combo, layout), layout);
+  const others = all.filter((y) => y.id !== item.id && y.keys?.[layout]);
+  const own = others.find((y) => answersOf(y.keys[layout]).some((a) => matchesAccept(a, combo, nth)))
+    ?? others.find((y) => [...y.keys[layout].show, ...(y.keys[layout].alt ?? [])].some((caps) => !caps.includes("1〜8") && sigOfCaps(caps, layout) === sig));
   if (own) return { own };
   const other = layout === "ctrl" ? "cmd" : "ctrl";
   if (answersOf(item.keys?.[other]).some((a) => matchesAccept(a, combo, nth))) return { suggest: other };
@@ -99,7 +102,6 @@ export function ownText(item) {
   return `それは${s}${/[うくぐすつぬぶむる]$/.test(s) ? "" : "の"}組。`;
 }
 
-// Tab・Shift+Tab・Esc は止めない（仕様 §5）
 export function shouldCancel(e) {
   const k = e?.key || "";
   if (k === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) return false;
@@ -122,7 +124,7 @@ export function isModifierEvent(e) {
   return MOD_KEY_NAMES.has(e?.key) || /^(Control|Meta|Alt|Shift|OS)(Left|Right)$/.test(e?.code || "");
 }
 
-// ===== 答え方（仕様 §3）。env = { keyboard, miss } =====
+// == 答え方（仕様 §3）。env = { keyboard, miss }
 export function modeOf(item, layout, env = {}) {
   const k = item?.keys?.[layout];
   if (!k) return null;
@@ -132,7 +134,7 @@ export function modeOf(item, layout, env = {}) {
   return k.how;
 }
 
-// ===== 届かなかった組の見張り（仕様 §6。1 回目は toChoice、2 回目は persist） =====
+// == 届かなかった組の見張り（仕様 §6。1 回目は toChoice、2 回目は persist）
 export function createMissWatcher() {
   let held = null;
   let at = 0;
@@ -172,14 +174,14 @@ export function createMissWatcher() {
   };
 }
 
-// ===== 次へ（仕様 §8）。R = { answeredAt, released } =====
+// == 次へ（仕様 §8）。R = { answeredAt, released }
 export function shouldAdvance(e, R, now) {
   if (!R || e?.repeat || e.ctrlKey || e.metaKey || e.altKey) return false;
   if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return false;
   return !!R.released || now - R.answeredAt >= ADVANCE_WAIT_MS;
 }
 
-// ===== 戻る・進む・再読み込みの守り（仕様 §9） =====
+// == 戻る・進む・再読み込みの守り（仕様 §9）
 export const guardState = (id) => ({ sdGuard: String(id) });
 export const isGuardState = (s) => !!s && typeof s === "object" && typeof s.sdGuard === "string" && s.sdGuard !== "";
 export function onGuardPop(state, R) {
@@ -187,20 +189,20 @@ export function onGuardPop(state, R) {
   if (isGuardState(state)) return R?.waiting === "br.forward" ? "count-back" : "back";
   return R?.waiting === "br.back" && R?.pushed ? "count" : "none";
 }
-export function withoutGuard(state) {
+export function withoutGuard(state, key = "sdGuard") {
   if (!state || typeof state !== "object") return null;
   const rest = { ...state };
-  delete rest.sdGuard;
+  delete rest[key];
   return Object.keys(rest).length ? rest : null;
 }
-export const reloadMark = (id, layout, at) => ({ id, layout, at });
+export const reloadMark = (id, layout, at, first = true) => ({ id, layout, at, first: first !== false });
 export function reloadCounted(state, navType, now) {
   const m = state?.sdReload;
   if (navType !== "reload" || !m || m.id !== "br.reload" || !LAYOUTS.includes(m.layout) || !Number.isFinite(m.at)) return null;
-  return now - m.at >= 0 && now - m.at <= RELOAD_WINDOW_MS ? { id: m.id, layout: m.layout } : null;
+  return now - m.at >= 0 && now - m.at <= RELOAD_WINDOW_MS ? { id: m.id, layout: m.layout, first: m.first !== false } : null;
 }
 
-// ===== 端末の設定 { layout, arr, miss }（仕様 §13） =====
+// == 端末の設定 { layout, arr, miss }（仕様 §13）
 const missList = (v) => (Array.isArray(v) ? [...new Set(v.filter((s) => typeof s === "string" && s.length > 0 && s.length < 64))].slice(-MISS_MAX) : []);
 export function readDevice(storage) {
   let d = null;
@@ -226,8 +228,12 @@ export function addMiss(d, layout, combos) {
   return { ...d, miss: { ...d.miss, [layout]: missList([...now, ...combos]) } };
 }
 export const clearMiss = (d) => ({ ...d, miss: { ctrl: [], cmd: [] } });
+export function updateDevice(storage, change) {
+  const device = change(readDevice(storage));
+  return { device, saved: writeDevice(storage, device) };
+}
 
-// ===== 3 状態（仕様 §13） =====
+// == 3 状態（仕様 §13）
 export const dayOf = (ms) => learnDayOf(ms);
 export const keyOf = (id, layout) => `${id}@${layout}`;
 export const emptyProgress = () => ({ v: 1, it: {} });
@@ -247,6 +253,11 @@ export function writeProgress(storage, p) {
   } catch {
     return false;
   }
+}
+// 読み直して書く（ほかのタブ）
+export function recordAnswer(storage, id, layout, clean, nowMs, how = "p") {
+  const progress = applyAnswer(readProgress(storage), id, layout, clean, nowMs, how);
+  return { progress, saved: writeProgress(storage, progress) };
 }
 export function stateOf(p, id, layout) {
   const r = p?.it?.[keyOf(id, layout)];
@@ -273,7 +284,7 @@ export function countStates(p, items, layout, group = "") {
   return out;
 }
 
-// ===== 回（仕様 §10） =====
+// == 回（仕様 §10）
 export function buildRound(items, layout, p, { size = 10, today = learnDayOf(Date.now()), group = "", only = null } = {}) {
   const pool = items.filter((x) => x.keys?.[layout] && (!group || x.g === group) && (!only || only.includes(x.id)));
   const rec = (x) => p?.it?.[keyOf(x.id, layout)] ?? {};
@@ -306,7 +317,7 @@ export function roundAnswer(st, { item, layout, result, how = "p", nowMs }) {
   return { st: out, recorded: first };
 }
 
-// ===== 見せる字・選択肢・読み上げ =====
+// == 見せる字・選択肢・読み上げ
 const CAP_TOKEN = { Ctrl: "ctrl", "⌃": "ctrl", Alt: "alt", "⌥": "alt", Shift: "shift", "⇧": "shift", "⌘": "meta", "⊞": "meta", Fn: "fn",
   "←": "ArrowLeft", "→": "ArrowRight", "↑": "ArrowUp", "↓": "ArrowDown", Esc: "Escape", PrtScn: "PrintScreen", PgDn: "PageDown", PgUp: "PageUp", "+": "plus", "-": "minus" };
 const MOD_TOKENS = ["fn", "ctrl", "alt", "shift", "meta"];
@@ -338,6 +349,12 @@ export function capsOfCombo(c, layout) {
   return [...mods.filter(Boolean), key];
 }
 export const textCaps = (caps) => caps.join(" + ");
+const HOLD_NOTE = "押すと本当に動くので、練習では押さずに選ぶ。";
+const WHY_NOTE = { browser: HOLD_NOTE, os: HOLD_NOTE, screen: "Tab と Esc はこの画面で使うので、選んで答える。" };
+export function notesOf(item, layout) {
+  const k = item?.keys?.[layout];
+  return k ? [k.note ?? "", WHY_NOTE[k.why] ?? ""].filter(Boolean) : [];
+}
 
 const SPOKEN = { "⌘": "コマンド", "⌥": "オプション", "⌃": "コントロール", "⇧": "シフト", "⊞": "ロゴのキー", Ctrl: "コントロール", Shift: "シフト", Alt: "オルト", AltGr: "オルトグラフ",
   "←": "左矢印", "→": "右矢印", "↑": "上矢印", "↓": "下矢印", Esc: "エスケープ", "+": "プラス", "-": "マイナス", "[": "左角かっこ", "]": "右角かっこ", ".": "ピリオド", ";": "セミコロン",

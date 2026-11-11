@@ -1,7 +1,8 @@
-// ショートカットキーの絵（Batch 92。docs/SPEC_SHORTCUTS.md §12）。文字列で svg を組み、字は esc する。色は css/shortcuts.css のクラスだけ。
+// ショートカットキーの絵と組み立て（Batch 92。docs/SPEC_SHORTCUTS.md §12）。字は esc する
 
 import { esc } from "./html.js";
-import { tokensOfCaps as capsTokens, spokenCap, spokenCaps, LAYOUT_LABEL } from "./shortcutsCore.js";
+import { LEARN_LABELS } from "./learnState.js";
+import { tokensOfCaps as capsTokens, spokenCap, spokenCaps, LAYOUT_LABEL, capsOf, notesOf, textCaps } from "./shortcutsCore.js";
 
 export const tokensOfCaps = capsTokens;
 export const SCENE_MIN_FONT = 10;
@@ -30,7 +31,30 @@ export function variantsHtml(variants) {
   return variants.map((caps) => `<span class="kc-set">${capsHtml(caps)}</span>`).join('<span class="kc-or">/</span>');
 }
 
-// ===== キーボードの絵 =====
+// == 画面の組み立て（scripts/test-text-safe.mjs 8）
+const STATE_KEY = ["new", "unsure", "learned"];
+export function tileHtml(x, layout, { state = 0, choice = false, open = false, arr = "jis" } = {}) {
+  return `<li class="sc-tile${open ? " is-open" : ""}" data-id="${esc(x.id)}"><button type="button" class="sc-tile__btn" aria-expanded="${open}" aria-controls="scDetail-${esc(x.id)}">` +
+    `<span class="sc-tile__keys">${variantsHtml(capsOf(x, layout))}</span><span class="sc-tile__ja">${esc(x.ja)}</span>` +
+    `<span class="sc-tile__meta"><span class="mw-row__state mw-row__state--${STATE_KEY[state] ?? "new"}">${esc(LEARN_LABELS[state] ?? "")}</span>${choice ? '<span class="sc-tile__choice">選んで答える</span>' : ""}</span></button>` +
+    `<div class="sc-detail" id="scDetail-${esc(x.id)}"${open ? "" : " hidden"}>${open ? detailHtml(x, layout, arr) : ""}</div></li>`;
+}
+export function detailHtml(x, layout, arr = "jis") {
+  const notes = notesOf(x, layout).map((s) => `<p class="sc-detail__note">${esc(s)}</p>`).join("");
+  return `<div class="sc-detail__keys">${variantsHtml(capsOf(x, layout, 2))}</div>${scenePairHtml(x, layout, 2)}<div class="sc-detail__kb">${keyboardSvg(layout, arr)}</div>${notes}` +
+    `<button type="button" class="btn btn--sm btn--ghost sc-detail__replay">動きをもう一度見る</button>`;
+}
+export const missedRowHtml = (x, layout) => `<li class="sc-end__row"><span class="sc-end__keys">${capsHtml(capsOf(x, layout, 2)[0] ?? [])}</span><span class="sc-end__ja">${esc(x.short)}</span></li>`;
+export function resultHtml({ head, right, pressed = null, picked = null, lines = [] }) {
+  const parts = [`<span class="sc-result__h">${esc(head)}</span>${capsHtml(right)}`];
+  if (pressed) parts.push(`<span class="sc-result__pressed">押したキー: ${esc(textCaps(pressed))}</span>`);
+  else if (picked) parts.push(`<span class="sc-result__pressed">選んだ組: ${esc(textCaps(picked))}</span>`);
+  for (const line of lines) parts.push(`<span class="sc-result__own">${esc(line)}</span>`);
+  return parts.join(" ");
+}
+export const nearHtml = (pressed, right) => `${esc(textCaps(pressed))} を使うアプリもある。ここでは ${esc(textCaps(right))} で答える。`;
+
+// == キーボードの絵
 const U = 20;
 // [札, code, 判定の字, 幅]
 function rowsOf(layout, arr) {
@@ -139,7 +163,7 @@ export function paintKeys(svg, { target = [], down = [], wrong = [] } = {}) {
 }
 export const keyboardLabel = (layout, caps) => `${LAYOUT_LABEL[layout] ?? ""}の絵${caps ? `。押すキー: ${spokenCaps(caps, "and")}` : ""}`;
 
-// ===== 前と後の絵（120×84） =====
+// == 前と後の絵（120×84）
 const W = 120;
 const H = 84;
 const BODY = 12;
