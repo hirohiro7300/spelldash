@@ -175,6 +175,7 @@ function startRound(only = null) {
   if (!S.dev.layout) {
     $("scLayoutHint").hidden = false;
     $("scLayoutHint").classList.add("is-alert");
+    live.say($("scLayoutHint").textContent);
     show("home");
     focusAt(document.querySelector('input[name="scLayout"]'), $("scLayoutHint"));
     return;
@@ -442,7 +443,6 @@ function answer(result, how, { combo = null, code = "", picked = null, dunno = f
   const pickedCaps = wrong && !combo ? picked?.caps ?? null : null;
   const aw = wrong && combo ? afterWrong(q.item, q.layout, combo, q.nth, SHORTCUTS) : null;
   const head = result === "ok" ? "正解" : dunno ? "こう押す" : "ちがう";
-  let say = `${head}。${wrong ? "正しくは " : ""}${spokenCaps(right, "hold")}${pressed ? `。押したのは ${spokenCaps(pressed, "hold")}` : ""}`;
   const lines = [aw?.own ? ownText(aw.own) : "", said, saved ? "" : "この端末に保存できなかった。"].filter(Boolean);
   setResult(dunno ? "dunno" : result, resultHtml({ head, right, pressed, picked: pickedCaps, lines }));
   if (aw?.suggest) {
@@ -463,7 +463,10 @@ function answer(result, how, { combo = null, code = "", picked = null, dunno = f
   kb.querySelector(".kb")?.setAttribute("aria-label", keyboardLabel(q.layout, right));
   renderMode(false);
   $("scPlay").dataset.state = "done";
-  live.say(`${say}。${said}`.replace(/。。/g, "。"));
+  // 読み上げは結果の行と同じ材料（仕様 §15）
+  const tell = [head, (wrong ? "正しくは " : "") + spokenCaps(right, "hold"), pressed && `押したのは ${spokenCaps(pressed, "hold")}`, pickedCaps && `選んだのは ${spokenCaps(pickedCaps, "hold")}`,
+    ...lines, aw?.suggest && `${LAYOUT_LABEL[aw.suggest]}の押し方だった。切り替えるボタンがある`];
+  live.say(`${tell.filter(Boolean).join("。")}。`.replace(/。+/g, "。"));
   S.nextArmed = false;
   const next = $("scNext");
   const fits = rectOf(next).bottom - rectOf($("scScene")).top <= innerHeight - 16 - headerBottom();
@@ -526,12 +529,13 @@ function endRound() {
   $("scScore").textContent = `${firsts.length} 問のうち ${okN} 問 正解`;
   const missed = firsts.filter(([, ok]) => !ok).map(([id]) => SHORTCUTS.find((x) => x.id === id)).filter(Boolean);
   $("scMissed").innerHTML = missed.map((x) => missedRowHtml(x, R.layout)).join("");
-  $("scMissed").hidden = missed.length === 0;
+  $("scMissed").hidden = $("scMissedTitle").hidden = missed.length === 0;
   $("scAgain").hidden = missed.length === 0;
   R.missed = missed.map((x) => x.id);
   show("end");
   renderHome();
   focusAt($("scEndTitle"), $("scEnd"));
+  live.say(`おつかれさま。${$("scScore").textContent}。`);
 }
 $("scAgain").addEventListener("click", () => startRound(S.round?.missed ?? null));
 $("scMore").addEventListener("click", () => startRound());

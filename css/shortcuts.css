@@ -129,7 +129,8 @@ html[data-theme] .sc-meter__unsure {
   background: var(--warn);
 }
 
-html[data-theme] .sc-map__h {
+html[data-theme] .sc-map__h,
+html[data-theme] .sc-end__sub {
   margin: 4px 0 0;
   font-family: var(--font-display);
   font-size: 15px;
