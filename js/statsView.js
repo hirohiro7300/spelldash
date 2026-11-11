@@ -38,6 +38,7 @@ let trendsReady = false; // 推移グラフは単語ストアの初期化後に�
 let weeklyReady = false; // 週間レポートを描いてよい（単語ストアの初期化と成長ログの今日の行の後。初期化に失敗したときは失敗の後: renderWeekly）
 let growthCounted = false; // 推移・カレンダー・今月の行・週間レポートを、公開の語の表が読めた状態で描いた（Batch 90。読めずに描いたら、読めたときに 1 回描き直す）
 let resizeTimer = null;
+let shortcutsSeq = 0; // ショートカットキーの 1 行の描き直しの番号（遅れて終わった古い描画で新しい数を上書きしない: renderShortcutsLine。下の最初の呼び出しより前に置く）
 
 // 週間レポート（Batch 72）: 単語ストアの初期化と成長ログの今日の行（renderGrowthTrend。前の形の行の語数も合わせる）の後にだけ描く。先に届いた知らせ
 // （Pro の受付の返事 spelldash:billing・同期）で描くと、読み直す前の数で描いてすぐ描き直し、はちゃんの顔と一言が替わっていた（2 つ目の顔も読む）。
@@ -72,6 +73,7 @@ renderMyWordsLine();
 window.addEventListener("spelldash:mywords", renderMyWordsLine);
 renderSlangLine();
 renderShortcutsLine();
+watchShortcutsLine();
 
 // マイ単語帳の 1 行（Batch 79）: マイ単語帳の中だけの数（語数と覚えた）。上の公開の語の数・ランク・目安には入れない
 function renderMyWordsLine() {
@@ -97,23 +99,38 @@ function renderSlangLine() {
 
 // ショートカットキーの 1 行（Batch 92。docs/SPEC_SHORTCUTS.md §1）: この端末で選んだキーボードの 覚えた と組の数。上の公開の語の数・ランク・目安には入れない。
 // 数は練習のページの数の札と同じ関数（js/shortcutsCore.js の readDevice・readProgress・countStates。表は js/shortcutsData.js）。どちらも動的 import
-// （静的な読み込みの表を増やさない）。キーボードを選んでいなければ表は読まずに 1 文。読めなければ静的な文のまま
+// （静的な読み込みの表を増やさない）。キーボードを選んでいなければ表は読まずに 1 文。読めなければ静的な文のまま。
+// 戻る・ほかのタブの変更でも描き直す（watchShortcutsLine）ので、後から始めた描き直しがあれば、遅れて終わったこの描画は書かない（番号 shortcutsSeq）
 function renderShortcutsLine() {
+  const seq = ++shortcutsSeq;
   const store = { getItem: (k) => localStorage.getItem(k) }; // getItem だけの口（scripts/test-areas.mjs U1）
   import("./shortcutsCore.js")
     .then(async (C) => {
       const el = document.getElementById("statsShortcutsCount");
-      if (!el) return;
+      if (!el || seq !== shortcutsSeq) return;
       const layout = C.readDevice(store).layout;
       if (!layout) {
         el.textContent = "キーボードを選ぶと数が出る";
         return;
       }
       const { SHORTCUTS } = await import("./shortcutsData.js");
+      if (seq !== shortcutsSeq) return;
       const c = C.countStates(C.readProgress(store), SHORTCUTS, layout);
       el.textContent = `覚えた ${c.learned} / ${c.total}（${C.LAYOUT_LABEL[layout]}）`;
     })
     .catch(() => {});
+}
+
+// ショートカットキーの 1 行を描き直す時機（入口のレビュー）: 戻るで開き直した（pageshow の persisted。ページを残して戻るとモジュールは走り直さない）と、
+// ほかのタブで練習した・キーボードを替えた・全部消した（storage。鍵は js/shortcutsCore.js の PROGRESS_KEY・DEVICE_KEY と同じ名前と null。人ごとの鍵の
+// 知らせは js/areaGuard.js が元の名前にして届ける）。学習状況の数の描き直し（watchLearnStatus）とは別にする（練習の鍵では英単語の数を描き直さない）
+function watchShortcutsLine() {
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) renderShortcutsLine();
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === null || event.key === "spelldash_shortcuts" || event.key === "spelldash_shortcut_device") renderShortcutsLine();
+  });
 }
 
 // 息抜きの入口（本文の最後の「息抜きに タイピング練習」。Batch 65 P3）: 押したら、タイピング練習・タイピングゲームから初めて来た端末だけ
