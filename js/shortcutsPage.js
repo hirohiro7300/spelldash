@@ -41,7 +41,6 @@ const S = {
   guard: { ignore: 0, pushed: false },
   watcher: createMissWatcher(),
   nextArmed: false,
-  nextSuppress: false,
   open: null
 };
 const kbEl = () => $("scKb").querySelector(".kb");
@@ -465,23 +464,16 @@ $("scSwitch").addEventListener("click", () => {
   $("scNext").focus();
 });
 
-// 次へ: Enter・Space の keydown がボタンの上で始まったときだけ押せる
+// 次へ: Enter・Space の keydown がボタンの上で始まったときだけ押せる（仕様 §8）
 $("scNext").addEventListener("keydown", (e) => {
-  if (!e.repeat && (e.key === "Enter" || e.key === " ")) S.nextArmed = true;
+  if (e.key !== "Enter" && e.key !== " ") return;
+  if (e.repeat) e.preventDefault();
+  else S.nextArmed = true;
 });
 $("scNext").addEventListener("keyup", (e) => {
-  if ((e.key === "Enter" || e.key === " ") && !S.nextArmed) {
-    S.nextSuppress = true;
-    setTimeout(() => (S.nextSuppress = false), 0);
-  }
+  if (e.key === " " && !S.nextArmed) e.preventDefault();
 });
-$("scNext").addEventListener("click", () => {
-  if (S.nextSuppress) {
-    S.nextSuppress = false;
-    return;
-  }
-  goNext();
-});
+$("scNext").addEventListener("click", goNext);
 function goNext() {
   const R = S.round;
   if (!R || S.q?.state !== "done") return;
