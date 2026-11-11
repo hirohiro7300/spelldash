@@ -1,4 +1,4 @@
-// ショートカットキーの絵（Batch 92。docs/SPEC_SHORTCUTS.md §12）。文字列の SVG を組み、字は esc する。色は css/shortcuts.css のクラスだけ。
+// ショートカットキーの絵（Batch 92。docs/SPEC_SHORTCUTS.md §12）。文字列で svg を組み、字は esc する。色は css/shortcuts.css のクラスだけ。
 
 import { esc } from "./html.js";
 import { tokensOfCaps as capsTokens, spokenCap, spokenCaps, LAYOUT_LABEL } from "./shortcutsCore.js";
