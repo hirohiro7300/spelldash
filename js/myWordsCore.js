@@ -12,6 +12,9 @@
 //   ls・lsd・lsAt  マイ単語帳だけの 3 状態（これから・あやふや・覚えた）。js/learnState.js の語の記録と同じ欄の名前と同じ決まり（applyLearnAnswer）。
 //          語の記録（spelldash_word_stats）には書かない: 公開の語の 3 状態・6 つの数・ランク・最高到達ランクに入らない。
 //          語と一緒に同期の項目（user_items の my_word。表があるときだけ）に乗る
+//   lf     初めて 覚えた になった日の日番号（Batch 91。applyMyAnswer が付け、一度付けたら替えない。0 = 前から 覚えた で数えない）。
+//          学習状況の詳しい記録の「マイ単語帳で 覚えた」だけが読む（countMyGain）。語と一緒に同期の項目 my_word に乗り、
+//          取り込みでは早い方を残す（js/userItemsSync.js keepFirstLearned）
 //   book   入っている単語帳の id（Batch 81）。無い（前からの語）は最初の単語帳「マイ単語帳」（id main）の語として読む（書き直さない）。
 //   bookName その単語帳の名前（Batch 81。足す・移す・名前を変えるときに書く）。book と一緒に同期の項目 my_word の payload に乗る（新しい種類・SQL は足さない）。
 //          単語帳の一覧は端末の中だけ（spelldash_my_books）なので、一覧に無い id（ほかの端末で作った単語帳）は、語の bookName でその単語帳を出す（withWordBooks）
@@ -251,17 +254,63 @@ export function myStateOf(w) {
   return storedState(w) ?? LEARN_NEW;
 }
 
-// 1 問の答えを語に当てる（純）。kind = js/learnState.js ANSWER_KINDS の値。返り値は写した語（ls・lsd・lsAt だけを替える）。
-// 目安の印 lsf は付けない（公開の語の目安だけの欄）
+// 1 問の答えを語に当てる（純）。kind = js/learnState.js ANSWER_KINDS の値。返り値は写した語（ls・lsd・lsAt と、まだ無ければ lf を替える）。
+// lf（Batch 91。docs/SPEC_MY_WORDS.md §17）= この版で初めて 覚えた になった日の日番号。決まりは公開の語の目安の印 lsf と同じ
+// （js/learnState.js firstLearnedMark。答えのたびに前から走っている計算の返りを語に写すだけ）: 印の無い語が 覚えた のまま答えた → 0
+// （前から 覚えた。数えない）、この答えで 覚えた になった → 今日。一度付けたら替えない（語の lf を lsf として渡すと印は足されない）。
+// 公開の語の欄 lsf は語に付けない
 export function applyMyAnswer(w, kind, nowMs) {
-  const stat = { lsf: 0 };
+  const stat = {};
+  if (w?.lf !== undefined) stat.lsf = w.lf;
   if (w?.ls !== undefined) stat.ls = w.ls;
   if (w?.lsd !== undefined) stat.lsd = w.lsd;
   const out = applyLearnAnswer(stat, kind, nowMs);
   const next = { ...w, ls: out.ls, lsAt: out.lsAt };
   if (out.lsd === undefined) delete next.lsd;
   else next.lsd = out.lsd;
+  if (w?.lf === undefined && out.lsf !== undefined) next.lf = out.lsf;
   return next;
+}
+
+// ===== マイ単語帳の 覚えた の増え（Batch 91。docs/SPEC_MY_WORDS.md §17。どれも純） =====
+// 学習状況の詳しい記録（週間レポート・今月の行・カレンダーの title）が読む。英単語の数（学習状況の 覚えた・ランク・推移）には入れない。
+// 数えるのは、この版で初めて 覚えた になった日が窓の中にあり、今も 覚えた の英語の語（外して覚え直した語は前の日のまま・消した語は入らない・
+// 場面カードは数えない）
+
+// 初めて 覚えた になった日（1 以上の日番号）。数えない（0）・まだ決まっていない（無い）・読めない値は null
+export function myFirstLearnedDay(w) {
+  const v = w?.lf;
+  return Number.isInteger(v) && v > 0 ? v : null;
+}
+
+// 窓（日番号 from〜to）の増え: 初めて 覚えた になった日が窓の中にあり、今も 覚えた の語の数
+export function countMyGain(list, from, to) {
+  let gain = 0;
+  for (const w of Array.isArray(list) ? list : []) {
+    if (!isWordEntry(w)) continue;
+    const d = myFirstLearnedDay(w);
+    if (d !== null && d >= from && d <= to && myStateOf(w) === LEARN_LEARNED) gain++;
+  }
+  return gain;
+}
+
+// 日番号 → その日に初めて 覚えた になり、今も 覚えた の語の数（窓の日の和は countMyGain と同じ）
+export function myGainByDay(list) {
+  const days = new Map();
+  for (const w of Array.isArray(list) ? list : []) {
+    if (!isWordEntry(w)) continue;
+    const d = myFirstLearnedDay(w);
+    if (d !== null && myStateOf(w) === LEARN_LEARNED) days.set(d, (days.get(d) ?? 0) + 1);
+  }
+  return days;
+}
+
+// 時刻 sinceMs から後に英語の語のどれかに答えたか（語の最後の答えの時刻 lsAt。ほかの端末の答えも語と一緒に届く）
+export function myStudiedSince(list, sinceMs) {
+  for (const w of Array.isArray(list) ? list : []) {
+    if (isWordEntry(w) && Number.isFinite(w.lsAt) && w.lsAt >= sinceMs) return true;
+  }
+  return false;
 }
 
 // 3 状態の数（英語の語だけ。場面カードは数えない）。new + unsure + learned = total
