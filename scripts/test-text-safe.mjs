@@ -911,5 +911,34 @@ await t("6.13 取り込み: クラウドの方が新しくて取り込んだ語�
   ok("js/wordList.js（どこからも読まれていない一覧）は無い", !fs.existsSync(path.join(ROOT, "js", "wordList.js")));
 }
 
+// ===== 8. ショートカットキーの札と絵と画面の組み立て（Batch 92。js/shortcutsArt.js・js/shortcutsPage.js。docs/SPEC_SHORTCUTS.md） =====
+// 新しい組み立て（キーの札・キーボードの絵・前と後の絵・一覧の札・選択肢・結果の行）も 7 の見張りの対象（js/*.js を全部見る）。
+// ここでは、その組み立てが見張りの目に入っている（HTML のテンプレートの式がある）ことと、表の字と読み上げの文を esc して出すことを確かめる
+{
+  const H = await import("./lib/htmlTemplates.mjs");
+  const files = ["shortcutsArt.js", "shortcutsPage.js"];
+  const seen = files.map((f) => {
+    const p = path.join(ROOT, "js", f);
+    if (!fs.existsSync(p)) return [f, -1, 0];
+    const src = fs.readFileSync(p, "utf8");
+    const r = H.scanHtmlTemplates(src);
+    const q = H.scanHtmlParams(src);
+    return [f, r.exprs, r.hits.length + q.hits.length];
+  });
+  ok("ショートカットキー: 札と絵と画面の組み立て（js/shortcutsArt.js・js/shortcutsPage.js）は HTML の見張りの目に入る（テンプレートの式がある）・語や名前の字を守らずに出す所は 0",
+    seen.every(([, n, hits]) => n > 10 && hits === 0), show(seen));
+  let A = null;
+  try {
+    A = await import("../js/shortcutsArt.js");
+  } catch {
+    A = null;
+  }
+  const bad = '<img src=x onerror="alert(1)">&\'';
+  const caps = typeof A?.capsHtml === "function" ? A.capsHtml([bad, "C"]) : "";
+  const pair = typeof A?.scenePairHtml === "function" ? A.scenePairHtml({ id: "x", ja: bad, short: bad, say: [bad, bad], scene: { k: "doc", a: { t: bad }, b: { t: bad, clip: bad } } }, "ctrl") : "";
+  ok("ショートカットキー: キーの札・前と後の絵の字と読み上げの文は esc して出す（タグも属性も作らない）",
+    caps.includes("&lt;img") && !caps.includes("<img") && pair.includes("&lt;img") && !pair.includes("<img") && !/onerror="/.test(pair), show({ caps: caps.slice(0, 120), pair: pair.slice(0, 200) }));
+}
+
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -16879,7 +16879,7 @@ console.log("native app:");
   const { PAGES: APP_PAGES } = await import("../scripts/build-app.mjs");
   const WEB_ONLY = ["pro.html", "tokushoho.html"];
   const appHtml = Object.fromEntries(APP_PAGES.map((p) => [p, fs.existsSync(path.join(ROOT, p)) ? fs.readFileSync(path.join(ROOT, p), "utf8") : null]));
-  check("アプリ: PAGES は 13 ページ（terms.html と切り替えの画面 switch.html とマイ単語帳 mywords.html とスラング slang.html はある・pro.html と tokushoho.html は無い）、PAGES のファイルはどれもある", APP_PAGES.length === 13 && APP_PAGES.includes("terms.html") && APP_PAGES.includes("switch.html") && APP_PAGES.includes("mywords.html") && APP_PAGES.includes("slang.html") && WEB_ONLY.every((p) => !APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), JSON.stringify({ pages: APP_PAGES, missing: APP_PAGES.filter((p) => appHtml[p] === null) }));
+  check("アプリ: PAGES は 14 ページ（terms.html と切り替えの画面 switch.html とマイ単語帳 mywords.html とスラング slang.html とショートカットキー shortcuts.html はある・pro.html と tokushoho.html は無い）、PAGES のファイルはどれもある", APP_PAGES.length === 14 && APP_PAGES.includes("terms.html") && APP_PAGES.includes("switch.html") && APP_PAGES.includes("mywords.html") && APP_PAGES.includes("slang.html") && APP_PAGES.includes("shortcuts.html") && WEB_ONLY.every((p) => !APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), JSON.stringify({ pages: APP_PAGES, missing: APP_PAGES.filter((p) => appHtml[p] === null) }));
   const footerOut = [];
   for (const [p, t] of Object.entries(appHtml)) {
     if (p === "switch.html") continue; // 切り替えの画面（Batch 78-7）はナビもフッターも持たない（学習の部品を読まない短いページ）
@@ -29309,6 +29309,807 @@ console.log("guard (88.1):");
     await closeCtx(page);
   }
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 92.1 ショートカットキー（Batch 92。shortcuts.html・js/shortcutsPage.js・js/shortcutsCore.js・js/shortcutsArt.js・js/shortcutsData.js。docs/SPEC_SHORTCUTS.md）: ページ（ナビ 4 つ・フッター・noindex・sitemap に無い・CSP の違反 0・320／390／1200 × 昼夜で横スクロール 0）・キーボードを選ばずに練習 → 選ぶ所へ・押す組を全部本物のキーで（Ctrl は Control、⌘ は Meta）・止める・取り違えと近い組・ほかの項目の組・repeat・⌘ の keyup の欠け・Esc と Tab・届かなかった組（1 回目と 2 回目）・戻る・進む・再読み込みの守り・指の端末・絵（2 問目の前と後・字の大きさ・動き・光るキー・⌘ の日本語の並び）・キーボードだけで 10 問・日本語入力・保存と領域とバックアップ・アプリの状態 =====
+// Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来・読み込み直しでは種に戻さない）
+console.log("shortcuts (92.1):");
+{
+  const SD = await import("../js/shortcutsData.js").catch(() => null);
+  const ITEMS = SD?.SHORTCUTS ?? [];
+  const byId = (id) => ITEMS.find((x) => x.id === id) ?? null;
+  const pressHow = (k) => !!k && (k.how === "press" || k.how === "guard");
+  check("92.1 表が読める（50 項目）", ITEMS.length === 50, `n=${ITEMS.length}`);
+  // ids のほかを全部「覚えた」にした記録（回の頭に ids が表の順で並ぶ。覚えたの時刻は表の順）
+  const learnedExcept = (ids, layout) => JSON.stringify({ v: 1, it: Object.fromEntries(ITEMS.map((x, i) => [x, i]).filter(([x]) => x.keys?.[layout] && !ids.includes(x.id)).map(([x, i]) => [`${x.id}@${layout}`, { s: 2, at: 1000 + i, how: "p" }])) });
+  const dev = (layout, extra = {}) => JSON.stringify({ layout, arr: "jis", ...extra });
+  // 小節ごとに包む: 1 つの小節が投げても ✗ 1 件にして次の小節へ進む（開いたままの窓は閉じる）。待ちは 8 秒まで
+  const openCtxs = new Set();
+  const part = async (name, fn) => {
+    try {
+      await fn();
+    } catch (e) {
+      check(`92.1 ${name} が途中で投げた`, false, String(e?.message ?? e).split("\n")[0].slice(0, 200));
+    } finally {
+      for (const ctx of openCtxs) await ctx.close().catch(() => {});
+      openCtxs.clear();
+    }
+  };
+  async function scPage({ storage = {}, viewport = { width: 1200, height: 900 }, mobile = false, theme = null, reduced = false, csp = false, init = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}), ...(reduced ? { reducedMotion: "reduce" } : {}) });
+    openCtxs.add(ctx);
+    if (csp) await ctx.addCookies([{ name: REAL_HEADERS_COOKIE, value: "real", url: BASE }]);
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(8000);
+    page.errors = [];
+    page.csp = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    page.on("console", (m) => { if (/Content Security Policy|Refused to (execute|load|apply)/.test(m.text())) page.csp.push(m.text().slice(0, 160)); });
+    if (init) await page.addInitScript(init);
+    await page.addInitScript(([seed, th]) => {
+      window.__scT = { copy: 0, cut: 0, paste: 0, print: 0, keys: [], csp: 0 };
+      for (const t of ["copy", "cut", "paste"]) document.addEventListener(t, () => window.__scT[t]++, true);
+      addEventListener("beforeprint", () => window.__scT.print++);
+      document.addEventListener("securitypolicyviolation", () => window.__scT.csp++);
+      // 押す枠の keydown（窓の泡の段で見る: 枠の受け手の後なので、止めたかが分かる）
+      addEventListener("keydown", (e) => { if (e.target?.id === "scPad") window.__scT.keys.push({ key: e.key, code: e.code, prevented: e.defaultPrevented, repeat: e.repeat }); });
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }) };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); openCtxs.delete(ctx); await page.close().catch(() => {}); await ctx.close().catch(() => {}); };
+  const openSc = async (page) => {
+    await page.goto(BASE + "/shortcuts.html", { waitUntil: "networkidle" }).catch(() => {});
+    await page.waitForFunction(() => window.SpellDashArea !== undefined && document.querySelectorAll("#scMap .sc-tile").length > 0, null, { timeout: 8000 }).catch(() => {});
+  };
+  const play = (page) => page.evaluate(() => {
+    const vis = (el) => !!el && !el.closest("[hidden]") && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
+    const p = document.getElementById("scPlay");
+    const r = document.getElementById("scResult");
+    const sg = document.getElementById("scSuggest");
+    return {
+      home: vis(document.getElementById("scHome")), play: vis(p), end: vis(document.getElementById("scEnd")),
+      id: p?.dataset.id ?? null, mode: p?.dataset.mode ?? null, state: p?.dataset.state ?? null, q: document.getElementById("scQ")?.textContent.trim() ?? "",
+      pad: vis(document.getElementById("scPad")), choices: [...document.querySelectorAll("#scAnswer .sc-choice")].filter(vis).length,
+      kind: r?.dataset.kind ?? null, result: r?.textContent.replace(/\s+/g, " ").trim() ?? "",
+      next: vis(document.getElementById("scNext")), retry: vis(document.getElementById("scRetry")), choose: vis(document.getElementById("scChoose")),
+      suggest: vis(sg) ? sg.textContent.replace(/\s+/g, " ").trim() : null, count: document.getElementById("scCount")?.textContent.trim() ?? "",
+      active: document.activeElement?.id || document.activeElement?.getAttribute?.("name") || document.activeElement?.tagName || null
+    };
+  });
+  const waitPlay = (page, fn, arg = null, timeout = 4000) => page.waitForFunction(fn, arg, { timeout, polling: 20 }).then(() => true, () => false);
+  const waitState = (page, st) => waitPlay(page, (s) => document.getElementById("scPlay")?.dataset.state === s && !document.getElementById("scPlay").hidden, st);
+  const start = async (page) => {
+    await page.click("#scStart");
+    return waitState(page, "waiting");
+  };
+  const device = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem("spelldash_shortcut_device") || "null"); } catch { return "bad"; } });
+  const missOf = (d) => (Array.isArray(d?.miss) ? d.miss : [...(d?.miss?.ctrl ?? []), ...(d?.miss?.cmd ?? [])]);
+  const progress = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem("spelldash_shortcuts") || "null"); } catch { return "bad"; } });
+  const MOD_PW = { ctrl: "Control", alt: "Alt", shift: "Shift", meta: "Meta" };
+  const pwKey = (accept, nth = 3) => {
+    const parts = String(accept).split("+");
+    const main = parts.pop();
+    const mods = parts.filter((p) => !p.startsWith("?")).map((m) => MOD_PW[m]);
+    const k = main === "#" ? `Digit${nth}` : /^[a-z]$/.test(main) ? `Key${main.toUpperCase()}` : /^[0-9]$/.test(main) ? `Digit${main}` : main === "plus" ? "Equal" : main === "minus" ? "Minus"
+      : main === "[" ? "BracketLeft" : main === "]" ? "BracketRight" : main;
+    return [...mods, k].join("+");
+  };
+  const nthOf = (q) => Number((q.match(/左から (\d) 番目/) ?? [])[1]) || 3;
+  const art = (page, root = "#scPlay") => page.evaluate((r) => {
+    const svg = document.querySelector(`${r} .kb`);
+    if (!svg) return null;
+    const codes = (cls) => [...svg.querySelectorAll(`.kb-k.${cls}`)].map((g) => g.getAttribute("data-code")).sort();
+    return { target: codes("is-target"), wrong: codes("is-wrong"), down: codes("is-down"), labels: [...svg.querySelectorAll("text")].map((t) => t.textContent), aria: svg.getAttribute("aria-label") };
+  }, root);
+
+  // (2) ページ: ナビ 4 つ（現在地なし）・フッター・noindex・sitemap に無い・本物のヘッダー（CSP）で違反 0・エラー 0
+  await part("(2) 小節 1", async () => {
+    const page = await scPage({ csp: true, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await openSc(page);
+    const v = await page.evaluate(() => ({
+      title: document.title, h1: document.querySelector("h1")?.textContent.trim(),
+      nav: [...document.querySelectorAll(".site-header .site-nav .site-nav__link")].map((a) => [a.textContent.trim(), a.getAttribute("href"), a.getAttribute("aria-current")]),
+      footer: !!document.querySelector("footer.site-footer .site-footer__tagline"), noindex: document.querySelector('meta[name="robots"]')?.content ?? null,
+      lead: document.querySelector(".sc__lead")?.textContent.trim() ?? "", foot: document.querySelector(".sc-foot")?.textContent.trim() ?? "",
+      tiles: document.querySelectorAll("#scMap .sc-tile").length, sum: document.getElementById("scSum")?.textContent.replace(/\s+/g, " ").trim() ?? ""
+    }));
+    await start(page);
+    await page.focus("#scPad").catch(() => {});
+    await page.keyboard.press("Control+KeyC");
+    await waitState(page, "done");
+    const after = await play(page);
+    const csp = await page.evaluate(() => window.__scT?.csp ?? -1);
+    const sitemap = fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8");
+    check("92.1 ページ: 題「ショートカットキー」・ナビ 4 つ（現在地なし）・フッター・noindex・sitemap に無い・説明の 1 行と末尾の 1 行・一覧の札 50・数（50 組（Ctrl のキーボード）・これから・あやふや・覚えた）",
+      v.h1 === "ショートカットキー" && /^ショートカットキー \|/.test(v.title) && v.nav.length === 4 && v.nav.every(([, , cur]) => cur === null) && JSON.stringify(v.nav.map(([t]) => t)) === JSON.stringify(["ホーム", "英単語を学ぶ", "学習状況", "設定"])
+        && v.footer && v.noindex === "noindex" && !sitemap.includes("shortcuts.html")
+        && v.lead === "よく使うキーの組を、本当に押して覚える。押すと困る組（画面のロック・タブを閉じるなど）は、押さずに選んで答える。"
+        && v.foot === "記録はこの端末に保存。別の端末へはバックアップで移す。キーの組は公式の説明で確かめた。アプリによって違うことがある。"
+        && v.tiles === 50 && v.sum.startsWith("50 組（Ctrl のキーボード）") && /これから 1/.test(v.sum) && /覚えた 49/.test(v.sum), JSON.stringify(v));
+    check("92.1 本物のヘッダー（vercel.json の CSP）で開いて 1 問答えても CSP の違反 0・エラー 0（inline の script はほかのページと同じ 3 つ）",
+      after.kind === "ok" && csp === 0 && page.csp.length === 0 && page.errors.length === 0, JSON.stringify({ kind: after.kind, csp, msgs: page.csp.slice(0, 2), err: page.errors[0] }));
+    await closeCtx(page);
+  });
+
+  // (3) キーボードを選ばずに「練習する」→ 選ぶ所（ラジオ）へ焦点・案内の文。選ぶと練習できる
+  await part("(3) 小節 2", async () => {
+    const page = await scPage({});
+    await openSc(page);
+    const hint = await page.evaluate(() => document.getElementById("scLayoutHint")?.textContent.trim() ?? null);
+    await page.click("#scStart");
+    await page.waitForTimeout(150);
+    const v = await play(page);
+    const focus = await page.evaluate(() => ({ name: document.activeElement?.getAttribute?.("name") ?? null, id: document.activeElement?.id ?? null }));
+    await page.click('#scLayout [data-layout="ctrl"]');
+    const ok = await start(page);
+    const d = await device(page);
+    check("92.1 キーボードを選ばずに「練習する」→ 回は始まらず、焦点はキーボードの選び（ラジオ）へ・案内「使っているキーボードを選ぶ（左下のキーで分かる。あとで替えられる）。」・選ぶと始まり、端末の鍵に layout だけ（kb は書かない）",
+      hint === "使っているキーボードを選ぶ（左下のキーで分かる。あとで替えられる）。" && !v.play && (focus.name === "scLayout" || focus.id === "scLayoutHint") && ok && d?.layout === "ctrl" && !("kb" in (d ?? {})) && page.errors.length === 0,
+      JSON.stringify({ hint, v, focus, ok, d, err: page.errors[0] }));
+    await closeCtx(page);
+  });
+
+  // (4) 押す組を全部本物のキーで（Ctrl のキーボードは Control+…、⌘ のキーボードは Meta+…。ControlOrMeta は使わない: 流す機械で決まるため）。
+  //     copy・paste・cut・beforeprint が 0・押す枠の keydown（修飾の Shift・Tab・Esc・Enter を除く）は全部 defaultPrevented
+  await part("(4) 小節 3", async () => {
+    for (const layout of ["ctrl", "cmd"]) {
+      const ids = ITEMS.filter((x) => pressHow(x.keys?.[layout])).map((x) => x.id);
+      const page = await scPage({ storage: { spelldash_shortcut_device: dev(layout), spelldash_shortcuts: learnedExcept(ids, layout) } });
+      await openSc(page);
+      const got = new Map();
+      let loops = 0;
+      await start(page);
+      while (loops++ < 70 && got.size < ids.length) {
+        await waitState(page, "waiting");
+        const v = await play(page);
+        if (v.end) {
+          await page.click("#scMore").catch(() => {});
+          continue;
+        }
+        const it = byId(v.id);
+        if (!it) break;
+        if (v.mode === "choice" || !v.pad) {
+          await page.click('#scAnswer .sc-choice[data-ok="1"]').catch(() => {});
+        } else {
+          await page.focus("#scPad").catch(() => {});
+          await page.keyboard.press(pwKey(it.keys[layout].accept[0], nthOf(v.q)));
+        }
+        await waitState(page, "done");
+        const after = await play(page);
+        if (v.mode !== "choice") got.set(v.id, after.kind);
+        await page.click("#scNext").catch(() => {});
+        await waitPlay(page, () => { const p = document.getElementById("scPlay"); return (p && !p.hidden && p.dataset.state === "waiting") || !document.getElementById("scEnd")?.hidden; });
+        if (!(await page.evaluate(() => document.getElementById("scEnd")?.hidden ?? true))) await page.click("#scMore").catch(() => {});
+      }
+      const bad = ids.filter((id) => got.get(id) !== "ok").map((id) => `${id}:${got.get(id) ?? "出ない"}`);
+      const t = await page.evaluate(() => window.__scT);
+      const keys = (t?.keys ?? []).filter((k) => !["Shift", "Tab", "Escape", "Enter"].includes(k.key));
+      const unprevented = keys.filter((k) => !k.prevented).map((k) => k.key);
+      check(`92.1 押す組を全部本物のキーで答えて正解（${layout === "ctrl" ? "Ctrl のキーボード 27 組・Control+…" : "⌘ のキーボード 26 組・Meta+…"}）`, ids.length === (layout === "ctrl" ? 27 : 26) && bad.length === 0, JSON.stringify({ n: ids.length, got: got.size, bad }));
+      check(`92.1 押した間に copy・paste・cut・beforeprint が 0・押す枠の keydown は全部止まった（${layout}）・エラー 0`,
+        t && t.copy + t.paste + t.cut + t.print === 0 && keys.length >= ids.length && unprevented.length === 0 && page.errors.length === 0, JSON.stringify({ c: t && [t.copy, t.paste, t.cut, t.print], n: keys.length, unprevented: unprevented.slice(0, 8), err: page.errors[0] }));
+      await closeCtx(page);
+    }
+  });
+
+  // (5) 取り違え（他方のキーボードの押し方）・近い組（同じ問いのまま）・押したキーの朱・正しいキーの金
+  await part("(5) 小節 4", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy", "pc.redo"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    await page.focus("#scPad");
+    const before = await art(page);
+    await page.keyboard.press("Meta+KeyC");
+    await waitState(page, "done");
+    const v = await play(page);
+    const a = await art(page);
+    check("92.1 取り違え: Ctrl のキーボードのコピーで ⌘C → ちがう・「⌘ のキーボードの押し方だった。切り替える？」と「⌘ のキーボードにする」（黙って替えない）・答える前は光らない・答えた後は正しいキー（左の Ctrl と C）が金・押した ⊞ が朱",
+      v.kind === "wrong" && /^ちがう/.test(v.result) && v.result.includes("押したキー:") && v.suggest?.includes("⌘ のキーボードの押し方だった。切り替える？") && v.suggest.includes("⌘ のキーボードにする")
+        && before?.target.length === 0 && JSON.stringify(a?.target) === JSON.stringify(["ControlLeft", "KeyC"]) && JSON.stringify(a?.wrong) === JSON.stringify(["MetaLeft"]) && (await device(page))?.layout === "ctrl",
+      JSON.stringify({ v, before: before?.target, a: a && { target: a.target, wrong: a.wrong } }));
+    await page.click("#scNext");
+    await waitState(page, "waiting");
+    await page.focus("#scPad");
+    await page.keyboard.press("Control+Shift+KeyZ");
+    await page.waitForTimeout(120);
+    const n = await play(page);
+    await page.keyboard.press("Control+KeyY");
+    await waitState(page, "done");
+    const n2 = await play(page);
+    check("92.1 近い組: やり直すで Ctrl+Shift+Z → 数えずに同じ問いのまま「Ctrl + Shift + Z を使うアプリもある。ここでは Ctrl + Y で答える。」・続けて Ctrl+Y で正解",
+      n.id === "pc.redo" && n.state === "waiting" && n.kind === "near" && n.result.includes("を使うアプリもある。ここでは") && n.result.includes("で答える。") && n2.kind === "ok" && page.errors.length === 0, JSON.stringify({ n, n2 }));
+    await closeCtx(page);
+  });
+  // (5) ほかの項目の組（反証 5）: Ctrl の 1 語ずつ動かすで Alt+← → 「それは前のページに戻る組。」・切り替えの欄は出ない／Ctrl+Insert でコピーに正解（反証 8）
+  await part("(5) 小節 5", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.word-left-right", "pc.copy"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    const first = await play(page);
+    await page.focus("#scPad");
+    await page.keyboard.press("Control+Insert");
+    await waitState(page, "done");
+    const c = await play(page);
+    await page.click("#scNext");
+    await waitState(page, "waiting");
+    await page.focus("#scPad");
+    await page.keyboard.press("Alt+ArrowLeft");
+    await waitState(page, "done");
+    const w = await play(page);
+    check("92.1 Ctrl+Insert でコピーの問いに正解（公式の別の組）・Ctrl の「1 語ずつ動かす」で Alt+← は × で「それは前のページに戻る組。」・切り替えの欄は出ない",
+      first.id === "pc.copy" && c.kind === "ok" && w.id === "pc.word-left-right" && w.kind === "wrong" && w.result.includes("それは前のページに戻る組。") && w.suggest === null, JSON.stringify({ first: first.id, c: c.kind, w }));
+    await closeCtx(page);
+  });
+  // (5) ⌥ の AltGraph（反証 1）: ⌘ のキーボードで getModifierState("AltGraph") が真の ⌥←・⌥⇧→・⌥+Backspace は正解（配信した js を読んで同じ形を確かめる。
+  //     合成の事件は isTrusted が偽で押す枠が判定しないため）・本物の Alt+← を押す枠で押しても正解
+  await part("(5) 小節 6", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("cmd"), spelldash_shortcuts: learnedExcept(["pc.word-left-right"], "cmd") } });
+    await openSc(page);
+    const ag = await page.evaluate(async () => {
+      const C = await import("/js/shortcutsCore.js");
+      const D = await import("/js/shortcutsData.js");
+      const it = (id) => D.SHORTCUTS.find((x) => x.id === id);
+      const e = (o) => ({ isTrusted: true, ctrlKey: false, shiftKey: false, metaKey: false, altKey: true, repeat: false, getModifierState: (m) => m === "AltGraph", ...o });
+      return [C.judge(it("pc.word-left-right"), "cmd", C.readCombo(e({ key: "ArrowLeft", code: "ArrowLeft" }), "cmd"), 3),
+        C.judge(it("pc.select-word"), "cmd", C.readCombo(e({ key: "ArrowRight", code: "ArrowRight", shiftKey: true }), "cmd"), 3),
+        C.judge(it("pc.delete-word"), "cmd", C.readCombo(e({ key: "Backspace", code: "Backspace" }), "cmd"), 3)];
+    }).catch((e) => String(e?.message ?? e));
+    await start(page);
+    await page.focus("#scPad");
+    await page.keyboard.press("Alt+ArrowLeft");
+    await waitState(page, "done");
+    const v = await play(page);
+    check("92.1 ⌘ のキーボード: AltGraph の旗つきの ⌥←・⌥⇧→・⌥+Backspace は正解（配信した /js/shortcutsCore.js）・本物の Alt+← を押す枠で押しても正解",
+      JSON.stringify(ag) === '["ok","ok","ok"]' && v.id === "pc.word-left-right" && v.kind === "ok", JSON.stringify({ ag, v: [v.id, v.kind] }));
+    await closeCtx(page);
+  });
+  // (5) repeat（反証 3）: 1 画面ずつ下への問いで Space を押し続ける（2 回目の keydown は repeat）→ 結果が画面に残る（問いも状態も変わらない）。keyup の後の Enter で次へ
+  //     ⌘ の keyup の欠け: down Meta → down KeyC → up Meta（C の up は来ない）→ 正解・300 ms の後の Enter で次へ
+  await part("(5) 小節 7", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.scroll-page", "br.bookmark"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    const q0 = await play(page);
+    await page.focus("#scPad");
+    await page.keyboard.down("Space");
+    await waitState(page, "done");
+    const a = await play(page);
+    await page.keyboard.down("Space");
+    await page.keyboard.down("Space");
+    await page.waitForTimeout(150);
+    const b = await play(page);
+    await page.keyboard.up("Space");
+    await page.keyboard.press("Enter");
+    await waitPlay(page, () => document.getElementById("scPlay")?.dataset.id !== "br.scroll-page");
+    const c = await play(page);
+    check("92.1 repeat: Space の押し続け（repeat の keydown）では次へ進まず結果が残る・keyup の後の Enter で次へ",
+      q0.id === "br.scroll-page" && a.kind === "ok" && b.id === "br.scroll-page" && b.state === "done" && b.kind === "ok" && c.id === "br.bookmark" && c.state === "waiting", JSON.stringify({ q0: q0.id, a: [a.id, a.kind], b: [b.id, b.state], c: [c.id, c.state] }));
+    await closeCtx(page);
+    const page2 = await scPage({ storage: { spelldash_shortcut_device: dev("cmd"), spelldash_shortcuts: learnedExcept(["pc.copy", "pc.paste"], "cmd") } });
+    await openSc(page2);
+    await start(page2);
+    await page2.focus("#scPad");
+    await page2.keyboard.down("Meta");
+    await page2.keyboard.down("KeyC");
+    await page2.keyboard.up("Meta");
+    await waitState(page2, "done");
+    const m = await play(page2);
+    await page2.waitForTimeout(350);
+    await page2.keyboard.press("Enter");
+    await waitPlay(page2, () => document.getElementById("scPlay")?.dataset.id === "pc.paste");
+    const m2 = await play(page2);
+    await page2.keyboard.up("KeyC");
+    check("92.1 ⌘ の keyup の欠け（down Meta → down C → up Meta）: 正解・300 ms の後の Enter で次へ・押しているキーの絵は残らない",
+      m.id === "pc.copy" && m.kind === "ok" && m2.id === "pc.paste" && m2.state === "waiting" && (await art(page2))?.down.length === 0 && page2.errors.length === 0, JSON.stringify({ m: [m.id, m.kind], m2: [m2.id, m2.state] }));
+    await closeCtx(page2);
+  });
+
+  // (6) Esc で選ぶ形へ・Tab と Shift+Tab で枠を出る（止めない）・Shift+Tab の後も端末の miss が空
+  await part("(6) 小節 8", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    await page.focus("#scPad");
+    await page.keyboard.press("Shift+Tab");
+    const out1 = await page.evaluate(() => document.activeElement?.id ?? null);
+    await page.focus("#scPad");
+    await page.keyboard.press("Tab");
+    const out2 = await page.evaluate(() => document.activeElement?.id ?? null);
+    await page.waitForTimeout(1600);
+    const keep = await play(page);
+    const d1 = await device(page);
+    await page.focus("#scPad");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(120);
+    const esc = await play(page);
+    check("92.1 Tab と Shift+Tab で押す枠を出られる（止めない）・その後も押す問いのまま・端末の miss は空・Esc で選ぶ形（4 つの札）へ",
+      out1 !== "scPad" && out2 !== "scPad" && keep.mode === "press" && keep.pad && missOf(d1).length === 0 && esc.choices === 4 && !esc.pad && esc.state === "waiting", JSON.stringify({ out1, out2, keep: [keep.mode, keep.pad], d1, esc: [esc.choices, esc.pad, esc.state] }));
+    await closeCtx(page);
+  });
+  // (6) 届かなかった組（反証 2）: Ctrl+C の問いで Alt を押したまま焦点が外れる（窓の切り替え）→ 押す枠のまま・miss は空
+  await part("(6) 小節 9", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    await page.focus("#scPad");
+    await page.keyboard.down("Alt");
+    await page.evaluate(() => document.getElementById("scQuit")?.focus());
+    await page.keyboard.up("Alt");
+    await page.waitForTimeout(120);
+    const v = await play(page);
+    const d = await device(page);
+    check("92.1 Ctrl+C の問いで Alt を押したまま焦点が外れる → 押す問いのまま・「もう一度押す」は出ない・端末の miss は空",
+      v.id === "pc.copy" && v.mode === "press" && v.pad && !v.retry && missOf(d).length === 0, JSON.stringify({ v: [v.id, v.mode, v.pad, v.retry], d }));
+    await closeCtx(page);
+  });
+  // (6) ⌘ のキーボードの ⌘C で Meta を押したまま外れる（1 回目）→ その問いだけ選ぶ形・「もう一度押す」で押す枠に戻る・miss は空・読み込み直すと札に印なし
+  await part("(6) 小節 10", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("cmd"), spelldash_shortcuts: learnedExcept(["pc.copy"], "cmd") } });
+    await openSc(page);
+    await start(page);
+    await page.focus("#scPad");
+    await page.keyboard.down("Meta");
+    await page.evaluate(() => document.getElementById("scQuit")?.focus());
+    await page.keyboard.up("Meta");
+    await page.waitForTimeout(150);
+    const v = await play(page);
+    await page.click("#scRetry").catch(() => {});
+    await page.waitForTimeout(120);
+    const back = await play(page);
+    const d = await device(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.querySelectorAll("#scMap .sc-tile").length > 0, null, { timeout: 8000 }).catch(() => {});
+    const mark = await page.evaluate(() => document.querySelector('#scMap .sc-tile[data-id="pc.copy"]')?.textContent.includes("選んで答える") ?? null);
+    check("92.1 ⌘C で Meta を押したまま焦点が外れる（1 回目）→ その問いだけ選ぶ形・「押せなかったようだ。この問いは選んで答える。」・「もう一度押す」で押す枠に戻る・端末の miss は空・読み込み直すと札に「選んで答える」の印は無い",
+      v.mode === "choice" && v.choices === 4 && v.retry && v.result.includes("押せなかったようだ。この問いは選んで答える。") && back.pad && back.mode === "press" && missOf(d).length === 0 && mark === false,
+      JSON.stringify({ v: [v.mode, v.choices, v.retry, v.result], back: [back.pad, back.mode], d, mark }));
+    await closeCtx(page);
+  });
+  // (6) Ctrl を押したまま外れる、を同じ押す項目（コピー）で 2 回 → miss に覚え、読み込み直すと札に「選んで答える」の印と一覧の上の知らせ。「押して答えるに戻す」で空になり印が消える
+  await part("(6) 小節 11", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    for (let i = 0; i < 2; i++) {
+      await page.focus("#scPad");
+      await page.keyboard.down("Control");
+      await page.evaluate(() => document.getElementById("scQuit")?.focus());
+      await page.keyboard.up("Control");
+      await page.waitForTimeout(150);
+      if (i === 0) await page.click("#scRetry").catch(() => {});
+    }
+    const v = await play(page);
+    const d = await device(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.querySelectorAll("#scMap .sc-tile").length > 0, null, { timeout: 8000 }).catch(() => {});
+    const home = await page.evaluate(() => ({ mark: document.querySelector('#scMap .sc-tile[data-id="pc.copy"]')?.textContent.includes("選んで答える") ?? null, note: document.getElementById("scMissNote")?.hidden === false ? document.getElementById("scMissNote").textContent.replace(/\s+/g, " ").trim() : null }));
+    await page.click("#scMissReset").catch(() => {});
+    await page.waitForTimeout(150);
+    const reset = await page.evaluate(() => ({ mark: document.querySelector('#scMap .sc-tile[data-id="pc.copy"]')?.textContent.includes("選んで答える") ?? null, note: document.getElementById("scMissNote")?.hidden }));
+    const d2 = await device(page);
+    check("92.1 同じ組で 2 回目 → 「ブラウザかパソコンが先に受け取ったようだ。この組は、この端末では選んで答える。」・端末の miss に ctrl+c・読み込み直すと札に「選んで答える」と「この端末では 1 組を…」・「押して答えるに戻す」で空になり印が消える",
+      v.result.includes("ブラウザかパソコンが先に受け取ったようだ。この組は、この端末では選んで答える。") && JSON.stringify(missOf(d)) === '["ctrl+c"]' && home.mark === true
+        && home.note?.includes("この端末では 1 組をブラウザかパソコンが先に受け取ったので、選んで答えている。") && reset.mark === false && reset.note === true && missOf(d2).length === 0 && page.errors.length === 0,
+      JSON.stringify({ v: v.result, d, home, reset, d2 }));
+    await closeCtx(page);
+  });
+
+  // (7) 戻る・進む・再読み込みの守り（反証 6。history.length は見ない）
+  const fromHome = async (page) => {
+    await page.goto(BASE + "/", { waitUntil: "networkidle" }).catch(() => {});
+    await openSc(page);
+  };
+  const guardOf = (page) => page.evaluate(() => !!history.state?.sdGuard);
+  await part("(7) 小節 12", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.back", "br.forward"], "ctrl") } });
+    await fromHome(page);
+    await start(page);
+    const q = await play(page);
+    const armed = await guardOf(page);
+    await page.evaluate(() => history.back());
+    await waitState(page, "done");
+    await page.waitForTimeout(150);
+    const a = await play(page);
+    const stateA = await guardOf(page);
+    const path1 = await page.evaluate(() => location.pathname);
+    await page.goForward().catch(() => {});
+    await page.waitForTimeout(300);
+    const f = await play(page);
+    const stateF = await guardOf(page);
+    check("92.1 戻るの問い: 守りは問いの間だけ（印 sdGuard）・ブラウザが戻っても「押せた」に数えてページに残る・答えた後の状態に印は無い・進むで印の段に着いても黙って戻る（問いも数も変わらない）",
+      q.id === "br.back" && q.mode === "guard" && armed && a.kind === "ok" && a.result.includes("ブラウザが先に動いたが、押せた。") && path1 === "/shortcuts.html" && !stateA
+        && f.id === "br.back" && f.state === "done" && f.kind === "ok" && !stateF && (await page.evaluate(() => location.pathname)) === "/shortcuts.html",
+      JSON.stringify({ q: [q.id, q.mode], armed, a: [a.kind, a.result], path1, stateA, f: [f.id, f.state], stateF }));
+    await page.click("#scNext");
+    await waitState(page, "waiting");
+    const q2 = await play(page);
+    await page.goForward().catch(() => {});
+    await waitState(page, "done");
+    await page.waitForTimeout(200);
+    const f2 = await play(page);
+    const stateF2 = await guardOf(page);
+    const p = await progress(page);
+    await page.goBack().catch(() => {});
+    await page.waitForTimeout(300);
+    const left = await page.evaluate(() => location.pathname);
+    check("92.1 進むの問いで、前の回の残った段に進む → 「押せた」に数えて戻る・印は残らない・記録は戻る／進むとも覚えた・そこから戻る 1 回で shortcuts.html を離れる",
+      q2.id === "br.forward" && f2.kind === "ok" && !stateF2 && p?.it?.["br.back@ctrl"]?.s === 2 && p?.it?.["br.forward@ctrl"]?.s === 2 && left === "/" && page.errors.length === 0,
+      JSON.stringify({ q2: q2.id, f2: [f2.kind, f2.result], stateF2, s: [p?.it?.["br.back@ctrl"]?.s, p?.it?.["br.forward@ctrl"]?.s], left, err: page.errors[0] }));
+    await closeCtx(page);
+  });
+  await part("(7) 小節 13", async () => {
+    // 答えずに別のページへリンクで移り、戻ってくる → 守りは立たず、状態に印が無い（replaceState で消えた）・数えない
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.back"], "ctrl") } });
+    await fromHome(page);
+    await start(page);
+    await page.click('.site-header .site-nav a[href="./stats.html"]');
+    await page.waitForURL((u) => u.pathname === "/stats.html", { timeout: 8000 }).catch(() => {});
+    await page.goBack().catch(() => {});
+    await page.waitForFunction(() => location.pathname === "/shortcuts.html" && document.readyState === "complete", null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const st = await guardOf(page);
+    const p = await progress(page);
+    check("92.1 戻るの問いで答えずにリンクで別のページへ移り、戻ってくる → 状態に印 sdGuard は無い・数えていない",
+      (await page.evaluate(() => location.pathname)) === "/shortcuts.html" && !st && !p?.it?.["br.back@ctrl"]?.s, JSON.stringify({ st, rec: p?.it?.["br.back@ctrl"] ?? null }));
+    await closeCtx(page);
+  });
+  await part("(7) 小節 14", async () => {
+    // ほかの問い（コピー）でブラウザの戻る → ページを離れる（守りは足さない）
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await fromHome(page);
+    await start(page);
+    await page.goBack().catch(() => {});
+    await page.waitForTimeout(400);
+    const at = await page.evaluate(() => location.pathname);
+    check("92.1 戻るでない問いの間のブラウザの戻る → ふつうにページを離れる（回の間に履歴を足さない）", at === "/", at);
+    await closeCtx(page);
+  });
+  await part("(7) 小節 15", async () => {
+    // 戻るの問いを含む回を 3 回 → history.length の増えは 1 まで・戻るの問いを含まない回では増えない
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.back"], "ctrl") } });
+    await fromHome(page);
+    const L0 = await page.evaluate(() => history.length);
+    for (let i = 0; i < 3; i++) {
+      await start(page);
+      await page.click("#scDunno");
+      await waitState(page, "done");
+      await page.click("#scQuit");
+      await page.waitForTimeout(150);
+    }
+    const L1 = await page.evaluate(() => history.length);
+    await closeCtx(page);
+    const page2 = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await fromHome(page2);
+    const M0 = await page2.evaluate(() => history.length);
+    for (let i = 0; i < 3; i++) {
+      await start(page2);
+      await page2.click("#scQuit");
+      await page2.waitForTimeout(100);
+    }
+    const M1 = await page2.evaluate(() => history.length);
+    check("92.1 戻るの問いを含む回を 3 回 → history.length の増えは 1 まで・含まない回では増えない", L1 - L0 <= 1 && M1 === M0, JSON.stringify({ L0, L1, M0, M1 }));
+    await closeCtx(page2);
+  });
+  await part("(7) 小節 16", async () => {
+    // 再読み込みの問いで読み込み直す → 「押せた」に数える（印は 2 分以内・reload のときだけ）
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.reload"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    const q = await play(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.querySelectorAll("#scMap .sc-tile").length > 0, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(200);
+    const note = await page.evaluate(() => document.getElementById("scNotice")?.hidden === false ? document.getElementById("scNotice").textContent.trim() : null);
+    const p = await progress(page);
+    const st = await page.evaluate(() => history.state?.sdReload ?? null);
+    check("92.1 再読み込みの問いで読み込み直す → 「読み込み直した。さっきの問い（ページを読み込み直す）は押せた。」・覚えたに数える・印は消える",
+      q.id === "br.reload" && q.mode === "guard" && note === "読み込み直した。さっきの問い（ページを読み込み直す）は押せた。" && p?.it?.["br.reload@ctrl"]?.s === 2 && st === null && page.errors.length === 0, JSON.stringify({ q: [q.id, q.mode], note, rec: p?.it?.["br.reload@ctrl"], st }));
+    await closeCtx(page);
+  });
+
+  // (8) 指の端末（hasTouch・isMobile）: 正直な文・押す枠が無い・物理キー 1 回で次の問いから押す枠・端末の鍵に kb:1 があっても押す枠は出ない（反証 7）・390 で選択肢の札の中がはみ出ない
+  await part("(8) 小節 17", async () => {
+    const page = await scPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy", "pc.paste"], "ctrl") } });
+    await openSc(page);
+    const note = await page.evaluate(() => document.getElementById("scDeviceNote")?.hidden === false ? document.getElementById("scDeviceNote").textContent.trim() : null);
+    await start(page);
+    const q1 = await play(page);
+    await page.keyboard.press("KeyA");
+    await page.waitForTimeout(150);
+    const said = await page.evaluate(() => document.getElementById("scLive")?.textContent ?? "");
+    const q1b = await play(page);
+    await page.tap('#scAnswer .sc-choice[data-ok="1"]');
+    await waitState(page, "done");
+    await page.tap("#scNext");
+    await waitState(page, "waiting");
+    const q2 = await play(page);
+    const d = await device(page);
+    check("92.1 指の端末: 「キーボードが無い端末では、選んで答える。キーボードをつなぐと、押して答えられる。」・押す組も選ぶ問い（押す枠なし）・物理キー 1 回で「キーボードがつながった。押して答えられる。」・今の問いは替えず、次の問いから押す枠・端末の鍵に書かない",
+      note === "キーボードが無い端末では、選んで答える。キーボードをつなぐと、押して答えられる。" && q1.id === "pc.copy" && !q1.pad && q1.choices === 4 && said.includes("キーボードがつながった。押して答えられる。") && !q1b.pad && q2.id === "pc.paste" && q2.pad && !("kb" in (d ?? {})),
+      JSON.stringify({ note, q1: [q1.id, q1.pad, q1.choices], said, q1b: q1b.pad, q2: [q2.id, q2.pad], d }));
+    await closeCtx(page);
+  });
+  await part("(8) 小節 18", async () => {
+    const page = await scPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_shortcut_device: dev("ctrl", { kb: 1 }), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await openSc(page);
+    const note = await page.evaluate(() => document.getElementById("scDeviceNote")?.hidden === false);
+    await start(page);
+    const v = await play(page);
+    check("92.1 指の端末で端末の鍵に kb:1 を置いて開き直す（キーを押さない）→ 正直な文が出て押す枠は無い（「キーボードを見た」は端末に持たない: 反証 7）", note && !v.pad && v.choices === 4, JSON.stringify({ note, v: [v.pad, v.choices] }));
+    await closeCtx(page);
+  });
+  await part("(8) 小節 19", async () => {
+    const page = await scPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.task-manager"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    const v = await page.evaluate(() => {
+      const cs = [...document.querySelectorAll("#scAnswer .sc-choice")];
+      const out = [];
+      for (const b of cs) {
+        const r = b.getBoundingClientRect();
+        for (const el of b.querySelectorAll("*")) {
+          const e = el.getBoundingClientRect();
+          if (e.width === 0 && e.height === 0) continue;
+          if (e.left < r.left - 0.5 || e.right > r.right + 0.5 || e.top < r.top - 0.5 || e.bottom > r.bottom + 0.5) out.push(`${b.textContent.trim().slice(0, 30)}: ${el.className?.baseVal ?? el.className}`);
+        }
+      }
+      return { n: cs.length, labels: cs.map((b) => b.getAttribute("aria-label")), out, hx: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    });
+    check("92.1 390 の指の端末: 選択肢の札（Ctrl + Shift + Esc を含む）の中の字とキーの札は札からはみ出さない・読み上げは「1. コントロール と シフト と エスケープ」の形・横スクロール 0",
+      v.n === 4 && v.out.length === 0 && v.labels.some((l) => l === "1. コントロール と シフト と エスケープ" || /^\d\. コントロール と シフト と エスケープ$/.test(l ?? "")) && v.hx <= 0, JSON.stringify(v));
+    await closeCtx(page);
+  });
+
+  // (9) 絵: 390 の 2 問目の答える前に前と後の絵が両方見える（rich で落ちる）・絵の中の字は 390 で 11px 以上で「…」が無い（10 問）・動きは減らした設定で 0
+  await part("(9) 小節 20", async () => {
+    const page = await scPage({ viewport: { width: 390, height: 844 }, storage: { spelldash_shortcut_device: dev("ctrl") } });
+    await openSc(page);
+    await start(page);
+    const rows = [];
+    let both2 = null;
+    for (let i = 0; i < 10; i++) {
+      await waitState(page, "waiting");
+      const m = await page.evaluate(() => {
+        const box = document.getElementById("scScene");
+        const vis = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 40 && r.height > 20 && s.visibility !== "hidden" && Number(s.opacity) > 0.5 && !el.closest("[hidden]"); };
+        const svgs = [...box.querySelectorAll("svg.sc-svg")];
+        const sizes = [];
+        let ell = 0;
+        for (const svg of svgs) {
+          const k = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+          for (const t of svg.querySelectorAll("text")) {
+            if (!t.textContent.trim()) continue;
+            sizes.push(parseFloat(t.getAttribute("font-size") || getComputedStyle(t).fontSize) * k);
+            if (t.textContent.includes("…")) ell++;
+          }
+        }
+        return { before: vis(box.querySelector(".sc-cell--before svg")), after: vis(box.querySelector(".sc-cell--after svg")), min: sizes.length ? Math.min(...sizes) : 0, n: sizes.length, ell, id: document.getElementById("scPlay").dataset.id };
+      });
+      rows.push(m);
+      if (i === 1) both2 = m;
+      await page.click("#scDunno");
+      await waitState(page, "done");
+      await page.click("#scNext");
+    }
+    const minAll = Math.min(...rows.map((r) => r.min));
+    check("92.1 390: 2 問目の答える前に前の絵と後の絵が両方見える（前の絵を畳まない・後の絵を先に出さない）", !!both2 && both2.before && both2.after, JSON.stringify(both2));
+    check(`92.1 390: 10 問の前と後の絵の字は 11px 以上（最小 ${minAll.toFixed(1)}px）・「…」で切らない`, rows.length === 10 && rows.every((r) => r.n > 0) && minAll >= 11 && rows.every((r) => r.ell === 0), JSON.stringify(rows.map((r) => [r.id, Math.round(r.min * 10) / 10, r.ell])));
+    await closeCtx(page);
+  });
+  await part("(9) 小節 21", async () => {
+    for (const reduced of [false, true]) {
+      const page = await scPage({ reduced, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+      await openSc(page);
+      await start(page);
+      await page.focus("#scPad");
+      await page.keyboard.press("Control+KeyC");
+      await waitState(page, "done");
+      const n = await page.evaluate(() => document.getAnimations().length);
+      const done = await page.evaluate(() => document.querySelector("#scScene .sc-cell--after")?.classList.contains("is-done") ?? false);
+      check(reduced ? "92.1 減らした動きの設定: 答えた後も動き 0（後の絵の枠を金にするだけ）" : "92.1 動きあり: 正解の後、後の絵の中の物が動く（動き 1 以上）", reduced ? n === 0 && done : n >= 1, JSON.stringify({ n, done }));
+      await closeCtx(page);
+    }
+  });
+  await part("(9) 小節 22", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: JSON.stringify({ layout: "cmd", arr: "jis" }), spelldash_shortcuts: learnedExcept(["pc.copy"], "cmd") } });
+    await openSc(page);
+    await start(page);
+    const before = await art(page);
+    await page.focus("#scPad");
+    await page.keyboard.press("Meta+KeyC");
+    await waitState(page, "done");
+    const a = await art(page);
+    check("92.1 ⌘ の日本語の並びの絵: 半/全・無変換・変換 が無い（英数・かな がある）・答える前は光らない・答えた後は左の ⌘ と C だけが金・読み上げの名前「⌘ のキーボードの絵。押すキー: コマンド と C」",
+      before?.target.length === 0 && !a?.labels.some((s) => ["半/全", "無変換", "変換"].includes(s)) && a?.labels.includes("英数") && a?.labels.includes("かな") && JSON.stringify(a?.target) === JSON.stringify(["KeyC", "MetaLeft"]) && a?.aria === "⌘ のキーボードの絵。押すキー: コマンド と C",
+      JSON.stringify({ before: before?.target, labels: a?.labels?.slice(0, 80), target: a?.target, aria: a?.aria }));
+    await closeCtx(page);
+  });
+
+  // (10) キーボードだけで 10 問の回を最後まで（押す枠・数字のキー・Enter）
+  await part("(10) 小節 23", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl") } });
+    await openSc(page);
+    let found = false;
+    for (let i = 0; i < 40 && !found; i++) {
+      await page.keyboard.press("Tab");
+      found = await page.evaluate(() => document.activeElement?.id === "scStart");
+    }
+    await page.keyboard.press("Enter");
+    const trail = [];
+    for (let i = 0; i < 10; i++) {
+      await waitState(page, "waiting");
+      const v = await play(page);
+      const it = byId(v.id);
+      if (!it) break;
+      if (v.pad) {
+        trail.push(`${v.id}:pad:${v.active}`);
+        await page.keyboard.press(pwKey(it.keys.ctrl.accept[0], nthOf(v.q)));
+      } else {
+        const idx = await page.evaluate(() => [...document.querySelectorAll("#scAnswer .sc-choice")].findIndex((b) => b.dataset.ok === "1") + 1);
+        trail.push(`${v.id}:choice:${idx}`);
+        await page.keyboard.press(String(idx));
+      }
+      await waitState(page, "done");
+      const after = await play(page);
+      trail.push(after.kind);
+      await page.waitForTimeout(320);
+      await page.keyboard.press("Enter");
+    }
+    await waitPlay(page, () => !document.getElementById("scEnd")?.hidden);
+    const end = await page.evaluate(() => ({ score: document.getElementById("scScore")?.textContent.trim(), focus: document.activeElement?.id }));
+    check("92.1 キーボードだけで 10 問の回を最後まで（Tab で練習する・押す枠は始めから焦点・選ぶ問いは数字のキー・Enter で次へ）・終わりは「10 問のうち 10 問 正解」で焦点は見出し",
+      found && trail.filter((t) => t === "ok").length === 10 && trail.filter((t) => /:pad:scPad$/.test(t)).length >= 5 && end.score === "10 問のうち 10 問 正解" && end.focus === "scEndTitle" && page.errors.length === 0, JSON.stringify({ found, trail, end }));
+    await closeCtx(page);
+  });
+
+  // (11) 日本語入力（変換の事件・key Process・keyCode 229）: 修飾なしは判定しない（「日本語入力をオフにしてから押す。」）・Ctrl つきは code で読んで正解
+  await part("(11) 小節 24", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
+    await openSc(page);
+    await start(page);
+    await page.focus("#scPad");
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Input.imeSetComposition", { text: "か", selectionStart: 1, selectionEnd: 1 }).catch(() => {});
+    await page.waitForTimeout(100);
+    const a = await play(page);
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Process", code: "KeyC", windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Process", code: "KeyC", windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
+    await page.waitForTimeout(100);
+    const b = await play(page);
+    const hint = await page.evaluate(() => document.getElementById("scPad")?.textContent.includes("日本語入力をオフにしてから押す。") ?? false);
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", modifiers: 2, key: "Process", code: "KeyC", windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
+    await waitState(page, "done");
+    const c = await play(page);
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", modifiers: 2, key: "Process", code: "KeyC", windowsVirtualKeyCode: 229 }).catch(() => {});
+    check("92.1 日本語入力: 変換中と修飾なしの Process は判定しない（「日本語入力をオフにしてから押す。」）・Ctrl つきの Process は code で読んで正解",
+      a.state === "waiting" && b.state === "waiting" && hint && c.kind === "ok", JSON.stringify({ a: a.state, b: b.state, hint, c: c.kind }));
+    await closeCtx(page);
+  });
+
+  // (12) 保存: 人ごとの sd2.guest.shortcuts と端末の spelldash_shortcut_device・バックアップに練習の記録は入り端末の鍵は入らない・ショートカットだけ練習したゲストのログインで「移す？」・ゲストと A と B で別・キーボードの種類はアカウントを替えても同じ
+  await part("(12) 小節 25", async () => {
+    const UA = "92a92a92-0000-4000-8000-00000000000a";
+    const UB = "92b92b92-0000-4000-8000-00000000000b";
+    const ctx = await rawNewContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    ctx.on("page", (p) => p.on("dialog", (d) => d.accept().catch(() => {})));
+    try {
+      const raw = await ctx.newPage();
+      await raw.goto(BASE + "/css/reset.css");
+      await raw.evaluate(() => { for (const [k, v] of Object.entries({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done" })) localStorage.setItem(k, v); });
+      const page = await ctx.newPage();
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      const learned = () => page.evaluate(() => { try { return Object.entries(JSON.parse(localStorage.getItem("spelldash_shortcuts") || "{}").it ?? {}).filter(([, r]) => r?.s === 2).map(([k]) => k).sort(); } catch { return "bad"; } });
+      const answerFirst = async (combo) => {
+        await openSc(page);
+        await start(page);
+        await page.focus("#scPad");
+        await page.keyboard.press(combo);
+        await waitState(page, "done");
+      };
+      await openSc(page);
+      await page.click('#scLayout [data-layout="ctrl"]');
+      await answerFirst("Control+KeyC");
+      const rawKeys = await raw.evaluate(() => Object.fromEntries(Object.keys(localStorage).sort().map((k) => [k, localStorage.getItem(k)])));
+      const guestRec = (() => { try { return JSON.parse(rawKeys["sd2.guest.shortcuts"] ?? "null"); } catch { return null; } })();
+      check("92.1 保存: 練習の記録は人ごとの sd2.guest.shortcuts（pc.copy@ctrl が覚えた・押した）・キーボードは端末の spelldash_shortcut_device（領域に入らない）・名前空間の無い spelldash_shortcuts は無い",
+        guestRec?.it?.["pc.copy@ctrl"]?.s === 2 && guestRec.it["pc.copy@ctrl"].how === "p" && JSON.parse(rawKeys.spelldash_shortcut_device ?? "{}").layout === "ctrl" && !("spelldash_shortcuts" in rawKeys) && !("sd2.guest.shortcut_device" in rawKeys),
+        JSON.stringify({ guest: rawKeys["sd2.guest.shortcuts"], device: rawKeys.spelldash_shortcut_device, keys: Object.keys(rawKeys).filter((k) => /shortcut/.test(k)) }));
+      const bk = await page.evaluate(async () => {
+        const m = await import("/js/backup.js");
+        const data = m.buildBackup().data;
+        const inBackup = data.spelldash_shortcuts ?? null;
+        const dev = "spelldash_shortcut_device" in data;
+        localStorage.setItem("spelldash_shortcuts", JSON.stringify({ v: 1, it: {} }));
+        m.applyBackup({ app: "SpellDash", version: 1, data });
+        return { inBackup, dev, restored: localStorage.getItem("spelldash_shortcuts"), device: localStorage.getItem("spelldash_shortcut_device") };
+      });
+      check("92.1 バックアップ: 書き出しに練習の記録（spelldash_shortcuts）が入り、端末の鍵（spelldash_shortcut_device）は入らない・読み込むと同じ記録に戻り、端末の鍵は消えない",
+        !!bk.inBackup && JSON.parse(bk.inBackup).it?.["pc.copy@ctrl"]?.s === 2 && bk.dev === false && bk.restored === bk.inBackup && JSON.parse(bk.device ?? "{}").layout === "ctrl", JSON.stringify(bk));
+      const waitArea = (area) => page.waitForFunction((a) => location.pathname !== "/switch.html" && window.SpellDashArea?.area === a && document.readyState === "complete", area, { timeout: 15000 }).then(() => true).catch(() => false);
+      const waitAsk = () => page.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 15000 }).then(() => true).catch(() => false);
+      const signIn = (u) => page.evaluate((x) => window.__stubAuth.signIn("1", x), u).catch(() => null);
+      const g0 = await learned();
+      await signIn({ id: UA, email: "a92@example.com" });
+      const asked = await waitAsk();
+      if (asked) await page.click("#switchAskYes");
+      const atA = await waitArea(`u:${UA}`);
+      await answerFirst("Control+KeyV");
+      const a1 = await learned();
+      await page.waitForSelector("#avatarButton", { state: "visible", timeout: 10000 }).catch(() => {});
+      await page.click("#avatarButton").catch(() => {});
+      await page.click("#logoutButton").catch(() => {});
+      const atGuest = await waitArea("guest");
+      await openSc(page);
+      const g1 = await learned();
+      await signIn({ id: UB, email: "b92@example.com" });
+      const atB = await waitArea(`u:${UB}`);
+      await openSc(page);
+      const b1 = await learned();
+      const devB = (await device(page))?.layout;
+      check("92.1 領域: ショートカットだけ練習したゲストのログインで「移す？」が出る・「はい」で A へ移る・A で答えた分はゲスト（ログアウト後）にも B にも見えない・キーボードの種類はアカウントを替えても同じ",
+        JSON.stringify(g0) === '["pc.copy@ctrl"]' && asked && atA && JSON.stringify(a1) === '["pc.copy@ctrl","pc.paste@ctrl"]' && atGuest && JSON.stringify(g1) === "[]" && atB && JSON.stringify(b1) === "[]" && devB === "ctrl" && page.errors.length === 0,
+        JSON.stringify({ g0, asked, atA, a1, atGuest, g1, atB, b1, devB, err: page.errors[0] }));
+      await page.close();
+      await raw.close();
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  // (13) アプリの状態（html.native-app）: 値段・加入・pro.html へのリンクが無い（このページには元から無い）・エラー 0
+  await part("(13) 小節 26", async () => {
+    const NATIVE = () => {
+      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) };
+    };
+    const page = await scPage({ mobile: true, viewport: { width: 390, height: 844 }, init: NATIVE, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) } });
+    await openSc(page);
+    await start(page);
+    const v = await page.evaluate(() => ({
+      native: document.documentElement.classList.contains("native-app"),
+      pro: [...document.querySelectorAll("a[href]")].filter((a) => /(?:^|\/)(?:pro|tokushoho)\.html/.test(a.getAttribute("href")) && a.getClientRects().length > 0).length,
+      price: /円|¥\d|Pro/.test(document.querySelector("main")?.textContent ?? "")
+    }));
+    check("92.1 アプリの状態: html.native-app・加入画面と特商法への見えるリンク 0・本文に値段と Pro の字が無い・エラー 0", v.native && v.pro === 0 && !v.price && page.errors.length === 0, JSON.stringify({ v, err: page.errors[0] }));
+    await closeCtx(page);
+  });
+
+  // (2) 320／390／1200 × 昼・夜 × 一覧・問い・答えた後で横スクロール 0・エラー 0
+  await part("(2) 小節 27", async () => {
+    const bad = [];
+    let rows = 0;
+    for (const theme of ["light", "dark"]) for (const width of [320, 390, 1200]) {
+      const page = await scPage({ theme, viewport: { width, height: 900 }, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.task-manager", "pc.select-word"], "ctrl") } });
+      await openSc(page);
+      const hx = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      const a = await hx();
+      await page.click('#scMap .sc-tile[data-id="pc.select-word"]').catch(() => {});
+      await page.waitForTimeout(100);
+      const a2 = await hx();
+      await start(page);
+      const b = await hx();
+      await page.click("#scDunno").catch(() => {});
+      await waitState(page, "done");
+      const c = await hx();
+      await page.click("#scNext").catch(() => {});
+      await waitState(page, "waiting");
+      const d = await hx();
+      const isChoice = (await play(page)).choices === 4;
+      await page.click('#scAnswer .sc-choice[data-ok="1"]').catch(() => {});
+      await waitState(page, "done");
+      const e = await hx();
+      rows += 6;
+      if (!isChoice) bad.push(`${theme}/${width}: 2 問目が選ぶ問いでない`);
+      for (const [k, v] of [["一覧", a], ["詳しい欄", a2], ["押す問い", b], ["わからないの後", c], ["選ぶ問い", d], ["選んだ後", e]]) if (v > 0) bad.push(`${theme}/${width}/${k}: ${v}`);
+      if (page.errors.length) bad.push(`${theme}/${width}: ${page.errors[0]}`);
+      await closeCtx(page);
+    }
+    check("92.1 320／390／1200 × 昼・夜 × 一覧・札の詳しい欄・押す問い・わからないの後・選ぶ問い（Ctrl + Shift + Esc）・選んだ後で横スクロール 0・エラー 0", rows === 36 && bad.length === 0, JSON.stringify(bad));
+  });
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
