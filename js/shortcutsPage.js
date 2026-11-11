@@ -10,7 +10,7 @@ import { esc } from "./html.js";
 import { SHORTCUTS } from "./shortcutsData.js";
 import {
   LAYOUTS, LAYOUT_LABEL, GROUP_LABEL, ADVANCE_WAIT_MS, readCombo, judge, afterWrong, ownText, shouldCancel, isImeEvent, isPhysicalKey, isModifierEvent, modeOf,
-  createMissWatcher, shouldAdvance, guardState, isGuardState, onGuardPop, withoutGuard, reloadMark, reloadCounted, readDevice, updateDevice, addMiss, clearMiss,
+  createMissWatcher, shouldAdvance, guardState, isGuardState, onGuardPop, withoutGuard, reloadMark, reloadCounted, readDevice, updateDevice, addMiss, clearMiss, fitDelta,
   readProgress, recordAnswer, stateOf, countStates, dayOf, buildRound, newRound, roundAnswer, capsOf, capsOfCombo, spokenCaps, sigOfCaps, comboString,
   buildChoices, tokensOfCaps, notesOf
 } from "./shortcutsCore.js";
@@ -44,6 +44,19 @@ const S = {
   open: null
 };
 const paintKb = (p) => { for (const svg of $("scKb").querySelectorAll("svg.kb")) paintKeys(svg, p); };
+// 画面の位置（仕様 §2.2）
+const rectOf = (el) => el.getBoundingClientRect();
+const headerBottom = () => Math.max(0, document.querySelector(".site-header")?.getBoundingClientRect().bottom ?? 0);
+function bringIntoView(top, bottom) {
+  const d = fitDelta(top, bottom, headerBottom() + 8, innerHeight - 8);
+  if (d) scrollBy(0, d);
+}
+function focusAt(el, from = el, to = el) {
+  if (!el) return;
+  bringIntoView(rectOf(from).top, rectOf(to).bottom);
+  el.focus({ preventScroll: true });
+}
+const focusChoice = () => focusAt($("scChoices").querySelector(".sc-choice"), $("scChoices"), $("scChoices"));
 const layoutOf = () => S.dev.layout ?? "ctrl";
 const itemsOf = (layout) => SHORTCUTS.filter((x) => x.keys?.[layout]);
 const env = () => ({ keyboard: S.keyboard, miss: S.dev.miss });
@@ -85,7 +98,7 @@ function renderMap(focusId = null) {
     return `<section class="sc-map__group" aria-labelledby="scMap-${esc(g)}"><h3 class="sc-map__h" id="scMap-${esc(g)}">${esc(GROUP_LABEL[g])}</h3><ul class="sc-map__list">${tiles}</ul></section>`;
   }).join("");
   if (S.open) paintDetail(S.open);
-  if (focusId) $("scMap").querySelector(`.sc-tile[data-id="${CSS.escape(focusId)}"] .sc-tile__btn`)?.focus();
+  if (focusId) $("scMap").querySelector(`.sc-tile[data-id="${CSS.escape(focusId)}"] .sc-tile__btn`)?.focus({ preventScroll: true });
 }
 
 function paintDetail(id) {
@@ -101,7 +114,7 @@ function paintDetail(id) {
 $("scMap").addEventListener("click", (e) => {
   const replay = e.target.closest?.(".sc-detail__replay");
   if (replay) {
-    playScene(replay.closest(".sc-detail")?.querySelector(".sc-cell--after"));
+    replayScene(replay.closest(".sc-detail")?.querySelector(".sc-cell--after"));
     return;
   }
   const btn = e.target.closest?.(".sc-tile__btn");
@@ -134,7 +147,7 @@ $("scFilter").addEventListener("click", (e) => {
 $("scMissReset").addEventListener("click", () => {
   setDevice("miss", clearMiss);
   renderHome();
-  $("scStart").focus();
+  focusAt($("scStart"));
 });
 
 // == 回
@@ -149,7 +162,7 @@ function startRound(only = null) {
     $("scLayoutHint").hidden = false;
     $("scLayoutHint").classList.add("is-alert");
     show("home");
-    document.querySelector('input[name="scLayout"]')?.focus();
+    focusAt(document.querySelector('input[name="scLayout"]'), $("scLayoutHint"));
     return;
   }
   const layout = S.dev.layout;
@@ -229,7 +242,7 @@ function renderMode(focus) {
   $("scNext").hidden = waiting;
   $("scReplay").hidden = waiting;
   $("scRetry").hidden = true;
-  if (focus && waiting) (press ? $("scPad") : $("scQ")).focus();
+  if (focus && waiting) focusAt(press ? $("scPad") : $("scQ"), $("scPlay"), $("scQ"));
 }
 
 function setResult(kind, html) {
@@ -243,7 +256,7 @@ $("scPad").addEventListener("keydown", (e) => {
   if (!q || $("scPlay").hidden) return;
   if (q.state === "done") {
     if (shouldCancel(e)) e.preventDefault();
-    if (e.key === "Escape") return $("scNext").focus();
+    if (e.key === "Escape") return $("scNext").focus({ preventScroll: true });
     if (shouldAdvance(e, { answeredAt: q.answeredAt, released: q.released }, performance.now())) {
       e.preventDefault();
       goNext();
@@ -266,7 +279,7 @@ $("scPad").addEventListener("keydown", (e) => {
   if (e.key === "Escape" || e.key === "Esc") {
     q.force = "choice";
     renderMode(false);
-    $("scChoices").querySelector(".sc-choice")?.focus();
+    focusChoice();
     return;
   }
   if (shouldCancel(e)) e.preventDefault();
@@ -352,7 +365,7 @@ $("scChoose").addEventListener("click", () => {
   if (!q || q.state !== "waiting") return;
   q.force = "choice";
   renderMode(false);
-  $("scChoices").querySelector(".sc-choice")?.focus();
+  focusChoice();
 });
 $("scChoices").addEventListener("click", (e) => {
   const b = e.target.closest?.(".sc-choice");
@@ -434,12 +447,16 @@ function answer(result, how, { combo = null, code = "", picked = null, dunno = f
   kb.innerHTML = keyboardSvg(q.layout, S.dev.arr, { frames: focusWindows(q.layout, S.dev.arr, q.paint.target) }) + focusSvg(q.layout, S.dev.arr, q.paint.target);
   paintKb({ ...q.paint, down: [...q.down] });
   kb.querySelector(".kb")?.setAttribute("aria-label", keyboardLabel(q.layout, right));
-  playScene($("scScene").querySelector(".sc-cell--after"));
   renderMode(false);
   $("scPlay").dataset.state = "done";
   live.say(`${say}。${said}`.replace(/。。/g, "。"));
   S.nextArmed = false;
-  $("scNext").focus();
+  const next = $("scNext");
+  const fits = rectOf(next).bottom - rectOf($("scScene")).top <= innerHeight - 16 - headerBottom();
+  focusAt(next, fits ? $("scScene") : kb, next);
+  const cell = $("scScene").querySelector(".sc-cell--after");
+  const cr = cell?.getBoundingClientRect();
+  if (cr && (reduced() || (cr.top >= headerBottom() && cr.bottom <= innerHeight))) playScene(cell);
 }
 
 function playScene(cell) {
@@ -452,7 +469,12 @@ function playScene(cell) {
   void cell.offsetWidth;
   cell.classList.add("is-play");
 }
-$("scReplay").addEventListener("click", () => playScene($("scScene").querySelector(".sc-cell--after")));
+function replayScene(cell) {
+  if (!cell) return;
+  bringIntoView(rectOf(cell).top, rectOf(cell).bottom);
+  playScene(cell);
+}
+$("scReplay").addEventListener("click", () => replayScene($("scScene").querySelector(".sc-cell--after")));
 
 $("scSwitch").addEventListener("click", () => {
   const other = $("scSwitch").dataset.layout;
@@ -461,7 +483,7 @@ $("scSwitch").addEventListener("click", () => {
   if (S.round) S.round.layout = other;
   $("scSuggest").hidden = true;
   live.say(`${LAYOUT_LABEL[other]}にした。`);
-  $("scNext").focus();
+  $("scNext").focus({ preventScroll: true });
 });
 
 // 次へ: Enter・Space の keydown がボタンの上で始まったときだけ押せる（仕様 §8）
@@ -495,13 +517,13 @@ function endRound() {
   R.missed = missed.map((x) => x.id);
   show("end");
   renderHome();
-  $("scEndTitle").focus();
+  focusAt($("scEndTitle"), $("scEnd"));
 }
 $("scAgain").addEventListener("click", () => startRound(S.round?.missed ?? null));
 $("scMore").addEventListener("click", () => startRound());
 $("scBack").addEventListener("click", () => {
   show("home");
-  $("scStart").focus();
+  focusAt($("scStart"));
 });
 $("scQuit").addEventListener("click", () => {
   clearGuard();
@@ -509,7 +531,7 @@ $("scQuit").addEventListener("click", () => {
   S.round = null;
   show("home");
   renderHome();
-  $("scStart").focus();
+  focusAt($("scStart"));
 });
 $("scStart").addEventListener("click", () => startRound());
 

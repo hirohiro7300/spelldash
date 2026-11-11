@@ -202,6 +202,12 @@ export function reloadCounted(state, navType, now) {
   return now - m.at >= 0 && now - m.at <= RELOAD_WINDOW_MS ? { id: m.id, layout: m.layout, first: m.first !== false } : null;
 }
 
+// == 画面の位置（仕様 §2.2）
+export function fitDelta(top, bottom, viewTop, viewBottom) {
+  if (top < viewTop || bottom - top > viewBottom - viewTop) return top - viewTop;
+  return bottom > viewBottom ? bottom - viewBottom : 0;
+}
+
 // == 端末の設定 { layout, arr, miss }（仕様 §13）
 const missList = (v) => (Array.isArray(v) ? [...new Set(v.filter((s) => typeof s === "string" && s.length > 0 && s.length < 64))].slice(-MISS_MAX) : []);
 export function readDevice(storage) {
