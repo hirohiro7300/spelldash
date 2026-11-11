@@ -21423,13 +21423,15 @@ console.log("home and old URLs (78.6):");
         starts: [...document.querySelectorAll("#welcome button, #welcome a")].filter(vis).map((b) => b.textContent.trim()),
         books: [...document.querySelectorAll("#welcome .flatbook, #welcomeFind, #bookshelf")].filter(vis).length,
         text: document.getElementById("welcome").innerText,
+        my: document.querySelector("#welcome p.welcome__my")?.innerText ?? "", // マイ単語帳への入口の 1 行（Batch 91）。名前の式はこの行を除いて見る
         cap: document.querySelector('#welcomeBook [data-f="cap"]')?.textContent.trim(),
         keys: SpellDashArea.keys().sort()
       };
     });
+    const welcomeRest = w.my ? w.text.replace(w.my, "") : w.text; // マイ単語帳（Batch 79。創業者の決定のホームの 2 つ目のボタン）は英単語の学習の中の面なので、旧の面の名前「単語帳」の検査から外す
     check("78.6 初めての人: 初回の本は「英単語」と「英単語を学ぶ」1 つ（積んだ本・「N冊から選ぶ」・本棚は出ない）。腕試しの案内でなく 1 回 10 語の案内",
       w.open && w.books === 0 && w.starts.filter((s) => s === "英単語を学ぶ").length === 1 && w.text.includes("英単語") && !/腕試し|最初の1冊|本棚/.test(w.text) && w.cap === "1回10語。分からない語は Enter で答えを見る。", JSON.stringify(w));
-    check("78.6 初めての人: 初回の本の文に英単語のほかの教材・旧の面の名前が無い", !OTHER_NAMES.some((n) => w.text.includes(n)), OTHER_NAMES.filter((n) => w.text.includes(n)).join("・"));
+    check("78.6 初めての人: 初回の本の文に英単語のほかの教材・旧の面の名前が無い", !OTHER_NAMES.some((n) => welcomeRest.includes(n)), OTHER_NAMES.filter((n) => welcomeRest.includes(n)).join("・"));
     check("78.6 初めての人: ホームを開いただけではコース・教材の鍵を書かない（spelldash_course・spelldash_category・spelldash_packs なし）",
       !w.keys.some((k) => ["spelldash_course", "spelldash_category", "spelldash_packs"].includes(k)), w.keys.join(","));
     const reached = await tabTo(page, "#welcome [data-welcome-start]");

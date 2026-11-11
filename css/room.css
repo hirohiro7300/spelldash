@@ -1217,7 +1217,15 @@ html[data-theme] .page-room .play-modes__lock {
   letter-spacing: 0.06em;
 }
 
-.login-line a {
+/* 初めての人のマイ単語帳への 1 行（Batch 91）。字はログインの行と同じ */
+.welcome__my {
+  margin: 4px 0 0;
+  font: 500 13px/1.6 var(--font-display);
+  letter-spacing: 0.06em;
+}
+
+.login-line a,
+.welcome__my a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1228,7 +1236,8 @@ html[data-theme] .page-room .play-modes__lock {
   text-decoration-color: rgba(169, 122, 50, 0.7);
 }
 
-.login-line a:hover {
+.login-line a:hover,
+.welcome__my a:hover {
   color: var(--ink-page);
 }
 
