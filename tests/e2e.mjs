@@ -20888,10 +20888,14 @@ console.log("78.4 学習状況とランク:");
       for (const [w, h] of [[320, 640], [390, 844], [1200, 900]]) {
         for (const theme of ["light", "dark"]) {
           const r = await open(seed, { w, h, theme, csp: true });
-          rows.push({ w, theme, items: r.items, monthly: r.monthly, scroll: r.scroll, inner: r.inner, errors: r.errors, csp: r.csp });
+          rows.push({ w, theme, items: r.items, monthly: r.monthly, todayTitle: r.titles[ymdDaysAgo(0)] ?? null, scroll: r.scroll, inner: r.inner, errors: r.errors, csp: r.csp });
         }
       }
       const narrow = rows.filter((x) => x.w === 320);
+      // 今月の行とカレンダーの title も、マイ単語帳の数と並ぶときは英単語の数に「英単語で」を付ける（週間レポートの数の並びと同じく頭で分ける。Batch 91 の反証の小さな直し）
+      check("78.4 マイ単語帳で 覚えた (15d)（Batch 91）: マイ単語帳の数と並ぶとき、今月の行の英単語の項目は「英単語で 覚えた +N」・今日のカレンダーの title は「… ・ 英単語で 覚えた N語 ・ マイ単語帳で 覚えた 2語」（頭の無い「覚えた」が並ばない）",
+        rows.length === 6 && rows.every((x) => /^英単語で 覚えた \+\d+$/.test(x.items[1]?.t ?? "") && /^\d{4}-\d{2}-\d{2} ・ 英単語で 覚えた \d+語 ・ マイ単語帳で 覚えた 2語$/.test(x.todayTitle ?? "")),
+        JSON.stringify(rows.map((x) => ({ w: x.w, theme: x.theme, en: x.items[1]?.t ?? null, title: x.todayTitle }))));
       check("78.4 マイ単語帳で 覚えた (15d)（Batch 91）: 今月の行の項目は 学習した日・覚えた・マイ単語帳で 覚えた・セット の 4 つで、320 の昼夜とも項目の中で折れない（項目の箱は 1 行）",
         narrow.every((x) => x.items.length === 4 && x.items[2]?.t === "マイ単語帳で 覚えた +2" && x.items.every((it) => it.lines === 1)),
         JSON.stringify(narrow.map((x) => ({ theme: x.theme, items: x.items, monthly: x.monthly }))));
