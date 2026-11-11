@@ -21712,9 +21712,10 @@ console.log("home and old URLs (78.6):");
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
     await waitUntil(async () => (await homeView(page)).ready, 6000);
     const v = await homeView(page);
-    check(`78.6 ホーム: 数は今の状態から（覚えた 130 ／ ${vocab.total.toLocaleString("ja-JP")}・ランク よちよち）・次に学ぶのは あやふや（今日の分 3語）・ボタンは「英単語を学ぶ」1 つ（/?learn=next）・学習状況へのリンク`,
+    check(`78.6 ホーム: 数は今の状態から（覚えた 130 ／ ${vocab.total.toLocaleString("ja-JP")}・ランク よちよち）・次に学ぶのは あやふや（今日の分 3語）・ボタンは「英単語を学ぶ」1 つ（/?learn=next）・学習状況へのリンク・机の本のボタンとリンクは 5 つ（英単語を学ぶ・マイ単語帳・スラング・ショートカットキー・学習状況）`,
       v.learned === "130" && v.total === vocab.total.toLocaleString("ja-JP") && v.rank === "よちよち" && v.mode === "あやふや" && v.sub === "今日の分 3語" &&
-      v.start.text === "英単語を学ぶ" && v.start.href === "/?learn=next" && v.start.vis && v.starts.filter((x) => x === "英単語を学ぶ").length === 1 && v.status.vis && v.status.href === "./stats.html", JSON.stringify({ ...v, room: undefined }));
+      v.start.text === "英単語を学ぶ" && v.start.href === "/?learn=next" && v.start.vis && v.starts.filter((x) => x === "英単語を学ぶ").length === 1 && v.status.vis && v.status.href === "./stats.html"
+        && v.starts.length === 5 && JSON.stringify(v.starts) === JSON.stringify(["英単語を学ぶ", "マイ単語帳", "スラング", "ショートカットキー", "学習状況"]), JSON.stringify({ ...v, room: undefined }));
     check("78.6 ホーム: 本棚・ほかの遊び方・Daily の札・出題の設定・連続日数・はちゃんの紙片・目次・積んだ本は出ない", v.hidden.length === 0, v.hidden.join(","));
     check("78.6 ホーム: 部屋の文に英単語のほかの教材・旧の面の名前が無い（教材は「英単語」だけ）", v.room.includes("英単語") && !OTHER_NAMES.some((n) => v.room.includes(n)), OTHER_NAMES.filter((n) => v.room.includes(n)).join("・"));
     await page.evaluate(() => document.activeElement?.blur());
@@ -29697,7 +29698,7 @@ console.log("guard (88.1):");
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
-// ===== 92.1 ショートカットキー（Batch 92。shortcuts.html・js/shortcutsPage.js・js/shortcutsCore.js・js/shortcutsArt.js・js/shortcutsData.js。docs/SPEC_SHORTCUTS.md）: ページ（ナビ 4 つ・フッター・noindex・sitemap に無い・CSP の違反 0・320／390／1200 × 昼夜で横スクロール 0）・キーボードを選ばずに練習 → 選ぶ所へ・押す組を全部本物のキーで（Ctrl は Control、⌘ は Meta）・止める・取り違えと近い組・ほかの項目の組・repeat・⌘ の keyup の欠け・Esc と Tab・届かなかった組（1 回目と 2 回目）・戻る・進む・再読み込みの守り・指の端末・絵（2 問目の前と後・字の大きさ・動き・光るキー・⌘ の日本語の並び）・キーボードだけで 10 問・日本語入力・保存と領域とバックアップ・アプリの状態 =====
+// ===== 92.1 ショートカットキー（Batch 92。shortcuts.html・js/shortcutsPage.js・js/shortcutsCore.js・js/shortcutsArt.js・js/shortcutsData.js・入口は index.html・stats.html・js/statsView.js。docs/SPEC_SHORTCUTS.md）: 入口（ホームの「スラング」の下のボタン・学習状況のスラングの行の下の 1 行と練習のページと同じ 覚えた の数・2,858 と学習状況の今の数は動かない）・ページ（ナビ 4 つ・フッター・noindex・sitemap に無い・CSP の違反 0・320／390／1200 × 昼夜で横スクロール 0）・キーボードを選ばずに練習 → 選ぶ所へ・押す組を全部本物のキーで（Ctrl は Control、⌘ は Meta）・止める・取り違えと近い組・ほかの項目の組・repeat・⌘ の keyup の欠け・Esc と Tab・届かなかった組（1 回目と 2 回目）・戻る・進む・再読み込みの守り・指の端末・絵（2 問目の前と後・字の大きさ・動き・光るキー・⌘ の日本語の並び）・キーボードだけで 10 問・日本語入力・保存と領域とバックアップ・アプリの状態 =====
 // Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来・読み込み直しでは種に戻さない）
 console.log("shortcuts (92.1):");
 {
@@ -29791,6 +29792,218 @@ console.log("shortcuts (92.1):");
     const codes = (cls) => [...svg.querySelectorAll(`.kb-k.${cls}`)].map((g) => g.getAttribute("data-code")).sort();
     return { target: codes("is-target"), wrong: codes("is-wrong"), down: codes("is-down"), labels: [...svg.querySelectorAll("text")].map((t) => t.textContent), aria: svg.getAttribute("aria-label") };
   }, root);
+
+  // (1) 入口（Batch 92 A7。index.html #pathShortcuts・stats.html #statsShortcuts・js/statsView.js renderShortcutsLine。docs/SPEC_SHORTCUTS.md §1）:
+  //     ホームの机の本で「スラング」のすぐ下に同じ形の控えめなボタン「ショートカットキー」（/shortcuts.html。高さ・字の大きさ・色・地の色が「スラング」と同じ）・
+  //     ナビは 4 つのまま・押す（Enter・指）と練習のページ・押すまで shortcuts の付くファイルを読まない。初めての人は初回の本（机の本はボタンごと隠れる）。
+  //     学習状況のスラングの行のすぐ下に 1 行（./shortcuts.html と、この端末で選んだキーボードの「覚えた n / 組の数（… のキーボード）」。n は練習のページの 覚えた と同じ。
+  //     選んでいなければ「キーボードを選ぶと数が出る」。js/shortcutsCore.js が読めなければ静的な文のまま）。2,858・ランク・Batch 90/91 の行（週・今月・推移・カレンダー・
+  //     マイ単語帳で 覚えた）・語の記録は、練習の記録があっても無くても同じ。320／390／1200 × 昼・夜で横スクロール 0・本物のヘッダーで CSP の違反 0・エラー 0
+  await part("(1) 入口", async () => {
+    const vocab = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+    const DAY = 86400000;
+    const T0 = Date.now(); // 学習状況と練習のページはこの時刻に止めて読む（読み込みの間に日をまたがない）
+    const dayNo = (k) => { const [y, m, d] = ymdDaysAgo(k).split("-").map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1970, 0, 1)) / DAY); };
+    const nOf = (l) => ITEMS.filter((x) => x.keys?.[l]).length; // キーボードごとの組の数（ページの数の札の「N 組」）
+    const LABEL = { ctrl: "Ctrl のキーボード", cmd: "⌘ のキーボード" };
+    const lineOf = (l, n) => `覚えた ${n} / ${nOf(l)}（${LABEL[l]}）`;
+    // 戻ってきた人の種: 公開の語 130 を 覚えた（うち 40 はこの 7 日に初めて）・3 を あやふや・成長ログ 7 日・マイ単語帳の 3 語をこの 7 日に覚えた
+    const words = {};
+    vocab.order.slice(0, 130).forEach((id, i) => { words[id] = { playCount: 1, correctCount: 1, lastPlayed: new Date(T0 - (i % 7) * DAY).toISOString(), ls: 2, ...(i < 40 ? { lsf: dayNo(i % 7), lsAt: T0 - (i % 7) * DAY } : {}) }; });
+    vocab.order.slice(130, 133).forEach((id) => { words[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date(T0).toISOString(), lastRecallFailAt: new Date(T0).toISOString(), ls: 1 }; });
+    const myWord = (en, ja, k) => ({ en, ja, addedAt: new Date(T0 - 20 * DAY).toISOString(), ls: 2, lf: dayNo(k), lsAt: T0 - k * DAY });
+    const SEED = {
+      spelldash_word_stats: JSON.stringify(words),
+      spelldash_growth_log: JSON.stringify([9, 7, 5, 4, 3, 2, 1].map((k) => ({ date: ymdDaysAgo(k), learned: 0, mastered: 0, active: true, v: 2 }))),
+      spelldash_my_words: JSON.stringify([myWord("ledger", "元帳", 1), myWord("invoice", "請求書", 2), myWord("quota", "割り当て", 4)])
+    };
+    // 練習の記録（js/shortcutsCore.js が読む形）: Ctrl で 覚えた 7・⌘ で 覚えた 3（数の違う 2 つ。キーボードを取り違えると数が合わない）。
+    // あやふや 2・表に無い id・⌘ に組の無い項目の ⌘ の記録は数えない（記録の数をそのまま数えると 8 と 4 になる）
+    const ctrlIds = ITEMS.filter((x) => x.keys?.ctrl).map((x) => x.id);
+    const cmdIds = ITEMS.filter((x) => x.keys?.cmd).map((x) => x.id);
+    const noCmd = ITEMS.find((x) => x.keys?.ctrl && !x.keys?.cmd)?.id ?? "";
+    const it = {};
+    ctrlIds.slice(0, 7).forEach((id, i) => { it[`${id}@ctrl`] = { s: 2, at: T0 - 3600000 + i, how: "p" }; });
+    ctrlIds.slice(7, 9).forEach((id, i) => { it[`${id}@ctrl`] = { s: 1, d: dayNo(1), at: T0 - 7200000 + i, how: "p" }; });
+    cmdIds.slice(10, 13).forEach((id, i) => { it[`${id}@cmd`] = { s: 2, at: T0 - 3600000 + i, how: "c" }; });
+    it["zz.gone@ctrl"] = { s: 2, at: T0 - 1, how: "p" };
+    it[`${noCmd}@cmd`] = { s: 2, at: T0 - 1, how: "c" };
+    const PROGRESS = JSON.stringify({ v: 1, it });
+    const WANT = { ctrl: 7, cmd: 3 };
+    const DEV = { ctrl: JSON.stringify({ layout: "ctrl", arr: "jis", miss: { ctrl: [], cmd: [] } }), cmd: JSON.stringify({ layout: "cmd", arr: "us", miss: { ctrl: [], cmd: [] } }), none: JSON.stringify({ arr: "jis", miss: { ctrl: [], cmd: [] } }) };
+    const WITH = (d) => ({ ...SEED, spelldash_shortcuts: PROGRESS, spelldash_shortcut_device: DEV[d] });
+    // 本物のヘッダー（vercel.json の CSP）で開く。初めての人（fresh）は種を入れない。clock は T0 に止める
+    const entryPage = async ({ storage = {}, fresh = false, viewport = { width: 1200, height: 900 }, mobile = false, theme = null, clock = false } = {}) => {
+      const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+      openCtxs.add(ctx);
+      await ctx.addCookies([{ name: REAL_HEADERS_COOKIE, value: "real", url: BASE }]);
+      const page = await ctx.newPage();
+      page.setDefaultTimeout(8000);
+      Object.assign(page, { errors: [], csp: [], reqs: [] });
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      page.on("console", (m) => { if (/Content Security Policy|Refused to (execute|load|apply)/.test(m.text())) page.csp.push(m.text().slice(0, 160)); });
+      page.on("request", (r) => page.reqs.push(new URL(r.url()).pathname));
+      if (clock) await page.clock.setFixedTime(T0);
+      await page.addInitScript(([seed, isFresh, th]) => {
+        document.addEventListener("securitypolicyviolation", () => { window.__entryCsp = (window.__entryCsp ?? 0) + 1; });
+        if (sessionStorage.getItem("spelldash_test_seeded")) return;
+        sessionStorage.setItem("spelldash_test_seeded", "1");
+        const base = isFresh ? {} : { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }) };
+        for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+      }, [storage, fresh, theme]);
+      return page;
+    };
+    const scReqs = (page) => page.reqs.filter((p) => /shortcuts/i.test(p));
+    const openHome = async (page) => {
+      await page.goto(BASE + "/", { waitUntil: "networkidle" });
+      await page.waitForFunction(() => document.getElementById("pathCard")?.classList.contains("focus-ready") || document.body.classList.contains("welcome-open"), null, { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(150);
+    };
+    const homeLook = (page) => page.evaluate(() => {
+      const vis = (el) => !!el && getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden" && el.getBoundingClientRect().height > 0;
+      const box = (el) => { if (!el) return null; const c = getComputedStyle(el); const r = el.getBoundingClientRect(); return { h: Math.round(r.height * 10) / 10, top: Math.round(r.top), bottom: Math.round(r.bottom), fs: c.fontSize, color: c.color, bg: c.backgroundColor }; };
+      const sc = document.getElementById("pathShortcuts");
+      const sl = document.getElementById("pathSlang");
+      return {
+        welcome: document.body.classList.contains("welcome-open"), card: vis(document.getElementById("pathCard")),
+        sc: sc ? { text: sc.textContent.trim(), href: sc.getAttribute("href"), vis: vis(sc), afterSlang: !!sl && sl.nextElementSibling === sc, inCard: !!sc.closest("#pathCard"), box: box(sc) } : null,
+        slang: box(sl),
+        links: [...document.querySelectorAll("#pathCard a, #pathCard button")].filter(vis).map((b) => b.textContent.trim()),
+        nav: [...document.querySelectorAll(".site-header .site-nav .site-nav__link")].map((a) => a.textContent.trim()),
+        hx: document.documentElement.scrollWidth - document.documentElement.clientWidth, csp: window.__entryCsp ?? 0
+      };
+    });
+    // 学習状況: 新しい行（場所・リンク・数・形）と、今の数（最初の画面・目安・詳しい記録の週間レポート・今月の行・推移・カレンダー・マイ単語帳とスラングの行）と語の記録
+    const statsLook = async (page) => {
+      await page.waitForFunction(() => !document.body.hasAttribute("data-pending") && document.querySelectorAll("#learnCards .learn-card[data-count]").length === 3 && /語/.test(document.getElementById("statsSlangCount")?.textContent ?? ""), null, { timeout: 10000 }).catch(() => {});
+      await page.waitForFunction(() => /覚えた|選ぶ/.test(document.getElementById("statsShortcutsCount")?.textContent ?? ""), null, { timeout: 4000 }).catch(() => {});
+      await page.click("#statsMore > summary").catch(() => {});
+      await page.waitForTimeout(500);
+      return page.evaluate(() => {
+        const norm = (s) => (s ?? "").replace(/\s+/g, " ").trim();
+        const t = (id) => norm(document.getElementById(id)?.textContent);
+        const st = (el) => { if (!el) return null; const c = getComputedStyle(el); return { fs: c.fontSize, color: c.color, mt: c.marginTop, pt: c.paddingTop, bt: c.borderTopWidth, link: Math.round(el.querySelector("a")?.getBoundingClientRect().height ?? 0) }; };
+        const sl = document.getElementById("statsSlang");
+        const line = document.getElementById("statsShortcuts");
+        return {
+          line: line ? { afterSlang: !!sl && sl.nextElementSibling === line, n: document.querySelectorAll("#statsShortcuts").length, links: [...line.querySelectorAll("a")].map((a) => [a.textContent.trim(), a.getAttribute("href")]), count: t("statsShortcutsCount"), style: st(line) } : null,
+          slangStyle: st(sl),
+          nums: {
+            count: t("learnCount"), total: t("learnTotal"), rank: t("learnRank"), next: t("learnNext"), pace: t("learnPaceLine"),
+            cards: [...document.querySelectorAll("#learnCards .learn-card")].map((c) => `${c.dataset.state}:${norm(c.querySelector(".learn-card__count")?.textContent)}`),
+            weekly: [...document.querySelectorAll("#weeklyReport .weekly__grid > div")].map((d) => norm(d.textContent)),
+            notes: [...document.querySelectorAll("#weeklyReport .weekly__note")].map((e) => norm(e.textContent)),
+            monthly: t("monthlySummary"), trend: [...document.querySelectorAll("#growthTrend svg circle title")].map((e) => norm(e.textContent)),
+            calendar: [...document.querySelectorAll("#calendarGrid .cal__day[title]")].map((e) => e.getAttribute("title")),
+            my: t("statsMyWords"), slang: t("statsSlang")
+          },
+          ws: localStorage.getItem("spelldash_word_stats"),
+          hx: document.documentElement.scrollWidth - document.documentElement.clientWidth, csp: window.__entryCsp ?? 0
+        };
+      });
+    };
+    const NAV4 = JSON.stringify(["ホーム", "英単語を学ぶ", "学習状況", "設定"]);
+    const LINKS = JSON.stringify(["英単語を学ぶ", "マイ単語帳", "スラング", "ショートカットキー", "学習状況"]);
+    const VIEWS = [["1200", { width: 1200, height: 900 }, false], ["390（指）", { width: 390, height: 844 }, true]];
+
+    // ホーム（戻ってきた人）: 1200 と 390 の指。押す（1200 はキーボードの Enter・390 は指）と練習のページ
+    const opened = [];
+    for (const [label, viewport, mobile] of VIEWS) {
+      const page = await entryPage({ storage: SEED, viewport, mobile });
+      await openHome(page);
+      const v = await homeLook(page);
+      const before = scReqs(page);
+      check(`92.1 入口 (1) ホーム（戻ってきた人・${label}）: 机の本で「スラング」のすぐ下に「ショートカットキー」（/shortcuts.html）・高さ・字の大きさ・色・地の色は「スラング」と同じ・机の本のボタンとリンクは 英単語を学ぶ・マイ単語帳・スラング・ショートカットキー・学習状況・ナビは 4 つのまま・押す前は shortcuts の付くファイルを読まない・横スクロール 0・エラー 0・CSP の違反 0（本物のヘッダー）`,
+        !!v.sc && v.sc.text === "ショートカットキー" && v.sc.href === "/shortcuts.html" && v.sc.vis && v.sc.afterSlang && v.sc.inCard && !!v.slang && v.sc.box.top >= v.slang.bottom - 1
+          && ["h", "fs", "color", "bg"].every((k) => v.sc.box[k] === v.slang[k]) && JSON.stringify(v.links) === LINKS && JSON.stringify(v.nav) === NAV4
+          && before.length === 0 && v.hx === 0 && page.errors.length === 0 && page.csp.length === 0 && v.csp === 0,
+        JSON.stringify({ sc: v.sc, slang: v.slang, links: v.links, nav: v.nav, before, hx: v.hx, err: page.errors[0], csp: [v.csp, ...page.csp.slice(0, 1)] }));
+      if (mobile) await page.tap("#pathShortcuts").catch(() => {});
+      else {
+        await page.focus("#pathShortcuts").catch(() => {});
+        await page.keyboard.press("Enter");
+      }
+      await page.waitForURL((u) => u.pathname === "/shortcuts.html", { timeout: 8000 }).catch(() => {});
+      await page.waitForFunction(() => document.querySelectorAll("#scMap .sc-tile").length > 0, null, { timeout: 8000 }).catch(() => {});
+      opened.push({ label, ...(await page.evaluate(() => ({ path: location.pathname, h1: document.querySelector("h1")?.textContent.trim() ?? null, tiles: document.querySelectorAll("#scMap .sc-tile").length }))), reqs: scReqs(page).length, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("92.1 入口 (1) ホームの「ショートカットキー」を押すと練習のページ（1200 はキーボードの Enter・390 は指）: /shortcuts.html・題「ショートカットキー」・札 50・shortcuts の付くファイルはここで初めて読む・エラー 0",
+      opened.length === 2 && opened.every((o) => o.path === "/shortcuts.html" && o.h1 === "ショートカットキー" && o.tiles === 50 && o.reqs > 0 && !o.err), JSON.stringify(opened));
+
+    // 初めての人（記録なし）: 初回の本が出て、机の本はボタンごと隠れる（ボタンは机の本の中。記録ができると出る）
+    const firsts = [];
+    for (const [label, viewport, mobile] of VIEWS) {
+      const page = await entryPage({ fresh: true, viewport, mobile });
+      await openHome(page);
+      const v = await homeLook(page);
+      firsts.push({ label, welcome: v.welcome, card: v.card, sc: v.sc && { vis: v.sc.vis, inCard: v.sc.inCard, afterSlang: v.sc.afterSlang }, reqs: scReqs(page), hx: v.hx, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("92.1 入口 (1) 初めての人（記録なし・1200 と 390 の指）: 初回の本が出て、机の本はボタンごと隠れる（ボタンは机の本の中の「スラング」のすぐ下）・shortcuts の付くファイルを読まない・横スクロール 0・エラー 0",
+      firsts.length === 2 && firsts.every((f) => f.welcome && !f.card && !!f.sc && !f.sc.vis && f.sc.inCard && f.sc.afterSlang && f.reqs.length === 0 && f.hx === 0 && !f.err), JSON.stringify(firsts));
+
+    // 学習状況: 練習の記録なし・Ctrl を選んだ・⌘ を選んだ・選んでいない（記録はある）の 4 つを同じ時刻で開く。Ctrl と ⌘ は続けて練習のページを開き、数の札を読む
+    const runs = {};
+    for (const [key, storage] of [["plain", SEED], ["ctrl", WITH("ctrl")], ["cmd", WITH("cmd")], ["none", WITH("none")]]) {
+      const page = await entryPage({ storage, clock: true });
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const s = await statsLook(page);
+      let pageSum = null;
+      if (key === "ctrl" || key === "cmd") {
+        await openSc(page);
+        pageSum = await page.evaluate(() => document.getElementById("scSum")?.textContent.replace(/\s+/g, " ").trim() ?? null);
+      }
+      runs[key] = { ...s, pageSum, err: page.errors.slice(0, 2), cspMsgs: page.csp.slice(0, 2) };
+      await closeCtx(page);
+    }
+    const pageN = (s) => Number((s ?? "").match(/覚えた (\d+)/)?.[1] ?? NaN);
+    const { ctrl: rc, cmd: rm } = runs;
+    check("92.1 入口 (1) 学習状況: スラングの行のすぐ下に 1 行（「ショートカットキー」→ ./shortcuts.html。1 行だけ）・形はスラングの行と同じ（字の大きさ・色・上の余白と詰め・線なし・リンクの高さ）・Ctrl のキーボードを選んだ端末は「覚えた 7 / 50（Ctrl のキーボード）」",
+      !!rc.line && rc.line.afterSlang && rc.line.n === 1 && JSON.stringify(rc.line.links) === JSON.stringify([["ショートカットキー", "./shortcuts.html"]]) && JSON.stringify(rc.line.style) === JSON.stringify(rc.slangStyle)
+        && rc.line.count === lineOf("ctrl", WANT.ctrl) && nOf("ctrl") === 50,
+      JSON.stringify({ line: rc.line, slang: rc.slangStyle }));
+    check(`92.1 入口 (1) 学習状況の 覚えた は練習のページの 覚えた と同じ（同じ記録）: Ctrl を選んだ端末は 7（ページの数の札「50 組（Ctrl のキーボード）… 覚えた 7」）・⌘ を選んだ端末は 3（「${nOf("cmd")} 組（⌘ のキーボード）… 覚えた 3」・行は「覚えた 3 / ${nOf("cmd")}（⌘ のキーボード）」）。あやふや・表に無い id・⌘ に組の無い項目の ⌘ の記録は数えない`,
+      rc.line?.count === lineOf("ctrl", pageN(rc.pageSum)) && pageN(rc.pageSum) === WANT.ctrl && !!rc.pageSum?.startsWith(`${nOf("ctrl")} 組（${LABEL.ctrl}）`)
+        && rm.line?.count === lineOf("cmd", pageN(rm.pageSum)) && pageN(rm.pageSum) === WANT.cmd && !!rm.pageSum?.startsWith(`${nOf("cmd")} 組（${LABEL.cmd}）`),
+      JSON.stringify({ ctrl: [rc.line?.count, rc.pageSum], cmd: [rm.line?.count, rm.pageSum] }));
+    const same = (a, b) => JSON.stringify(a.nums) === JSON.stringify(b.nums) && a.ws === b.ws;
+    check("92.1 入口 (1) 学習状況: キーボードをまだ選んでいない端末は「キーボードを選ぶと数が出る」（練習の記録があっても無くても）",
+      runs.none.line?.count === "キーボードを選ぶと数が出る" && runs.plain.line?.count === "キーボードを選ぶと数が出る", JSON.stringify([runs.none.line, runs.plain.line]));
+    check("92.1 入口 (1) 学習状況の今の数は練習の記録があっても無くても同じ: 覚えた 130 / 2,858・ランク・次のランクまで・3 つの札・目安・週間レポート（マイ単語帳で 覚えた のマス）・今月の行・推移・カレンダー・マイ単語帳とスラングの行・語の記録（種のまま）。違うのは新しい 1 行だけ・エラー 0・CSP の違反 0",
+      runs.plain.nums.total === "2,858" && runs.plain.nums.count === "130" && runs.plain.nums.weekly.some((c) => c.includes("マイ単語帳で 覚えた")) && runs.plain.nums.calendar.length > 0 && runs.plain.ws === SEED.spelldash_word_stats
+        && ["ctrl", "cmd", "none"].every((k) => same(runs[k], runs.plain)) && !!runs.plain.line && Object.values(runs).every((r) => r.err.length === 0 && r.cspMsgs.length === 0 && r.csp === 0),
+      JSON.stringify({ plain: runs.plain.nums, diff: ["ctrl", "cmd", "none"].filter((k) => !same(runs[k], runs.plain)).map((k) => [k, runs[k].nums]), line: !!runs.plain.line, errs: Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, [r.err, r.cspMsgs, r.csp]])) }));
+
+    // js が無いとき（stats.html の静的な文）と、js/shortcutsCore.js が読めないとき: 静的な文のまま・投げない・ほかの行は出る
+    {
+      const page = await entryPage({ storage: WITH("ctrl") });
+      await page.route("**/js/shortcutsCore.js", (r) => r.abort());
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      await page.waitForFunction(() => /語/.test(document.getElementById("statsSlangCount")?.textContent ?? ""), null, { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const v = await page.evaluate(() => ({ count: document.getElementById("statsShortcutsCount")?.textContent.trim() ?? null, slang: document.getElementById("statsSlangCount")?.textContent.trim() ?? null, learned: document.getElementById("learnCount")?.textContent.trim() ?? null }));
+      const html = fs.readFileSync(path.join(ROOT, "stats.html"), "utf8");
+      check("92.1 入口 (1) 学習状況: js が無くても正しい静的な文（stats.html の行は「パソコン共通とブラウザのキーの組」）・js/shortcutsCore.js が読めないときはその文のまま（投げない・ほかの行は出る）",
+        /<span class="stats-mywords__count" id="statsShortcutsCount">パソコン共通とブラウザのキーの組<\/span>/.test(html) && v.count === "パソコン共通とブラウザのキーの組" && /語/.test(v.slang ?? "") && v.learned === "130" && page.errors.length === 0,
+        JSON.stringify({ v, err: page.errors[0] }));
+      await closeCtx(page);
+    }
+
+    // 320／390／1200 × 昼・夜: ホーム（ボタンが見える）と学習状況（行に 覚えた 7 / 50）で横スクロール 0
+    const widths = [];
+    for (const theme of ["light", "dark"]) for (const [w, h, mobile] of [[320, 640, true], [390, 844, true], [1200, 900, false]]) {
+      const page = await entryPage({ theme, viewport: { width: w, height: h }, mobile, storage: WITH("ctrl") });
+      await openHome(page);
+      const home = await homeLook(page);
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const st = await statsLook(page);
+      widths.push({ theme, w, btn: home.sc?.vis ?? false, homeHx: home.hx, line: st.line?.count ?? null, statsHx: st.hx, err: page.errors[0] ?? null, csp: page.csp.length + home.csp + st.csp });
+      await closeCtx(page);
+    }
+    check("92.1 入口 (1) 320／390／1200 × 昼・夜: ホーム（ボタンが見える）と学習状況（行に「覚えた 7 / 50（Ctrl のキーボード）」）で横スクロール 0・エラー 0・CSP の違反 0",
+      widths.length === 6 && widths.every((r) => r.btn && r.homeHx === 0 && r.line === lineOf("ctrl", WANT.ctrl) && r.statsHx === 0 && !r.err && r.csp === 0), JSON.stringify(widths));
+  });
 
   // (2) ページ: ナビ 4 つ（現在地なし）・フッター・noindex・sitemap に無い・本物のヘッダー（CSP）で違反 0・エラー 0
   await part("(2) 小節 1", async () => {

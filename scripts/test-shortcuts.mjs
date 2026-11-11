@@ -1,6 +1,6 @@
 // ショートカットキーの練習（Batch 92。docs/SPEC_SHORTCUTS.md）の単体: 表（js/shortcutsData.js）・判定と答え方と回と保存の純な部分
 // （js/shortcutsCore.js）・絵の字（js/shortcutsArt.js）・名前の見張り・保存の鍵の分け方。DOM なし（手元で直に読む）。
-// 番号は docs/SPEC_SHORTCUTS.md §16 の単体の番号（1〜10・5b〜5d）。ファイルが無い・関数が無いときは、その検査を落として続ける（全部を数える）。
+// 番号は docs/SPEC_SHORTCUTS.md §16 の単体の番号（1〜11・5b〜5d）。ファイルが無い・関数が無いときは、その検査を落として続ける（全部を数える）。
 import fs from "fs";
 import path from "path";
 import { createHash } from "node:crypto";
@@ -765,6 +765,51 @@ t("10 鍵: ショートカットだけ練習したゲストにも「移す？」
   const b = SW.hasRecords?.({ spelldash_shortcut_device: JSON.stringify({ layout: "ctrl" }) });
   const c = SW.hasRecords?.({ spelldash_shortcuts: JSON.stringify({ v: 1, it: {} }) });
   return (a === true && b === false && c === false) || { a, b, c };
+});
+
+// ===== 11. 入口（Batch 92 A7。index.html・stats.html・js/statsView.js。docs/SPEC_SHORTCUTS.md §1） =====
+// a か p の要素の閉じ（</a>・</p>）から、次の要素の開き（id の要素の <）までの間（コメントを除く）
+const gapBetween = (s, a, b) => {
+  const i = s.indexOf(`id="${a}"`);
+  const j = s.indexOf(`id="${b}"`);
+  if (i < 0 || j < 0) return null;
+  const name = s.slice(s.lastIndexOf("<", i) + 1).match(/^[a-z]+/)?.[0] ?? "";
+  const close = s.indexOf(`</${name}>`, i);
+  const open = s.lastIndexOf("<", j);
+  return name && close > 0 && open > close ? s.slice(close + name.length + 3, open).replace(/<!--[\s\S]*?-->/g, "").trim() : null;
+};
+const tagOf = (s, id) => s.match(new RegExp(`<(?:a|p)\\b[^>]*\\bid="${id}"[^>]*>`))?.[0] ?? "";
+const classOf = (tag) => tag.match(/\bclass="([^"]*)"/)?.[1] ?? null;
+t("11 入口: ホームの「ショートカットキー」（#pathShortcuts・/shortcuts.html）は「スラング」（#pathSlang）のすぐ下で同じ class・学習状況の 1 行（#statsShortcuts）はスラングの行（#statsSlang）のすぐ下で同じ class（CSS を足さない）・リンクは ./shortcuts.html・数の欄の静的な文は js が無くても正しい", () => {
+  const home = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const stats = fs.readFileSync(path.join(ROOT, "stats.html"), "utf8");
+  const r = {
+    home: tagOf(home, "pathShortcuts"),
+    homeClass: classOf(tagOf(home, "pathShortcuts")) === classOf(tagOf(home, "pathSlang")) && classOf(tagOf(home, "pathSlang")) !== null,
+    homeLink: /<a\b[^>]*\bid="pathShortcuts"[^>]*\bhref="\/shortcuts\.html"[^>]*>ショートカットキー<\/a>/.test(home),
+    homeGap: gapBetween(home, "pathSlang", "pathShortcuts"),
+    statsClass: classOf(tagOf(stats, "statsShortcuts")) === classOf(tagOf(stats, "statsSlang")) && classOf(tagOf(stats, "statsSlang")) !== null,
+    statsLine: /<p\b[^>]*\bid="statsShortcuts"[^>]*><a class="stats-mywords__link" href="\.\/shortcuts\.html">ショートカットキー<\/a><span class="stats-mywords__count" id="statsShortcutsCount">パソコン共通とブラウザのキーの組<\/span><\/p>/.test(stats),
+    statsGap: gapBetween(stats, "statsSlang", "statsShortcuts")
+  };
+  return (r.homeClass && r.homeLink && r.homeGap === "" && r.statsClass && r.statsLine && r.statsGap === "") || r;
+});
+t("11 入口: 学習状況の 覚えた は練習のページと同じ関数で数える（js/statsView.js renderShortcutsLine が js/shortcutsCore.js と js/shortcutsData.js を動的 import し、readDevice・readProgress・countStates・LAYOUT_LABEL を使う。ページの 覚えた も countStates）・静的な import と先読みを足さない・読めないときは投げない", () => {
+  const sv = fs.readFileSync(path.join(ROOT, "js/statsView.js"), "utf8");
+  const page = fs.readFileSync(path.join(ROOT, "js/shortcutsPage.js"), "utf8");
+  const html = fs.readFileSync(path.join(ROOT, "stats.html"), "utf8");
+  const fn = sv.match(/\nfunction renderShortcutsLine\(\) \{[\s\S]*?\n\}\n/)?.[0] ?? "";
+  const r = {
+    fn: fn.length > 0,
+    called: /\nrenderShortcutsLine\(\);\n/.test(sv),
+    dynamic: fn.includes('import("./shortcutsCore.js")') && fn.includes('import("./shortcutsData.js")'),
+    same: ["readDevice(", "readProgress(", "countStates(", "LAYOUT_LABEL"].every((x) => fn.includes(x)),
+    caught: /\.catch\(\(\) => \{\}\)/.test(fn),
+    noStatic: !/^\s*import\s[^;]*["']\.\/shortcuts(?:Core|Data)\.js["']/m.test(sv),
+    noPreload: !/<link rel="modulepreload" href="[^"]*shortcuts/.test(html),
+    pageCount: /countStates\(S\.progress, SHORTCUTS, layout, S\.group\)/.test(page)
+  };
+  return Object.values(r).every(Boolean) || r;
 });
 
 console.log(`test-shortcuts: ${passed} passed, ${failed} failed`);
