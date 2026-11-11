@@ -63,7 +63,7 @@ const env = () => ({ keyboard: S.keyboard, miss: S.dev.miss });
 const qText = (x, nth) => (x.id === "br.tab-n" ? x.ja.replace(/(左から )n( 番目)/, `$1${nth}$2`) : x.ja);
 
 // == 一覧
-function renderHome(focusId = null) {
+function renderHome(focusId = null, replay) {
   const layout = S.dev.layout;
   for (const r of document.querySelectorAll('input[name="scLayout"]')) r.checked = r.value === layout;
   for (const r of document.querySelectorAll('input[name="scArr"]')) r.checked = r.value === S.dev.arr;
@@ -75,17 +75,19 @@ function renderHome(focusId = null) {
   if (missN) $("scMissText").textContent = `この端末では ${missN} 組をブラウザかパソコンが先に受け取ったので、選んで答えている。`;
   for (const b of $("scFilter").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.group === S.group));
   renderSum();
-  renderMap(focusId);
+  renderMap(focusId, replay);
 }
 
-// ほかのタブの練習と端末の設定を読み直す。描き直すのは一覧のときだけ（開いた詳しい欄と焦点の札は残す。仕様 §13）
+// ほかのタブの練習と端末の設定を読み直す。変わったときだけ一覧を描き直す（開いた詳しい欄と焦点のボタンは残す。仕様 §13）
+let seen = JSON.stringify([S.progress, S.dev]);
 const reread = () => {
   S.progress = readProgress(store);
   S.dev = readDevice(store);
+  return seen !== (seen = JSON.stringify([S.progress, S.dev]));
 };
 function refresh() {
-  reread();
-  if (!$("scHome").hidden) renderHome(document.activeElement?.closest?.("#scMap .sc-tile")?.dataset.id);
+  const a = document.activeElement;
+  if (reread() && !$("scHome").hidden) renderHome(a?.closest?.("#scMap .sc-tile")?.dataset.id, a?.matches?.(".sc-detail__replay"));
 }
 addEventListener("storage", (e) => {
   if (e.key === null || e.key === PROGRESS_KEY || e.key === DEVICE_KEY) refresh();
@@ -102,7 +104,7 @@ function renderSum() {
   meter.querySelector(".sc-meter__unsure").style.width = `${c.total ? (c.unsure / c.total) * 100 : 0}%`;
 }
 
-function renderMap(focusId = null) {
+function renderMap(focusId = null, replay) {
   const layout = layoutOf();
   const groups = S.group ? [S.group] : ["pc", "br"];
   $("scMap").innerHTML = groups.map((g) => {
@@ -111,7 +113,7 @@ function renderMap(focusId = null) {
     return `<section class="sc-map__group" aria-labelledby="scMap-${esc(g)}"><h3 class="sc-map__h" id="scMap-${esc(g)}">${esc(GROUP_LABEL[g])}</h3><ul class="sc-map__list">${tiles}</ul></section>`;
   }).join("");
   if (S.open) paintDetail(S.open);
-  if (focusId) $("scMap").querySelector(`.sc-tile[data-id="${CSS.escape(focusId)}"] .sc-tile__btn`)?.focus({ preventScroll: true });
+  if (focusId) $("scMap").querySelector(`.sc-tile[data-id="${CSS.escape(focusId)}"] .sc-${replay ? "detail__replay" : "tile__btn"}`)?.focus({ preventScroll: true });
 }
 
 function paintDetail(id) {
