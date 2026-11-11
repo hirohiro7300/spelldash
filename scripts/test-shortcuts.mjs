@@ -1,6 +1,6 @@
 // ショートカットキーの練習（Batch 92。docs/SPEC_SHORTCUTS.md）の単体: 表（js/shortcutsData.js）・判定と答え方と回と保存の純な部分
-// （js/shortcutsCore.js）・絵の字（js/shortcutsArt.js）・名前の見張り・保存の鍵の分け方。DOM なし（Node から直に読む）。
-// 番号は docs/SPEC_SHORTCUTS.md §12 の単体の番号（1〜10・5b〜5d）。ファイルが無い・関数が無いときは、その検査を落として続ける（全部を数える）。
+// （js/shortcutsCore.js）・絵の字（js/shortcutsArt.js）・名前の見張り・保存の鍵の分け方。DOM なし（手元で直に読む）。
+// 番号は docs/SPEC_SHORTCUTS.md §16 の単体の番号（1〜10・5b〜5d）。ファイルが無い・関数が無いときは、その検査を落として続ける（全部を数える）。
 import fs from "fs";
 import path from "path";
 import { createHash } from "node:crypto";
