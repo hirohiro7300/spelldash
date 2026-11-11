@@ -1,4 +1,4 @@
-/* ショートカットキーの練習（Batch 92。shortcuts.html だけ。docs/SPEC_SHORTCUTS.md §12）。色は css/tokens.css の変数だけ */
+/* ショートカットキー（Batch 92。shortcuts.html だけ）。色は tokens の変数だけ */
 
 html[data-theme] .sc [hidden] {
   display: none !important;
@@ -54,9 +54,13 @@ html[data-theme] .sc-set__h {
 
 html[data-theme] .sc-set__hint {
   margin: 0 0 4px;
-  color: var(--signal-ink);
+  color: var(--ink-2);
   font-size: 14px;
   overflow-wrap: anywhere;
+}
+
+html[data-theme] .sc-set__hint.is-alert {
+  color: var(--signal-ink);
 }
 
 html[data-theme] .sc-set__opts {
@@ -378,11 +382,12 @@ html[data-theme] .sc-count {
 }
 
 html[data-theme] .sc-play .sc-quit {
-  min-height: 40px;
+  min-height: 44px;
 }
 
 html[data-theme] .sc-group,
-html[data-theme] .sc-how {
+html[data-theme] .sc-how,
+html[data-theme] .sc-hold {
   margin: 0;
   font-size: 13px;
   color: var(--ink-2);

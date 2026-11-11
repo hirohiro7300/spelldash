@@ -1,4 +1,4 @@
-// ショートカットキーの練習の画面（Batch 92。docs/SPEC_SHORTCUTS.md）。押す枠は焦点がある間だけキーを受ける。
+// ショートカットキーの画面（Batch 92。docs/SPEC_SHORTCUTS.md）
 
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
@@ -7,15 +7,14 @@ import { setupUnloadSync } from "./sync.js";
 import { isTouchDevice } from "./keyboard.js";
 import { createLive } from "./srLive.js";
 import { esc } from "./html.js";
-import { LEARN_LABELS } from "./learnState.js";
 import { SHORTCUTS } from "./shortcutsData.js";
 import {
-  LAYOUTS, LAYOUT_LABEL, GROUP_LABEL, readCombo, judge, afterWrong, ownText, shouldCancel, isImeEvent, isPhysicalKey, isModifierEvent, modeOf, createMissWatcher,
-  shouldAdvance, guardState, isGuardState, onGuardPop, withoutGuard, reloadMark, reloadCounted, readDevice, writeDevice, addMiss, clearMiss, readProgress,
-  writeProgress, stateOf, applyAnswer, countStates, dayOf, buildRound, newRound, roundAnswer, capsOf, capsOfCombo, textCaps, spokenCaps, sigOfCaps, comboString,
-  buildChoices, tokensOfCaps
+  LAYOUTS, LAYOUT_LABEL, GROUP_LABEL, ADVANCE_WAIT_MS, readCombo, judge, afterWrong, ownText, shouldCancel, isImeEvent, isPhysicalKey, isModifierEvent, modeOf,
+  createMissWatcher, shouldAdvance, guardState, isGuardState, onGuardPop, withoutGuard, reloadMark, reloadCounted, readDevice, updateDevice, addMiss, clearMiss,
+  readProgress, recordAnswer, stateOf, countStates, dayOf, buildRound, newRound, roundAnswer, capsOf, capsOfCombo, spokenCaps, sigOfCaps, comboString,
+  buildChoices, tokensOfCaps, notesOf
 } from "./shortcutsCore.js";
-import { capsHtml, variantsHtml, keyboardSvg, paintKeys, keyboardLabel, scenePairHtml } from "./shortcutsArt.js";
+import { capsHtml, keyboardSvg, paintKeys, keyboardLabel, scenePairHtml, tileHtml, missedRowHtml, resultHtml, nearHtml } from "./shortcutsArt.js";
 
 initializeAuth();
 setFooterYear();
@@ -23,20 +22,14 @@ renderHeaderStreak();
 setupUnloadSync();
 
 const $ = (id) => document.getElementById(id);
-const STATE_KEY = ["new", "unsure", "learned"];
 const ROUND_SIZE = 10;
-const WHY_NOTE = {
-  browser: "押すと本当に動くので、練習では押さずに選ぶ。",
-  os: "押すと本当に動くので、練習では押さずに選ぶ。",
-  screen: "Tab と Esc はこの画面で使うので、選んで答える。",
-  differ: ""
-};
-const HOW_TEXT = { press: "キーを本当に押して答える。", guard: "キーを本当に押して答える。", choice: "選んで答える。", hold: "押さずに選んで答える（押すと本当に動く・ブラウザやパソコンが先に受け取る）。" };
+const HOW_TEXT = { press: "キーを本当に押して答える。", choice: "選んで答える。", hold: "押さずに選んで答える（押すと本当に動く・ブラウザやパソコンが先に受け取る）。" };
 const LONE_KEYS = new Set(["CapsLock", "NumLock", "ScrollLock", "ContextMenu", "Fn", "FnLock", "Unidentified"]);
 const reduced = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 const live = createLive(() => $("scLive"), { gap: 50 });
-// 保存の口は getItem・setItem だけを渡す（localStorage を値として渡さない。scripts/test-areas.mjs U1）
+// getItem・setItem だけの口（scripts/test-areas.mjs U1）
 const store = { getItem: (k) => localStorage.getItem(k), setItem: (k, v) => localStorage.setItem(k, v) };
+const PAD_HINT = ["ここを押してから、キーを押す。", "キーを押す。日本語入力はオフにする。"];
 
 const S = {
   dev: readDevice(store),
@@ -57,12 +50,13 @@ const itemsOf = (layout) => SHORTCUTS.filter((x) => x.keys?.[layout]);
 const env = () => ({ keyboard: S.keyboard, miss: S.dev.miss });
 const qText = (x, nth) => (x.id === "br.tab-n" ? x.ja.replace(/(左から )n( 番目)/, `$1${nth}$2`) : x.ja);
 
-// ===== 一覧 =====
+// == 一覧
 function renderHome() {
   const layout = S.dev.layout;
   for (const r of document.querySelectorAll('input[name="scLayout"]')) r.checked = r.value === layout;
   for (const r of document.querySelectorAll('input[name="scArr"]')) r.checked = r.value === S.dev.arr;
   $("scLayoutHint").hidden = !!layout;
+  if (layout) $("scLayoutHint").classList.remove("is-alert");
   $("scDeviceNote").hidden = S.keyboard;
   const missN = layout ? S.dev.miss[layout].length : 0;
   $("scMissNote").hidden = missN === 0;
@@ -76,45 +70,23 @@ function renderSum() {
   const layout = layoutOf();
   const c = countStates(S.progress, SHORTCUTS, layout, S.group);
   const n = (v) => `<span class="mw__n">${esc(v)}</span>`;
-  $("scSum").innerHTML = `<span>${esc(c.total)} 組（${esc(LAYOUT_LABEL[layout])}）</span>　<span>これから ${n(c.new)}</span>　<span>あやふや ${n(c.unsure)}</span>　<span>覚えた ${n(c.learned)}</span>`;
+  const label = S.dev.layout ? `（${LAYOUT_LABEL[layout]}）` : "";
+  $("scSum").innerHTML = `<span>${esc(c.total)} 組${esc(label)}</span>　<span>これから ${n(c.new)}</span>　<span>あやふや ${n(c.unsure)}</span>　<span>覚えた ${n(c.learned)}</span>`;
   const meter = $("scMeter");
   meter.querySelector(".sc-meter__learned").style.width = `${c.total ? (c.learned / c.total) * 100 : 0}%`;
   meter.querySelector(".sc-meter__unsure").style.width = `${c.total ? (c.unsure / c.total) * 100 : 0}%`;
 }
 
-function tileHtml(x, layout) {
-  const st = stateOf(S.progress, x.id, layout);
-  const choice = modeOf(x, layout, env()) === "choice";
-  const open = S.open === x.id;
-  return `<li class="sc-tile${open ? " is-open" : ""}" data-id="${esc(x.id)}">` +
-    `<button type="button" class="sc-tile__btn" aria-expanded="${open}" aria-controls="scDetail-${esc(x.id)}">` +
-    `<span class="sc-tile__keys">${variantsHtml(capsOf(x, layout))}</span>` +
-    `<span class="sc-tile__ja">${esc(x.ja)}</span>` +
-    `<span class="sc-tile__meta"><span class="mw-row__state mw-row__state--${STATE_KEY[st]}">${esc(LEARN_LABELS[st])}</span>${choice ? '<span class="sc-tile__choice">選んで答える</span>' : ""}</span>` +
-    `</button>` +
-    `<div class="sc-detail" id="scDetail-${esc(x.id)}"${open ? "" : " hidden"}>${open ? detailHtml(x, layout) : ""}</div></li>`;
-}
-
-function notesOf(x, layout) {
-  const k = x.keys[layout];
-  return [k.note ?? "", WHY_NOTE[k.why] ?? ""].filter(Boolean);
-}
-
-function detailHtml(x, layout) {
-  const notes = notesOf(x, layout).map((s) => `<p class="sc-detail__note">${esc(s)}</p>`).join("");
-  return `<div class="sc-detail__keys">${variantsHtml(capsOf(x, layout, 2))}</div>${scenePairHtml(x, layout, 2)}` +
-    `<div class="sc-detail__kb">${keyboardSvg(layout, S.dev.arr)}</div>${notes}` +
-    `<button type="button" class="btn btn--sm btn--ghost sc-detail__replay">動きをもう一度見る</button>`;
-}
-
-function renderMap() {
+function renderMap(focusId = null) {
   const layout = layoutOf();
   const groups = S.group ? [S.group] : ["pc", "br"];
   $("scMap").innerHTML = groups.map((g) => {
-    const tiles = itemsOf(layout).filter((x) => x.g === g).map((x) => tileHtml(x, layout)).join("");
+    const tiles = itemsOf(layout).filter((x) => x.g === g)
+      .map((x) => tileHtml(x, layout, { state: stateOf(S.progress, x.id, layout), choice: modeOf(x, layout, env()) === "choice", open: S.open === x.id, arr: S.dev.arr })).join("");
     return `<section class="sc-map__group" aria-labelledby="scMap-${esc(g)}"><h3 class="sc-map__h" id="scMap-${esc(g)}">${esc(GROUP_LABEL[g])}</h3><ul class="sc-map__list">${tiles}</ul></section>`;
   }).join("");
   if (S.open) paintDetail(S.open);
+  if (focusId) $("scMap").querySelector(`.sc-tile[data-id="${CSS.escape(focusId)}"] .sc-tile__btn`)?.focus();
 }
 
 function paintDetail(id) {
@@ -138,25 +110,21 @@ $("scMap").addEventListener("click", (e) => {
   if (!btn) return;
   const id = btn.closest(".sc-tile").dataset.id;
   S.open = S.open === id ? null : id;
-  renderMap();
-  $("scMap").querySelector(`.sc-tile[data-id="${CSS.escape(id)}"] .sc-tile__btn`)?.focus();
+  renderMap(id);
 });
 
-for (const r of document.querySelectorAll('input[name="scLayout"]')) {
-  r.addEventListener("change", () => {
-    if (!r.checked) return;
-    S.dev = { ...S.dev, layout: r.value };
-    writeDevice(store, S.dev);
-    renderHome();
-  });
+// 端末の設定は読み直して変える欄だけを替える（仕様 §13）
+function setDevice(field, change) {
+  S.dev = { ...S.dev, [field]: updateDevice(store, change).device[field] };
 }
-for (const r of document.querySelectorAll('input[name="scArr"]')) {
-  r.addEventListener("change", () => {
-    if (!r.checked) return;
-    S.dev = { ...S.dev, arr: r.value };
-    writeDevice(store, S.dev);
-    renderHome();
-  });
+for (const [name, field] of [["scLayout", "layout"], ["scArr", "arr"]]) {
+  for (const r of document.querySelectorAll(`input[name="${name}"]`)) {
+    r.addEventListener("change", () => {
+      if (!r.checked) return;
+      setDevice(field, (d) => ({ ...d, [field]: r.value }));
+      renderHome();
+    });
+  }
 }
 $("scFilter").addEventListener("click", (e) => {
   const b = e.target.closest?.("button[data-group]");
@@ -166,13 +134,12 @@ $("scFilter").addEventListener("click", (e) => {
   renderHome();
 });
 $("scMissReset").addEventListener("click", () => {
-  S.dev = clearMiss(S.dev);
-  writeDevice(store, S.dev);
+  setDevice("miss", clearMiss);
   renderHome();
   $("scStart").focus();
 });
 
-// ===== 回 =====
+// == 回
 function show(which) {
   $("scHome").hidden = which !== "home";
   $("scPlay").hidden = which !== "play";
@@ -182,6 +149,7 @@ function show(which) {
 function startRound(only = null) {
   if (!S.dev.layout) {
     $("scLayoutHint").hidden = false;
+    $("scLayoutHint").classList.add("is-alert");
     show("home");
     document.querySelector('input[name="scLayout"]')?.focus();
     return;
@@ -189,7 +157,7 @@ function startRound(only = null) {
   const layout = S.dev.layout;
   const queue = buildRound(SHORTCUTS, layout, S.progress, { size: only ? 50 : ROUND_SIZE, today: dayOf(Date.now()), group: only ? "" : S.group, only });
   if (!queue.length) return;
-  S.round = { st: newRound(queue, S.progress), layout, total: queue.length, id: `r${Date.now().toString(36)}` };
+  S.round = { st: newRound(queue, S.progress), layout, id: `r${Date.now().toString(36)}` };
   show("play");
   showQuestion();
 }
@@ -200,13 +168,8 @@ function clearGuard() {
     S.guard.ignore++;
     history.back();
   }
-  if (history.state?.sdReload) history.replaceState(withoutReload(history.state), "");
+  if (history.state?.sdReload) history.replaceState(withoutGuard(history.state, "sdReload"), "");
 }
-const withoutReload = (st) => {
-  const rest = { ...(st ?? {}) };
-  delete rest.sdReload;
-  return Object.keys(rest).length ? rest : null;
-};
 
 function showQuestion() {
   const R = S.round;
@@ -221,8 +184,7 @@ function showQuestion() {
   S.watcher.reset();
   const play = $("scPlay");
   play.dataset.id = item.id;
-  const dots = Array.from({ length: R.total }, (_, i) => `<li class="sc-dots__d${i < R.st.i ? " is-past" : i === R.st.i ? " is-now" : ""}"></li>`).join("");
-  $("scDots").innerHTML = R.st.i < R.total ? dots : "";
+  $("scDots").innerHTML = R.st.queue.map((_, i) => `<li class="sc-dots__d${i < R.st.i ? " is-past" : i === R.st.i ? " is-now" : ""}"></li>`).join("");
   $("scCount").textContent = `${Math.min(R.st.i + 1, R.st.queue.length)} / ${R.st.queue.length}`;
   $("scGroup").textContent = GROUP_LABEL[item.g];
   $("scQ").textContent = qText(item, nth);
@@ -233,14 +195,14 @@ function showQuestion() {
   $("scSuggest").hidden = true;
   $("scNotes").hidden = true;
   $("scNow").textContent = "";
-  $("scPadHint").textContent = "キーを押す。日本語入力はオフにする。";
   renderMode(true);
+  $("scPadHint").textContent = PAD_HINT[+(document.activeElement === $("scPad"))];
   // 守り: 戻るの問いだけ段を 1 つ足す。再読み込みの問いは今の段に印
   if (S.q.mode === "guard" && item.id === "br.back") {
     history.pushState(guardState(R.id), "");
     S.guard.pushed = true;
   }
-  if (S.q.mode === "guard" && item.id === "br.reload") history.replaceState({ ...(history.state ?? {}), sdReload: reloadMark("br.reload", R.layout, Date.now()) }, "");
+  if (S.q.mode === "guard" && item.id === "br.reload") history.replaceState({ ...(history.state ?? {}), sdReload: reloadMark("br.reload", R.layout, Date.now(), !(item.id in R.st.firsts)) }, "");
 }
 
 function renderMode(focus) {
@@ -252,9 +214,11 @@ function renderMode(focus) {
   play.dataset.state = q.state;
   const press = q.mode !== "choice";
   const k = q.item.keys[q.layout];
-  $("scHow").textContent = press ? HOW_TEXT.press : k.how === "choice" && (k.why === "browser" || k.why === "os") ? HOW_TEXT.hold : HOW_TEXT.choice;
+  const hold = k.how === "choice" && (k.why === "browser" || k.why === "os");
+  $("scHow").textContent = press ? HOW_TEXT.press : hold ? HOW_TEXT.hold : HOW_TEXT.choice;
   $("scPad").hidden = !press;
   $("scChoices").hidden = press;
+  $("scHold").hidden = press || !hold;
   $("scKb").hidden = !press && q.state !== "done";
   if (!press) {
     if (!q.choices) q.choices = buildChoices(q.item, q.layout, SHORTCUTS, Math.random, q.nth);
@@ -266,7 +230,7 @@ function renderMode(focus) {
   $("scDunno").hidden = !waiting;
   $("scNext").hidden = waiting;
   $("scReplay").hidden = waiting;
-  if (waiting) $("scRetry").hidden = true;
+  $("scRetry").hidden = true;
   if (focus && waiting) (press ? $("scPad") : $("scQ")).focus();
 }
 
@@ -316,8 +280,7 @@ $("scPad").addEventListener("keydown", (e) => {
   if (v === "unclear") return imeHint();
   $("scNow").innerHTML = capsHtml(capsOfCombo(combo, q.layout));
   if (v === "near") {
-    const right = textCaps(capsOf(q.item, q.layout, q.nth)[0]);
-    setResult("near", `${esc(textCaps(capsOfCombo(combo, q.layout)))} を使うアプリもある。ここでは ${esc(right)} で答える。`);
+    setResult("near", nearHtml(capsOfCombo(combo, q.layout), capsOf(q.item, q.layout, q.nth)[0]));
     live.say($("scResult").textContent);
     return;
   }
@@ -335,7 +298,6 @@ $("scPad").addEventListener("keyup", (e) => {
   S.watcher.keyup(e);
   if (isModifierEvent(e)) q.down.clear();
   else q.down.delete(e.code);
-  if (q.state === "done" && e.code === q.answerCode) q.released = true;
   paintKeys(kbEl(), q.state === "done" ? { ...q.paint, down: [...q.down] } : { down: [...q.down] });
 });
 
@@ -352,8 +314,7 @@ function lost() {
   if (!r) return;
   q.force = "choice";
   if (r.persist) {
-    S.dev = addMiss(S.dev, q.layout, r.combos);
-    writeDevice(store, S.dev);
+    setDevice("miss", (d) => addMiss(d, q.layout, r.combos));
     renderMode(false);
     setResult("miss", esc("ブラウザかパソコンが先に受け取ったようだ。この組は、この端末では選んで答える。"));
   } else {
@@ -366,6 +327,19 @@ function lost() {
 $("scPad").addEventListener("blur", lost);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) lost();
+});
+// 押す枠の案内は焦点の有無で替える
+$("scPad").addEventListener("focus", () => ($("scPadHint").textContent = PAD_HINT[1]));
+$("scPad").addEventListener("blur", () => ($("scPadHint").textContent = PAD_HINT[0]));
+
+// 答えた後も #scPlay の中で止める（仕様 §5）
+$("scPlay").addEventListener("keydown", (e) => {
+  const q = S.q;
+  if (!q || q.state !== "done" || e.target === $("scPad") || !shouldCancel(e)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || /^F\d/.test(e.key) || e.repeat || !(q.released || performance.now() - q.answeredAt >= ADVANCE_WAIT_MS)) e.preventDefault();
+});
+$("scPlay").addEventListener("keyup", (e) => {
+  if (S.q?.state === "done" && e.code === S.q.answerCode) S.q.released = true;
 });
 
 $("scRetry").addEventListener("click", () => {
@@ -406,6 +380,9 @@ document.addEventListener("keydown", (e) => {
     S.keyboard = true;
     live.say("キーボードがつながった。押して答えられる。");
     $("scDeviceNote").hidden = true;
+    if (!$("scHome").hidden) {
+      renderMap(t instanceof Element ? t.closest(".sc-tile")?.dataset.id : null);
+    }
   }
   const q = S.q;
   if (!q || $("scPlay").hidden || q.state !== "waiting" || q.mode !== "choice" || inField) return;
@@ -417,47 +394,32 @@ document.addEventListener("keydown", (e) => {
 function answer(result, how, { combo = null, code = "", picked = null, dunno = false, said = "" } = {}) {
   const q = S.q;
   const R = S.round;
+  const now = Date.now();
   q.state = "done";
   q.answeredAt = performance.now();
   q.answerCode = code;
   q.released = !code;
-  const r = roundAnswer(R.st, { item: q.item, layout: q.layout, result, how, nowMs: Date.now() });
+  const r = roundAnswer(R.st, { item: q.item, layout: q.layout, result, how, nowMs: now });
   R.st = r.st;
   let saved = true;
   if (r.recorded) {
-    S.progress = R.st.progress;
-    saved = writeProgress(store, S.progress);
+    // 読み直して当てる（仕様 §10。最初の答えだけは R.st.firsts）
+    const w = recordAnswer(store, q.item.id, q.layout, result === "ok", now, how);
+    S.progress = R.st.progress = w.progress;
+    saved = w.saved;
   }
   clearGuard();
   const variants = capsOf(q.item, q.layout, q.nth);
   const k = q.item.keys[q.layout];
   let right = variants[0];
   if (result === "ok" && combo) right = [...variants, ...(k.alt ?? [])].find((caps) => sigOfCaps(caps, q.layout) === comboString(combo)) ?? variants[0];
-  const rightHtml = capsHtml(right);
-  const parts = [];
-  let say;
-  if (result === "ok") {
-    parts.push(`<span class="sc-result__h">正解</span>${rightHtml}`);
-    say = `正解。${spokenCaps(right, "hold")}`;
-  } else if (dunno) {
-    parts.push(`<span class="sc-result__h">こう押す</span>${rightHtml}`);
-    say = `こう押す。${spokenCaps(right, "hold")}`;
-  } else {
-    parts.push(`<span class="sc-result__h">ちがう</span>${rightHtml}`);
-    say = `ちがう。正しくは ${spokenCaps(right, "hold")}`;
-    if (combo) {
-      const pressed = capsOfCombo(combo, q.layout);
-      parts.push(`<span class="sc-result__pressed">押したキー: ${esc(textCaps(pressed))}</span>`);
-      say += `。押したのは ${spokenCaps(pressed, "hold")}`;
-    } else if (picked) {
-      parts.push(`<span class="sc-result__pressed">選んだ組: ${esc(textCaps(picked.caps))}</span>`);
-    }
-  }
-  const aw = result === "wrong" && combo ? afterWrong(q.item, q.layout, combo, q.nth, SHORTCUTS) : null;
-  if (aw?.own) parts.push(`<span class="sc-result__own">${esc(ownText(aw.own))}</span>`);
-  if (said) parts.push(`<span class="sc-result__own">${esc(said)}</span>`);
-  if (!saved) parts.push(`<span class="sc-result__own">${esc("この端末に保存できなかった。")}</span>`);
-  setResult(dunno ? "dunno" : result, parts.join(" "));
+  const wrong = result !== "ok" && !dunno;
+  const pressed = wrong && combo ? capsOfCombo(combo, q.layout) : null;
+  const aw = wrong && combo ? afterWrong(q.item, q.layout, combo, q.nth, SHORTCUTS) : null;
+  const head = result === "ok" ? "正解" : dunno ? "こう押す" : "ちがう";
+  let say = `${head}。${wrong ? "正しくは " : ""}${spokenCaps(right, "hold")}${pressed ? `。押したのは ${spokenCaps(pressed, "hold")}` : ""}`;
+  const lines = [aw?.own ? ownText(aw.own) : "", said, saved ? "" : "この端末に保存できなかった。"].filter(Boolean);
+  setResult(dunno ? "dunno" : result, resultHtml({ head, right, pressed, picked: wrong && !combo ? picked?.caps : null, lines }));
   if (aw?.suggest) {
     const other = aw.suggest;
     $("scSuggestText").textContent = `${LAYOUT_LABEL[other]}の押し方だった。切り替える？`;
@@ -496,8 +458,7 @@ $("scReplay").addEventListener("click", () => playScene($("scScene").querySelect
 $("scSwitch").addEventListener("click", () => {
   const other = $("scSwitch").dataset.layout;
   if (!LAYOUTS.includes(other)) return;
-  S.dev = { ...S.dev, layout: other };
-  writeDevice(store, S.dev);
+  setDevice("layout", (d) => ({ ...d, layout: other }));
   if (S.round) S.round.layout = other;
   $("scSuggest").hidden = true;
   live.say(`${LAYOUT_LABEL[other]}にした。`);
@@ -536,7 +497,7 @@ function endRound() {
   const okN = firsts.filter(([, ok]) => ok).length;
   $("scScore").textContent = `${firsts.length} 問のうち ${okN} 問 正解`;
   const missed = firsts.filter(([, ok]) => !ok).map(([id]) => SHORTCUTS.find((x) => x.id === id)).filter(Boolean);
-  $("scMissed").innerHTML = missed.map((x) => `<li class="sc-end__row"><span class="sc-end__keys">${capsHtml(capsOf(x, R.layout, 2)[0] ?? [])}</span><span class="sc-end__ja">${esc(x.short)}</span></li>`).join("");
+  $("scMissed").innerHTML = missed.map((x) => missedRowHtml(x, R.layout)).join("");
   $("scMissed").hidden = missed.length === 0;
   $("scAgain").hidden = missed.length === 0;
   R.missed = missed.map((x) => x.id);
@@ -560,7 +521,7 @@ $("scQuit").addEventListener("click", () => {
 });
 $("scStart").addEventListener("click", () => startRound());
 
-// ===== 戻る・進む・再読み込みの守り（仕様 §9） =====
+// == 戻る・進む・再読み込みの守り（仕様 §9）
 addEventListener("popstate", (e) => {
   const q = S.q;
   const waiting = q && q.state === "waiting" && q.mode === "guard" ? q.item.id : null;
@@ -595,10 +556,10 @@ function reloadCheck() {
   if (!st?.sdReload) return;
   const nav = performance.getEntriesByType?.("navigation")?.[0]?.type ?? "";
   const hit = reloadCounted(st, nav, Date.now());
-  history.replaceState(withoutReload(st), "");
+  history.replaceState(withoutGuard(st, "sdReload"), "");
   if (!hit) return;
-  S.progress = applyAnswer(S.progress, hit.id, hit.layout, true, Date.now(), "p");
-  writeProgress(store, S.progress);
+  // 2 回目の出題は記録しない（仕様 §10）
+  if (hit.first) S.progress = recordAnswer(store, hit.id, hit.layout, true, Date.now(), "p").progress;
   const x = SHORTCUTS.find((y) => y.id === hit.id);
   const n = $("scNotice");
   n.textContent = `読み込み直した。さっきの問い（${x?.ja ?? ""}）は押せた。`;
