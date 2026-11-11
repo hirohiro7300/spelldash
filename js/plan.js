@@ -14,7 +14,7 @@ const GRACE_MS = 3 * 86400000; // 更新失敗などに備えた 3 日の猶予
 const PRO_STATUSES = new Set(["active", "trialing", "past_due"]);
 const FREE = { pro: false, status: "none", interval: null, periodEnd: null, cancelAtPeriodEnd: false, checkedAt: null };
 
-// 学習状況の「思い出せるようになった語の推移」の日数（無料・Pro）。ゲート（js/statsView.js）と
+// 学習状況の「覚えた語の推移」の日数（無料・Pro）。ゲート（js/statsView.js）と
 // 加入画面の比較表（js/proView.js）が同じ値を読む。stats.html の切り替えの 2 つのボタン（data-trend-range）もこの数
 export const TREND_DAYS = Object.freeze({ free: 30, pro: 90 });
 
