@@ -9,7 +9,7 @@ import { createLive } from "./srLive.js";
 import { esc } from "./html.js";
 import { SHORTCUTS } from "./shortcutsData.js";
 import {
-  LAYOUTS, LAYOUT_LABEL, GROUP_LABEL, ADVANCE_WAIT_MS, readCombo, judge, afterWrong, ownText, shouldCancel, isImeEvent, isPhysicalKey, isModifierEvent, modeOf,
+  LAYOUTS, LAYOUT_LABEL, GROUP_LABEL, ADVANCE_WAIT_MS, PROGRESS_KEY, DEVICE_KEY, readCombo, judge, afterWrong, ownText, shouldCancel, isImeEvent, isPhysicalKey, isModifierEvent, modeOf,
   createMissWatcher, shouldAdvance, guardState, isGuardState, onGuardPop, withoutGuard, reloadMark, reloadCounted, readDevice, updateDevice, addMiss, clearMiss, fitDelta,
   readProgress, recordAnswer, stateOf, countStates, dayOf, buildRound, newRound, roundAnswer, capsOf, capsOfCombo, spokenCaps, sigOfCaps, comboString,
   buildChoices, tokensOfCaps, notesOf
@@ -63,7 +63,7 @@ const env = () => ({ keyboard: S.keyboard, miss: S.dev.miss });
 const qText = (x, nth) => (x.id === "br.tab-n" ? x.ja.replace(/(左から )n( 番目)/, `$1${nth}$2`) : x.ja);
 
 // == 一覧
-function renderHome() {
+function renderHome(focusId = null) {
   const layout = S.dev.layout;
   for (const r of document.querySelectorAll('input[name="scLayout"]')) r.checked = r.value === layout;
   for (const r of document.querySelectorAll('input[name="scArr"]')) r.checked = r.value === S.dev.arr;
@@ -75,8 +75,21 @@ function renderHome() {
   if (missN) $("scMissText").textContent = `この端末では ${missN} 組をブラウザかパソコンが先に受け取ったので、選んで答えている。`;
   for (const b of $("scFilter").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.group === S.group));
   renderSum();
-  renderMap();
+  renderMap(focusId);
 }
+
+// ほかのタブの練習と端末の設定を読み直す。描き直すのは一覧のときだけ（開いた詳しい欄と焦点の札は残す。仕様 §13）
+const reread = () => {
+  S.progress = readProgress(store);
+  S.dev = readDevice(store);
+};
+function refresh() {
+  reread();
+  if (!$("scHome").hidden) renderHome(document.activeElement?.closest?.("#scMap .sc-tile")?.dataset.id);
+}
+addEventListener("storage", (e) => {
+  if (e.key === null || e.key === PROGRESS_KEY || e.key === DEVICE_KEY) refresh();
+});
 
 function renderSum() {
   const layout = layoutOf();
@@ -158,6 +171,7 @@ function show(which) {
 }
 
 function startRound(only = null) {
+  reread();
   if (!S.dev.layout) {
     $("scLayoutHint").hidden = false;
     $("scLayoutHint").classList.add("is-alert");
@@ -337,9 +351,7 @@ function lost() {
   live.say($("scResult").textContent);
 }
 $("scPad").addEventListener("blur", lost);
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) lost();
-});
+document.addEventListener("visibilitychange", () => (document.hidden ? lost() : refresh()));
 // 押す枠の案内は焦点の有無で替える
 $("scPad").addEventListener("focus", () => ($("scPadHint").textContent = PAD_HINT[1]));
 $("scPad").addEventListener("blur", () => ($("scPadHint").textContent = PAD_HINT[0]));
@@ -562,9 +574,10 @@ addEventListener("popstate", (e) => {
     history.back();
   }
 });
-addEventListener("pageshow", () => {
+addEventListener("pageshow", (e) => {
   if (isGuardState(history.state)) history.replaceState(withoutGuard(history.state), "");
   S.guard.pushed = false;
+  if (e.persisted) refresh();
 });
 
 function reloadCheck() {
