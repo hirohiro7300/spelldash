@@ -1115,7 +1115,7 @@ function fourDays(name) {
   const lines1 = shareLines(r1);
   const li = lines1.findIndex((s) => s.startsWith("学習 "));
   eq("W3 シェアの文: 「学習 …」の行の次に「マイ単語帳で 覚えた +2語」", lines1[li + 1], "マイ単語帳で 覚えた +2語");
-  ok("W3 シェアの絵の行に「マイ単語帳で 覚えた  +2語」", imageRows(r1).includes("マイ単語帳で 覚えた  +2語"), imageRows(r1));
+  // （シェアの絵は W6。前の「絵の行にマイ単語帳の行」は、大きい「+0 語 覚えた」の下に小さく出る形だったので W6 (b) に替えた）
 
   // W4 (a) 窓の中で答えたが増え 0（外しただけ）: マスは +0 語で出る・はちゃんは増えた週の字にしない
   device("w-zero");
@@ -1157,6 +1157,38 @@ function fourDays(name) {
   openStats();
   const html4d = drawWeekly();
   eq("W4 (c)（守り）マイ単語帳を使わない人: マスなし・「7日で 覚えた」", [myCell(html4d), heads(html4d)], [null, ["学習した日", "7日で 覚えた", "思い出せた率"]]);
+
+  // W6（Batch 91 の反証）: レポートをシェアの文と絵（アプリの外に出る所）も、マスを出す週は数の並びと同じく頭でどちらの数かを言う。
+  //     マイ単語帳だけで学ぶ人の絵に、大きい「+0 語 覚えた」を出さない（英単語の増えが 0 か分からない週にマイ単語帳で 1 語以上覚えたら、大きい数はマイ単語帳の数）
+  const hero = (r) => (typeof WR.weeklyImageHero === "function" ? WR.weeklyImageHero(r) : { big: "weeklyImageHero が無い", label: "" });
+  const bare = (lines) => lines.filter((s) => /覚えた \+/.test(s) && !/(英単語で|マイ単語帳で) 覚えた \+/.test(s)); // 頭の無い「覚えた +」の行
+  eq("W6 (a) マイ単語帳だけの人（英単語 +0・マイ単語帳 +2）: シェアの文に頭の無い「覚えた +」の行が無い・英単語の行は「英単語で 覚えた +0語（累計 0）」",
+    [bare(lines1), lines1[li]?.includes("・ 英単語で 覚えた +0語（累計 0）")], [[], true]);
+  eq("W6 (b) 同じ人のシェアの絵: 大きい数はマイ単語帳の +2（「語 マイ単語帳で 覚えた」）・下の行は 学習した日 → 「英単語で 覚えた  +0語」（マイ単語帳の行は大きい数と重ねない）",
+    [hero(r1).big, hero(r1).label, imageRows(r1).slice(0, 2), imageRows(r1).some((s) => s.startsWith("マイ単語帳で"))],
+    ["+2", "語 マイ単語帳で 覚えた", ["学習した日  1 / 7", "英単語で 覚えた  +0語"], false]);
+  // 英単語 +3・マイ単語帳 +1 の人（同じ窓）
+  device("w-mix");
+  setNow("2026-12-07", 20);
+  M.addMyWordsBulk("lambda eleven, 十一");
+  learnNew(3, "2026-12-08", 21, 0, NONBASE);
+  setNow("2026-12-08", 21, 30);
+  myAnswer("lambda eleven", K.exact);
+  const r6 = openStats();
+  const lines6 = shareLines(r6);
+  eq("W6 (c) 英単語 +3・マイ単語帳 +1 の人: シェアの文は「英単語で 覚えた +3語（累計 3）」と「マイ単語帳で 覚えた +1語」（頭の無い行なし）・絵の大きい数は英単語の +3（「語 英単語で 覚えた」）・下の行に「マイ単語帳で 覚えた  +1語」",
+    [r6.learnedDelta, r6.myGain, bare(lines6), lines6.some((s) => s.includes("・ 英単語で 覚えた +3語（累計 3）")), lines6.includes("マイ単語帳で 覚えた +1語"), hero(r6).big, hero(r6).label, imageRows(r6).includes("マイ単語帳で 覚えた  +1語")],
+    [3, 1, [], true, true, "+3", "語 英単語で 覚えた", true]);
+  eq("W6 (d) 窓の中で答えたが増えは両方 0: 絵の大きい数は英単語の +0（「語 英単語で 覚えた」）・下の行に「マイ単語帳で 覚えた  +0語」・シェアの文に頭の無い行なし",
+    [hero(r4a).big, hero(r4a).label, imageRows(r4a).includes("マイ単語帳で 覚えた  +0語"), bare(shareLines(r4a))], ["+0", "語 英単語で 覚えた", true, []]);
+  // 英単語の増えが分からない（–）週（2 台目の数え始め。js/weeklyReport.js knowsLearned）にマイ単語帳で +3: 描く物だけの純な検査
+  const unknown6 = { range: "12/2〜12/8", activeDays: 5, learnedDelta: null, learnedTotal: null, retention: null, recallRate: 80, streak: 2, bestScore: 0, myShow: true, myGain: 3 };
+  eq("W6 (e) 英単語の増えが分からない週にマイ単語帳で +3: 絵の大きい数はマイ単語帳の +3・下の行の頭は 学習した日（英単語の行は出さない）・シェアの文に頭の無い行なし",
+    [hero(unknown6).big, hero(unknown6).label, imageRows(unknown6)[0], imageRows(unknown6).some((s) => s.startsWith("英単語で")), bare(shareLines(unknown6))],
+    ["+3", "語 マイ単語帳で 覚えた", "学習した日  5 / 7", false, []]);
+  eq("W6 (f)（守り）マスを出さない週（窓の前にだけマイ単語帳に答えた人）: シェアの文は前のまま「覚えた +3語（累計 …）」・絵の大きい数 +3「語 覚えた」・頭の付いた行なし",
+    [WR.buildWeeklyShareText(r4c).includes("・ 覚えた +3語（累計"), hero(r4c).big, hero(r4c).label, imageRows(r4c).some((s) => /英単語で|マイ単語帳で/.test(s))],
+    [true, "+3", "語 覚えた", false]);
 
   // W5（守り）英単語の数（週・今月・今の 覚えた・日ごとの増え）と送る日の行は、マイ単語帳の語を足して答えた人と、そうでない人で同じ
   const englishOf = (withMy) => {
