@@ -261,7 +261,9 @@ export function keepFirstLearned(win, keep) {
 // ---- クラウドの行をローカルへ反映（項目ごとに新しい方が勝つ） ----
 // 戻り値: { changed: {my_word,note,pack,day} の変更有無, toUpload: クラウドに無い／古いローカル項目,
 //   adopted: クラウドの方が新しくて端末に取り込んだ項目の [id, その行の updated_at]（Batch 87: 取り込みの後で送る待ちから外す） }
-// マイ単語帳の語の lf（Batch 91）: 雲の行が勝っても端末の早い lf を残し、その語を今の時刻で送り返す（ほかの端末にも早い日を届ける）
+// マイ単語帳の語の lf（Batch 91）: 雲の行が勝っても端末の早い lf を残し、その語を「勝った雲の行の時刻 + 1 ms」で送り返す（ほかの端末にも早い日を届ける）。
+// 今の時刻にしない: 中身は雲の行のままなので、雲の行より後にほかの端末がした、まだ送っていない変更（訳の直し・消す・答え）が、その端末の次の取り込みで負けて消える。
+// 1 ms 後なら、その変更が勝ち、勝った端末の行に雲の早い lf を写して送る（下の端末の行が勝つ向き）
 
 export function mergeCloudItems(rows, userId = null) {
   const meta = getItemMeta();
@@ -297,7 +299,7 @@ export function mergeCloudItems(rows, userId = null) {
   let packs = readJson(PACKS_KEY, []).filter((id) => typeof id === "string");
 
   const localTime = (id, item) => Date.parse(meta[id]?.updatedAt ?? item?.payload?.addedAt ?? 0) || 0;
-  const relabeled = []; // 勝った雲の行に端末の早い lf を残した語（Batch 91。送り返す）
+  const relabeled = []; // 勝った雲の行に端末の早い lf を残した語と送る時刻（Batch 91。雲の行の時刻 + 1 ms で送り返す）
 
   // クラウド → ローカル
   for (const [id, r] of cloud) {
@@ -315,7 +317,7 @@ export function mergeCloudItems(rows, userId = null) {
         if (idx >= 0) {
           const kept = keepFirstLearned(r.payload, myWords[idx]);
           myWords[idx] = kept;
-          if (kept !== r.payload) relabeled.push({ key: r.key, payload: kept });
+          if (kept !== r.payload) relabeled.push({ key: r.key, payload: kept, at: new Date(cloudTime + 1).toISOString() });
         } else myWords.push(r.payload);
       }
       changed.my_word = true;
@@ -360,9 +362,9 @@ export function mergeCloudItems(rows, userId = null) {
     }
   }
 
-  for (const { key, payload } of relabeled) {
-    toUpload.push({ user_id: userId, kind: "my_word", key, payload, deleted: false, updated_at: nowIso });
-    meta[`my_word:${key}`] = { updatedAt: nowIso, deleted: false };
+  for (const { key, payload, at } of relabeled) {
+    toUpload.push({ user_id: userId, kind: "my_word", key, payload, deleted: false, updated_at: at });
+    meta[`my_word:${key}`] = { updatedAt: at, deleted: false };
   }
 
   if (changed.my_word) writeJson(MY_WORDS_KEY, myWords);
