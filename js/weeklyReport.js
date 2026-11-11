@@ -104,7 +104,9 @@ const knowsLearned = (r) => r.learnedDelta !== null && r.learnedTotal !== null;
 
 export function buildWeeklyShareText(r = computeWeeklyReport()) {
   const lines = [`SpellDash 週間レポート ${r.range}`];
-  lines.push(knowsLearned(r) ? `学習 ${r.activeDays}/7日 ・ 覚えた +${r.learnedDelta}語（累計 ${r.learnedTotal}）` : `学習 ${r.activeDays}/7日`);
+  // マイ単語帳のマスを出す週（Batch 91）は、数の並びと同じく英単語の数にも頭を付ける（どちらの「覚えた」かを外の人にも分かるように）
+  const learned = r.myShow ? "英単語で 覚えた" : "覚えた";
+  lines.push(knowsLearned(r) ? `学習 ${r.activeDays}/7日 ・ ${learned} +${r.learnedDelta}語（累計 ${r.learnedTotal}）` : `学習 ${r.activeDays}/7日`);
   if (r.myShow) lines.push(`マイ単語帳で 覚えた +${r.myGain}語`);
   const rate = r.retention ?? r.recallRate;
   if (rate != null) lines.push(`思い出せた率 ${rate}%${r.streak > 0 ? ` ・ ${r.streak}日連続` : ""}`);
@@ -201,21 +203,24 @@ export function buildWeeklyReportImage(r = computeWeeklyReport()) {
   ctx.font = "800 60px sans-serif";
   ctx.fillText(`週間レポート ${r.range}`, 80, 300);
 
-  // 大きい数は 7 日で覚えた語。分からない（null）ときは学習した日を大きく出す（下の行に重ねない）
-  const known = knowsLearned(r);
-  const big = known ? `+${r.learnedDelta}` : `${r.activeDays}`;
+  // 大きい数（純の weeklyImageHero）: 7 日で覚えた語。分からない（null）ときは学習した日（下の行に重ねない）。マイ単語帳のマスを出す週はどちらの数かを字で言う
+  const { big, label } = weeklyImageHero(r);
   ctx.fillStyle = "#f8fafc";
   ctx.font = "800 200px sans-serif";
   ctx.fillText(big, 80, 500);
   const w = ctx.measureText(big).width;
   ctx.fillStyle = "#94a3b8";
   ctx.font = "700 56px sans-serif";
-  ctx.fillText(known ? "語 覚えた" : "/ 7日 学習した", 80 + w + 24, 520);
+  // 字が長い（「語 マイ単語帳で 覚えた」）か数が大きいときは、右の端からはみ出さないように字を小さくする（36px まで）
+  const room = W - 60 - (80 + w + 24);
+  const lw = ctx.measureText(label).width;
+  if (lw > room) ctx.font = `700 ${Math.max(36, Math.floor((56 * room) / lw))}px sans-serif`;
+  ctx.fillText(label, 80 + w + 24, 520);
 
   const rows = weeklyImageRows(r);
   ctx.fillStyle = "#e2e8f0";
   ctx.font = "700 52px sans-serif";
-  const gap = rows.length > 4 ? 68 : 84; // 5 行（マイ単語帳の行を足した週）でも下の spelldash.net に重ねない
+  const gap = rows.length > 4 ? 68 : 84; // 5 行（マイ単語帳のマスを出す週に、英単語かマイ単語帳の行を足した週）でも下の spelldash.net に重ねない
   rows.forEach((line, i) => ctx.fillText(line, 80, 660 + i * gap));
 
   ctx.fillStyle = "#64748b";
@@ -224,12 +229,25 @@ export function buildWeeklyReportImage(r = computeWeeklyReport()) {
   return canvas;
 }
 
-// シェアの絵の大きい数の下の行（純）。マイ単語帳の行（Batch 91）は数の並びにマスを出す週だけ、学習した日の次に
+// シェアの絵の大きい数と、その横の字（純）。マイ単語帳のマスを出さない週は前のまま（7 日で覚えた語「語 覚えた」。分からないときは学習した日）。
+// 出す週（Batch 91）は数の並びと同じく頭でどちらの数かを言う: 英単語の増えが 0 か分からない週にマイ単語帳で 1 語以上覚えたら、大きい数はマイ単語帳の数
+// （マイ単語帳だけで学ぶ人の絵に、大きい「+0 語」を出さない）。それ以外は英単語の数（「語 英単語で 覚えた」）
+export function weeklyImageHero(r) {
+  const known = knowsLearned(r);
+  if (r.myShow && r.myGain > 0 && !(known && r.learnedDelta > 0)) return { big: `+${r.myGain}`, label: "語 マイ単語帳で 覚えた", of: "my" };
+  if (known) return { big: `+${r.learnedDelta}`, label: r.myShow ? "語 英単語で 覚えた" : "語 覚えた", of: "english" };
+  return { big: `${r.activeDays}`, label: "/ 7日 学習した", of: "days" };
+}
+
+// シェアの絵の大きい数の下の行（純）。学習した日は大きい数が学習した日でないとき。マスを出す週（Batch 91）は、大きい数に出さなかった方の数を学習した日の次に
+// （大きい数がマイ単語帳なら「英単語で 覚えた」。英単語の増えが分からないときは出さない）
 export function weeklyImageRows(r) {
   const rate = r.retention ?? r.recallRate;
+  const hero = weeklyImageHero(r);
   return [
-    knowsLearned(r) ? `学習した日  ${r.activeDays} / 7` : null,
-    r.myShow ? `マイ単語帳で 覚えた  +${r.myGain}語` : null,
+    hero.of !== "days" ? `学習した日  ${r.activeDays} / 7` : null,
+    r.myShow && hero.of === "my" && knowsLearned(r) ? `英単語で 覚えた  +${r.learnedDelta}語` : null,
+    r.myShow && hero.of !== "my" ? `マイ単語帳で 覚えた  +${r.myGain}語` : null,
     rate == null ? null : `↻ 思い出せた率  ${rate}%`,
     r.streak > 0 ? `${r.streak}日連続` : null,
     r.bestScore > 0 ? `⏱ 今週のベスト  ${r.bestScore}` : null
