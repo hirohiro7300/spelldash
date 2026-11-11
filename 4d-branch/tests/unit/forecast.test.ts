@@ -274,6 +274,26 @@ describe("同梱の未来の道筋", () => {
     }
   });
 
+  it("判断の線はほかの線を並び順で指さず、名前で指す線はその分かれ道に名前がある", () => {
+    // 地図の上では線の上下が決まらない（縮小や寄り道で並びが変わる）ので、「上の 2 つ」のようには書かない。
+    // ほかの線は「ほかの 2 本の線」か、線の終わりに付けた名前「（利益の線）」で指す
+    const positional = /(?<![以売向最頂地途格つ段])(上|下)(の|に|と)(?!限)|すぐ(上|下)|いちばん(上|下)/;
+    expect(data.links.filter((l) => positional.test(l[2])).map((l) => `${l[0]} → ${l[1]}: ${l[2]}`)).toEqual([]);
+    const tag = /（([^（）]+?)の線）/g;
+    const ref = /の線に(?:も)?(?:届か|当たら|当たる)/g;
+    const byFork = new Map<string, FutureData["links"]>();
+    for (const l of data.links) byFork.set(l[0], [...(byFork.get(l[0]) ?? []), l]);
+    const unnamed: string[] = [];
+    for (const [k, ls] of byFork) {
+      const names = ls.flatMap((l) => [...l[2].matchAll(tag)].map((m) => m[1]!));
+      for (const l of ls) {
+        const w = l[2].replace(tag, "");
+        for (const m of w.matchAll(ref)) if (!names.some((n) => w.slice(0, m.index).endsWith(n))) unnamed.push(`${k} → ${l[1]}: ${l[2]}`);
+      }
+    }
+    expect(unnamed).toEqual([]);
+  });
+
   it("節目は 0〜120 か月目、線に沿って時間が戻らない", () => {
     const month = new Map<string, number>([...data.states.map((s) => [s[0], s[1]] as const), ...data.steps.map((s) => [s[0], s[4]] as const)]);
     for (const s of data.states) expect([0, 6, 12, 24, 36, 60, 84, 120]).toContain(s[1]);
