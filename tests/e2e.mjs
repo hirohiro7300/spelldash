@@ -29990,6 +29990,87 @@ console.log("shortcuts (92.1):");
       await closeCtx(page);
     }
 
+    // 戻る（入口のレビュー）: 学習状況 → 行のリンクで練習のページ → ⌘ のキーボードに替える → 戻る。ページを残して戻る（bfcache）とモジュールは
+    // 走り直さないので、行は pageshow（persisted）で描き直す。今のこのエンジンはロック（Web Locks）を持つページを bfcache に入れないので、
+    // ロックがあっても入れる読み手と同じ形にするため navigator.locks を何も持たない形に替えて開く（領域の見張りは動く）。この台本の共有の
+    // ブラウザは bfcache を切って開くので、切らない物を別に開く
+    {
+      const bf = await chromium.launch({ executablePath: findChromium(), args: ["--no-sandbox"], ignoreDefaultArgs: ["--disable-back-forward-cache"] });
+      try {
+        const ctx = await bf.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+        await ctx.addCookies([{ name: REAL_HEADERS_COOKIE, value: "real", url: BASE }]);
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(8000);
+        const errs = [];
+        page.on("pageerror", (e) => errs.push(e.message));
+        await page.addInitScript((seed) => {
+          const fake = { request: (name, opts, cb) => Promise.resolve().then(() => (typeof opts === "function" ? opts : cb)({ name, mode: "shared" })), query: async () => ({ held: [], pending: [] }) };
+          try { Object.defineProperty(Navigator.prototype, "locks", { get: () => fake, configurable: true }); } catch {}
+          window.__ps = [];
+          addEventListener("pageshow", (e) => window.__ps.push(e.persisted));
+          if (sessionStorage.getItem("spelldash_test_seeded")) return;
+          sessionStorage.setItem("spelldash_test_seeded", "1");
+          const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }) };
+          for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+        }, WITH("ctrl"));
+        const lineIs = (t, timeout) => page.waitForFunction((x) => document.getElementById("statsShortcutsCount")?.textContent.trim() === x, t, { timeout }).then(() => true, () => false);
+        await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+        await lineIs(lineOf("ctrl", WANT.ctrl), 8000);
+        const first = await page.evaluate(() => document.getElementById("statsShortcutsCount")?.textContent.trim() ?? null);
+        await page.click("#statsShortcuts a");
+        await page.waitForURL((u) => u.pathname === "/shortcuts.html", { timeout: 8000 }).catch(() => {});
+        await page.waitForFunction(() => document.querySelectorAll("#scMap .sc-tile").length > 0, null, { timeout: 8000 }).catch(() => {});
+        await page.click('#scLayout [data-layout="cmd"]');
+        await page.waitForFunction(() => /⌘ のキーボード/.test(document.getElementById("scSum")?.textContent ?? ""), null, { timeout: 4000 }).catch(() => {});
+        const sum = await page.evaluate(() => document.getElementById("scSum")?.textContent.replace(/\s+/g, " ").trim() ?? null);
+        await page.goBack({ waitUntil: "commit" }).catch(() => {});
+        await page.waitForFunction(() => location.pathname === "/stats.html" && (window.__ps ?? []).includes(true), null, { timeout: 8000 }).catch(() => {});
+        await lineIs(lineOf("cmd", WANT.cmd), 4000);
+        const back = await page.evaluate(() => ({
+          path: location.pathname, ps: window.__ps ?? null, line: document.getElementById("statsShortcutsCount")?.textContent.trim() ?? null, learned: document.getElementById("learnCount")?.textContent.trim() ?? null,
+          dev: (() => { try { return JSON.parse(localStorage.getItem("spelldash_shortcut_device") || "null")?.layout ?? null; } catch { return "bad"; } })()
+        }));
+        check("92.1 入口 (1) 学習状況 → 行のリンクで練習のページ → ⌘ のキーボードに替える → 戻る（ページを残して戻る〔bfcache〕。ロックで止めない形）: 戻った学習状況は pageshow の persisted・行は替えたキーボードの数「覚えた 3 / 49（⌘ のキーボード）」（練習のページの数の札と同じ）・最初の画面の 覚えた 130 はそのまま・エラー 0",
+          first === lineOf("ctrl", WANT.ctrl) && back.path === "/stats.html" && JSON.stringify(back.ps) === "[false,true]" && back.dev === "cmd" && back.line === lineOf("cmd", WANT.cmd) && pageN(sum) === WANT.cmd && back.learned === "130" && errs.length === 0,
+          JSON.stringify({ first, sum, back, err: errs[0] }));
+      } finally {
+        await bf.close().catch(() => {});
+      }
+    }
+
+    // ほかのタブ（入口のレビュー）: 学習状況を開いたまま、同じ端末のほかのタブの練習のページでキーボードを ⌘ に替え、⌘ の組を 1 つ覚える。行は開き直さずに
+    // storage の知らせで描き直す（端末の鍵 spelldash_shortcut_device はそのまま届き、人ごとの鍵 spelldash_shortcuts は領域の見張りが元の名前の知らせにして届ける）
+    {
+      const page = await entryPage({ storage: WITH("ctrl") });
+      const lineIs = (t) => page.waitForFunction((x) => document.getElementById("statsShortcutsCount")?.textContent.trim() === x, t, { timeout: 4000 }).then(() => true, () => false);
+      const lineNow = () => page.evaluate(() => document.getElementById("statsShortcutsCount")?.textContent.trim() ?? null);
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      await lineIs(lineOf("ctrl", WANT.ctrl));
+      const first = await lineNow();
+      const other = await page.context().newPage();
+      other.setDefaultTimeout(8000);
+      const errOther = [];
+      other.on("pageerror", (e) => errOther.push(e.message));
+      await other.goto(BASE + "/shortcuts.html", { waitUntil: "networkidle" });
+      await other.waitForFunction(() => document.querySelectorAll("#scMap .sc-tile").length > 0, null, { timeout: 8000 }).catch(() => {});
+      await other.click('#scLayout [data-layout="cmd"]');
+      await lineIs(lineOf("cmd", WANT.cmd));
+      const afterLayout = await lineNow();
+      const extra = cmdIds.find((id) => !it[`${id}@cmd`]) ?? null;
+      await other.evaluate(([id, at]) => {
+        const p = JSON.parse(localStorage.getItem("spelldash_shortcuts") || "{\"v\":1,\"it\":{}}");
+        p.it[`${id}@cmd`] = { s: 2, at, how: "p" };
+        localStorage.setItem("spelldash_shortcuts", JSON.stringify(p));
+      }, [extra, T0]);
+      await lineIs(lineOf("cmd", WANT.cmd + 1));
+      const afterRecord = await lineNow();
+      const learned = await page.evaluate(() => document.getElementById("learnCount")?.textContent.trim() ?? null);
+      check("92.1 入口 (1) 学習状況を開いたまま、ほかのタブの練習のページで ⌘ のキーボードに替える → 行は「覚えた 3 / 49（⌘ のキーボード）」・そのタブで ⌘ の組を 1 つ覚える → 「覚えた 4 / 49（⌘ のキーボード）」（開き直さずに storage の知らせで描き直す）・最初の画面の 覚えた 130 はそのまま・エラー 0",
+        first === lineOf("ctrl", WANT.ctrl) && afterLayout === lineOf("cmd", WANT.cmd) && afterRecord === lineOf("cmd", WANT.cmd + 1) && !!extra && learned === "130" && page.errors.length === 0 && errOther.length === 0,
+        JSON.stringify({ first, afterLayout, afterRecord, extra, learned, err: page.errors[0] ?? errOther[0] ?? null }));
+      await closeCtx(page);
+    }
+
     // 320／390／1200 × 昼・夜: ホーム（ボタンが見える）と学習状況（行に 覚えた 7 / 50）で横スクロール 0
     const widths = [];
     for (const theme of ["light", "dark"]) for (const [w, h, mobile] of [[320, 640, true], [390, 844, true], [1200, 900, false]]) {

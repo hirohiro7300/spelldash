@@ -811,6 +811,24 @@ t("11 入口: 学習状況の 覚えた は練習のページと同じ関数で�
   };
   return Object.values(r).every(Boolean) || r;
 });
+t("11 入口: 学習状況の行は開いた後も描き直す — 戻る（pageshow の persisted。ページを残して戻るとモジュールは走り直さない）と、ほかのタブの変更（storage の鍵が練習の記録か端末の鍵〔js/shortcutsCore.js の PROGRESS_KEY・DEVICE_KEY と同じ名前〕か null〔全部消した〕）。遅れて終わった古い描画は新しい数を上書きしない（描き直しの番号。番号の let は最初の呼び出しより前）", () => {
+  const sv = fs.readFileSync(path.join(ROOT, "js/statsView.js"), "utf8");
+  const fn = sv.match(/\nfunction renderShortcutsLine\(\) \{[\s\S]*?\n\}\n/)?.[0] ?? "";
+  const watch = sv.match(/\nfunction watchShortcutsLine\(\) \{[\s\S]*?\n\}\n/)?.[0] ?? "";
+  const onStorage = watch.slice(Math.max(0, watch.indexOf('"storage"')));
+  const firstCall = sv.indexOf("\nrenderShortcutsLine();\n");
+  const seqAt = sv.indexOf("\nlet shortcutsSeq = 0;");
+  const r = {
+    watch: watch.length > 0,
+    called: /\nwatchShortcutsLine\(\);\n/.test(sv),
+    pageshow: /addEventListener\("pageshow", \(event\) => \{\s*if \(event\.persisted\) renderShortcutsLine\(\);\s*\}\)/.test(watch),
+    storage: watch.includes('addEventListener("storage"') && onStorage.includes("event.key === null") && onStorage.includes("renderShortcutsLine()")
+      && [C.PROGRESS_KEY, C.DEVICE_KEY].every((k) => typeof k === "string" && k.length > 0 && onStorage.includes(`"${k}"`)),
+    seq: fn.includes("const seq = ++shortcutsSeq;") && fn.includes("seq !== shortcutsSeq"),
+    seqBeforeCall: seqAt > 0 && firstCall > 0 && seqAt < firstCall
+  };
+  return Object.values(r).every(Boolean) || r;
+});
 
 console.log(`test-shortcuts: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
