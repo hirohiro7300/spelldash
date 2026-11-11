@@ -1,14 +1,4 @@
-// ===== ショートカットキーの表（Batch 92。docs/SPEC_SHORTCUTS.md §4） =====
-// 50 項目（パソコン共通 30・ブラウザ 20。優先 A 21・B 29）。1 項目 = 1 つの働き。キーの組はキーボードごと（ctrl = Ctrl のキーボード、cmd = ⌘ のキーボード）。
-//   show   見せる組（[変種][札]）。「/」でつないだ組は変種。札の字は Ctrl・Alt・Shift・⊞・⌘・⌥・⌃・⇧・Fn と主のキー
-//   how    press（押して答える）| guard（押して答える。戻る・進む・再読み込みの守りつき）| choice（選んで答える）
-//   why    選ぶ理由: browser（ブラウザが先に受け取る）| os（パソコンが先に受け取る）| screen（この画面で使うキー）| differ（アプリやブラウザで組が違う）
-//   accept 正解の組（修飾の旗はちょうど一致。?shift は Shift どちらでも。# は問いの数）。also = 公式の頁にある別の組（正解に数える）。
-//   near   数えない近い組（同じ問いのまま「… を使うアプリもある」と言う）。alt = 見せる組のほかの形（誤りの選択肢に使わない）
-//   src    確かめた公式の頁の記号（下の SOURCES。頁の場所はリポジトリの外）。note = 答えた後の注
-//   scene  前と後の絵の状態（js/shortcutsArt.js。k = doc 文字の編集・web ブラウザ・desk パソコンの画面。a = 前・b = 後・bCmd = ⌘ のキーボードの後）
-//   say    絵の読み上げ（前・後）
-// 項目を足すときは、ここに行と絵の状態を足すだけ（単体 scripts/test-shortcuts.mjs が数と形を確かめる）。
+// ショートカットキーの表（Batch 92）。形と答え方の決まりは docs/SPEC_SHORTCUTS.md §11。項目を足すときは行と絵の状態を足すだけ。
 
 export const CHECKED_AT = "2026-11-11";
 export const SOURCES = Object.freeze({

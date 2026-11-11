@@ -1,16 +1,11 @@
-// ===== ショートカットキーの絵（Batch 92。docs/SPEC_SHORTCUTS.md §6）: キーの札・キーボードの絵・前と後の絵 =====
-// どれも文字列の SVG を組む（外のファイルを読まない。img-src に触れない）。字は esc して出す（scripts/test-text-safe.mjs の見張りの対象）。
-// 色は css/shortcuts.css のクラス（css/tokens.css の変数）だけで決める。記号のキー（⌘ ⌥ ⌃ ⇧ ⊞ と矢印）は字でなく線で描く。
-// 前と後の絵: 3 つの型（doc 文字の編集・web ブラウザ・desk パソコンの画面）に表の状態を渡して描く。字は 10 単位以上（390 の幅で 11px 以上）・「…」で切らない。
-// 後の絵の中で変わった物に役（data-r）を付ける: a 現れる・y 飛んでくる・f 光る。動きは css の .is-play（減らした動きの設定では動かさない）。
+// ショートカットキーの絵（Batch 92。docs/SPEC_SHORTCUTS.md §12）。文字列の SVG を組み、字は esc する。色は css/shortcuts.css のクラスだけ。
 
 import { esc } from "./html.js";
 import { tokensOfCaps as capsTokens, spokenCap, spokenCaps, LAYOUT_LABEL } from "./shortcutsCore.js";
 
 export const tokensOfCaps = capsTokens;
-export const SCENE_MIN_FONT = 10; // 前と後の絵の字の最小（viewBox 120 単位の幅。390 の幅で 1 枚 150px 前後なので 12px 前後）
+export const SCENE_MIN_FONT = 10;
 
-// ---- 記号（10×10 の箱。線で描く） ----
 const SYM = {
   "⌘": "M3.5 2A1.5 1.5 0 1 0 2 3.5H8A1.5 1.5 0 1 0 6.5 2V8A1.5 1.5 0 1 0 8 6.5H2A1.5 1.5 0 1 0 3.5 8Z",
   "⌥": "M1 3H4L7 8H9M6 3H9",
@@ -23,7 +18,6 @@ const SYM = {
   "↓": "M5 1.5V8.2M2.2 5.6L5 8.4L7.8 5.6"
 };
 
-// HTML のキーの札（<kbd>）。記号は小さな線の SVG と読み上げの名前
 export function capHtml(cap) {
   const d = SYM[cap];
   if (!d) return `<kbd class="kc">${esc(cap)}</kbd>`;
@@ -32,14 +26,13 @@ export function capHtml(cap) {
 export function capsHtml(caps) {
   return caps.map(capHtml).join('<span class="kc-plus" aria-hidden="true">+</span>');
 }
-// 変種（「/」でつないだ組）
 export function variantsHtml(variants) {
   return variants.map((caps) => `<span class="kc-set">${capsHtml(caps)}</span>`).join('<span class="kc-or">/</span>');
 }
 
 // ===== キーボードの絵 =====
-const U = 20; // キー 1 つの幅（viewBox の単位）
-// 段の並び: [札, code, 判定の字, 幅]
+const U = 20;
+// [札, code, 判定の字, 幅]
 function rowsOf(layout, arr) {
   const L = (s) => [...s].map((c) => [c.toUpperCase(), "Key" + c.toUpperCase(), c, 1]);
   const D = (s) => [...s].map((c) => [c, "Digit" + c, c, 1]);
@@ -81,7 +74,6 @@ function rowsOf(layout, arr) {
   return { fn, rows: [r1, r2, r3, r4, r5] };
 }
 
-// キーボードの絵（<svg>）。答える前は光らせない（光らせるのは paintKeys）。読み上げの名前は「Ctrl のキーボードの絵」
 export function keyboardSvg(layout, arr = "jis") {
   const { fn, rows } = rowsOf(layout, arr);
   const side = layout === "ctrl";
@@ -132,7 +124,6 @@ export function keyboardSvg(layout, arr = "jis") {
   return `<svg class="kb" viewBox="-2 -2 ${(W + 4).toFixed(0)} ${(H + 4).toFixed(0)}" role="img" aria-label="${esc(label)}" focusable="false">${parts.join("")}</svg>`;
 }
 
-// 押すキー（金）・押しているキー（沈む）・押し違えたキー（朱の点線）を絵に写す。修飾は左のキーだけ光らせる
 const MODS = new Set(["ctrl", "alt", "shift", "meta"]);
 export function paintKeys(svg, { target = [], down = [], wrong = [] } = {}) {
   if (!svg) return;
@@ -146,13 +137,12 @@ export function paintKeys(svg, { target = [], down = [], wrong = [] } = {}) {
     g.classList.toggle("is-down", down.includes(code));
   }
 }
-// 読み上げの名前（答えた後）: 「Ctrl のキーボードの絵。押すキー: コントロール と C」
 export const keyboardLabel = (layout, caps) => `${LAYOUT_LABEL[layout] ?? ""}の絵${caps ? `。押すキー: ${spokenCaps(caps, "and")}` : ""}`;
 
 // ===== 前と後の絵（120×84） =====
 const W = 120;
 const H = 84;
-const BODY = 12; // 文字の編集の本文の字
+const BODY = 12;
 const SMALL = SCENE_MIN_FONT;
 const widthOf = (s, size) => [...String(s ?? "")].reduce((a, ch) => a + (/[ -~]/.test(ch) ? size * 0.6 : size), 0);
 const n1 = (v) => Number(v).toFixed(1).replace(/\.0$/, "");
@@ -162,7 +152,6 @@ const R = (x, y, w, h, cls, rx = 2, extra = "") => `<rect class="${cls}" x="${n1
 const role = (r) => (r ? ` data-r="${r}"` : "");
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-// 1 行の字（選んだ範囲・太字・現れた範囲・カーソル）。範囲は字の番号 [a, b)
 function textRun(x, y, str, size, { sel = null, bold = null, ins = null, car = null, prev = null } = {}) {
   const chars = [...String(str ?? "")];
   const pos = [x];
@@ -292,7 +281,7 @@ function drawWeb(st, prev) {
   if (st.pct) out.push(chip(115, 37, st.pct, "sc-chip", prev && prev.pct !== st.pct ? "a" : ""));
   if (st.find) out.push(`<g class="sc-panel"${role(prev && !prev.find ? "a" : "")}>${R(62, 37, 54, 15, "sc-panel-bg", 2)}${T(66, 48, st.find)}${T(92, 48, `${st.hit ?? 1}/2`, SMALL, "sc-dim")}</g>`);
   if (st.reload) out.push(`<g class="sc-reload"${role(prev && !prev.reload ? "a" : "")}><path class="sc-arc" d="M106 62a7 7 0 1 1 -2.1 -5"/><path class="sc-arrowhead" d="M104.6 52.2l0.6 5.4l-5.2 -0.9z"/></g>`);
-  if (st.scroll !== undefined) out.push(R(110, 38, 5, 42, "sc-track", 2.5), R(110, 38 + st.scroll * 20, 5, 20, "sc-thumb", 2.5, role(prev && prev.scroll !== st.scroll ? "a" : "")));
+  if (st.scroll !== undefined) out.push(R(110, 38, 5, 42, "sc-scroll-track", 2.5), R(110, 38 + st.scroll * 20, 5, 20, "sc-scroll", 2.5, role(prev && prev.scroll !== st.scroll ? "a" : "")));
   const pr = prev && prev.panel !== st.panel ? "a" : "";
   if (st.panel === "history") out.push(panel(36, 36, 80, 44, "履歴", [{ t: "天気" }, { t: "地図" }], pr));
   if (st.panel === "downloads") out.push(panel(30, 36, 86, 44, "ダウンロード", [{ t: "報告書" }, { t: "議事録" }], pr));
@@ -341,12 +330,10 @@ function drawDesk(st, prev) {
 const DRAW = { doc: drawDoc, web: drawWeb, desk: drawDesk };
 function svgOf(kind, st, prev, cls) {
   let inner = (DRAW[kind] ?? drawDoc)(st ?? {}, prev);
-  // 後の絵で変わった物が描けない（消えただけ）ときは、絵の中身を一度光らせる
   if (prev && !inner.includes("data-r=")) inner = `<g data-r="f">${inner}</g>`;
   return `<svg class="sc-svg ${cls}" viewBox="0 0 ${W} ${H}" aria-hidden="true" focusable="false">${inner}</svg>`;
 }
 
-// 前と後の絵（<figure>）。読み上げは figure の名前 1 つ（「前: …。後: …。」）。n 番目のタブは数を差し込む
 export function scenePairHtml(item, layout, nth = null) {
   const sc = item?.scene ?? { k: "doc", a: {}, b: {} };
   const after0 = layout === "cmd" && sc.bCmd ? sc.bCmd : sc.b;
