@@ -29570,7 +29570,7 @@ console.log("shortcuts (92.1):");
   // (5) repeat（反証 3）: 1 画面ずつ下への問いで Space を押し続ける（2 回目の keydown は repeat）→ 結果が画面に残る（問いも状態も変わらない）。keyup の後の Enter で次へ
   //     ⌘ の keyup の欠け: down Meta → down KeyC → up Meta（C の up は来ない）→ 正解・300 ms の後の Enter で次へ
   await part("(5) 小節 7", async () => {
-    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.scroll-page", "br.bookmark"], "ctrl") } });
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.scroll-page"], "ctrl") } });
     await openSc(page);
     await start(page);
     const q0 = await play(page);
@@ -29587,7 +29587,7 @@ console.log("shortcuts (92.1):");
     await waitPlay(page, () => document.getElementById("scPlay")?.dataset.id !== "br.scroll-page");
     const c = await play(page);
     check("92.1 repeat: Space の押し続け（repeat の keydown）では次へ進まず結果が残る・keyup の後の Enter で次へ",
-      q0.id === "br.scroll-page" && a.kind === "ok" && b.id === "br.scroll-page" && b.state === "done" && b.kind === "ok" && c.id === "br.bookmark" && c.state === "waiting", JSON.stringify({ q0: q0.id, a: [a.id, a.kind], b: [b.id, b.state], c: [c.id, c.state] }));
+      q0.id === "br.scroll-page" && a.kind === "ok" && b.id === "br.scroll-page" && b.state === "done" && b.kind === "ok" && c.id !== "br.scroll-page" && c.state === "waiting" && c.count === "2 / 10", JSON.stringify({ q0: q0.id, a: [a.id, a.kind], b: [b.id, b.state], c: [c.id, c.state, c.count] }));
     await closeCtx(page);
     const page2 = await scPage({ storage: { spelldash_shortcut_device: dev("cmd"), spelldash_shortcuts: learnedExcept(["pc.copy", "pc.paste"], "cmd") } });
     await openSc(page2);

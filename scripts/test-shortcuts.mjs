@@ -314,6 +314,14 @@ t("3 判定（反証 5）: Ctrl の「1 語ずつ動かす」で Alt+← は「�
   const c = C.afterWrong(item("pc.copy"), "ctrl", read(ev({ key: "c", code: "KeyC", metaKey: true }), "ctrl"), 3, ITEMS);
   return (a?.own?.id === "br.back" && !a.suggest && a.own.short === "前のページに戻る" && b?.own?.id === "pc.word-left-right" && !b.suggest && c?.suggest === "cmd" && !c.own) || { a: a?.own?.id ?? a, b: b?.own?.id ?? b, c };
 });
+t("3 ほかの項目の組の文: 「それは前のページに戻る組。」（動きの言葉にはそのまま 組）・「それはページを 1 画面ずつ下への組。」（へ で終わる名には の）・50 項目どれも「それは…組。」で、動きの言葉の後に の を挟まない", () => {
+  if (typeof C.ownText !== "function") return "ownText が無い";
+  const a = C.ownText(item("br.back"));
+  const b = C.ownText(item("br.scroll-page"));
+  const c = C.ownText(item("br.find-next"));
+  const bad = ITEMS.map((x) => [x.id, C.ownText(x)]).filter(([, s]) => !/^それは.+組。$/.test(s) || /[うくぐすつぬぶむる]の組。$/.test(s));
+  return (a === "それは前のページに戻る組。" && b === "それはページを 1 画面ずつ下への組。" && c === "それは探した言葉の次の場所への組。" && bad.length === 0) || { a, b, c, bad };
+});
 
 // ===== 4. 止める・日本語入力 =====
 t("4 止める: Tab・Shift+Tab・Esc は止めない／Ctrl・⌘・Alt つき・F キー・Space・矢印・Home・End・PageUp・PageDown・Insert・Backspace は止める・字だけは止めない", () => {
