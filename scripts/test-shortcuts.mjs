@@ -980,6 +980,51 @@ t("12 絵（寄せた絵）: 320 の幅の絵（262px）で、窓に全部入る
   }
   return (n > 250 && minPx >= 11 && minSym >= 8.5 && bad.length === 0) || { n, minPx, minSym, bad: bad.slice(0, 20) };
 });
+// 窓の端（Batch 93 のレビュー）: 札の字の箱の見積もり = 横は中心 ± 字の幅の見積もり × 大きさ ÷ 2、縦は字の線の上 0.75・下 0.25（大きさの割合）。記号は線の箱
+t("12 絵（寄せた絵）: 窓の端で札と記号が切れない（50 組 × 2 × 2 の全部の押す組。前は 198 組の絵のうち 174 で「In」「D」「Ho」・半分の「C」など）・窓に一部だけ入るキーは字も記号も描かず形（kb-cut）だけ残す（窓に掛かるキーは全部描く）・押すキーは寄せた絵の中で 1 か所だけ塗る（⇧ ⌘ 3 の ⇧ を 2 つの窓に金で出さない）", () => {
+  if (artMissing()) return artMissing();
+  const bad = [];
+  let n = 0;
+  let shapes = 0;
+  for (const x of ITEMS) for (const l of LAYOUTS) for (const arr of ARRS) for (const caps of capsSetsOf(x, l)) {
+    const tk = A.tokensOfCaps(caps, l);
+    const keys = A.boardKeys(l, arr);
+    const targets = keys.filter(targetOf(tk));
+    if (!targets.length) continue;
+    n++;
+    const svg = A.focusSvg(l, arr, tk);
+    const id = `${x.id}@${l}/${arr} ${caps.join("+")}`;
+    for (const w of svg.matchAll(/<svg x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)">([\s\S]*?)<\/svg>/g)) {
+      const [x0, y0, ww, wh] = [+w[1], +w[2], +w[3], +w[4]];
+      const inside = (a, b, c, d) => a >= x0 - 0.06 && b <= x0 + ww + 0.06 && c >= y0 - 0.06 && d <= y0 + wh + 0.06;
+      for (const m of w[5].matchAll(/<text x="([-\d.]+)" y="([-\d.]+)" font-size="([\d.]+)">([^<]*)<\/text>/g)) {
+        const [cx, by, fs, label] = [+m[1], +m[2], +m[3], unesc(m[4])];
+        const half = (emOf(label) * fs) / 2;
+        if (!inside(cx - half, cx + half, by - 0.75 * fs, by + 0.25 * fs)) bad.push(`${id}: 札「${label}」が窓の端で切れる`);
+      }
+      for (const m of w[5].matchAll(/<path class="kb-sym" d="[^"]*" transform="translate\(([-\d.]+) ([-\d.]+)\) scale\(([\d.]+)\)"\/>/g)) {
+        const [tx, ty, s] = [+m[1], +m[2], +m[3] * 10];
+        if (!inside(tx, tx + s, ty, ty + s)) bad.push(`${id}: 記号が窓の端で切れる (${tx},${ty})`);
+      }
+      const over = keys.filter((k) => k.x < x0 + ww - 0.06 && k.x + k.w > x0 + 0.06 && k.y < y0 + wh - 0.06 && k.y + k.h > y0 + 0.06).length;
+      const whole = (w[5].match(/<g class="kb-k"/g) ?? []).length;
+      const cut = (w[5].match(/<rect class="kb-cut"/g) ?? []).length;
+      shapes += cut;
+      if (whole + cut !== over) bad.push(`${id}: 窓に掛かるキー ${over} のうち描いたのは ${whole} + 形 ${cut}`);
+    }
+    for (const q of targets) {
+      const c = svg.split(`<g class="kb-k" data-code="${q.code}"`).length - 1;
+      if (c !== 1) bad.push(`${id}: ${q.code} を塗る所が ${c}`);
+    }
+  }
+  return (n > 250 && shapes > 0 && bad.length === 0) || { n, shapes, nbad: bad.length, bad: bad.slice(0, 12) };
+});
+t("12 絵（寄せた絵）: 窓の余白は押すキーの外に 1 キー、入らなければ ½ キー、それでも入らなければ 0（幅は 3 キー以上。仕様 §12。Ctrl のコピー・⌘ の左隣のタブ・⌘ の英語の並びの画面全体の写真）", () => {
+  if (artMissing()) return artMissing();
+  const r = [["ctrl", "jis", ["ctrl", "c"]], ["cmd", "jis", ["alt", "meta", "ArrowLeft"]], ["cmd", "us", ["shift", "meta", "3"]]]
+    .map(([l, arr, tk]) => A.focusWindows(l, arr, tk).map((w) => [w.x0, w.x1, w.y0, w.y1].map((v) => +v.toFixed(1)).join(" ")).join(" / "));
+  return show(r) === show(["0 125 58.4 118.4", "15 85 78.4 118.4 / 220 280 88.4 118.4", "0 80 18.4 98.4 / 42.5 102.5 78.4 118.4"]) || r;
+});
 t("12 画面の位置（F1）: fitDelta は [top, bottom] を見える範囲 [viewTop, viewBottom] へ入れる最小の移動（見えていれば 0・上にはみ出せば上をそろえる・下にはみ出せば下をそろえる・入りきらなければ上をそろえる）", () => {
   if (typeof C.fitDelta !== "function") return "js/shortcutsCore.js に fitDelta が無い";
   const r = [C.fitDelta(100, 200, 65, 892), C.fitDelta(-81, -52, 65, 892), C.fitDelta(700, 950, 65, 892), C.fitDelta(100, 1100, 65, 892), C.fitDelta(-300, 1100, 65, 892), C.fitDelta(65, 892, 65, 892), C.fitDelta(40, 60, 65, 892)];

@@ -31407,6 +31407,46 @@ console.log("shortcuts (92.1):");
       JSON.stringify({ sum0, qb: qb.id, okA, a1, line, okCmd, a2, qa: qa.id, qa2: [qa2.id, qa2.state], err: A.errors[0] ?? B.errors[0] }));
     await closeCtx(A);
   });
+  // (17) タブに戻ったとき（F3 の続き。Batch 93 のレビュー）: 記録と端末の設定が前と同じなら一覧を描き直さない（焦点・開いた詳しい欄・位置はそのまま）。
+  //      知らせの届かなかった書き込み（同じタブの localStorage への書き込みは storage の知らせを出さない）は、戻ったときに読んで描き直し、焦点は同じボタンへ戻す。回の始めにも読み直す
+  await part("(17) 小節 32b", async () => {
+    const A = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: JSON.stringify({ v: 1, it: {} }) } });
+    await openSc(A);
+    await openTile(A, "br.zoom-out");
+    const look = () => A.evaluate(() => {
+      const a = document.activeElement;
+      return { sum: document.getElementById("scSum")?.textContent.replace(/\s+/g, " ").trim(), y: Math.round(scrollY), same: a?.__sc === 1, map: document.querySelector("#scMap .sc-map__group")?.__sc === 1,
+        replay: !!a?.matches?.('#scMap .sc-tile[data-id="br.zoom-out"] .sc-detail__replay'), open: !!document.querySelector('#scMap .sc-tile.is-open[data-id="br.zoom-out"] .sc-detail__kb svg.kb') };
+    });
+    await A.evaluate(() => {
+      const b = document.querySelector('#scMap .sc-tile[data-id="br.zoom-out"] .sc-detail__replay');
+      b.scrollIntoView({ block: "center" });
+      b.focus();
+      b.__sc = 1;
+      document.querySelector("#scMap .sc-map__group").__sc = 1;
+    });
+    const back = async () => {
+      await A.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await A.waitForTimeout(250);
+      return look();
+    };
+    const v0 = await look();
+    const v1 = await back();
+    await A.evaluate(() => localStorage.setItem("spelldash_shortcuts", JSON.stringify({ v: 1, it: { "pc.copy@ctrl": { s: 2, at: 1000, how: "p" } } })));
+    await A.waitForTimeout(250);
+    const v2 = await look();
+    const v3 = await back();
+    check("92.1 Batch 93 タブに戻ったとき（F3。レビュー）: 記録と端末の設定が前と同じなら一覧を描き直さない（焦点は詳しい欄の「動きをもう一度見る」のまま・開いた詳しい欄と位置もそのまま。前は描き直して焦点が画面の外の札のボタンへ移った）",
+      v0.replay && v1.same && v1.replay && v1.map && v1.open && v1.y === v0.y && A.errors.length === 0, JSON.stringify({ v0, v1, err: A.errors[0] }));
+    check("92.1 Batch 93 タブに戻ったとき（F3。レビュー）: 知らせの届かなかった書き込み（ほかのタブでコピーを覚えた）は戻ったときに読んで「覚えた 1」に描き直し、焦点は同じ詳しい欄の「動きをもう一度見る」へ戻す（位置は動かない）",
+      /覚えた 0$/.test(v2.sum) && /^50 組（Ctrl のキーボード） これから 49 あやふや 0 覚えた 1$/.test(v3.sum) && !v3.map && v3.replay && v3.open && v3.y === v0.y && A.errors.length === 0, JSON.stringify({ v2, v3, err: A.errors[0] }));
+    await A.evaluate(() => localStorage.setItem("spelldash_shortcuts", JSON.stringify({ v: 1, it: { "pc.copy@ctrl": { s: 2, at: 1000, how: "p" }, "pc.paste@ctrl": { s: 2, at: 1001, how: "p" } } })));
+    const started = await start(A);
+    const q = await play(A);
+    check("92.1 Batch 93 回の始めにも記録を読み直す（F3。知らせも戻りも無い書き込みで覚えたコピーと貼り付けを出さず、最初の問いは切り取り）",
+      started && q.id === "pc.cut" && A.errors.length === 0, JSON.stringify({ started, q: q.id, err: A.errors[0] }));
+    await closeCtx(A);
+  });
 
   // (18) 読み上げ（F4）と回の終わり（F1・F4）: 読み上げの行に書かれた字を全部記録し、答え 1 回で 1 回だけ、画面の結果の行と同じ材料を言うことを見る
   const SAID = () => {
