@@ -613,7 +613,7 @@ t("9 字: 新しいファイルに見えない字・向きを変える字をそ�
   for (const f of NEW_FILES) {
     const s = ownText(f);
     if (s === null) bad.push(`${f}: 無い`);
-    else if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F ­​-‏‪-‮⁠-⁤⁦-⁩﻿]/.test(s)) bad.push(f);
+    else if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u00a0\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/.test(s)) bad.push(f);
   }
   return bad.length === 0 || bad;
 });
