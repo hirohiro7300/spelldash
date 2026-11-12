@@ -20965,6 +20965,60 @@ console.log("78.4 学習状況とランク:");
         JSON.stringify({ cells: second.cells, notes: second.notes, err: second.errors }));
     }
   }
+
+  // ---- (16) 外したパックの数と、セットを終えた日（Batch 94。DECISION §2 E・F。js/learnedWords.js getDroppedLearnedCount・js/statsView.js renderMonthlySummary）:
+  //      (16a) 語の記録にマイ単語帳の語（my- の id）の 覚えた の記録が 50 語・この端末のマイ単語帳は空（ほかの端末で学んだ語の記録だけが同期で届いた）→
+  //            「ほか N語は外したパックの語」に数えない（行を出さない）。本当に外したパックの語（読み込んでいない分野パックの語。公開の語の外）は今どおり数える。
+  //            前は マイ単語帳の 50 語を「外したパックの語」と言った
+  //      (16b) 今日のセットの記録（spelldash_daily_set の history。終えた日ごとに 1 つ）に今月の 6 日・今日は 3 セット → 今月の行は「セットを終えた日 N日」
+  //            （数えているのは日。前は「セット N回」と言い、1 日に何セットしても 1 回だった）
+  {
+    const manifest16 = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
+    const english16 = manifest16.subjects.find((s) => s.id === "english");
+    const baseIds16 = new Set(english16.categories.filter((c) => !c.pack).flatMap((c) => JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id)));
+    const pubIds16 = new Set(PUB);
+    let packId16 = null;
+    for (const c of english16.categories.filter((c) => c.pack)) {
+      packId16 = JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id).find((id) => !baseIds16.has(id) && !pubIds16.has(id)) ?? null;
+      if (packId16) break;
+    }
+    const rec16 = { playCount: 2, correctCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date(Date.now() - DAY).toISOString(), lastRecallSuccessAt: new Date().toISOString(), history: [{ d: ymdDaysAgo(1), r: "x" }, { d: ymdDaysAgo(0), r: "o" }] };
+    const myRecs = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`my-trial word ${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`, rec16]));
+    const droppedLine = async (stats) => {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-zero": { ...rec16, ls: 1, lsd: dayNo(0) }, ...stats }) } });
+      await page.goto(BASE + "/stats.html#learnedWords", { waitUntil: "networkidle" });
+      await waitUntil(() => page.evaluate(() => /zero/.test(document.getElementById("learnedWordList")?.textContent ?? "")), 6000); // 公開の語の表を読めた（english-zero が一覧に出た）
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(() => ({ dropped: document.querySelector(".learned-dropped")?.textContent.trim() ?? null, count: document.getElementById("learnedWordsCount")?.textContent.trim() ?? null }));
+      r.errors = page.errors.slice(0, 1);
+      await page.close();
+      return r;
+    };
+    const onlyMy = await droppedLine(myRecs);
+    const withPack = await droppedLine({ ...myRecs, ...(packId16 ? { [packId16]: rec16 } : {}) });
+    check("78.4 外したパックの数 (16a)（Batch 94）: 語の記録にマイ単語帳の語（my- の id）の 覚えた の記録が 50 語・この端末のマイ単語帳は空 →「ほか N語は外したパックの語」の行は出さない（マイ単語帳の記録を外したパックの語と言わない）",
+      onlyMy.dropped === null && onlyMy.count === "1語" && onlyMy.errors.length === 0, JSON.stringify(onlyMy));
+    check("78.4 外したパックの数 (16a)（Batch 94）: 本当に外したパックの語（公開の語の外の分野パックの語）は今どおり数える（マイ単語帳の 50 語と並んでも「ほか 1語は外したパックの語」）",
+      !!packId16 && withPack.dropped === "ほか 1語は外したパックの語" && withPack.errors.length === 0, JSON.stringify({ packId16, ...withPack }));
+
+    const firstOfMonth16 = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    const setDays = Array.from({ length: 6 }, (_, i) => ymdDaysAgo(5 - i));
+    const wantDays = setDays.filter((d) => d >= firstOfMonth16).length; // 月の初めの 5 日の間は今月の分だけ（今日は必ず入る）
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { spelldash_placement: "done", spelldash_daily_set: JSON.stringify({ history: setDays, setsToday: 3, setsTodayDate: ymdDaysAgo(0) }), spelldash_growth_log: JSON.stringify(setDays.map((d) => ({ date: d, learned: 0, mastered: 0, active: true, v: 2 }))) } });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+    await page.click("#statsMore > summary");
+    await page.waitForTimeout(400);
+    const month = await page.evaluate(() => ({
+      text: (document.getElementById("monthlySummary")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+      items: [...document.querySelectorAll("#monthlySummary .monthly-line__item")].map((e) => e.textContent.replace(/\s+/g, " ").trim()),
+      hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
+    }));
+    check(`78.4 今月の行 (16b)（Batch 94）: 今日のセットを今月の ${wantDays} 日に終えた（今日は 3 セット）→ 今月の行は「セットを終えた日 ${wantDays}日」（数えているのは日）・「セット N回」の字は無い・横スクロール 0・エラー 0`,
+      wantDays > 0 && month.items.includes(`セットを終えた日 ${wantDays}日`) && !/セット \d+回/.test(month.text) && month.hx <= 0 && page.errors.length === 0,
+      JSON.stringify({ wantDays, ...month, err: page.errors[0] }));
+    await page.close();
+  }
 }
 
 // ===== 20. Batch 48: 2 台目の端末（ログイン・同期・マージ） =====
