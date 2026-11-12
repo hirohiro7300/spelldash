@@ -100,7 +100,7 @@ async function isProUser(token, userId, { fresh = false } = {}) {
   return pro;
 }
 
-// 「Pro なら…」を添えてよいか: 受付中（Stripe の鍵と月額がある）で、アプリからの呼び出しではない（ストアの規約）
+// 「Pro なら…」を添えてよいか: 受付中（_lib/billing.js billingConfigured。Batch 94 から 4 つの変数がそろってから）で、アプリからの呼び出しではない（ストアの規約）
 async function canOfferPro(req) {
   if (APP_ORIGINS.has(req.headers.origin)) return false;
   try {

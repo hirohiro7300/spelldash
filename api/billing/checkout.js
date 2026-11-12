@@ -3,7 +3,8 @@
 // POST /api/billing/checkout  { interval: "month" | "year" }
 //   Authorization: Bearer <Supabase アクセストークン>（ログイン必須）
 // → { url }（Stripe Checkout のページ。クライアントはここへ遷移する）
-//   503 not_configured / 401 login_required / 400 bad_request（interval が不正、年額が未設定）
+//   503 not_configured（受付前: 4 つの変数のどれかが無い。_lib/billing.js billingConfigured。Batch 94 から、データベースに加入の表 subscriptions が無いときも。
+//     そのときは決済の会社に何も頼まない: 手続きを作ると、払っても webhook が書けず Pro にならない）/ 401 login_required / 400 bad_request（interval が不正、年額が未設定）
 //   409 already_subscribed（本人の行がすでに Pro）/ 502 upstream
 //
 // 無料期間（STRIPE_TRIAL_MONTHS／STRIPE_TRIAL_DAYS）は初めての人だけ: 本人の行が無く（webhook は解約後も行を canceled で残す）、
@@ -37,6 +38,8 @@ import {
   expireOtherOpenSessions,
   overBillingRate,
   sendUpstream,
+  logBilling,
+  MissingTableError,
   MESSAGES
 } from "../_lib/billing.js";
 
@@ -61,7 +64,8 @@ export default async function handler(req, res) {
   if (!priceId) return send(res, 400, { error: "bad_request", message: MESSAGES.yearlyUnavailable });
 
   try {
-    const row = await fetchOwnSubscription(bearerToken(req.headers.authorization), user.id);
+    // 加入の表が無いのを「行が無い」にしない（Batch 94。表が無ければ下の catch で 503 not_configured。決済の会社には出ない）
+    const row = await fetchOwnSubscription(bearerToken(req.headers.authorization), user.id, { tableRequired: true });
     if (isProRow(row)) return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
     // webhook がまだ届いていない直後や、別のタブからの二重加入を防ぐ: 既知の顧客なら Stripe 側の生きている契約も見る
     // 行がまだ無い（webhook の前）: Stripe 側を user_id で探す。検索の反映は遅れることがあるので、画面側の「支払い済み」の印と併せて使う
@@ -122,6 +126,10 @@ export default async function handler(req, res) {
     await expireOtherOpenSessions(customerId, typeof session.id === "string" ? session.id : "");
     return send(res, 200, { url: session.url });
   } catch (error) {
+    if (error instanceof MissingTableError) {
+      logBilling("checkout", error); // 種別と表の名前だけ（鍵・メール・顧客の番号は書かない）
+      return send(res, 503, { error: "not_configured", message: MESSAGES.notConfigured });
+    }
     return sendUpstream(res, "checkout", error);
   }
 }

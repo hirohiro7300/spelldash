@@ -9,14 +9,15 @@
 //
 // 環境変数: STRIPE_SECRET_KEY（必須）, STRIPE_PRICE_MONTHLY（必須）, STRIPE_PRICE_YEARLY（任意。年額は出さない決定なので入れない）,
 //   STRIPE_TRIAL_MONTHS（任意・初めての方の無料期間の月。決定は 1）, STRIPE_TRIAL_DAYS（任意・既定 0。月が優先）,
-//   STRIPE_WEBHOOK_SECRET（webhook に必須）, SITE_ORIGIN（既定 https://www.spelldash.net）
+//   STRIPE_WEBHOOK_SECRET（webhook に必須）, SUPABASE_SERVICE_ROLE_KEY（webhook の書き込みに必須）, SITE_ORIGIN（既定 https://www.spelldash.net）。
+//   受付中（billingConfigured）は STRIPE_SECRET_KEY・STRIPE_PRICE_MONTHLY・STRIPE_WEBHOOK_SECRET・SUPABASE_SERVICE_ROLE_KEY の 4 つがそろってから（Batch 94）
 // 検査: scripts/test-billing.mjs（偽の fetch。外へ出ない）
 
 import crypto from "node:crypto";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, send } from "./shared.js";
 import { serviceFetch, serviceRoleKey, isMissingTable, errorCode, UpstreamError, MissingTableError, rejectMethod } from "./admin.js";
 
-export { rejectMethod };
+export { rejectMethod, MissingTableError };
 
 const STRIPE_API = "https://api.stripe.com";
 const DEFAULT_ORIGIN = "https://www.spelldash.net";
@@ -108,9 +109,11 @@ export function siteOrigin() {
   return String(process.env.SITE_ORIGIN || DEFAULT_ORIGIN).trim().replace(/\/+$/, "") || DEFAULT_ORIGIN;
 }
 
-// 「設定済み」= 秘密鍵と月額の Price が両方ある（受付中。価格 /api/billing/config と加入 /api/billing/checkout が見る）
+// 「設定済み」= 月額の Price があり、webhook も動く（秘密鍵・署名の鍵・service role。webhookConfigured）。受付中の判定で、
+// 価格 /api/billing/config・加入 /api/billing/checkout・AI の「Pro なら…」（shared.js canOfferPro）が見る。
+// Batch 94: 前は秘密鍵と月額の Price だけで受付中になり、署名の鍵か service role が無いと、払っても webhook が 503 のままで Pro にならなかった
 export function billingConfigured() {
-  return Boolean(stripeSecretKey()) && Boolean(priceIdFor("month"));
+  return Boolean(priceIdFor("month")) && webhookConfigured();
 }
 
 // 秘密鍵がある（決済の会社に問い合わせられる）。もう加入している人の「解約・お支払いの管理」（portal）と webhook はこれだけを見る:
@@ -353,8 +356,10 @@ async function rowsOf(response, label) {
   return Array.isArray(rows) ? rows : [];
 }
 
-// 本人の行（本人のトークン + anon key。RLS で本人の行しか返らない）。テーブルが無ければ「行なし」
-export async function fetchOwnSubscription(token, userId) {
+// 本人の行（本人のトークン + anon key。RLS で本人の行しか返らない）。テーブルが無ければ「行なし」。
+// tableRequired（加入の口だけ。Batch 94）: テーブルが無いのを「行なし」にせず MissingTableError を投げる（呼び手は 503 not_configured。
+// 手続きを作ると、払っても webhook が書けず Pro にならない）。お支払いの管理と AI の Pro の判定は今のまま「行なし」
+export async function fetchOwnSubscription(token, userId, { tableRequired = false } = {}) {
   if (!token || !isUuid(userId)) return null;
   const response = await fetch(
     `${SUPABASE_URL}/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=${SUBSCRIPTION_COLUMNS}&limit=1`,
@@ -363,7 +368,7 @@ export async function fetchOwnSubscription(token, userId) {
   try {
     return (await rowsOf(response, "subscriptions"))[0] || null;
   } catch (error) {
-    if (error instanceof MissingTableError) return null;
+    if (error instanceof MissingTableError && !tableRequired) return null;
     throw error;
   }
 }
