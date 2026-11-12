@@ -151,9 +151,11 @@ export function jaHash(ja, len = 8) {
 // 新しい語の鍵（足す前に呼ぶ。list = 今の語の並び〔場面カードも〕・key = 英語の鍵・ja = 訳）。
 // その英語の語がまだ無ければ（場面カードの鍵とも重ならなければ）英語の鍵のまま（前と同じ）。あれば <英語の鍵>~<訳の印 8 桁>。
 // 8 桁の鍵がもう使われていれば（別の訳と印が重なった・訳を直した語）16・24・32 桁に長くする。
-// 鍵は 183 字まで（英語 150 字 + ~ + 32 桁）: 同期の key の上限 200 字（docs/SQL_USER_ITEMS.md）にも、メモの鍵 my-<鍵> にも収まる
-export function myIdentityFor(list, key, ja) {
+// 鍵は 183 字まで（英語 150 字 + ~ + 32 桁）: 同期の key の上限 200 字（docs/SQL_USER_ITEMS.md）にも、メモの鍵 my-<鍵> にも収まる。
+// reserved: ほかにも使っている鍵（Batch 94: 消した語の墓標をまだ送っていない鍵。js/myWords.js unsentDeletedKeys）
+export function myIdentityFor(list, key, ja, reserved = null) {
   const taken = new Set((Array.isArray(list) ? list : []).filter(Boolean).map((w) => String(w.en ?? "")));
+  for (const k of reserved ?? []) taken.add(k);
   if (!taken.has(key)) return key;
   for (const len of KEY_HASH_LENGTHS) {
     const id = `${key}${MY_KEY_SEP}${jaHash(ja, len)}`;

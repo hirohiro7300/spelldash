@@ -11,7 +11,7 @@
 // その英語の最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>。前からの語の鍵は変えない）。語は鍵で引く（同期の印・墓標・選んだ印・答えの書き手・消す・訳を直す）。
 // まとめて消す・移すは語の保存を 1 回で書く
 
-import { touchItem, touchItems } from "./userItemsSync.js";
+import { touchItem, touchItems, getItemMeta, getDirtyItems } from "./userItemsSync.js";
 import { isSpellAlt } from "./answers.js";
 import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
@@ -165,8 +165,9 @@ const samePairError = (text, same, books) => `「${text}」は${samePairNote(sam
 // 英語と訳の 1 語を確かめる（js/myWordsCore.js checkEnText・checkJaText）。返り値 { ok, en（鍵）, ja, text（画面の形） } か { ok: false, error }
 // Batch 82: 断るのは同じ英語（大文字小文字は見ない）と同じ訳（js/myWordsCore.js normJa で比べる）の組が全部の単語帳のどこかにあるときだけ。
 // 訳が違えば同じ英語も足せる。鍵は js/myWordsCore.js myIdentityFor（最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>）。
-// 同じ組で断るときは lineError（英語を前に付けない文。まとめて足すが「英語（訳の頭）: 」の後に続ける）も返す
-export function validateEntry(en, ja, existing = getMyWords(), books = getMyBooks(existing)) {
+// 同じ組で断るときは lineError（英語を前に付けない文。まとめて足すが「英語（訳の頭）: 」の後に続ける）も返す。
+// reserved: 新しい語に使わない鍵（足す道は unsentDeletedKeys を 1 回の操作で 1 回だけ読んで渡す）
+export function validateEntry(en, ja, existing = getMyWords(), books = getMyBooks(existing), reserved = null) {
   const e = checkEnText(en);
   if (!e.ok) return e;
   const j = checkJaText(ja);
@@ -174,7 +175,16 @@ export function validateEntry(en, ja, existing = getMyWords(), books = getMyBook
   const same = findSamePair(existing, e.key, j.ja);
   if (same) return { ok: false, error: samePairError(e.text, same, books), lineError: samePairNote(same, books) };
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError(), limit: true }; // limit: 上限で断った（Batch 84: 渡された語を足すとき、上限で足せなかった数を数える）
-  return { ok: true, en: myIdentityFor(existing, e.key, j.ja), ja: j.ja, text: e.text };
+  return { ok: true, en: myIdentityFor(existing, e.key, j.ja, reserved), ja: j.ja, text: e.text };
+}
+
+// 消した語の墓標をまだ送っていない鍵（送る待ちにあり、印が「消した」の my_word。Batch 94・A2b）。その間に同じ英語を足すと、英語の鍵を使い回して
+// 墓標が消え、ほかの端末の前の語が戻る。新しい語はこの鍵を使わない（<英語の鍵>~<訳の印>）。墓標を送った後は今どおり英語の鍵
+function unsentDeletedKeys() {
+  const meta = getItemMeta();
+  const keys = new Set();
+  for (const id of getDirtyItems()) if (id.startsWith("my_word:") && meta[id]?.deleted) keys.add(id.slice("my_word:".length));
+  return keys;
 }
 
 // 語の単語帳の欄（id と名前。名前は一覧を同期しないほかの端末でその単語帳を出すため）
@@ -191,7 +201,7 @@ function targetBook(bookId, books) {
 export function addMyWord(en, ja, bookId) {
   const list = getMyWords();
   const books = getMyBooks(list);
-  const v = validateEntry(en, ja, list, books);
+  const v = validateEntry(en, ja, list, books, unsentDeletedKeys());
   if (!v.ok) return v;
   list.push(entryOf(v, targetBook(bookId, books)));
   save(list);
@@ -263,13 +273,14 @@ export function addMyWordsBulk(text, bookId) {
   const skipped = [];
   const rest = [];
   let limited = 0;
+  const reserved = unsentDeletedKeys();
   for (const entry of parseBulk(text)) {
     if (entry.error) {
       skipped.push(`${lineHead(entry.line)}: ${entry.error}`);
       rest.push(entry.line);
       continue;
     }
-    const v = validateEntry(entry.en, entry.ja, list, books);
+    const v = validateEntry(entry.en, entry.ja, list, books, reserved);
     if (!v.ok) {
       if (v.limit) limited++; // 上限（同じ組・字の決まりの断りは上限より先に見る: validateEntry）
       else skipped.push(`${lineName(entry)}: ${v.lineError ?? v.error}`);
@@ -315,9 +326,10 @@ export function addSharedWords(words, to = {}) {
   const keys = [];
   const skipped = [];
   let limited = 0;
+  const reserved = unsentDeletedKeys();
   for (const w of Array.isArray(words) ? words : []) {
     const entry = { en: String(w?.en ?? ""), ja: String(w?.ja ?? "") };
-    const v = validateEntry(entry.en, entry.ja, work, named);
+    const v = validateEntry(entry.en, entry.ja, work, named, reserved);
     if (!v.ok) {
       if (v.limit) limited++;
       else skipped.push(`${lineName(entry)}: ${v.lineError ?? v.error}`);
