@@ -138,6 +138,8 @@ export function boardKeys(layout, arr = "jis") {
 
 // 字の幅の見積もり（em）とキーに収める字の大きさ
 const emW = (s) => [...String(s)].reduce((a, ch) => a + (/[/il1.,;:'|!\[\]]/.test(ch) ? 0.32 : /[mwMW]/.test(ch) ? 0.88 : /[A-Z]/.test(ch) ? 0.68 : /[ -~]/.test(ch) ? 0.58 : 1), 0);
+// 2 字以上の札を描く幅（em。よくある書体の幅）。textLength でキーの幅 − 4 までに縛り、書体によらずキーに収める（仕様 §12）
+const inkW = (s) => [...s].reduce((a, ch) => a + (/[ilI;]/.test(ch) ? 0.27 : /[frt/ ]/.test(ch) ? 0.37 : ch === "1" ? 0.5 : /[mwMW]/.test(ch) ? 0.88 : /[A-Z=+]/.test(ch) ? 0.68 : /[ -~]/.test(ch) ? 0.58 : 1), 0);
 const fitFont = (k, want) => Math.min(want, (k.w - 3) / emW(k.label), (k.h - 2) * 0.62);
 function keyHtml(k, font, sym) {
   const cx = k.x + k.w / 2;
@@ -149,7 +151,8 @@ function keyHtml(k, font, sym) {
     face = `<path class="kb-sym" d="${esc(d)}" transform="translate(${(cx - s / 2).toFixed(1)} ${(cy - s / 2).toFixed(1)}) scale(${(s / 10).toFixed(3)})"/>`;
   } else if (k.label) {
     const fs = Math.floor(font(k) * 100) / 100;
-    face = `<text x="${cx.toFixed(1)}" y="${(cy + fs * 0.35).toFixed(1)}" font-size="${fs}">${esc(k.label)}</text>`;
+    const tl = [...k.label].length > 1 ? ` textLength="${Math.min(inkW(k.label) * fs, k.w - 4).toFixed(1)}" lengthAdjust="spacingAndGlyphs"` : "";
+    face = `<text x="${cx.toFixed(1)}" y="${(cy + fs * 0.35).toFixed(1)}" font-size="${fs}"${tl}>${esc(k.label)}</text>`;
   }
   return `<g class="kb-k" data-code="${esc(k.code)}" data-t="${esc(k.t)}"><rect x="${(k.x + 1).toFixed(1)}" y="${(k.y + 1).toFixed(1)}" width="${(k.w - 2).toFixed(1)}" height="${(k.h - 2).toFixed(1)}" rx="2.6"/>${face}</g>`;
 }
