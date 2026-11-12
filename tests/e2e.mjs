@@ -27619,6 +27619,76 @@ console.log("give a word book (84.1):");
       JSON.stringify({ len: bomb.length, text: v.text, writes: writes.slice(0, 4), n: writes.length, fed, ms, err: page.errors[0] }));
     await closeCtx(page);
   }
+
+  // (10) 1 画面目（Batch 94。DECISION §2 B）: 長い訳（70〜90 字の試しの文）の 30 語の単語帳を、スクロール 0 で開く（指の端末 390×844・320×568）。
+  //      並びは 語の数 → 上限の文（#myRecvHint）→ ボタン（#myRecvActs）→ 状況の 1 行（#myRecvStatus）→ 見本の語（#myRecvRows）→ ほか N 語（#myRecvMore）。
+  //      マイ単語帳 80 語の人は「新しい単語帳として足す」と上限の文（上限まであと 20語）が、100 語の人は押せないボタン 2 つ・上限の文・加入画面へのリンク（受付中の Web だけ）が
+  //      1 画面目に入る（下端が画面の高さの中）。焦点は見出し。Tab の次は文の中のリンク（あれば）→ 押せる最初のボタン。横のはみ出し 0。アプリはリンクなしで同じ並び。
+  //      前は見本の 5 語の下にボタンと上限の文があり、長い訳だと画面の外だった（ボタンの上端 864〜1080 付近）
+  {
+    const longJa = (i) => `試しの訳 ${i + 1}。週のはじめに決めた小さな目標を、夕方の短い時間に見直して、次の日の予定に一つだけ書き足すときに使う、少しだけ長めの説明の文の例。`;
+    const tallCode = `j1.${Buffer.from(JSON.stringify({ v: 1, n: "試しの単語帳", w: Array.from({ length: 30 }, (_, i) => [`sample${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10) % 10]}`, longJa(i)]) })).toString("base64url")}`;
+    const firstScreen = (p) => p.evaluate(() => {
+      const box = (id) => {
+        const e = document.getElementById(id);
+        if (!e || e.hidden || e.closest("[hidden]") || e.getClientRects().length === 0) return null;
+        const r = e.getBoundingClientRect();
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom) };
+      };
+      const link = document.querySelector("#myRecvHint a[href]");
+      const lr = link?.getBoundingClientRect();
+      return {
+        h: innerHeight, y: Math.round(scrollY), hx: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        sum: box("myRecvSum"), hint: box("myRecvHint"), acts: box("myRecvActs"), status: box("myRecvStatus"), rows: box("myRecvRows"), more: box("myRecvMore"),
+        add: box("myRecvNew"), here: box("myRecvHere"), addOff: document.getElementById("myRecvNew").disabled, hereOff: document.getElementById("myRecvHere").disabled,
+        link: lr ? { top: Math.round(lr.top), bottom: Math.round(lr.bottom), href: link.getAttribute("href") } : null,
+        hintText: document.getElementById("myRecvHint").textContent, rowsN: document.querySelectorAll("#myRecvRows li").length,
+        active: document.activeElement?.id ?? ""
+      };
+    });
+    const tabTo = async (p) => { await p.keyboard.press("Tab"); return p.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute("href") || document.activeElement?.tagName || ""); };
+    const ordered = (v) => !!(v.sum && v.hint && v.acts && v.status && v.rows && v.more) && v.sum.top < v.hint.top && v.hint.top < v.acts.top && v.acts.top < v.status.top && v.status.top < v.rows.top && v.rows.top < v.more.top;
+    const shots = [];
+    for (const own of [80, 100]) {
+      for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+        const page = await sharePage({ spelldash_my_words: JSON.stringify(FILLER(own)), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) }, { viewport, mobile: true });
+        await page.goto(`${BASE}/mywords.html#share=${tallCode}`, { waitUntil: "networkidle" });
+        await waitRecv(page);
+        await page.waitForFunction(() => document.activeElement?.id === "myRecvTitle", null, { timeout: 3000, polling: 10 }).catch(() => {});
+        const v = await firstScreen(page);
+        const tab1 = await tabTo(page);
+        const tab2 = own === 100 ? await tabTo(page) : null;
+        shots.push({ own, w: viewport.width, ...v, tab1, tab2, err: page.errors[0] ?? null });
+        await closeCtx(page);
+      }
+    }
+    const app = await sharePage({ spelldash_my_words: JSON.stringify(FILLER(100)), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) }, { viewport: { width: 320, height: 568 }, mobile: true, native: true });
+    await app.goto(`${BASE}/mywords.html#share=${tallCode}`, { waitUntil: "networkidle" });
+    await waitRecv(app);
+    await app.waitForFunction(() => document.activeElement?.id === "myRecvTitle", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const appView = await firstScreen(app);
+    const appTab = await tabTo(app);
+    const appErr = app.errors[0] ?? null;
+    await closeCtx(app);
+    const brief = (s) => ({ own: s.own, w: s.w, h: s.h, y: s.y, hx: s.hx, hint: s.hint, acts: s.acts, status: s.status, rows: s.rows, add: s.add, here: s.here, link: s.link, active: s.active, tab1: s.tab1, tab2: s.tab2, err: s.err });
+    check("84.1 1 画面目（Batch 94）: 渡された単語帳の並びは 語の数 → 上限の文 → ボタン → 状況の 1 行 → 見本の語（長い訳の 5 行）→ ほか 25語（390×844・320×568、80 語と 100 語の人）",
+      shots.length === 4 && shots.every((s) => ordered(s) && s.rowsN === 5),
+      JSON.stringify(shots.map((s) => ({ own: s.own, w: s.w, sum: s.sum, hint: s.hint, acts: s.acts, status: s.status, rows: s.rows, more: s.more, rowsN: s.rowsN }))));
+    const at80 = shots.filter((s) => s.own === 80);
+    check("84.1 1 画面目（Batch 94）: マイ単語帳 80 語の人は、スクロール 0 で「新しい単語帳として足す」と上限の文（上限まであと 20語）の下端が画面の中（390×844・320×568）・焦点は見出し・Tab の次は「新しい単語帳として足す」・横のはみ出し 0・エラー 0",
+      at80.length === 2 && at80.every((s) => s.y === 0 && s.hx <= 0 && !!s.add && !s.addOff && s.add.bottom <= s.h && !!s.hint && s.hint.bottom <= s.h && /上限まであと 20語。/.test(s.hintText) && !s.link
+        && s.active === "myRecvTitle" && s.tab1 === "myRecvNew" && !s.err),
+      JSON.stringify(at80.map(brief)));
+    const at100 = shots.filter((s) => s.own === 100);
+    check("84.1 1 画面目（Batch 94）: 100 語の人は、スクロール 0 で押せないボタン 2 つ・上限の文・加入画面へのリンク（受付中の Web）の下端が画面の中（390×844・320×568）・焦点は見出し・Tab はリンク → 「やめる」・横のはみ出し 0・エラー 0",
+      at100.length === 2 && at100.every((s) => s.y === 0 && s.hx <= 0 && !!s.add && s.addOff && s.add.bottom <= s.h && !!s.here && s.hereOff && s.here.bottom <= s.h && !!s.hint && s.hint.bottom <= s.h
+        && /無料で追加できるのは100語まで（Pro なら1,000語）。/.test(s.hintText) && s.link?.href === "./pro.html" && s.link.bottom <= s.h && s.active === "myRecvTitle" && s.tab1 === "./pro.html" && s.tab2 === "myRecvCancel" && !s.err),
+      JSON.stringify(at100.map(brief)));
+    check("84.1 1 画面目（Batch 94・アプリ）: 100 語の人（320×568）は上限の文にリンク・Pro の話・値段なし・押せないボタンと上限の文は画面の中・同じ並び・Tab の次は「やめる」・エラー 0",
+      ordered(appView) && appView.y === 0 && appView.hx <= 0 && !appView.link && !/Pro|¥|円/.test(appView.hintText) && /無料で追加できるのは100語まで。/.test(appView.hintText)
+        && !!appView.add && appView.addOff && appView.add.bottom <= appView.h && !!appView.hint && appView.hint.bottom <= appView.h && appView.active === "myRecvTitle" && appTab === "myRecvCancel" && !appErr,
+      JSON.stringify({ ...brief({ ...appView, own: 100, w: 320, tab1: appTab, tab2: null, err: appErr }), hintText: appView.hintText }));
+  }
   check("84.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
