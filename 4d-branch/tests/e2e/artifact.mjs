@@ -463,6 +463,14 @@ await check("デモのまま同期していた端末で開き直すと、同期�
   await D2.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
   await D2.page.waitForTimeout(2500);
   assert((await has(D2.page)) === 1, `入口が ${await has(D2.page)} つ`);
+  // 初めての同期で来た未来の道筋は、全体（4%）ではなく今日から読める大きさで見せる
+  const c = await D2.page.evaluate(() => {
+    const v = window.__fourD.app.view;
+    const r = Object.values(window.__fourD.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+    const s = v.camera.toScreen(r.x, r.y);
+    return { zoom: v.camera.zoom, x: s.x, y: s.y, w: v.width, h: v.height };
+  });
+  assert(c.zoom >= 0.3 && c.x > 0 && c.x < c.w && c.y > 0 && c.y < c.h, `初めての同期で来た未来の道筋が今日から見えない ${JSON.stringify(c)}`);
   await D2.ctx.close();
   await D.ctx.close();
 });
@@ -691,17 +699,55 @@ await check("開いたままの未来の道筋に別の端末の書き足しが�
   const cam = () =>
     X.page.evaluate(() => {
       const v = window.__fourD.app.view;
-      const root = Object.values(window.__fourD.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
-      const p = v.camera.toScreen(root.x, root.y);
-      return { zoom: v.camera.zoom, x: p.x, y: p.y, w: v.width, h: v.height };
+      return { zoom: v.camera.zoom, cx: v.camera.x, cy: v.camera.y };
     });
+  // 今日から右へ読み進めた（ホイールで横に動かした）ところで、別の端末の書き足しが届く
+  const b = await X.page.locator(".graph-canvas").boundingBox();
+  await X.page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  for (let i = 0; i < 6; i++) {
+    await X.page.mouse.wheel(400, 0);
+    await X.page.waitForTimeout(80);
+  }
+  await X.page.waitForTimeout(600);
   const before = await cam();
+  // 見ている地図はまだ手を付けていない（譲る側の読み込みを通る）
+  assert(await X.page.evaluate(() => window.__fourD.store.doc.meta.freshFutureAt === window.__fourD.store.doc.updatedAt), "見ている地図に手を付けた（確かめの前提）");
   await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
   await Y.page.evaluate(() => window.__fourD.app.cloud.flush());
   await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 20000 });
   await X.page.waitForTimeout(800);
   const after = await cam();
-  assert(after.zoom >= 0.3 && after.x > 0 && after.x < after.w && after.y > 0 && after.y < after.h, `見ている場所が変わった ${JSON.stringify({ before, after })}`);
+  assert(Math.abs(after.cx - before.cx) < 1 && Math.abs(after.cy - before.cy) < 1 && after.zoom === before.zoom, `見ている場所が変わった ${JSON.stringify({ before, after })}`);
+  await X.ctx.close();
+  await Y.ctx.close();
+});
+
+await check("開いたばかりの未来の道筋が、別の端末で自分の内容の横に未来の道筋を足した内容に譲ったら、その今日に寄る", async () => {
+  const uid = "u_movedmap";
+  const { X, Y } = await xyDemo(uid, { autoFuture: true, write: false });
+  await X.page.reload({ waitUntil: "load" });
+  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 15000 });
+  // X は送る前につながらなくなる（Y が先に送る）
+  await X.page.evaluate(() => (window.__dbDownUntil = Date.now() + 20000));
+  // Y は自分の目標を書き、未来の道筋を追加で読み込んで送る（今日は Y の内容の横に来る）
+  await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
+  await Y.page.locator(".zoom-ctl .future-btn").click();
+  const dlg = Y.page.getByRole("dialog", { name: "未来の道筋を読み込む" });
+  await dlg.waitFor();
+  await dlg.getByRole("button", { name: "読み込む" }).click();
+  await Y.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
+  await Y.page.evaluate(() => window.__fourD.app.cloud.flush());
+  await Y.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  // X がつながると Y の内容に譲る。今日の位置が変わったので、そこへ寄る（前の見ている場所のままにしない）
+  await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 50000 });
+  await X.page.waitForTimeout(800);
+  const c = await X.page.evaluate(() => {
+    const v = window.__fourD.app.view;
+    const r = Object.values(window.__fourD.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+    const p = v.camera.toScreen(r.x, r.y);
+    return { zoom: v.camera.zoom, x: p.x, y: p.y, w: v.width, h: v.height };
+  });
+  assert(c.zoom >= 0.3 && c.x > 0 && c.x < c.w && c.y > 0 && c.y < c.h, `譲った後に今日が見えない ${JSON.stringify(c)}`);
   await X.ctx.close();
   await Y.ctx.close();
 });
@@ -826,6 +872,23 @@ await check("同期が止まっている・機能の返事が遅れて使えな�
     await P.page.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor({ timeout: 5000 });
     assert(Date.now() - t0 < 5000, `確認が出るまで ${Date.now() - t0}ms`);
     assert((await P.page.locator(".toast", { hasText: "同期が止まっている" }).count()) === 1, "止まっている訳を知らせない");
+    await P.ctx.close();
+  }
+  // 1b) 背の低い画面（横向きのスマホ）でも、止まっている訳のお知らせが確認の下の端のボタンを隠さない（押したとおりに閉じる）
+  {
+    dbStore.set("data/users/u_paused_low/fourd", JSON.stringify({ format: 2, gen: "g_new_low", parts: 1, hash: "h" }));
+    const P = await newDevice({ uid: "u_paused_low" }, { width: 568, height: 320 });
+    await P.page.getByRole("button", { name: "すぐに使う" }).click();
+    await P.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "paused", null, { timeout: 15000 });
+    await P.page.locator(".zoom-ctl .future-btn").click();
+    const dlg = P.page.getByRole("dialog", { name: "未来の道筋を読み込む" });
+    await dlg.waitFor({ timeout: 5000 });
+    await P.page.locator(".toast", { hasText: "同期が止まっている" }).waitFor();
+    // locator.click() は押せるようになるまで（お知らせが消えるまで）待ってしまう: 見えているボタンの真ん中をそのまま押す
+    const bb = await dlg.getByRole("button", { name: "キャンセル" }).boundingBox();
+    await P.page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
+    await dlg.waitFor({ state: "hidden", timeout: 2000 }).catch(() => undefined);
+    assert(!(await dlg.isVisible()), "背の低い画面で、お知らせが確認の「キャンセル」を隠した（押しても閉じない）");
     await P.ctx.close();
   }
   // 2) 機能の返事が時間切れの後に返ってきて、使えなかった（サインインしていない）: もう待つ物は無いので、押せばすぐ開く

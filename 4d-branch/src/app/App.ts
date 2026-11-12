@@ -1261,8 +1261,12 @@ export class App implements AppContext {
         // 手を付けていない中身（一度に開いた未来の道筋・それを元に戻した地図）からの読み込み（重なって譲った・送った後に別の端末が書いた）は、
         // 「元に戻す」の対象にしない（戻すと、押せばまた開ける中身で、別の端末で書いた内容をアカウントから押し流す。中身はバックアップに残る）
         const yielding = how === "remote" && isFreshFuture(this.store.doc);
-        // 入れ替える前に未来の道筋を見ていたか（見ていた地図がまだあるなら、見ている場所はそのままにする）
-        const hadMap = hasFutureRoot(this.store.doc);
+        // 入れ替える前に見ていた未来の道筋の今日の位置（同じ所にまだあるなら、見ている場所はそのままにする）
+        const rootAt = (d: DocData) => {
+          const r = Object.values(d.nodes).find((n) => n.meta?.forecastRoot === true);
+          return r ? { x: r.x, y: r.y } : null;
+        };
+        const hadRoot = rootAt(this.store.doc);
         if (how === "remote" && !yielding) {
           this.adopting = true;
           try {
@@ -1284,9 +1288,12 @@ export class App implements AppContext {
         await this.persistence.flush().catch(() => undefined);
         this.ui.pruneSelection((kind, id) => (kind === "node" ? !!this.store.doc.nodes[id] : !!this.store.doc.edges[id]));
         // 入れ替えた中身に寄る（ふつうの読み込みは見ている場所のまま）。未来の道筋は全体を収めると 4% で読めないので今日から。
-        // 見ていた未来の道筋に別の端末の書き足しが届いただけなら、見ている場所はそのまま
-        const nowMap = hasFutureRoot(this.store.doc);
-        if (how !== "remote" || (yielding && !(nowMap && hadMap))) {
+        // 見ていた未来の道筋が同じ所にまだある（別の端末の書き足しが届いた・同じ地図を開いた端末に譲った）なら、見ている場所はそのまま。
+        // 別の内容の横に足された地図など、今日の位置が変わったなら今日に寄る
+        const nowRoot = rootAt(this.store.doc);
+        const nowMap = !!nowRoot;
+        const sameMap = !!nowRoot && !!hadRoot && nowRoot.x === hadRoot.x && nowRoot.y === hadRoot.y;
+        if (how !== "remote" || (yielding && !sameMap)) {
           this.view.fit(nowMap ? nearFutureRoot(this.store.doc) : undefined, { animate: false, minZoom: nowMap ? FUTURE_MIN_ZOOM : undefined });
         }
         void this.refreshLastBackup();
