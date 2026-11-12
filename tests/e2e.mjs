@@ -56,7 +56,9 @@ function findChromium() {
 // maxRows（Batch 87: 1 回の select で返す行の上限。本物の API の Max Rows と同じく、並べて range で切り出した後に切る。既定は上限なし）、
 // failSelectAt { 表名: 行の番号 }（Batch 87: range がその行から始まる select だけを失敗させる。2 ページ目の読みだけの失敗）、
 // failWrite { 表名: エラーの文 }（Batch 94: その表の upsert・insert を失敗させる。failSelect と組で「表がまだ無い」間の読みと送り。外すと表ができた形）。
-// select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）
+// select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）。
+// 書き（Batch 95。本物の表の窓口と同じ形）: upsert(行, { ignoreDuplicates: true }) は同じ主キーの行があれば書かない。後に select(列) が続けば
+// 書いた行だけを data に返す（続かなければ null）。オプションの無い upsert は前のまま（上書き）。記録の ignore はその選択肢を渡したか、wrote は書いた行の数
 const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
 const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
 // select の方針が無い表（Batch 86。docs/SQL_FUNNEL.md・docs/SQL_CLIENT_GATE.md の記録）: 衝突の先を名指す書き込み（upsert・on_conflict）は行の権限で断る（42501）。
@@ -80,12 +82,12 @@ function createCloud(tables = {}, config = {}) {
 function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
   const cloud = clouds.get(cloudKey);
   if (!cloud) return { data: null, error: { message: `unknown cloud ${cloudKey}` }, count: null };
-  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false, range = null;
+  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false, range = null, ignore = false, returning = false;
   const filters = [];
   const orders = []; // [列, 昇順か]（Batch 87）
   for (const [m, args] of ops) {
-    if (m === "select") { kind ??= "select"; cols = args[0] ?? "*"; if (args[1]?.count) countMode = args[1].count; if (args[1]?.head) head = true; }
-    else if (m === "upsert" || m === "insert" || m === "update") { kind = m; payload = args[0]; }
+    if (m === "select") { if (kind === "upsert" || kind === "insert") returning = true; kind ??= "select"; cols = args[0] ?? "*"; if (args[1]?.count) countMode = args[1].count; if (args[1]?.head) head = true; }
+    else if (m === "upsert" || m === "insert" || m === "update") { kind = m; payload = args[0]; ignore = m === "upsert" && !!args[1]?.ignoreDuplicates; }
     else if (m === "delete") kind = "delete";
     else if (m === "eq") filters.push((r) => r[args[0]] === args[1]);
     else if (m === "gte") filters.push((r) => r[args[0]] >= args[1]);
@@ -137,13 +139,19 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
       entry.error = "duplicate";
       return { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" }, count: null };
     }
+    const wrote = [];
     for (const r of rows) {
       const list = cloud.rows(table);
       const i = pk ? list.findIndex((x) => pk.every((k) => x[k] === r[k])) : -1;
+      if (i >= 0 && ignore) continue;
       if (i >= 0) list[i] = { ...list[i], ...r };
       else list.push({ ...r });
+      wrote.push(r);
     }
-    return { data: null, error: null, count: null };
+    if (ignore) { entry.ignore = true; entry.wrote = wrote.length; }
+    const names = cols === "*" ? null : cols.split(",").map((c) => c.trim());
+    const data = returning ? wrote.map((r) => (names ? Object.fromEntries(names.map((k) => [k, r[k]])) : { ...r })) : null;
+    return { data: JSON.parse(JSON.stringify(data)), error: null, count: null };
   }
   if (kind === "update") {
     for (const r of cloud.rows(table)) if (r.user_id === userId && filters.every((f) => f(r))) { Object.assign(r, payload); entry.n++; }

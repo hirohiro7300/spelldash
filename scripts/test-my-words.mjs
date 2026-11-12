@@ -1315,10 +1315,14 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const copy = (v) => JSON.parse(JSON.stringify(v));
   const answer = (make) => Promise.resolve(table ? make() : { data: null, error: { code: "42P01", message: 'relation "public.user_items" does not exist' }, status: 404 });
   const failed = () => (failReads > 0 && table ? (failReads--, true) : false);
-  // 雲は本物の表と同じく、消した印（墓標）の中身を空にして入れる（docs/SQL_USER_ITEMS.md §4 の見張り）
-  const client = { from() { const q = { select: () => q, order: () => q, eq: () => q, in: () => q,
+  // 雲は本物の表と同じく、消した印（墓標）の中身を空にして入れる（docs/SQL_USER_ITEMS.md §4 の見張り）。
+  // 本物の表の窓口と同じ形にも答える（Batch 95）: 鍵の並びの読み（.eq("kind", …).in("key", […])）は、その種類と鍵の行。
+  // upsert(行, { ignoreDuplicates: true }) は同じ主キーの行があれば書かない。後に .select(列) が続けば書いた行だけを data に返す（続かなければ null）。
+  // オプションの無い upsert は前のまま（上書き）。sent は雲が受け取った行（書かなかった行も入る）
+  const client = { from() { const f = {}; const q = { select: () => q, order: () => q, eq: (c, v) => ((f[c] = v), q), in: (c, vs) => ((f[`in:${c}`] = vs), q),
+    then: (ok, bad) => (failed() ? Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 }) : answer(() => { const want = new Set(f["in:key"] ?? []); return { data: [...sky.values()].filter((r) => r.kind === f.kind && want.has(r.key)).map(copy), error: null, status: 200 }; })).then(ok, bad),
     range: (a, b) => (failed() ? Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 }) : answer(() => { const all = [...sky.values()].map(copy); return { data: all.slice(a, b + 1), count: all.length, error: null, status: 200 }; })),
-    upsert: (rows) => answer(() => { for (const r of rows) { sent.push(copy(r)); sky.set(`${r.kind}:${r.key}`, r.deleted ? { ...copy(r), payload: {} } : copy(r)); } return { error: null, status: 201 }; }) }; return q; } };
+    upsert: (rows, opts) => { let cols = null; const w = { select: (c) => ((cols = c ?? "*"), w), then: (ok, bad) => answer(() => { const wrote = []; for (const r of rows) { const id = `${r.kind}:${r.key}`; sent.push(copy(r)); if (opts?.ignoreDuplicates && sky.has(id)) continue; sky.set(id, r.deleted ? { ...copy(r), payload: {} } : copy(r)); wrote.push({ kind: r.kind, key: r.key }); } return { data: cols ? wrote : null, error: null, status: 201 }; }).then(ok, bad) }; return w; } }; return q; } };
   const pull = (name) => (use(name), U.pullUserItems(client, "u1", { now: NOW }));
   const push = (name) => (use(name), U.pushUserItems(client, "u1", { now: NOW }));
   const sync = async (...names) => { for (const name of names) { await pull(name); await push(name); } }; // ページを開いた同期と同じ順（取り込み → 送る）

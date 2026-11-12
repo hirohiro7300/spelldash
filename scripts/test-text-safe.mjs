@@ -245,6 +245,8 @@ await t("ほかの端末から届いた行（mergeCloudItems）: 見えない字
 // key が 200 字より長い行も要求ごと断る（400・23514: 表の check）。断るときは 1 行も書かない（要求は 1 つの文）。respond で答えを差し替える。
 // 読み（Batch 87）: order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う。maxRows: 1 回の読みで返す行の上限（本物の Max Rows）。
 // noCount: count を返さない。readAt(from): その行から始まる読みの答えを差し替える（失敗・行が消えた形）。行はクラウドの表の並び（rows の入れた順）
+// 書き（Batch 95。本物の表の窓口と同じ形）: upsert(行, { ignoreDuplicates: true }) は同じ主キーの行があれば書かない。後に .select(列) が続けば
+// 書いた行だけを data に返す（続かなければ null）。オプションの無い upsert は前のまま（上書き）。要求の記録の ignore はその選択肢を渡したか
 function fakeCloud(opts = {}) {
   const rows = new Map();
   const calls = [];
@@ -270,7 +272,9 @@ function fakeCloud(opts = {}) {
     const up = ops.find((o) => o[0] === "upsert");
     if (up) {
       const list = Array.isArray(up[1]) ? up[1] : [up[1]];
-      const call = { op: "upsert", n: list.length, kinds: [...new Set(list.map((r) => r.kind))], keys: list.map((r) => r.key) };
+      const ignore = !!up[2]?.ignoreDuplicates;
+      const returning = ops.indexOf(up) < ops.findIndex((o) => o[0] === "select");
+      const call = { op: "upsert", n: list.length, kinds: [...new Set(list.map((r) => r.kind))], keys: list.map((r) => r.key), ...(ignore ? { ignore } : {}) };
       calls.push(call);
       if (opts.respond) {
         const r = opts.respond(list);
@@ -288,9 +292,14 @@ function fakeCloud(opts = {}) {
         call.ok = false;
         return { data: null, error: { code, message: "bad row" }, status: 400 };
       }
-      for (const r of list) rows.set(`${r.kind}:${r.key}`, JSON.parse(JSON.stringify(r)));
+      const wrote = [];
+      for (const r of list) {
+        if (ignore && rows.has(`${r.kind}:${r.key}`)) continue;
+        rows.set(`${r.kind}:${r.key}`, JSON.parse(JSON.stringify(r)));
+        wrote.push({ kind: r.kind, key: r.key });
+      }
       call.ok = true;
-      return { data: null, error: null, status: 201 };
+      return { data: returning ? wrote : null, error: null, status: 201 };
     }
     const range = ops.find((o) => o[0] === "range");
     const call = { op: "select", from: range ? range[1] : null, n: 0 };
@@ -327,7 +336,7 @@ function fakeCloud(opts = {}) {
     from() {
       const ops = [];
       const b = {
-        upsert(x) { ops.push(["upsert", x]); return b; },
+        upsert(x, o) { ops.push(["upsert", x, o]); return b; },
         select(c, o) { ops.push(["select", c, o]); return b; },
         eq(k, v) { ops.push(["eq", k, v]); return b; },
         in(k, v) { ops.push(["in", k, v]); return b; },
