@@ -14,7 +14,8 @@ export const SOURCES = Object.freeze({
 const P = (show, accept, src, more = {}) => ({ show, how: "press", accept, src, ...more });
 const G = (show, accept, src, more = {}) => ({ show, how: "guard", accept, src, ...more });
 const C = (show, why, src, more = {}) => ({ show, how: "choice", why, src, ...more });
-const item = (id, g, p, ja, keys, scene, say) => ({ id, g, p, ja, short: ja.replace(/（[^）]*）/g, "").trim(), keys, scene, say });
+// 両向きの組は向きのない short を渡す（仕様 §7）
+const item = (id, g, p, ja, keys, scene, say, short = ja.replace(/（[^）]*）/g, "").trim()) => ({ id, g, p, ja, short, keys, scene, say });
 
 const MEET = "会議は10時から";
 const EN = "see you soon";
@@ -233,7 +234,7 @@ const ITEMS = [
     ctrl: P([["Ctrl", "G"], ["Ctrl", "Shift", "G"]], ["ctrl+g", "ctrl+shift+g"], ["web-g", "web-e"]),
     cmd: P([["⌘", "G"], ["⇧", "⌘", "G"]], ["meta+g", "shift+meta+g"], ["web-g", "os-cmd"])
   }, { k: "web", a: { tabs: ["予定"], find: "会議", hit: 1 }, b: { tabs: ["予定"], find: "会議", hit: 2 } },
-  ["1 つ目の「会議」が光っている", "2 つ目の「会議」へ移った"]),
+  ["1 つ目の「会議」が光っている", "2 つ目の「会議」へ移った"], "探した言葉の場所を順に移る"),
   item("br.zoom-in", "br", "A", "ページを大きく表示する", {
     ctrl: P([["Ctrl", "+"]], ["ctrl+?shift+plus"], ["web-g", "web-e"], { note: `日本語の並びでは ; + のキー。テンキーの + でもよい。${ZOOM_NOTE}` }),
     cmd: P([["⌘", "+"]], ["meta+?shift+plus"], ["web-g", "web-s"], { note: `日本語の並びでは ; + のキー。${ZOOM_NOTE}` })
@@ -273,7 +274,7 @@ const ITEMS = [
     ctrl: P([["Space"], ["Shift", "Space"]], ["Space", "shift+Space"], ["web-g", "web-e", "os-ctrl"], { also: ["PageDown", "PageUp"], alt: [["PgDn"], ["PgUp"]], note: "ほかに PgDn・PgUp でも同じ。" }),
     cmd: P([["Space"], ["⇧", "Space"]], ["Space", "shift+Space"], ["web-g", "web-s", "os-cmd"], { also: ["PageDown", "PageUp"], alt: [["Fn", "↓"], ["Fn", "↑"]], note: "ほかに Fn + ↓・Fn + ↑ でも同じ。" })
   }, { k: "web", a: { tabs: ["予定"], scroll: 0 }, b: { tabs: ["予定"], scroll: 1 } },
-  ["ページの頭を見ている", "1 画面ぶん下へ進んだ"])
+  ["ページの頭を見ている", "1 画面ぶん下へ進んだ"], "ページを 1 画面ずつ動かす")
 ];
 
 function deepFreeze(o) {

@@ -741,7 +741,8 @@ async function runAll() {
     // storage イベントを聞く所（見張りが元の名前に作り直して届ける）
     const listeners = Object.entries(src).filter(([, t]) => /addEventListener\(\s*["']storage["']|\bonstorage\b/.test(strip(t))).map(([f]) => f).sort();
     // js/areaSwitch.js は切り替えの画面（見張りは包まない）で、「移す？」をたずねている間に印・index・セッションの生の鍵の知らせだけを見る（人の記録の鍵は見ない）
-    eq("U1 storage イベントを聞く所は一覧のとおり（見張りが元の名前の知らせを届ける・切り替えの画面は印とセッションの生の鍵だけ）", listeners, ["js/accountEmblem.js", "js/areaGuard.js", "js/areaSwitch.js", "js/masteryMeta.js", "js/memoryWords.js", "js/statsView.js", "js/storage.js"]);
+    // Batch 93: ショートカットキーの練習のページも、ほかのタブの記録とキーボードの選びを元の名前（spelldash_shortcuts・spelldash_shortcut_device と null）で聞く
+    eq("U1 storage イベントを聞く所は一覧のとおり（見張りが元の名前の知らせを届ける・切り替えの画面は印とセッションの生の鍵だけ・ショートカットキーの練習のページは Batch 93 から）", listeners, ["js/accountEmblem.js", "js/areaGuard.js", "js/areaSwitch.js", "js/masteryMeta.js", "js/memoryWords.js", "js/shortcutsPage.js", "js/statsView.js", "js/storage.js"]);
     ok("U1 js/areaSwitch.js の storage イベントの受け手は、印・index・切り替えと移行の印・「移す？」の決まった答え・認証の新しい鍵だけを見る", /const watched = new Set\(\[K\.AREA_KEY, K\.INDEX_KEY, K\.SWITCH_KEY, K\.MIGRATING_KEY, K\.MIGRATED_KEY, K\.DECISION_KEY, K\.AUTH_KEY, K\.AUTH_KEY \+ "-user"\]\)/.test(src["js/areaSwitch.js"] ?? "") && (strip(src["js/areaSwitch.js"] ?? "").match(/addEventListener\(\s*["']storage["']/g) ?? []).length === 1);
     // 全ページの頭: 見張りの 1 行が最初の script（色の 1 行より前）
     // 戻り先は URL の # の後ろ（#back=）に置く。? の後ろに置くと、ログインのリンクの戻り（#access_token=…）がサーバーへ送られ、Service Worker の保存の鍵にも残る

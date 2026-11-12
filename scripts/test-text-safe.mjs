@@ -955,6 +955,14 @@ await t("6.13 取り込み: クラウドの方が新しくて取り込んだ語�
   const leaks = outs.map((h, i) => (String(h).includes("<img") || /onerror="/.test(h) || !String(h).includes("&lt;img") ? i : -1)).filter((i) => i >= 0);
   ok("ショートカットキー（レビュー）: 一覧の札・詳しい欄の注・回の終わりの行（short）・結果の行（押したキー・選んだ組・ほかの項目の組の文）・近い組の文も純な関数で組み、字は esc して出す",
     missing.length === 0 && outs.length === 6 && leaks.length === 0, show({ missing, leaks }));
+  // Batch 93: 寄せた絵（focusSvg）と枠つきの全体の絵（keyboardSvg の frames）も組み立て。出す字は表の札だけで、渡された字（キーボードの名前・並び・押すキーの字）をタグにしない
+  const hasFocus = typeof A?.focusSvg === "function" && typeof A?.focusWindows === "function";
+  const f1 = hasFocus ? A.focusSvg("ctrl", "jis", ["ctrl", "c", bad]) : null;
+  const f2 = hasFocus ? A.focusSvg(bad, bad, [bad]) : null;
+  const k2 = hasFocus ? A.keyboardSvg(bad, bad, { frames: A.focusWindows("ctrl", "jis", ["ctrl", "c"]) }) : null;
+  ok("ショートカットキー（Batch 93）: 寄せた絵（focusSvg）と枠つきの全体の絵（keyboardSvg の frames）は表の札だけを出す（渡されたキーボードの名前・並び・押すキーの字をタグにしない）・押すキーがあれば窓と枠が出る",
+    hasFocus && typeof f1 === "string" && f1.includes('class="kb kb-focus"') && f1.includes('class="kb-win"') && f2 === "" && typeof k2 === "string" && k2.includes('class="kb-win"')
+      && ![f1, k2].some((h) => h.includes("<img") || /onerror="/.test(h)), show({ hasFocus, f1: String(f1).slice(0, 90), f2, k2: String(k2).slice(-120) }));
 }
 
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);
