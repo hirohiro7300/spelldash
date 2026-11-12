@@ -54,7 +54,8 @@ function findChromium() {
 // POST /__cloud/query に投げる。id ごとに表・設定・呼び出しの記録を持つので、検査どうしが混ざらない。
 // 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）、
 // maxRows（Batch 87: 1 回の select で返す行の上限。本物の API の Max Rows と同じく、並べて range で切り出した後に切る。既定は上限なし）、
-// failSelectAt { 表名: 行の番号 }（Batch 87: range がその行から始まる select だけを失敗させる。2 ページ目の読みだけの失敗）。
+// failSelectAt { 表名: 行の番号 }（Batch 87: range がその行から始まる select だけを失敗させる。2 ページ目の読みだけの失敗）、
+// failWrite { 表名: エラーの文 }（Batch 94: その表の upsert・insert を失敗させる。failSelect と組で「表がまだ無い」間の読みと送り。外すと表ができた形）。
 // select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）
 const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
 const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
@@ -69,7 +70,7 @@ function createCloud(tables = {}, config = {}) {
     id,
     tables: Object.fromEntries(Object.entries(tables).map(([t, rows]) => [t, rows.map((r) => JSON.parse(JSON.stringify(r)))])),
     log: [],
-    config: { failSelect: {}, delayMs: 0, delayTables: ["word_progress", "user_progress"], ...config },
+    config: { failSelect: {}, failWrite: {}, delayMs: 0, delayTables: ["word_progress", "user_progress"], ...config },
     rows(t) { return (this.tables[t] ??= []); },
     writes(table, from = 0) { return this.log.slice(from).filter((e) => (!table || e.table === table) && e.kind !== "select" && !e.error); }
   };
@@ -123,6 +124,8 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
     return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? total : null };
   }
   if (kind === "upsert" || kind === "insert") {
+    const failWrite = cloud.config.failWrite?.[table];
+    if (failWrite) { entry.error = failWrite; return { data: null, error: { message: failWrite, code: "" }, count: null }; }
     const rows = Array.isArray(payload) ? payload : [payload];
     entry.n = rows.length;
     entry.kinds = rows.reduce((o, r) => ((o[r?.kind ?? ""] = (o[r?.kind ?? ""] ?? 0) + 1), o), {}); // 種類ごとの行の数（Batch 87: user_items の my_word と day を分けて数える）
@@ -15169,15 +15172,16 @@ console.log("domain packs:");
     const r = m.mergeCloudItems([
       { kind: "my_word", key: "negotiate", payload: { en: "negotiate", ja: "交渉する", addedAt: future }, deleted: false, updated_at: future }, // クラウドだけ → 追加
       { kind: "my_word", key: "invoice", payload: {}, deleted: true, updated_at: future }, // 新しい墓標 → 削除
-      { kind: "my_word", key: "deadline", payload: { en: "deadline", ja: "古い訳", addedAt: past }, deleted: false, updated_at: past }, // 古いクラウド → ローカルが勝つ
+      { kind: "my_word", key: "deadline", payload: { en: "deadline", ja: "古い訳", addedAt: past }, deleted: false, updated_at: past }, // 同じ鍵の古い違う訳（Batch 94: 送る前の端末の語は deadline~<訳の印> へ移り、両方残る）
       { kind: "note", key: "english-negotiate", payload: { text: "nego＝交渉" }, deleted: false, updated_at: future },
       { kind: "pack", key: "accounting", payload: { enabled: true }, deleted: false, updated_at: future }
     ], "u1");
     const words = JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").map((w) => `${w.en}=${w.ja}`);
-    return { words, notes: JSON.parse(localStorage.getItem("spelldash_word_notes") || "{}"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), upload: r.toUpload.map((x) => `${x.kind}:${x.key}`), changed: r.changed };
+    const moved = `deadline~${(await import("/js/myWordsCore.js")).jaHash("締め切り")}`;
+    return { words, moved, notes: JSON.parse(localStorage.getItem("spelldash_word_notes") || "{}"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), upload: r.toUpload.map((x) => `${x.kind}:${x.key}`), changed: r.changed };
   });
-  check("同期: クラウドの新しい行を反映（追加・墓標で削除・古い行はローカル優先）", merged.words.includes("negotiate=交渉する") && !merged.words.some((w) => w.startsWith("invoice=")) && merged.words.includes("deadline=締め切り"), merged.words.join(","));
-  check("同期: メモとパックも反映し、ローカルが新しい項目はアップロード対象", merged.notes["english-negotiate"] === "nego＝交渉" && merged.packs.includes("accounting") && merged.packs.includes("realestate") && merged.upload.includes("my_word:deadline") && merged.upload.includes("pack:realestate"), JSON.stringify(merged).slice(0, 200));
+  check("同期: クラウドの新しい行を反映（追加・墓標で削除・同じ鍵の違う訳は両方残す: 端末の語は <英語>~<訳の印>）", merged.words.includes("negotiate=交渉する") && !merged.words.some((w) => w.startsWith("invoice=")) && merged.words.includes(`${merged.moved}=締め切り`) && merged.words.includes("deadline=古い訳"), merged.words.join(","));
+  check("同期: メモとパックも反映し、ローカルが新しい項目はアップロード対象", merged.notes["english-negotiate"] === "nego＝交渉" && merged.packs.includes("accounting") && merged.packs.includes("realestate") && merged.upload.includes(`my_word:${merged.moved}`) && merged.upload.includes("pack:realestate"), JSON.stringify(merged).slice(0, 200));
   check("同期でエラー0", page12.errors.length === 0, page12.errors[0] ?? "");
   await page12.close();
 
@@ -19404,6 +19408,49 @@ console.log("pro:");
     await page2.close();
   }
 
+  // 15. 設定が取れない（Batch 94。DECISION §2 D）: config が 502 か通信の失敗（取れなかった）なら「Pro はまだ受付前。」と言わず
+  //     「いまは手続きを始められない。少し待って開き直す。」。料金の 1 行・購入のボタン・「ログインして始める」は出さない（未ログインもログイン済みも）。
+  //     200 で configured:false なら今どおり「Pro はまだ受付前。」。アプリでは今どおり config を取りに行かず、料金も購入のボタンも出さない。
+  //     前は取れなかったときも「受付前」と言った（受付中でも、決済の会社が一時的に答えないと「受付前」に見えた）
+  {
+    const UNAVAILABLE = "いまは手続きを始められない。少し待って開き直す。";
+    const configCase = async (how, { storage = {}, native = false } = {}) => {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage });
+      if (native) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "app", nativePromise: () => Promise.resolve({}) }; });
+      let asked = 0;
+      await page.route("**/api/billing/config", async (route) => {
+        asked++;
+        if (how === "502") return route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "upstream", message: "手続きを始められませんでした。時間をおいてお試しください。" }) });
+        if (how === "abort") return route.abort("failed");
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ configured: false, prices: [], trialDays: 0, trialMonths: 0, ai: null }) });
+      });
+      await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+      await waitUntil(async () => !(await page.evaluate(() => document.body.hasAttribute("data-pending"))) && !(await text(page, "#proPlans")).includes("読み込み中"), 5000);
+      const v = await page.evaluate(() => {
+        const plans = document.getElementById("proPlans");
+        const price = document.getElementById("proPrice");
+        return {
+          plans: plans.hidden ? null : plans.textContent.replace(/\s+/g, " ").trim(),
+          price: price.hidden ? "" : price.textContent.trim(),
+          buttons: document.querySelectorAll("#proPlans button, #proPlans [data-interval], #proLoginStart, #proCheckoutMonth, #proCheckoutYear").length,
+          body: document.body.innerText
+        };
+      });
+      const out = { how, native, login: Boolean(storage.spelldash_test_session), plans: v.plans, price: v.price, buttons: v.buttons, notYet: /受付前/.test(v.body), unavailable: v.body.includes(UNAVAILABLE), asked, errors: page.errors.slice(0, 1) };
+      await page.close();
+      return out;
+    };
+    const failed = [await configCase("502"), await configCase("abort"), await configCase("502", { storage: { spelldash_test_session: "1" } }), await configCase("abort", { storage: { spelldash_test_session: "1" } })];
+    check("Pro（Batch 94）: config が取れない（502・通信の失敗。未ログインとログイン済み）ときは「いまは手続きを始められない。少し待って開き直す。」・「受付前」の字なし・料金の 1 行と購入のボタン（ログインして始める・月額で始める）なし・エラー 0",
+      failed.every((c) => c.plans === UNAVAILABLE && !c.notYet && c.price === "" && c.buttons === 0 && c.asked > 0 && c.errors.length === 0), JSON.stringify(failed));
+    const closed = await configCase("closed");
+    check("Pro（Batch 94・守り）: 200 で configured:false（受付前）なら今どおり「Pro はまだ受付前。」（取れなかったときの文は出さない）・料金の 1 行と購入のボタンなし",
+      closed.plans === "Pro はまだ受付前。" && !closed.unavailable && closed.price === "" && closed.buttons === 0 && closed.errors.length === 0, JSON.stringify(closed));
+    const app = await configCase("502", { storage: { spelldash_test_session: "1" }, native: true });
+    check("Pro（Batch 94・守り・アプリ）: アプリは今どおり config を取りに行かず、料金・購入のボタン・取れなかったときの文・受付前の文を出さない（Web 版の案内だけ）",
+      app.plans === null && app.price === "" && app.buttons === 0 && !app.unavailable && !app.notYet && app.asked === 0 && app.errors.length === 0, JSON.stringify(app));
+  }
+
   // Batch 67 C1: 読み込みの CLS（直す前は 1200 で 0.07〜0.09・390 で 0.04〜0.05。題の下の料金の 1 行〔#proPrice。config が届くまで hidden〕が後から出て、
   // 比較表と料金の節を押し下げた。Pro の人は js が比較表を隠すまで料金の節が下にあり、500px 跳ね上がった〔0.15〜0.48〕）
   {
@@ -20917,6 +20964,60 @@ console.log("78.4 学習状況とランク:");
         cellOf(second, "英単語で 覚えた") === "–" && cellOf(second, "マイ単語帳で 覚えた") === "+1 語" && second.notes.includes(NOTE_EN) && !second.notes.includes("覚えた の増えは、この端末で数え始めた日から数える。") && second.errors.length === 0,
         JSON.stringify({ cells: second.cells, notes: second.notes, err: second.errors }));
     }
+  }
+
+  // ---- (16) 外したパックの数と、セットを終えた日（Batch 94。DECISION §2 E・F。js/learnedWords.js getDroppedLearnedCount・js/statsView.js renderMonthlySummary）:
+  //      (16a) 語の記録にマイ単語帳の語（my- の id）の 覚えた の記録が 50 語・この端末のマイ単語帳は空（ほかの端末で学んだ語の記録だけが同期で届いた）→
+  //            「ほか N語は外したパックの語」に数えない（行を出さない）。本当に外したパックの語（読み込んでいない分野パックの語。公開の語の外）は今どおり数える。
+  //            前は マイ単語帳の 50 語を「外したパックの語」と言った
+  //      (16b) 今日のセットの記録（spelldash_daily_set の history。終えた日ごとに 1 つ）に今月の 6 日・今日は 3 セット → 今月の行は「セットを終えた日 N日」
+  //            （数えているのは日。前は「セット N回」と言い、1 日に何セットしても 1 回だった）
+  {
+    const manifest16 = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
+    const english16 = manifest16.subjects.find((s) => s.id === "english");
+    const baseIds16 = new Set(english16.categories.filter((c) => !c.pack).flatMap((c) => JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id)));
+    const pubIds16 = new Set(PUB);
+    let packId16 = null;
+    for (const c of english16.categories.filter((c) => c.pack)) {
+      packId16 = JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id).find((id) => !baseIds16.has(id) && !pubIds16.has(id)) ?? null;
+      if (packId16) break;
+    }
+    const rec16 = { playCount: 2, correctCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date(Date.now() - DAY).toISOString(), lastRecallSuccessAt: new Date().toISOString(), history: [{ d: ymdDaysAgo(1), r: "x" }, { d: ymdDaysAgo(0), r: "o" }] };
+    const myRecs = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`my-trial word ${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`, rec16]));
+    const droppedLine = async (stats) => {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-zero": { ...rec16, ls: 1, lsd: dayNo(0) }, ...stats }) } });
+      await page.goto(BASE + "/stats.html#learnedWords", { waitUntil: "networkidle" });
+      await waitUntil(() => page.evaluate(() => /zero/.test(document.getElementById("learnedWordList")?.textContent ?? "")), 6000); // 公開の語の表を読めた（english-zero が一覧に出た）
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(() => ({ dropped: document.querySelector(".learned-dropped")?.textContent.trim() ?? null, count: document.getElementById("learnedWordsCount")?.textContent.trim() ?? null }));
+      r.errors = page.errors.slice(0, 1);
+      await page.close();
+      return r;
+    };
+    const onlyMy = await droppedLine(myRecs);
+    const withPack = await droppedLine({ ...myRecs, ...(packId16 ? { [packId16]: rec16 } : {}) });
+    check("78.4 外したパックの数 (16a)（Batch 94）: 語の記録にマイ単語帳の語（my- の id）の 覚えた の記録が 50 語・この端末のマイ単語帳は空 →「ほか N語は外したパックの語」の行は出さない（マイ単語帳の記録を外したパックの語と言わない）",
+      onlyMy.dropped === null && onlyMy.count === "1語" && onlyMy.errors.length === 0, JSON.stringify(onlyMy));
+    check("78.4 外したパックの数 (16a)（Batch 94）: 本当に外したパックの語（公開の語の外の分野パックの語）は今どおり数える（マイ単語帳の 50 語と並んでも「ほか 1語は外したパックの語」）",
+      !!packId16 && withPack.dropped === "ほか 1語は外したパックの語" && withPack.errors.length === 0, JSON.stringify({ packId16, ...withPack }));
+
+    const firstOfMonth16 = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    const setDays = Array.from({ length: 6 }, (_, i) => ymdDaysAgo(5 - i));
+    const wantDays = setDays.filter((d) => d >= firstOfMonth16).length; // 月の初めの 5 日の間は今月の分だけ（今日は必ず入る）
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { spelldash_placement: "done", spelldash_daily_set: JSON.stringify({ history: setDays, setsToday: 3, setsTodayDate: ymdDaysAgo(0) }), spelldash_growth_log: JSON.stringify(setDays.map((d) => ({ date: d, learned: 0, mastered: 0, active: true, v: 2 }))) } });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+    await page.click("#statsMore > summary");
+    await page.waitForTimeout(400);
+    const month = await page.evaluate(() => ({
+      text: (document.getElementById("monthlySummary")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+      items: [...document.querySelectorAll("#monthlySummary .monthly-line__item")].map((e) => e.textContent.replace(/\s+/g, " ").trim()),
+      hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
+    }));
+    check(`78.4 今月の行 (16b)（Batch 94）: 今日のセットを今月の ${wantDays} 日に終えた（今日は 3 セット）→ 今月の行は「セットを終えた日 ${wantDays}日」（数えているのは日）・「セット N回」の字は無い・横スクロール 0・エラー 0`,
+      wantDays > 0 && month.items.includes(`セットを終えた日 ${wantDays}日`) && !/セット \d+回/.test(month.text) && month.hx <= 0 && page.errors.length === 0,
+      JSON.stringify({ wantDays, ...month, err: page.errors[0] }));
+    await page.close();
   }
 }
 
@@ -27615,6 +27716,76 @@ console.log("give a word book (84.1):");
       JSON.stringify({ len: bomb.length, text: v.text, writes: writes.slice(0, 4), n: writes.length, fed, ms, err: page.errors[0] }));
     await closeCtx(page);
   }
+
+  // (10) 1 画面目（Batch 94。DECISION §2 B）: 長い訳（70〜90 字の試しの文）の 30 語の単語帳を、スクロール 0 で開く（指の端末 390×844・320×568）。
+  //      並びは 語の数 → 上限の文（#myRecvHint）→ ボタン（#myRecvActs）→ 状況の 1 行（#myRecvStatus）→ 見本の語（#myRecvRows）→ ほか N 語（#myRecvMore）。
+  //      マイ単語帳 80 語の人は「新しい単語帳として足す」と上限の文（上限まであと 20語）が、100 語の人は押せないボタン 2 つ・上限の文・加入画面へのリンク（受付中の Web だけ）が
+  //      1 画面目に入る（下端が画面の高さの中）。焦点は見出し。Tab の次は文の中のリンク（あれば）→ 押せる最初のボタン。横のはみ出し 0。アプリはリンクなしで同じ並び。
+  //      前は見本の 5 語の下にボタンと上限の文があり、長い訳だと画面の外だった（ボタンの上端 864〜1080 付近）
+  {
+    const longJa = (i) => `試しの訳 ${i + 1}。週のはじめに決めた小さな目標を、夕方の短い時間に見直して、次の日の予定に一つだけ書き足すときに使う、少しだけ長めの説明の文の例。`;
+    const tallCode = `j1.${Buffer.from(JSON.stringify({ v: 1, n: "試しの単語帳", w: Array.from({ length: 30 }, (_, i) => [`sample${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10) % 10]}`, longJa(i)]) })).toString("base64url")}`;
+    const firstScreen = (p) => p.evaluate(() => {
+      const box = (id) => {
+        const e = document.getElementById(id);
+        if (!e || e.hidden || e.closest("[hidden]") || e.getClientRects().length === 0) return null;
+        const r = e.getBoundingClientRect();
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom) };
+      };
+      const link = document.querySelector("#myRecvHint a[href]");
+      const lr = link?.getBoundingClientRect();
+      return {
+        h: innerHeight, y: Math.round(scrollY), hx: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        sum: box("myRecvSum"), hint: box("myRecvHint"), acts: box("myRecvActs"), status: box("myRecvStatus"), rows: box("myRecvRows"), more: box("myRecvMore"),
+        add: box("myRecvNew"), here: box("myRecvHere"), addOff: document.getElementById("myRecvNew").disabled, hereOff: document.getElementById("myRecvHere").disabled,
+        link: lr ? { top: Math.round(lr.top), bottom: Math.round(lr.bottom), href: link.getAttribute("href") } : null,
+        hintText: document.getElementById("myRecvHint").textContent, rowsN: document.querySelectorAll("#myRecvRows li").length,
+        active: document.activeElement?.id ?? ""
+      };
+    });
+    const tabTo = async (p) => { await p.keyboard.press("Tab"); return p.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute("href") || document.activeElement?.tagName || ""); };
+    const ordered = (v) => !!(v.sum && v.hint && v.acts && v.status && v.rows && v.more) && v.sum.top < v.hint.top && v.hint.top < v.acts.top && v.acts.top < v.status.top && v.status.top < v.rows.top && v.rows.top < v.more.top;
+    const shots = [];
+    for (const own of [80, 100]) {
+      for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+        const page = await sharePage({ spelldash_my_words: JSON.stringify(FILLER(own)), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) }, { viewport, mobile: true });
+        await page.goto(`${BASE}/mywords.html#share=${tallCode}`, { waitUntil: "networkidle" });
+        await waitRecv(page);
+        await page.waitForFunction(() => document.activeElement?.id === "myRecvTitle", null, { timeout: 3000, polling: 10 }).catch(() => {});
+        const v = await firstScreen(page);
+        const tab1 = await tabTo(page);
+        const tab2 = own === 100 ? await tabTo(page) : null;
+        shots.push({ own, w: viewport.width, ...v, tab1, tab2, err: page.errors[0] ?? null });
+        await closeCtx(page);
+      }
+    }
+    const app = await sharePage({ spelldash_my_words: JSON.stringify(FILLER(100)), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) }, { viewport: { width: 320, height: 568 }, mobile: true, native: true });
+    await app.goto(`${BASE}/mywords.html#share=${tallCode}`, { waitUntil: "networkidle" });
+    await waitRecv(app);
+    await app.waitForFunction(() => document.activeElement?.id === "myRecvTitle", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const appView = await firstScreen(app);
+    const appTab = await tabTo(app);
+    const appErr = app.errors[0] ?? null;
+    await closeCtx(app);
+    const brief = (s) => ({ own: s.own, w: s.w, h: s.h, y: s.y, hx: s.hx, hint: s.hint, acts: s.acts, status: s.status, rows: s.rows, add: s.add, here: s.here, link: s.link, active: s.active, tab1: s.tab1, tab2: s.tab2, err: s.err });
+    check("84.1 1 画面目（Batch 94）: 渡された単語帳の並びは 語の数 → 上限の文 → ボタン → 状況の 1 行 → 見本の語（長い訳の 5 行）→ ほか 25語（390×844・320×568、80 語と 100 語の人）",
+      shots.length === 4 && shots.every((s) => ordered(s) && s.rowsN === 5),
+      JSON.stringify(shots.map((s) => ({ own: s.own, w: s.w, sum: s.sum, hint: s.hint, acts: s.acts, status: s.status, rows: s.rows, more: s.more, rowsN: s.rowsN }))));
+    const at80 = shots.filter((s) => s.own === 80);
+    check("84.1 1 画面目（Batch 94）: マイ単語帳 80 語の人は、スクロール 0 で「新しい単語帳として足す」と上限の文（上限まであと 20語）の下端が画面の中（390×844・320×568）・焦点は見出し・Tab の次は「新しい単語帳として足す」・横のはみ出し 0・エラー 0",
+      at80.length === 2 && at80.every((s) => s.y === 0 && s.hx <= 0 && !!s.add && !s.addOff && s.add.bottom <= s.h && !!s.hint && s.hint.bottom <= s.h && /上限まであと 20語。/.test(s.hintText) && !s.link
+        && s.active === "myRecvTitle" && s.tab1 === "myRecvNew" && !s.err),
+      JSON.stringify(at80.map(brief)));
+    const at100 = shots.filter((s) => s.own === 100);
+    check("84.1 1 画面目（Batch 94）: 100 語の人は、スクロール 0 で押せないボタン 2 つ・上限の文・加入画面へのリンク（受付中の Web）の下端が画面の中（390×844・320×568）・焦点は見出し・Tab はリンク → 「やめる」・横のはみ出し 0・エラー 0",
+      at100.length === 2 && at100.every((s) => s.y === 0 && s.hx <= 0 && !!s.add && s.addOff && s.add.bottom <= s.h && !!s.here && s.hereOff && s.here.bottom <= s.h && !!s.hint && s.hint.bottom <= s.h
+        && /無料で追加できるのは100語まで（Pro なら1,000語）。/.test(s.hintText) && s.link?.href === "./pro.html" && s.link.bottom <= s.h && s.active === "myRecvTitle" && s.tab1 === "./pro.html" && s.tab2 === "myRecvCancel" && !s.err),
+      JSON.stringify(at100.map(brief)));
+    check("84.1 1 画面目（Batch 94・アプリ）: 100 語の人（320×568）は上限の文にリンク・Pro の話・値段なし・押せないボタンと上限の文は画面の中・同じ並び・Tab の次は「やめる」・エラー 0",
+      ordered(appView) && appView.y === 0 && appView.hx <= 0 && !appView.link && !/Pro|¥|円/.test(appView.hintText) && /無料で追加できるのは100語まで。/.test(appView.hintText)
+        && !!appView.add && appView.addOff && appView.add.bottom <= appView.h && !!appView.hint && appView.hint.bottom <= appView.h && appView.active === "myRecvTitle" && appTab === "myRecvCancel" && !appErr,
+      JSON.stringify({ ...brief({ ...appView, own: 100, w: 320, tab1: appTab, tab2: null, err: appErr }), hintText: appView.hintText }));
+  }
   check("84.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
@@ -28923,6 +29094,66 @@ console.log("login panel message (87.2):");
       rows.length === 2 && rows.every((r) => r.res && ["plain", "error", "success"].every((t) => r.res[t].ratio >= 4.5) && !r.err),
       JSON.stringify(rows));
   }
+
+  // ----- (6) 開いたときの焦点（Batch 94。DECISION §2 G）: 390 の指の端末でヘッダーの「ログイン」（ホーム・マイ単語帳）と加入画面の「ログインして始める」をタップすると、
+  //       焦点は入力欄に置かない（外部アカウントのボタン #googleLoginButton。メールの欄に置くと画面のキーボードが出て欄とページを隠す）。外部アカウントのボタンが
+  //       見えない（アプリ）ときは欄の箱（#accountLogin）。1200 の物理キーボードの端末（クリック）は今どおり #emailInput（加入画面も同じ）。
+  //       送った後の失敗で欄へ戻す焦点（(1)・(2)）は変えない。前は指の端末でもメールの欄に焦点を置いた
+  {
+    const opened = async (page) => {
+      await waitUntil(() => page.evaluate(() => document.getElementById("loginToggle")?.getAttribute("aria-expanded") === "true"), 3000);
+      await page.waitForTimeout(200);
+      return page.evaluate(() => {
+        const ae = document.activeElement;
+        return {
+          focus: ae ? `${ae.tagName}#${ae.id}` : null, coarse: matchMedia("(pointer: coarse)").matches,
+          panelShown: getComputedStyle(document.querySelector("#accountGuest .dropdown__panel")).display !== "none",
+          native: document.documentElement.classList.contains("native-app"), googleShown: document.getElementById("googleLoginButton").getClientRects().length > 0
+        };
+      });
+    };
+    const rows = [];
+    for (const p of ["/index.html", "/mywords.html"]) {
+      const page = await openAt(CONF, p, { viewport: { width: 390, height: 844 }, mobile: true });
+      await page.tap("#loginToggle");
+      rows.push({ how: `tap ${p}`, ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    {
+      const page = await openAt(CONF, "/pro.html", { viewport: { width: 390, height: 844 }, mobile: true });
+      await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
+      await page.tap("#proLoginStart");
+      rows.push({ how: "tap /pro.html start", ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    {
+      const page = await authPage(CONF, { viewport: { width: 390, height: 844 }, mobile: true });
+      await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "app", nativePromise: () => Promise.resolve({}) }; });
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await waitUntil(() => page.evaluate(() => { const t = document.getElementById("loginToggle"); return !!t && t.getClientRects().length > 0; }), 6000);
+      await page.tap("#loginToggle");
+      rows.push({ how: "app tap /index.html", ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    for (const p of ["/index.html", "/pro.html"]) {
+      const page = await openAt(CONF, p);
+      if (p === "/pro.html") {
+        await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
+        await page.click("#proLoginStart");
+      } else await page.click("#loginToggle");
+      rows.push({ how: `click ${p}`, ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    const taps = rows.filter((r) => r.how.startsWith("tap "));
+    const app = rows.find((r) => r.how.startsWith("app "));
+    const clicks = rows.filter((r) => r.how.startsWith("click "));
+    check("87.2 開いたときの焦点（Batch 94）: 390 の指の端末でヘッダーの「ログイン」（ホーム・マイ単語帳）と加入画面の「ログインして始める」をタップすると、欄は開き、焦点は外部アカウントのボタン（入力欄に置かない）・エラー 0",
+      taps.length === 3 && taps.every((r) => r.coarse && r.panelShown && r.googleShown && r.focus === "BUTTON#googleLoginButton" && !r.err), JSON.stringify(taps));
+    check("87.2 開いたときの焦点（Batch 94・アプリ）: 外部アカウントのボタンが見えない（アプリ）ときは欄の箱（#accountLogin）・入力欄でない・エラー 0",
+      !!app && app.coarse && app.native && !app.googleShown && app.focus === "FORM#accountLogin" && !app.err, JSON.stringify(app));
+    check("87.2 開いたときの焦点（Batch 94・守り）: 1200 の物理キーボードの端末でクリックすると今どおりメールの欄（#emailInput。ホームの「ログイン」と加入画面の「ログインして始める」）",
+      clicks.length === 2 && clicks.every((r) => !r.coarse && r.panelShown && r.focus === "INPUT#emailInput" && !r.err), JSON.stringify(clicks));
+  }
   check("87.2 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
@@ -29696,6 +29927,253 @@ console.log("guard (88.1):");
     await closeCtx(page);
   }
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 94.1 2 台で同じ単語帳（Batch 94。js/userItemsSync.js mergeCloudItems・js/myWords.js の足す道・js/myWordsCore.js myIdentityFor。docs/SPEC_MY_WORDS.md §18）: (1) 表が後: 電話（390 の指の端末）で渡された単語帳を足して 2 語 覚えた、パソコン（1200）でも同じリンクを足す。表を作り パソコン → 電話 → パソコン の順に開き直す → どちらも単語帳は 1 冊（「 2」の付いた単語帳なし）・覚えた 2・(2) 表がある: 電話が単語帳 1 で覚えて送る。パソコンはゲストで単語帳 2（同じ英語・違う訳の語を含む）を足し、ログインして「はい」→ 両方の端末にその英語の 2 語（電話の語は 覚えた のまま）・(3) エラー 0・(4) パソコンがゲストで自分の違うカード（1 語・単語帳ごと）を消してから「はい」→ 電話の 覚えた は消えない・(5) 表を作ったときに開いていたパソコンのタブ（読めなかった）がセットの終わりに送っても、電話の 覚えた は消えない =====
+// 15f0d76 では (1)(2) とも落ちる（取り込みで新しい行が語ごと勝つ: 電話の 3 状態と、同じ鍵の別の語が消え、同じ名前の単語帳が 2 つになる）。(4)(5) は 7c6961a と 15f0d76 で落ちる
+// （(4) パソコンの墓標が電話の違うカードを消す・(5) 取り込まずに送ったパソコンの語が電話の語を上書きする）。
+// 表が無い間は偽のクラウドの failSelect と failWrite（読みも送りも「does not exist」で断る）。表を作るときは 2 つを外す。開き直しは同じ文脈の新しいタブ（端末の保存はそのまま）
+console.log("two devices (94.1):");
+{
+  const allErrors = [];
+  const NO_TABLE = 'relation "public.user_items" does not exist';
+  const B64U = (str) => Buffer.from(str, "utf8").toString("base64url");
+  const shareLink = (name, words) => `${BASE}/mywords.html#share=j1.${B64U(JSON.stringify({ v: 1, n: name, w: words }))}`;
+  const SEED = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+  const watch = (page) => {
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    return page;
+  };
+  // 端末: 文脈を 1 つ作り、種は最初のタブにだけ 1 回入れる。guest は見張りの前のログインの種を使わない文脈（本物の頭のまま。ゲストで始める）
+  async function device({ phone = false, guest = false, storage = {} } = {}) {
+    const opts = { viewport: phone ? { width: 390, height: 844 } : { width: 1200, height: 900 }, serviceWorkers: "block", ...(phone ? { isMobile: true, hasTouch: true } : {}) };
+    const ctx = guest ? await rawNewContext(opts) : await browser.newContext(opts);
+    await ctx.addInitScript(() => { window.__w = []; addEventListener("spelldash:word", (e) => window.__w.push(e.detail?.id ?? null)); });
+    if (guest) {
+      const seed = await ctx.newPage();
+      await seed.goto(BASE + "/css/reset.css");
+      await seed.evaluate((s) => { for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, { ...SEED, ...storage });
+      await seed.close();
+      return watch(await ctx.newPage());
+    }
+    const page = watch(await ctx.newPage());
+    await page.addInitScript((s) => { if (sessionStorage.getItem("spelldash_test_seeded")) return; sessionStorage.setItem("spelldash_test_seeded", "1"); for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, { ...SEED, ...storage });
+    return page;
+  }
+  const syncDone = (page, ms = 15000) => waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session")).catch(() => null)) === "test-user", ms, 100);
+  // 偽のクラウドへの要求が ms のあいだ増えなくなるまで待つ
+  const quiet = async (cloud, ms = 1000, max = 15000) => {
+    const t0 = Date.now();
+    let n = cloud.log.length;
+    let since = Date.now();
+    while (Date.now() - t0 < max) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (cloud.log.length !== n) { n = cloud.log.length; since = Date.now(); } else if (Date.now() - since >= ms) return true;
+    }
+    return false;
+  };
+  // 渡された単語帳を新しい単語帳として足す（足した単語帳の id を返す）
+  async function addShared(page, link) {
+    await page.goto(link, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.getElementById("myRecv")?.hidden === false && !!document.getElementById("myRecvNew"), null, { timeout: 8000, polling: 20 }).catch(() => {});
+    await page.click("#myRecvNew");
+    await page.waitForFunction(() => /足した/.test(document.getElementById("myRecvStatus")?.textContent ?? ""), null, { timeout: 8000, polling: 20 }).catch(() => {});
+    return new URL(page.url()).searchParams.get("book");
+  }
+  // 選択式の回で、出た語に正しい選択肢を n 回押す（出た語の答えは鍵の頭: my-<英語>[~<印>]）。押した語の答えを返す
+  async function answerChoice(page, n) {
+    const got = [];
+    for (let i = 1; i <= n; i++) {
+      if (!(await waitUntil(() => page.evaluate((k) => window.__w.length >= k && document.querySelectorAll("#choiceOpts .choice__opt").length >= 2, i), 8000))) break;
+      const en = String(await page.evaluate((k) => window.__w[k - 1], i)).replace(/^my-/, "").split("~")[0];
+      await page.waitForTimeout(600); // 人が新しい問いを読む間（出てすぐの押しは答えにしない: 82.2）
+      const idx = await page.evaluate((want) => [...document.querySelectorAll("#choiceOpts .choice__opt .choice__text")].findIndex((t) => t.textContent === want), en);
+      if (idx < 0) break;
+      await page.locator("#choiceOpts .choice__opt").nth(idx).click();
+      got.push(en);
+      await page.waitForTimeout(80);
+      await page.evaluate(() => { const b = document.getElementById("choiceNext"); if (b && !b.hidden) b.click(); });
+    }
+    return got;
+  }
+  // タブを閉じる（離れるときの送りが終わるまで待つ）・同じ端末の新しいタブでマイ単語帳を開き、同期が済むまで待つ（開き直し）
+  const leave = async (page, cloud) => { await quiet(cloud); await page.close(); await quiet(cloud); };
+  async function openMy(ctx, cloud) {
+    const page = watch(await ctx.newPage());
+    await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+    await syncDone(page);
+    await quiet(cloud);
+    return page;
+  }
+  // 端末の語（答えの英語・訳・3 状態）と単語帳ごとの語の数（画面と同じ並び: js/myWords.js getMyBooks）・画面の単語帳の札
+  const view = (page) => page.evaluate(async () => {
+    const M = await import("/js/myWords.js");
+    const C = await import("/js/myWordsCore.js");
+    const list = M.getMyWords();
+    const books = M.getMyBooks(list);
+    return {
+      words: list.filter(C.isWordEntry).map((w) => `${C.answerKeyOf(w)}=${w.ja}=${C.myStateOf(w)}`).sort(),
+      books: books.map((b) => `${b.name}:${list.filter((w) => C.bookIdOf(w, books) === b.id).length}`),
+      tabs: [...document.querySelectorAll("#myBookTabs .mw-book__name")].map((e) => e.textContent)
+    };
+  });
+
+  // ----- (1) 表が後: 電話で足して 2 語 覚えた・パソコンでも同じリンクを足す → 表を作って パソコン → 電話 → パソコン -----
+  {
+    const BOOK = "試しの単語帳";
+    const LINK = shareLink(BOOK, [["harbor", "試しの訳 一"], ["lantern", "試しの訳 二"], ["meadow", "試しの訳 三"], ["pebble", "試しの訳 四"], ["quiver", "試しの訳 五"], ["saddle", "試しの訳 六"]]);
+    const cloud = createCloud({ word_progress: [], user_progress: [] }, { failSelect: { user_items: NO_TABLE }, failWrite: { user_items: NO_TABLE } });
+    const login = { spelldash_test_session: "1", spelldash_test_cloud: cloud.id };
+    const phone = await device({ phone: true, storage: login });
+    const phoneBook = await addShared(phone, LINK);
+    await phone.goto(`${BASE}/?learn=my&book=${phoneBook}&choice=en`, { waitUntil: "networkidle" });
+    const learned = (await answerChoice(phone, 2)).sort();
+    await leave(phone, cloud); // 表が無い: 離れるときの送りも断られる（送る待ちは残る）
+    const pc = await device({ storage: login });
+    await addShared(pc, LINK);
+    await leave(pc, cloud);
+    const sentBefore = cloud.writes("user_items").length; // 表が無い間は 1 行も入らない
+    cloud.config.failSelect = {}; // 表を作った
+    cloud.config.failWrite = {};
+    cloud.rows("user_items");
+    await leave(await openMy(pc.context(), cloud), cloud);
+    let page = await openMy(phone.context(), cloud);
+    const pv = await view(page);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud);
+    const cv = await view(page);
+    const want = `${BOOK}:6`;
+    const states = (v) => v.words.filter((w) => w.endsWith("=2")).map((w) => w.split("=")[0]).sort();
+    check("94.1 (1) 表が後（電話で 2 語 覚えた・パソコンでも同じリンクを足した後に表を作る）: 電話もパソコンも単語帳は 1 冊（6 語）で「 2」の付いた単語帳が無い・覚えた 2 語は両方の端末で 覚えた",
+      learned.length === 2 && sentBefore === 0 && [pv, cv].every((v) => v.books.includes(want) && !v.books.some((b) => b.startsWith(`${BOOK} 2`)) && !v.tabs.some((t) => t.startsWith(`${BOOK} 2`)) && v.words.length === 6 && JSON.stringify(states(v)) === JSON.stringify(learned)),
+      JSON.stringify({ learned, sentBefore, phone: pv, pc: cv }));
+    await phone.context().close();
+    await page.context().close();
+  }
+
+  // ----- (2) 表がある: 電話が単語帳 1 で覚えて送る。パソコンはゲストで単語帳 2（alpha は同じ英語・違う訳）を足し、ログインして「はい」 -----
+  {
+    const LINK1 = shareLink("試しの一冊目", [["alpha", "試しの訳 甲"], ["bravo", "試しの訳 乙"], ["charlie", "試しの訳 丙"]]);
+    const LINK2 = shareLink("試しの二冊目", [["alpha", "試しの訳 丁"], ["delta", "試しの訳 己"], ["echo", "試しの訳 庚"]]);
+    const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+    const phone = await device({ phone: true, storage: { spelldash_test_session: "1", spelldash_test_cloud: cloud.id } });
+    const book1 = await addShared(phone, LINK1);
+    await phone.goto(`${BASE}/?learn=my&book=${book1}&choice=en`, { waitUntil: "networkidle" });
+    const learned = await answerChoice(phone, 3);
+    await phone.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const sentOf = () => cloud.rows("user_items").find((r) => r.kind === "my_word" && r.key === "alpha")?.payload ?? null;
+    await waitUntil(() => sentOf()?.ls === 2, 10000); // 回の終わりに送る
+    const sentAlpha = sentOf();
+    await leave(phone, cloud);
+    const pc = await device({ guest: true, storage: { spelldash_test_cloud: cloud.id } });
+    await addShared(pc, LINK2);
+    await pc.evaluate(() => window.__stubAuth.signIn("1")).catch(() => {});
+    const asked = await pc.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 15000 }).then(() => true, () => false);
+    if (asked) await pc.click("#switchAskYes");
+    const back = await pc.waitForFunction(() => location.pathname !== "/switch.html" && window.SpellDashArea?.area === "u:test-user" && document.readyState === "complete", null, { timeout: 15000 }).then(() => true, () => false);
+    await syncDone(pc);
+    await leave(pc, cloud);
+    let page = await openMy(phone.context(), cloud);
+    const pv = await view(page);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud);
+    const cv = await view(page);
+    const alphas = (v) => v.words.filter((w) => w.startsWith("alpha=")).join(",");
+    check("94.1 (2) 表がある・パソコンはゲストで同じ英語・違う訳の語を含む単語帳を足して「はい」: 両方の端末に alpha の 2 語（電話の 甲 は 覚えた のまま・パソコンの 丁 は これから）・6 組とも残る",
+      learned.length === 3 && sentAlpha?.ls === 2 && asked && back && [pv, cv].every((v) => alphas(v) === "alpha=試しの訳 丁=0,alpha=試しの訳 甲=2" && v.words.length === 6),
+      JSON.stringify({ learned, sentAlpha: sentAlpha?.ls ?? null, asked, back, phone: pv.words, pc: cv.words }));
+    await phone.context().close();
+    await page.context().close();
+  }
+  // ----- (4) 表がある: 電話が単語帳 1 で覚えて送る。パソコンはゲストで単語帳 2（alpha は同じ英語・違う訳）を足し、自分の alpha（丁）か単語帳 2 を消してから「はい」 -----
+  for (const mode of ["word", "book"]) {
+    const LINK1 = shareLink("試しの一冊目", [["alpha", "試しの訳 甲"], ["bravo", "試しの訳 乙"], ["charlie", "試しの訳 丙"]]);
+    const LINK2 = shareLink("試しの二冊目", [["alpha", "試しの訳 丁"], ["delta", "試しの訳 己"], ["echo", "試しの訳 庚"]]);
+    const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+    const phone = await device({ phone: true, storage: { spelldash_test_session: "1", spelldash_test_cloud: cloud.id } });
+    const book1 = await addShared(phone, LINK1);
+    await phone.goto(`${BASE}/?learn=my&book=${book1}&choice=en`, { waitUntil: "networkidle" });
+    const learned = await answerChoice(phone, 3);
+    await phone.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const alphaRow = () => cloud.rows("user_items").find((r) => r.kind === "my_word" && r.key === "alpha") ?? null;
+    await waitUntil(() => alphaRow()?.payload?.ls === 2, 10000); // 回の終わりに送る
+    await leave(phone, cloud);
+    const pc = await device({ guest: true, storage: { spelldash_test_cloud: cloud.id } });
+    const book2 = await addShared(pc, LINK2);
+    await pc.goto(`${BASE}/mywords.html?book=${book2}`, { waitUntil: "networkidle" });
+    // 単語帳 2 を消すときに最初の単語帳の語を 1 つ残す（最後の単語帳は消せない）。word は自分の alpha（丁）だけを消す
+    const removed = await pc.evaluate(async ({ mode, book2 }) => {
+      const M = await import("/js/myWords.js");
+      M.addMyWord("foxtrot", "試しの訳 辛");
+      if (mode === "word") { M.removeMyWord("alpha", "word"); return true; }
+      return M.deleteMyBook(book2).ok === true;
+    }, { mode, book2 });
+    await pc.evaluate(() => window.__stubAuth.signIn("1")).catch(() => {});
+    const asked = await pc.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 15000 }).then(() => true, () => false);
+    if (asked) await pc.click("#switchAskYes");
+    const back = await pc.waitForFunction(() => location.pathname !== "/switch.html" && window.SpellDashArea?.area === "u:test-user" && document.readyState === "complete", null, { timeout: 15000 }).then(() => true, () => false);
+    await syncDone(pc);
+    await leave(pc, cloud);
+    let page = await openMy(phone.context(), cloud);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud);
+    await page.evaluate(async () => { const S = await import("/js/sync.js"); await S.pushSync(); }); // パソコンがセットを終えたときの送り（js/game.js と同じ呼び出し）
+    await quiet(cloud);
+    await leave(page, cloud);
+    page = await openMy(phone.context(), cloud);
+    const pv = await view(page);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud);
+    const cv = await view(page);
+    const row = alphaRow();
+    check(`94.1 (4) パソコンがゲストで自分の違うカード（${mode === "word" ? "alpha=丁 の 1 語" : "単語帳 2"}）を消してから「はい」→ 電話とパソコンに alpha=甲 の 覚えた が残る・雲の alpha は墓標にならない`,
+      learned.length === 3 && removed && asked && back && [pv, cv].every((v) => v.words.includes("alpha=試しの訳 甲=2")) && !!row && !row.deleted,
+      JSON.stringify({ learned, removed, asked, back, phone: pv.words, pc: cv.words, alpha: row ? (row.deleted ? "墓標" : row.payload?.ja) : "なし" }));
+    await phone.context().close();
+    await page.context().close();
+  }
+
+  // ----- (5) 表が無い間に電話で覚える。パソコンのタブは表が無い間に開き（読めなかった）、単語帳 2 を足して開いたまま。表を作り、電話が新しいタブで送った後に、
+  // パソコンの開いたままのタブがセットを終えて送る（取り込まずに送る）→ 電話の 覚えた は消えない。パソコンも新しいタブで取り込めば両方の語を持つ -----
+  {
+    const LINK1 = shareLink("試しの一冊目", [["alpha", "試しの訳 甲"], ["bravo", "試しの訳 乙"], ["charlie", "試しの訳 丙"]]);
+    const LINK2 = shareLink("試しの二冊目", [["alpha", "試しの訳 丁"], ["bravo", "試しの訳 戊"], ["echo", "試しの訳 庚"]]);
+    const cloud = createCloud({ word_progress: [], user_progress: [] }, { failSelect: { user_items: NO_TABLE }, failWrite: { user_items: NO_TABLE } });
+    const login = { spelldash_test_session: "1", spelldash_test_cloud: cloud.id };
+    const phone = await device({ phone: true, storage: login });
+    const book1 = await addShared(phone, LINK1);
+    await phone.goto(`${BASE}/?learn=my&book=${book1}&choice=en`, { waitUntil: "networkidle" });
+    const learned = await answerChoice(phone, 3);
+    await phone.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    await leave(phone, cloud);
+    const pc = await device({ storage: login });
+    await addShared(pc, LINK2); // このタブは表が無い間に開いた（読めなかった）。閉じずに置いておく
+    await syncDone(pc);
+    cloud.config.failSelect = {}; // 表を作った
+    cloud.config.failWrite = {};
+    cloud.rows("user_items");
+    await leave(await openMy(phone.context(), cloud), cloud); // 電話の新しいタブ: 読んで（雲は空）送る
+    const before = cloud.log.length;
+    await pc.evaluate(async () => { const S = await import("/js/sync.js"); await S.pushSync(); }); // 開いたままのタブがセットを終えて送る
+    await quiet(cloud);
+    const pcSent = cloud.writes("user_items", before).reduce((n, e) => n + (e.kinds?.my_word ?? 0), 0); // そのタブが送った語の行の数
+    let page = await openMy(phone.context(), cloud);
+    const pv = await view(page);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud); // パソコンの新しいタブ: 取り込んでから送る
+    const cv = await view(page);
+    await leave(page, cloud);
+    const both = (v) => ["alpha=試しの訳 甲=2", "bravo=試しの訳 乙=2", "alpha=試しの訳 丁=0", "bravo=試しの訳 戊=0"].every((w) => v.words.includes(w));
+    check("94.1 (5) 表を作ったときに開いていたパソコンのタブ（読めなかった）は、取り込むまで語を送らない → 電話の alpha=甲・bravo=乙 の 覚えた は残る・パソコンは新しいタブで取り込むと両方の語を持つ",
+      learned.length === 3 && pcSent === 0 && ["alpha=試しの訳 甲=2", "bravo=試しの訳 乙=2"].every((w) => pv.words.includes(w)) && both(cv),
+      JSON.stringify({ learned, pcSent, phone: pv.words, pc: cv.words }));
+    await phone.context().close();
+    await pc.context().close();
+  }
+  check("94.1 (3) どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
 // ===== 92.1 ショートカットキー（Batch 92。shortcuts.html・js/shortcutsPage.js・js/shortcutsCore.js・js/shortcutsArt.js・js/shortcutsData.js・入口は index.html・stats.html・js/statsView.js。docs/SPEC_SHORTCUTS.md）: 入口（ホームの「スラング」の下のボタン・学習状況のスラングの行の下の 1 行と練習のページと同じ 覚えた の数・2,858 と学習状況の今の数は動かない）・ページ（ナビ 4 つ・フッター・noindex・sitemap に無い・CSP の違反 0・320／390／1200 × 昼夜で横スクロール 0）・キーボードを選ばずに練習 → 選ぶ所へ・押す組を全部本物のキーで（Ctrl は Control、⌘ は Meta）・止める・取り違えと近い組・ほかの項目の組・repeat・⌘ の keyup の欠け・Esc と Tab・届かなかった組（1 回目と 2 回目）・戻る・進む・再読み込みの守り・指の端末・絵（2 問目の前と後・字の大きさ・動き・光るキー・⌘ の日本語の並び）・キーボードだけで 10 問・日本語入力・保存と領域とバックアップ・アプリの状態 =====

@@ -86,11 +86,14 @@ export function getLearnedWordList() {
 
 // 覚えた（learning＋習得）が記録にあるのに、語が引けない id の数（外したパックの語）。
 // 覚えた単語帳には出せないので、件数だけ 1 行で添える。公開の語の表（js/wordStore.js loadPublicWords）を読めるまでは数えない（null）:
-// 中心の学習の語を外したパックの語と読み違えない（Batch 89）
+// 中心の学習の語を外したパックの語と読み違えない（Batch 89）。
+// マイ単語帳の語の記録（id が my- で始まる）は数えない（Batch 94: ほかの端末で学んだ記録だけが同期で届き、この端末にその語が無いと、外したパックの語と言っていた）
+const MY_RECORD_PREFIX = "my-"; // js/myWordsCore.js MY_ID_PREFIX と同じ字（静的な import を足さない: ページの先読みの頭を変えない）
 export function getDroppedLearnedCount() {
   if (!publicWordsReady()) return null;
   let n = 0;
   for (const [id, stat] of Object.entries(getWordStats())) {
+    if (id.startsWith(MY_RECORD_PREFIX)) continue;
     const status = classifyWord(stat);
     if ((status === "learning" || status === "mastered") && !findRecordWord(id)) n++;
   }

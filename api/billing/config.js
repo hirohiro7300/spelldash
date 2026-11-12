@@ -2,7 +2,8 @@
 //
 // GET /api/billing/config
 // → { configured: boolean, prices: [{ interval: "month"|"year", amount, currency }], trialMonths, trialDays, trialEndsAt?, ai }（無料期間は初めての人だけ）
-//   未設定（STRIPE_SECRET_KEY か STRIPE_PRICE_MONTHLY が無い）なら { configured: false, prices: [], trialDays: 0, trialMonths: 0, ai }（200）。
+//   未設定（STRIPE_SECRET_KEY・STRIPE_PRICE_MONTHLY・STRIPE_WEBHOOK_SECRET・SUPABASE_SERVICE_ROLE_KEY のどれかが無い。Batch 94 で後の 2 つを足した）なら
+//   { configured: false, prices: [], trialDays: 0, trialMonths: 0, ai }（200）。
 //   ai: 加入画面の比較表の「AI の覚え方」の 1 日の回数 { explain: { free, pro } }。AI の鍵が無ければ null（画面は「準備中」）。
 //     回数は api/explain-word.js のゲートと同じ値（_lib/aiLimits.js の 1 か所）。受付前でも返す（比較表は受付前も出る）
 //   金額はコードに書かず Stripe の Price（GET /v1/prices/{id}）から取る。unit_amount をそのまま（JPY はゼロ小数）。

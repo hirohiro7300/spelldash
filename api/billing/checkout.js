@@ -3,8 +3,10 @@
 // POST /api/billing/checkout  { interval: "month" | "year" }
 //   Authorization: Bearer <Supabase アクセストークン>（ログイン必須）
 // → { url }（Stripe Checkout のページ。クライアントはここへ遷移する）
-//   503 not_configured / 401 login_required / 400 bad_request（interval が不正、年額が未設定）
+//   503 not_configured（受付前: 4 つの変数のどれかが無い。_lib/billing.js billingConfigured。Batch 94 から、データベースに加入の表 subscriptions が無いときも。
+//     そのときは決済の会社に何も頼まない: 手続きを作ると、払っても webhook が書けず Pro にならない）/ 401 login_required / 400 bad_request（interval が不正、年額が未設定）
 //   409 already_subscribed（本人の行がすでに Pro）/ 502 upstream
+//   502 auth_unavailable（Batch 94。本人確認を確かめられない: 4 秒で打ち切り・通信の失敗・本人確認の 5xx。401 は鍵が違うときだけ。_lib/shared.js verifyUserChecked）
 //
 // 無料期間（STRIPE_TRIAL_MONTHS／STRIPE_TRIAL_DAYS）は初めての人だけ: 本人の行が無く（webhook は解約後も行を canceled で残す）、
 // 決済の会社の契約の検索にも user_id の契約が 1 つも無く、本人の顧客にも契約が 1 つも無いとき。解約して入り直した人には付けない
@@ -19,7 +21,7 @@
 // 特定商取引法 12 条の 6。文は _lib/billing.js checkoutSubmitMessage。金額はその画面が Price から出すので書かない）。
 // 規約への同意の欄（consent_collection）は送らない（決済の会社の画面で規約の URL を設定しないと手続きが作れなくなる。docs/BILLING.md の手順の任意の項目）
 
-import { send, readBody, verifyUserFull, bearerToken } from "../_lib/shared.js";
+import { send, readBody, verifyUserChecked, bearerToken } from "../_lib/shared.js";
 import {
   rejectMethod,
   billingConfigured,
@@ -37,6 +39,8 @@ import {
   expireOtherOpenSessions,
   overBillingRate,
   sendUpstream,
+  logBilling,
+  MissingTableError,
   MESSAGES
 } from "../_lib/billing.js";
 
@@ -50,7 +54,9 @@ export default async function handler(req, res) {
   if (rejectMethod(req, res, "POST")) return;
   if (!billingConfigured()) return send(res, 503, { error: "not_configured", message: MESSAGES.notConfigured });
 
-  const user = await verifyUserFull(req.headers.authorization);
+  const verified = await verifyUserChecked(req.headers.authorization);
+  if (verified.problem === "unavailable") return send(res, 502, { error: "auth_unavailable", message: MESSAGES.authUnavailable });
+  const user = verified.user;
   if (!user) return send(res, 401, { error: "login_required", message: MESSAGES.login });
   // 同じ人は 1 分 10 回まで（Batch 88。_lib/billing.js overBillingRate）
   if (overBillingRate("checkout", user.id)) return send(res, 429, { error: "too_many", message: MESSAGES.tooMany });
@@ -61,7 +67,8 @@ export default async function handler(req, res) {
   if (!priceId) return send(res, 400, { error: "bad_request", message: MESSAGES.yearlyUnavailable });
 
   try {
-    const row = await fetchOwnSubscription(bearerToken(req.headers.authorization), user.id);
+    // 加入の表が無いのを「行が無い」にしない（Batch 94。表が無ければ下の catch で 503 not_configured。決済の会社には出ない）
+    const row = await fetchOwnSubscription(bearerToken(req.headers.authorization), user.id, { tableRequired: true });
     if (isProRow(row)) return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
     // webhook がまだ届いていない直後や、別のタブからの二重加入を防ぐ: 既知の顧客なら Stripe 側の生きている契約も見る
     // 行がまだ無い（webhook の前）: Stripe 側を user_id で探す。検索の反映は遅れることがあるので、画面側の「支払い済み」の印と併せて使う
@@ -122,6 +129,10 @@ export default async function handler(req, res) {
     await expireOtherOpenSessions(customerId, typeof session.id === "string" ? session.id : "");
     return send(res, 200, { url: session.url });
   } catch (error) {
+    if (error instanceof MissingTableError) {
+      logBilling("checkout", error); // 種別と表の名前だけ（鍵・メール・顧客の番号は書かない）
+      return send(res, 503, { error: "not_configured", message: MESSAGES.notConfigured });
+    }
     return sendUpstream(res, "checkout", error);
   }
 }

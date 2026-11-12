@@ -151,9 +151,11 @@ export function jaHash(ja, len = 8) {
 // 新しい語の鍵（足す前に呼ぶ。list = 今の語の並び〔場面カードも〕・key = 英語の鍵・ja = 訳）。
 // その英語の語がまだ無ければ（場面カードの鍵とも重ならなければ）英語の鍵のまま（前と同じ）。あれば <英語の鍵>~<訳の印 8 桁>。
 // 8 桁の鍵がもう使われていれば（別の訳と印が重なった・訳を直した語）16・24・32 桁に長くする。
-// 鍵は 183 字まで（英語 150 字 + ~ + 32 桁）: 同期の key の上限 200 字（docs/SQL_USER_ITEMS.md）にも、メモの鍵 my-<鍵> にも収まる
-export function myIdentityFor(list, key, ja) {
+// 鍵は 183 字まで（英語 150 字 + ~ + 32 桁）: 同期の key の上限 200 字（docs/SQL_USER_ITEMS.md）にも、メモの鍵 my-<鍵> にも収まる。
+// reserved: ほかにも使っている鍵（Batch 94: 消した語の墓標をまだ送っていない鍵。js/myWords.js unsentDeletedKeys）
+export function myIdentityFor(list, key, ja, reserved = null) {
   const taken = new Set((Array.isArray(list) ? list : []).filter(Boolean).map((w) => String(w.en ?? "")));
+  for (const k of reserved ?? []) taken.add(k);
   if (!taken.has(key)) return key;
   for (const len of KEY_HASH_LENGTHS) {
     const id = `${key}${MY_KEY_SEP}${jaHash(ja, len)}`;
@@ -417,7 +419,7 @@ export function parseBooks(raw) {
 }
 
 // 語が持つ単語帳の id（形の正しい id だけ。無い・形の違う値は最初の単語帳 main）
-const bookRefOf = (w) => (typeof w?.book === "string" && BOOK_ID.test(w.book) ? w.book : MY_FIRST_BOOK.id);
+export const bookRefOf = (w) => (typeof w?.book === "string" && BOOK_ID.test(w.book) ? w.book : MY_FIRST_BOOK.id);
 
 // 語の単語帳の id。並び（books）に無い id は先頭の単語帳（並びは withWordBooks で語の単語帳まで足したものを渡す）
 export function bookIdOf(w, books) {
@@ -426,7 +428,8 @@ export function bookIdOf(w, books) {
 }
 
 export const MY_OTHER_BOOK_NAME = "ほかの端末の単語帳";
-const cleanBookName = (raw) => (typeof raw === "string" ? raw.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, MY_BOOK_NAME_MAX) : "");
+// 単語帳の名前を比べる形（NFKC・空白の並びは 1 つ・前後を落とす・20 字。取り込みの「同じ名前の単語帳」も同じ形で見る: js/userItemsSync.js）
+export const cleanBookName = (raw) => (typeof raw === "string" ? raw.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, MY_BOOK_NAME_MAX) : "");
 
 // 端末の一覧（books）+ 語が持つ単語帳（Batch 81）。一覧は同期しないが、語の book と bookName は同期で届く:
 // 一覧に無い id（ほかの端末で作った単語帳）は、語の bookName（無ければ「ほかの端末の単語帳」。main は「マイ単語帳」）で一覧の後ろに足す（語の並びで初めて出た順）。

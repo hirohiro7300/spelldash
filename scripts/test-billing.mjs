@@ -5,6 +5,8 @@
 //   配信の補助が先に読み切って req.on を写しに付け替えた形〔本番の既定〕・写しが終わらなくても待ち続けない）・
 //   加入の守り（受付前・ログイン・二重加入・無料期間は初めての人だけ・確定の画面の文〔提供の時期も〕）・お支払いの管理の守り・Pro の判定と無料期間の終わり・
 //   受付前の config・比較表の AI の回数（サーバーの値と同じ）・ログに鍵とメールと顧客の番号を書かない。
+//   Batch 94（7d）: 受付中は 4 つの変数がそろってから（config・加入の口・AI の「Pro なら…」）・加入の表が無ければ加入の口は 503（決済の会社へ出ない）。
+//   Batch 94（7e）: 本人確認を確かめられない（4 秒で打ち切り・通信の失敗・5xx）と、加入の口とお支払いの管理の口は 502 auth_unavailable（401 は鍵が違うときだけ）。
 // ネットワークには出ない: fetch を差し替え、決済の会社の API とデータベース（認証と REST）を偽物で答える。鍵は偽の値（本物の鍵の形にしない）。
 // 使い方: node scripts/test-billing.mjs [--root <木>]
 //   --root は別の木（例: 直す前の main を git archive した所。api/ と package.json があればよい）の api/ に同じ検査を流す（直す前に落ちることを確かめる）
@@ -82,6 +84,9 @@ const P = { subs: new Map(), search: [], list: [], prices: new Map(), fail: new 
 // customers: 顧客（{ id, email, metadata, searchable }。作ったばかりの顧客は検索に出ない〔決済の会社の検索は遅れて出る〕）・sessions: 手続き（{ id, url, customer, status, expires_at }）・
 // idem: 冪等キー → 最初の要求の本文と答え（同じキーで同じ本文なら同じ答え・違う本文なら 400 idempotency_error。決済の会社と同じ）
 const D = { rows: new Map(), missing: false, readGate: null, writeGate: null }; // データベース（subscriptions）
+// 本人確認（/auth/v1/user）の答え方（Batch 94 の 7e）: null は今どおり（トークンで答える）。"timeout"・"network" はその例外を投げる。
+// "hang" は答えない（要求の打ち切りの合図で切れる。合図が無い要求は検査が止まらないよう 1 秒で偽物の側から切る）。数ならその番号で答える
+const AUTH = { mode: null };
 
 function fresh() {
   calls = [];
@@ -100,16 +105,17 @@ function fresh() {
   D.missing = false;
   D.readGate = null;
   D.writeGate = null;
+  AUTH.mode = null;
 }
 
-const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const json =(status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const lower = (headers) => Object.fromEntries(Object.entries(headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const ROW_DEFAULTS = { stripe_customer_id: null, stripe_subscription_id: null, status: "none", price_id: null, plan_interval: null, current_period_end: null, cancel_at_period_end: false, event_created: 0 };
 
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(String(url));
-  const call = { origin: u.origin, method: String(init.method || "GET").toUpperCase(), path: u.pathname, params: u.searchParams, headers: lower(init.headers), body: typeof init.body === "string" ? init.body : "" };
+  const call = { origin: u.origin, method: String(init.method || "GET").toUpperCase(), path: u.pathname, params: u.searchParams, headers: lower(init.headers), body: typeof init.body === "string" ? init.body : "", signal: init.signal ?? null };
   calls.push(call);
   if (u.origin === DB) return dbRoute(call);
   return providerRoute(call);
@@ -118,10 +124,21 @@ globalThis.fetch = async (url, init = {}) => {
 // ---- データベース: 認証（/auth/v1/user）と REST（/rest/v1/subscriptions） ----
 async function dbRoute(call) {
   if (call.path === "/auth/v1/user") {
+    if (AUTH.mode === "timeout") throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    if (AUTH.mode === "network") throw new TypeError("fetch failed");
+    if (AUTH.mode === "hang") {
+      return new Promise((_resolve, reject) => {
+        if (call.signal) call.signal.addEventListener("abort", () => reject(call.signal.reason), { once: true });
+        else setTimeout(() => reject(new Error("no abort signal on the request")), 1000);
+      });
+    }
+    if (typeof AUTH.mode === "number") return json(AUTH.mode, { msg: "auth trouble" });
     const token = String(call.headers.authorization || "").replace(/^Bearer\s+/i, "");
     const user = USERS[token];
     return user ? json(200, { id: user.id, email: user.email, email_confirmed_at: "2026-01-01T00:00:00Z" }) : json(401, { msg: "invalid token" });
   }
+  // AI の回数の関数（Batch 94 の 7d で AI の「Pro なら…」を見る）: 関数がまだ無い形で答える（api/_lib/shared.js はインスタンスのメモリーで数える）
+  if (call.path === "/rest/v1/rpc/ai_take") return json(404, { code: "PGRST202", message: "Could not find the function" });
   if (call.path !== "/rest/v1/subscriptions") {
     unexpected.push(`${call.method} ${call.path}`);
     return json(404, { code: "PGRST205" });
@@ -1026,6 +1043,179 @@ const hook = async (event, makeReq = streamReq, opts) => {
   ok("秘密鍵まで外すと、管理と webhook も 503（決済の会社は webhook を再送する）・書かない", portalOff && res.statusCode === 503 && D.rows.get(U1)?.event_created === 200, String(res.statusCode));
 }
 
+// ===== 7d. 受付中の条件と加入の表（Batch 94。DECISION §2 C）: 受付中（config の configured・加入の口・AI の「Pro なら…」）は 4 つ
+// （秘密鍵 STRIPE_SECRET_KEY・月額の Price STRIPE_PRICE_MONTHLY・署名の鍵 STRIPE_WEBHOOK_SECRET・service role SUPABASE_SERVICE_ROLE_KEY）がそろってから。
+// 前は秘密鍵と月額の Price だけで受付中になり、署名の鍵か service role が無いと、払っても webhook が 503 のままで Pro にならなかった。
+// 加入の口は、本人の行を読むときに加入の表（subscriptions）が無ければ 503 not_configured（決済の会社へは 1 回も出ない）。前は「行が無い」と読んで手続きを作った。
+// お支払いの管理・webhook・AI の Pro の判定は今の読み方のまま（管理は秘密鍵だけを見る・表が無ければ「行なし」）
+{
+  const shared = await load("api/_lib/shared.js");
+  const providerAll = () => calls.filter((c) => c.origin !== DB).map((c) => `${c.method} ${c.path}`);
+  const notConfigured = lib.MESSAGES?.notConfigured;
+  // C1: 秘密鍵と月額の Price だけ（署名の鍵・service role なし）
+  fresh();
+  setEnv({ STRIPE_WEBHOOK_SECRET: null, SUPABASE_SERVICE_ROLE_KEY: null });
+  let res = await invoke(config, { method: "GET", headers: {} });
+  const c1Config = { status: res.statusCode, configured: res.body?.configured, prices: res.body?.prices?.length ?? null, provider: providerAll() };
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("受付の条件 C1（Batch 94）: 秘密鍵と月額の Price だけでは受付前（config は 200 で configured:false・価格を取りに出ない）・加入の口は 503 not_configured・決済の会社に 1 回も出ない",
+    c1Config.status === 200 && c1Config.configured === false && c1Config.prices === 0 && c1Config.provider.length === 0
+      && res.statusCode === 503 && res.body?.error === "not_configured" && res.body?.message === notConfigured && providerAll().length === 0,
+    JSON.stringify({ c1Config, checkout: [res.statusCode, res.body?.error], provider: providerAll() }));
+  // C2: 署名の鍵を足してもまだ受付前。service role も足すと受付中（4 つのどれが欠けても受付前）
+  const configuredWith = (over) => {
+    setEnv(over);
+    return lib.billingConfigured();
+  };
+  const matrix = [
+    configuredWith({}),
+    configuredWith({ SUPABASE_SERVICE_ROLE_KEY: null }),
+    configuredWith({ STRIPE_WEBHOOK_SECRET: null }),
+    configuredWith({ STRIPE_WEBHOOK_SECRET: null, SUPABASE_SERVICE_ROLE_KEY: null }),
+    configuredWith({ STRIPE_PRICE_MONTHLY: null }),
+    configuredWith({ STRIPE_SECRET_KEY: null })
+  ];
+  fresh();
+  setEnv({ SUPABASE_SERVICE_ROLE_KEY: null });
+  res = await invoke(config, { method: "GET", headers: {} });
+  const withSigning = res.body?.configured;
+  setEnv();
+  res = await invoke(config, { method: "GET", headers: {} });
+  const withAll = res.body?.configured;
+  ok("受付の条件 C2（Batch 94）: 署名の鍵を足してもまだ受付前（configured:false）・service role も足すと受付中（configured:true）・4 つのどれが欠けても受付前",
+    JSON.stringify(matrix) === JSON.stringify([true, false, false, false, false, false]) && withSigning === false && withAll === true,
+    JSON.stringify({ matrix, withSigning, withAll }));
+  // C3（守り）: 4 つそろって月額の Price を外す（急いで止める手）→ 受付前。お支払いの管理（秘密鍵だけ）と webhook（秘密鍵・署名の鍵・service role）は自分の条件で動く
+  fresh();
+  setEnv({ STRIPE_PRICE_MONTHLY: null });
+  res = await invoke(config, { method: "GET", headers: {} });
+  const c3Config = res.body?.configured;
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  const c3Checkout = res.statusCode;
+  D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_test_1", stripe_subscription_id: "sub_test_1", event_created: 100 });
+  res = await invoke(portal, post({}, "tok-u1"));
+  const c3Portal = res.statusCode;
+  res = await hook(eventOf("customer.subscription.updated", subOf({ cancel_at_period_end: true }), 200));
+  ok("受付の条件 C3（守り）: 4 つそろって月額の Price を外すと受付前（config・加入の口 503）。お支払いの管理は 200・webhook は 200 で書く（自分の条件のまま）",
+    c3Config === false && c3Checkout === 503 && c3Portal === 200 && res.statusCode === 200 && D.rows.get(U1)?.cancel_at_period_end === true,
+    JSON.stringify({ c3Config, c3Checkout, c3Portal, hook: res.statusCode }));
+  // C4: 4 つそろっていても、データベースに加入の表（subscriptions）が無い（docs/SQL_BILLING.md の前）
+  fresh();
+  setEnv();
+  D.missing = true;
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  const c4 = { status: res.statusCode, error: res.body?.error, message: res.body?.message, provider: providerAll() };
+  const beforePortal = providerAll().length;
+  res = await invoke(portal, post({}, "tok-u1"));
+  const c4Portal = [res.statusCode, res.body?.error, providerAll().length - beforePortal];
+  ok("受付の条件 C4（Batch 94）: 4 つそろっていても加入の表が無ければ、加入の口は 503 not_configured「Pro はまだ受付前です。」・決済の会社への要求 0（顧客も手続きも作らない）",
+    c4.status === 503 && c4.error === "not_configured" && c4.message === notConfigured && c4.provider.length === 0, JSON.stringify(c4));
+  ok("受付の条件 C4（守り）: お支払いの管理は今の読み方のまま（表が無ければ行なし → 404 no_subscription・決済の会社へ出ない）",
+    c4Portal[0] === 404 && c4Portal[1] === "no_subscription" && c4Portal[2] === 0, JSON.stringify(c4Portal));
+  // C5: AI の無料の上限の答えの「Pro なら…」（api/_lib/shared.js canOfferPro）も同じ条件。同じ人が無料の 1 回を使い切った 2 回目で見る
+  const aiOffer = async (over, scope) => {
+    fresh();
+    setEnv(over);
+    const user = { id: U3, email: "", token: "tok-u3" };
+    const req = { method: "POST", headers: { authorization: "Bearer tok-u3" } };
+    const first = typeof shared.aiTake === "function" ? await shared.aiTake(req, fakeRes(), user, { scope, limit: 1, proLimit: 5 }) : null;
+    if (typeof first === "function") first();
+    const second = fakeRes();
+    if (typeof shared.aiTake === "function") await shared.aiTake(req, second, user, { scope, limit: 1, proLimit: 5 });
+    return { first: typeof first, status: second.statusCode, body: second.body ?? null };
+  };
+  const offOffer = await aiOffer({ STRIPE_WEBHOOK_SECRET: null, SUPABASE_SERVICE_ROLE_KEY: null }, "b94-offer-off");
+  const onOffer = await aiOffer({}, "b94-offer-on");
+  ok("受付の条件 C5（Batch 94）: AI の無料の上限の答えの「Pro なら…」も 4 つそろうまで出さない（秘密鍵と月額の Price だけでは upgrade:false・offer なし）・4 つそろえば upgrade:true・「Pro なら1日5回」",
+    offOffer.first === "function" && offOffer.status === 429 && offOffer.body?.error === "daily_limit" && offOffer.body?.upgrade === false && !Object.hasOwn(offOffer.body ?? {}, "offer")
+      && onOffer.status === 429 && onOffer.body?.upgrade === true && onOffer.body?.offer === "Pro なら1日5回",
+    JSON.stringify({ offOffer, onOffer }));
+  setEnv();
+}
+
+// ===== 7e. 本人確認が答えないとき（Batch 94。DECISION §2 H）: 加入の口とお支払いの管理の口は、本人確認を確かめられない（4 秒で打ち切り・通信の失敗・
+// 本人確認の 5xx）と 502 auth_unavailable「いまは確かめられない。少し待ってもう一度」で答える。前は 401 login_required（ログインし直しても直らない）。
+// 鍵が違う（401）ときは今どおり 401 login_required。どちらも決済の会社と加入の表には出ない。ログには種類と番号だけ（トークン・メール・鍵を書かない）。
+// verifyUserFull の約束（何があっても null）と AI の口は今のまま
+{
+  const shared = await load("api/_lib/shared.js");
+  const UNAVAILABLE = "いまは確かめられない。少し待ってもう一度";
+  const beyondAuth = () => calls.filter((c) => !(c.origin === DB && c.path === "/auth/v1/user")).map((c) => `${c.method} ${c.path}`);
+  const authAsked = () => calls.filter((c) => c.origin === DB && c.path === "/auth/v1/user").length;
+  // 加入の口とお支払いの管理の口を、本人確認の答え方 mode で 1 回ずつ呼ぶ（ログは消さずに、この呼び出しの分だけ切り出す）
+  const both = async (mode, token = "tok-u1") => {
+    const rows = [];
+    for (const [name, handler, body] of [["checkout", checkout, { interval: "month" }], ["portal", portal, {}]]) {
+      fresh();
+      setEnv();
+      AUTH.mode = mode;
+      const from = logs.length;
+      const res = await invoke(handler, post(body, token));
+      rows.push({ name, mode, status: res.statusCode, error: res.body?.error ?? null, message: res.body?.message ?? null, beyond: beyondAuth(), asked: authAsked(), logs: logs.slice(from) });
+    }
+    return rows;
+  };
+  const unavailableOk = (r, kind) => r.status === 502 && r.error === "auth_unavailable" && r.message === UNAVAILABLE && r.beyond.length === 0 && r.asked === 1
+    && r.logs.some((l) => l.includes(kind));
+  const quietLogs = (rows) => rows.every((r) => r.logs.every((l) => !/tok-u\d|@example\.com|test-|db\.test|Bearer/.test(l)));
+  // H1: 打ち切りの例外・通信の失敗
+  const h1 = [...(await both("timeout")), ...(await both("network"))];
+  ok("本人確認 H1（Batch 94）: 本人確認が打ち切り（TimeoutError）・通信の失敗なら、加入の口もお支払いの管理の口も 502 auth_unavailable「いまは確かめられない。少し待ってもう一度」（401 にしない）・決済の会社と加入の表に出ない・ログに種類（timeout・network）",
+    h1.length === 4 && h1.every((r) => unavailableOk(r, r.mode)), JSON.stringify(h1.map(({ beyond, ...r }) => ({ ...r, beyond: beyond.length }))));
+  // H1b: 答えないまま（本物の打ち切り）。打ち切りの 4 秒（AbortSignal.timeout(4000)）を検査の中だけ 20ms に縮めて、要求に合図が付いていることも見る
+  const seen = [];
+  const realTimeout = AbortSignal.timeout;
+  AbortSignal.timeout = (ms) => {
+    seen.push(ms);
+    return realTimeout.call(AbortSignal, 20);
+  };
+  let h1b;
+  try {
+    h1b = await both("hang");
+  } finally {
+    AbortSignal.timeout = realTimeout;
+  }
+  ok("本人確認 H1b（Batch 94）: 本人確認が答えないままなら 4 秒で打ち切る（要求に打ち切りの合図・AbortSignal.timeout(4000)）→ 2 つの口とも 502 auth_unavailable",
+    seen.length === 2 && seen.every((ms) => ms === 4000) && h1b.every((r) => unavailableOk(r, "timeout")), JSON.stringify({ seen, rows: h1b.map((r) => [r.name, r.status, r.error, r.logs]) }));
+  // H2: 本人確認の 5xx は確かめられない（502）。401 は鍵が違う（今どおり 401 login_required）。トークンが無ければ本人確認に聞かずに 401
+  const h2 = [...(await both(500)), ...(await both(503))];
+  ok("本人確認 H2（Batch 94）: 本人確認が 500・503 で答えたら、2 つの口とも 502 auth_unavailable（ログに番号）",
+    h2.length === 4 && h2.every((r) => unavailableOk(r, String(r.mode))), JSON.stringify(h2.map((r) => [r.name, r.mode, r.status, r.error, r.logs])));
+  // H2b: 本人確認が混み合い（429）・待ち切れ（408）で答えたときも確かめられない（502）。ログインし直しても直らないので「ログインが要る」と言わない
+  const h2b = [...(await both(429)), ...(await both(408))];
+  ok("本人確認 H2b（Batch 94 の直し）: 本人確認が 429・408 で答えたら、2 つの口とも 502 auth_unavailable（401 にしない・ログに番号）",
+    h2b.length === 4 && h2b.every((r) => unavailableOk(r, String(r.mode))), JSON.stringify(h2b.map((r) => [r.name, r.mode, r.status, r.error, r.logs])));
+  const wrong = [...(await both(401)), ...(await both(null, "tok-nobody")), ...(await both(null, ""))];
+  ok("本人確認 H2（Batch 94・守り）: 鍵が違う（本人確認が 401・知らないトークン）・トークンが無いときは今どおり 401 login_required「加入にはログインが必要です。」・決済の会社に出ない（トークンが無ければ本人確認にも聞かない）",
+    wrong.length === 6 && wrong.every((r, i) => r.status === 401 && r.error === "login_required" && r.message === lib.MESSAGES?.login && r.beyond.length === 0 && r.asked === (i >= 4 ? 0 : 1)),
+    JSON.stringify(wrong.map((r) => [r.name, r.mode, r.status, r.error, r.asked])));
+  // H3: ログには種類と番号だけ
+  ok("本人確認 H3（Batch 94・守り）: 確かめられないときのログにトークン・メール・鍵・相手の所を書かない（種類と番号だけ）",
+    quietLogs([...h1, ...h1b, ...h2, ...h2b, ...wrong]), JSON.stringify([...h1, ...h1b, ...h2].flatMap((r) => r.logs).slice(0, 6)));
+  // 守り: verifyUserFull の約束（何があっても null。投げない）と AI の口（本人確認が 500 でも今どおり 401 login_required）
+  const fullOf = async (mode, token = "tok-u1") => {
+    fresh();
+    AUTH.mode = mode;
+    try {
+      const user = await shared.verifyUserFull(`Bearer ${token}`);
+      return user === null ? "null" : user?.id ?? "?";
+    } catch (error) {
+      return `throw ${error?.name}`;
+    }
+  };
+  const fulls = [await fullOf("timeout"), await fullOf("network"), await fullOf(500), await fullOf(401), await fullOf(null)];
+  fresh();
+  setEnv({ ANTHROPIC_API_KEY: "test-ai-key" });
+  AUTH.mode = 500;
+  const aiRes = fakeRes();
+  const aiUser = typeof shared.aiGate === "function" ? await shared.aiGate({ method: "POST", headers: { authorization: "Bearer tok-u1" } }, aiRes) : "none";
+  ok("本人確認（Batch 94・守り）: verifyUserFull は今の約束のまま（打ち切り・通信の失敗・500・401 は null で投げない・本人なら id）・AI の口は本人確認が 500 でも今どおり 401 login_required",
+    JSON.stringify(fulls) === JSON.stringify(["null", "null", "null", "null", U1]) && aiUser === null && aiRes.statusCode === 401 && aiRes.body?.error === "login_required",
+    JSON.stringify({ fulls, ai: [aiRes.statusCode, aiRes.body?.error] }));
+  AUTH.mode = null;
+  setEnv();
+}
+
 // ===== 8. 価格（config）と比較表の AI の回数 =====
 {
   fresh();
@@ -1091,7 +1281,9 @@ const hook = async (event, makeReq = streamReq, opts) => {
   };
   eq("無料期間: 読めない・0・負の値は 0、小数は切り捨て", [parse({ STRIPE_TRIAL_MONTHS: "abc", STRIPE_TRIAL_DAYS: "-3" }), parse({ STRIPE_TRIAL_MONTHS: "1.9", STRIPE_TRIAL_DAYS: "7.5" })], [[0, 0], [1, 7]]);
   setEnv();
-  ok("受付中の判定: 秘密鍵と月額の Price の両方があるときだけ", lib.billingConfigured() === true && (setEnv({ STRIPE_PRICE_MONTHLY: null }), lib.billingConfigured()) === false && (setEnv({ STRIPE_SECRET_KEY: null }), lib.billingConfigured()) === false);
+  ok("受付中の判定: 秘密鍵・月額の Price・署名の鍵・service role の 4 つがそろうときだけ（Batch 94。どれか 1 つを外すと受付前）",
+    lib.billingConfigured() === true && (setEnv({ STRIPE_PRICE_MONTHLY: null }), lib.billingConfigured()) === false && (setEnv({ STRIPE_SECRET_KEY: null }), lib.billingConfigured()) === false
+      && (setEnv({ STRIPE_WEBHOOK_SECRET: null }), lib.billingConfigured()) === false && (setEnv({ SUPABASE_SERVICE_ROLE_KEY: null }), lib.billingConfigured()) === false);
   setEnv();
   eq("form: ネストは a[b][c]・配列は a[0]・空の値は送らない（確定の画面の文も同じ書き方）",
     lib.encodeForm({ mode: "subscription", line_items: [{ price: "p", quantity: 1 }], custom_text: { submit: { message: "毎月 → 解約" } }, skip: null }),
@@ -1099,8 +1291,8 @@ const hook = async (event, makeReq = streamReq, opts) => {
 }
 
 // ===== 10. ログに鍵・メール・顧客や契約の番号を書かない／検査の外へ出ない =====
-ok("ログ: 鍵（秘密鍵・署名の鍵・service role・AI の鍵）・メール・顧客や契約の番号を書かない",
-  !logs.some((l) => /test-secret-key|test-signing-secret|test-service-role|test-ai-key|@example\.com|cus_|sub_test/.test(l)), logs.filter((l) => /test-|@|cus_|sub_/.test(l)).slice(0, 3).join(" | "));
+ok("ログ: 鍵（秘密鍵・署名の鍵・service role・AI の鍵・公開の鍵）・メール・顧客や契約の番号・ログインのトークンを書かない（Batch 94 からトークンと公開の鍵も見る）",
+  !logs.some((l) => /test-secret-key|test-signing-secret|test-service-role|test-ai-key|test-anon-key|@example\.com|cus_|sub_test|tok-u\d|tok-nobody|Bearer /.test(l)), logs.filter((l) => /test-|@|cus_|sub_|tok-|Bearer/.test(l)).slice(0, 3).join(" | "));
 ok("偽物の知らない要求は無い（どの要求も偽の相手が答えた）", unexpected.length === 0, unexpected.join(", "));
 
 out(`test-billing: ${passed} passed, ${failed} failed${rootArg > 0 ? `（--root ${ROOT}）` : ""}`);
