@@ -17,11 +17,14 @@
 
 import { normJa, parseBooks, cleanBookName, bookRefOf, answerKeyOf, isWordEntry, myIdentityFor, jaHash } from "./myWordsCore.js";
 
-const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }（マイ単語帳の墓標は card・noRow も持つ: 下の「消した語の印」）と、行でない印 UNMERGED
+const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }（マイ単語帳の墓標は card・noRow も持つ: 下の「消した語の印」）と、行でない印 UNMERGED・MERGED
 // 取り込みで雲を読めなかった印（Batch 94 の直し。meta の中の 1 つ。行の id はいつも「kind:key」なので重ならない。docs/SPEC_MY_WORDS.md §18.9）:
 // 付いている間、pushUserItems はマイ単語帳の語を送らない（送る待ちに残す）。雲と合わせていない語を送ると、ほかの端末の同じ鍵の違うカードを
 // 新しい時刻で上書きして消す（取り込みは同じタブの最初のページだけで、読めなくても同期の取り込み済みの印は付く: js/sync.js）。次に読めた取り込みが外す
 const UNMERGED = "unmerged";
+// 最後に雲と合わせた時刻（Batch 94 の直し。meta の中の 1 つ。{ at }。docs/SPEC_MY_WORDS.md §18.10）: 取り込みの終わりに書く。雲の墓標より古い送る待ちの語を
+// 消すか移すかを決める（下の moveDifferentCards）。無い = この端末はまだ一度も雲と合わせていない（ゲストの「はい」・表の前から使っている端末）
+const MERGED = "merged";
 const DIRTY_KEY = "spelldash_user_items_dirty"; // ["kind:key", ...]
 const MY_WORDS_KEY = "spelldash_my_words";
 const MY_BOOKS_KEY = "spelldash_my_books"; // js/myWords.js（単語帳の一覧。読むだけ）
@@ -348,16 +351,26 @@ function bookMapper(myWords) {
 // 英語の語が違うカード（足した時刻も訳も違う）で、その鍵が送る待ちにあるときだけ、端末の語を新しい鍵へ移して両方残す。新しい鍵は、雲に同じ組（答えの英語と訳）が
 // 別の鍵であればその鍵（端末にその鍵が無いときだけ。同じカードとしてまとまる）、無ければ myIdentityFor（端末の語と雲の生きた語の鍵を全部使っていると見る）。
 // text が無ければ答えの英語を入れる。ほかの欄（訳・単語帳・3 状態・lf・足した時刻）はそのまま。新しい鍵に前の印の時刻を付けて送る待ちに足し、前の鍵の印と
-// 送る待ちは外す（雲の行をそのまま取り込む）。場面カード・消した行は今のまま。移した語のメモと回答の履歴は前の鍵（my-<前の鍵>）に残る。
+// 送る待ちは外す（雲の行をそのまま取り込む）。場面カードは今のまま。移した語のメモと回答の履歴は前の鍵（my-<前の鍵>）に残る。
+// 雲の墓標（Batch 94 の直し。§18.10）: 中身が空で、どのカードを消したかは分からない。墓標がその鍵の送る待ちの英語の語より新しく、その語をほかの端末が
+// 見られなかった（この端末がまだ一度も雲と合わせていない〔印 MERGED が無い〕か、語を足したのが最後に合わせた時刻より後）ときだけ、生きた行と同じに移す
+// （ほかの端末が消したのは自分の別のカード）。最後に合わせたときに端末にあった語・足した時刻の無い語は、今どおり新しい墓標が勝つ（送った後に消された語を戻さない）
 // 戻り値: 移したか（移したら、送る待ち・語・印の順にすぐ書く: この後の localItems が語を読む。前の鍵を送る待ちに残したまま語だけ移すと、前の鍵の墓標を送ってしまう）
 function moveDifferentCards(cloud, myWords, meta) {
   const dirty = getDirtyItems();
   const alive = [...cloud.values()].filter((r) => r.kind === "my_word" && !r.deleted && isWordEntry(r.payload));
+  const tombs = [...cloud.values()].filter((r) => r.kind === "my_word" && r.deleted);
+  const mergedAt = meta[MERGED] ? Date.parse(meta[MERGED].at ?? "") || 0 : null; // null = まだ一度も雲と合わせていない
   let moved = false;
-  for (const r of alive) {
+  for (const r of [...alive, ...tombs]) {
     const id = `my_word:${r.key}`;
     const i = dirty.has(id) ? myWords.findIndex((w) => w.en === r.key && isWordEntry(w)) : -1;
-    if (i < 0 || sameCard(myWords[i], r.payload)) continue;
+    if (i < 0) continue;
+    if (r.deleted) {
+      const lTime = Date.parse(meta[id]?.updatedAt ?? myWords[i].addedAt ?? 0) || 0; // mergeCloudItems の localTime と同じ
+      if (lTime >= (Date.parse(r.updated_at ?? 0) || 0)) continue; // 端末の語が新しい（または同時刻）: 今どおり端末の語が勝つ
+      if (mergedAt !== null && (Date.parse(myWords[i].addedAt ?? "") || 0) <= mergedAt) continue; // ほかの端末が見られた語: 今どおり墓標が勝つ
+    } else if (sameCard(myWords[i], r.payload)) continue;
     const w = myWords[i];
     const answer = answerKeyOf(w);
     const same = alive.find((x) => x.key !== r.key && answerKeyOf({ en: x.key }) === answer && normJa(x.payload.ja) === normJa(w.ja) && !myWords.some((m) => m.en === x.key));
@@ -503,6 +516,7 @@ export function mergeCloudItems(rows, userId = null) {
     meta[id] = next;
   }
 
+  meta[MERGED] = { at: new Date().toISOString() }; // 雲と合わせた時刻（§18.10。この後に足す語は、次の取り込みまでほかの端末が見られなかった語）
   if (changed.my_word) writeJson(MY_WORDS_KEY, myWords);
   if (changed.note) writeJson(NOTES_KEY, notes);
   if (changed.pack) writeJson(PACKS_KEY, packs);
