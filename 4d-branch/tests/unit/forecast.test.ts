@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFutureDoc, countFuture, type FutureData } from "../../src/demo/future";
 import { buildFuture, futureData, futureVersion } from "../../src/demo/futureBundle";
-import { NO_AUTO_FUTURE, futureMaps, hasFutureRoot, nearFutureRoot, staleFutureMaps, swapFutureDoc, withNoAutoFuture } from "../../src/demo/futureSwap";
+import { FRESH_FUTURE, NO_AUTO_FUTURE, futureMaps, hasFutureRoot, isFreshFuture, nearFutureRoot, staleFutureMaps, swapFutureDoc, withNoAutoFuture } from "../../src/demo/futureSwap";
 import { Store } from "../../src/store/store";
 import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { mergeDocs } from "../../src/persist/io";
@@ -438,6 +438,36 @@ describe("未来の道筋の差し替え", () => {
     store.redo();
     expect(hasFutureRoot(store.doc)).toBe(true);
     expect(hasFutureRoot(demo)).toBe(false);
+  });
+
+  it("開いたばかりの印: 入れ替えた直後に付けると、保存・同期の形を通しても残り、編集・元に戻す・やり直すで外れる", () => {
+    const { pv } = buildFuture(TODAY);
+    const store = new Store(buildDemoDoc());
+    store.replaceDoc(pv.doc, "未来の道筋を開く");
+    expect(isFreshFuture(store.doc)).toBe(false);
+    store.doc.meta = { ...store.doc.meta, [FRESH_FUTURE]: store.doc.updatedAt };
+    expect(isFreshFuture(store.doc)).toBe(true);
+    // 閉じて開き直した（保存した形から読み直した）: まだ手を付けていない
+    expect(isFreshFuture(normalizeDoc(JSON.parse(JSON.stringify(store.doc))).doc)).toBe(true);
+    // 書き足すと外れる
+    store.transact("add", (tx) => void tx.addNode(makeNode({ title: "足した歩み" })));
+    expect(isFreshFuture(store.doc)).toBe(false);
+    // 元に戻して入れ替えた直後の中身に戻っても、手を付けたことには変わりない（時刻は進む）
+    store.undo();
+    expect(Object.values(store.doc.nodes).some((n) => n.title === "足した歩み")).toBe(false);
+    expect(isFreshFuture(store.doc)).toBe(false);
+    // 入れ替え自体を元に戻す・やり直す: 履歴の写しは印を付ける前の物（付いていても時刻が合わない）
+    store.undo();
+    expect(hasFutureRoot(store.doc)).toBe(false);
+    expect(isFreshFuture(store.doc)).toBe(false);
+    store.redo();
+    expect(hasFutureRoot(store.doc)).toBe(true);
+    expect(isFreshFuture(store.doc)).toBe(false);
+    // 印の無い文書・形の違う印
+    expect(isFreshFuture(buildDemoDoc())).toBe(false);
+    const odd = buildDemoDoc();
+    odd.meta = { [FRESH_FUTURE]: 1 };
+    expect(isFreshFuture(odd)).toBe(false);
   });
 
   it("未来の道筋が無い文書では、ふつうの追加と同じく右側に足す", () => {

@@ -3,6 +3,7 @@ import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
 import { buildWishlist } from "../../src/demo/wishlistBundle";
 import { buildFuture } from "../../src/demo/futureBundle";
+import { FRESH_FUTURE, isFreshFuture } from "../../src/demo/futureSwap";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
 import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
@@ -113,6 +114,8 @@ interface DeviceOpts {
   fallback?: boolean;
   /** App と同じく、手元に保存できないと基準を書かずに持っておく（local.saveFails の間） */
   deferBase?: boolean;
+  /** 重なったら、手元を送らずに相手を読み込む手元か（App: 開いてから手を付けていない未来の道筋） */
+  yields?: (doc: DocData) => boolean;
 }
 
 const onOf = (b: SyncBase | null): BootDoc["on"] => (b ? { gen: b.gen, docId: b.docId, docUpdatedAt: b.docUpdatedAt } : null);
@@ -160,6 +163,7 @@ function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts =
       isWriter: () => local.writer,
       isDisposable: (d) => isDisposableDoc(d),
       isEditing: () => local.editing,
+      yieldsOnConflict: opts.yields,
       isForeign: () => !!opts.foreign,
       adopt: async (d, how, stillOk) => {
         if (!local.writer || !stillOk()) return null;
@@ -2695,5 +2699,119 @@ describe("同期の決まり: 第 5 回の再レビューの指摘", () => {
     expect(await remoteHas(k2.repo, "D の編集")).toBe(true);
     expect(k2.has("D の編集")).toBe(true);
     k2.sync.stop();
+  });
+});
+
+describe("同期の決まり: 未来の道筋を自動で開く変更の再レビュー", () => {
+  /** A がデモのまま同期して閉じ、その後で B が書いて送る（A の基準は B より前のまま） */
+  async function staleA() {
+    const { be } = memoryBackend();
+    const a = device(be, "A", buildDemoDoc());
+    await a.sync.start();
+    expect(a.sync.state).toBe("synced");
+    a.sync.stop();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    b.edit("B の変更");
+    await b.sync.flush();
+    for (let i = 0; i < 50 && !(await remoteHas(b.repo, "B の変更")); i++) await tick(10);
+    expect(await remoteHas(b.repo, "B の変更")).toBe(true);
+    b.sync.stop();
+    return { be, a, b };
+  }
+
+  /** 開いたばかりの印を付けた中身（App: 未来の道筋を一度に開いた直後） */
+  function freshDoc(title: string): DocData {
+    const d = realDoc(title);
+    d.meta = { ...d.meta, [FRESH_FUTURE]: d.updatedAt };
+    return d;
+  }
+
+  it("入力が終わるのを待って読み直すはずの別の端末の変更があると、⌘S・タブを隠したときの flush() でも「同期済み」と言わず、その場で読み込む", async () => {
+    const { be, a } = await staleA();
+    // A を開き直した（デモのまま・前の基準）。最初の突き合わせのときに、題名をその場で書き換えている
+    const a2 = device(be, "A2", a.store.doc, { idb: a.local.idb, retryMs: 400 });
+    a2.local.editing = true;
+    await a2.sync.start();
+    await tick(30);
+    expect(a2.sync.state).toBe("pending");
+    expect(a2.sync.message).toContain("入力が終わってから");
+    expect(a2.has("B の変更")).toBe(false);
+    // 書き換えずに閉じて ⌘S（またはタブを隠した）: 読まずに「同期済み」にしない。入力は終わったので、その場で読む
+    a2.local.editing = false;
+    await a2.sync.flush();
+    expect(a2.has("B の変更")).toBe(true);
+    expect(a2.sync.state).toBe("synced");
+    a2.sync.stop();
+  });
+
+  it("flush() のときにまだ入力の途中なら、何もせず待つ（同期済みにも、読み込みもしない）", async () => {
+    const { be, a } = await staleA();
+    const a2 = device(be, "A2", a.store.doc, { idb: a.local.idb, retryMs: 400 });
+    a2.local.editing = true;
+    await a2.sync.start();
+    await tick(30);
+    expect(a2.sync.state).toBe("pending");
+    await a2.sync.flush();
+    expect(a2.sync.state).toBe("pending");
+    expect(a2.has("B の変更")).toBe(false);
+    // 入力が終わると、待っていた読み直しで取り込む
+    a2.local.editing = false;
+    for (let i = 0; i < 60 && !a2.has("B の変更"); i++) await tick(20);
+    expect(a2.has("B の変更")).toBe(true);
+    a2.sync.stop();
+  });
+
+  it("開いてから手を付けていない未来の道筋は、アカウントで別の端末の内容と重なったら送らずに読み込む（別の端末の内容を押し流さない）", async () => {
+    const { be, a } = await staleA();
+    // A は閉じる前に未来の道筋を開いていた（まだ送れていない）。開き直すと、アカウントには B の新しい内容がある
+    const fresh = freshDoc("未来の道筋（開いたばかり）");
+    expect(isFreshFuture(fresh)).toBe(true);
+    const a2 = device(be, "A2", fresh, { idb: a.local.idb, yields: isFreshFuture });
+    await a2.sync.start();
+    for (let i = 0; i < 50 && !a2.has("B の変更"); i++) await tick(10);
+    expect(a2.has("B の変更")).toBe(true);
+    expect(a2.local.adopted).toEqual(["remote"]);
+    // 重なりの退避・警告は無い。アカウントは B の内容のまま
+    expect(a2.local.backups.filter((x) => x.kind === "conflict")).toHaveLength(0);
+    expect(a2.local.notices.some((t) => t.includes("重なった"))).toBe(false);
+    expect(await remoteHas(a2.repo, "B の変更")).toBe(true);
+    expect(await remoteHas(a2.repo, "未来の道筋（開いたばかり）")).toBe(false);
+    expect(a2.sync.state).toBe("synced");
+    a2.sync.stop();
+  });
+
+  it("開いた後に手を付けた（編集した）未来の道筋は、ふつうの重なりと同じく手元を送る（相手はバックアップへ）", async () => {
+    const { be, a } = await staleA();
+    const touched = freshDoc("未来の道筋（書き足した）");
+    const a2 = device(be, "A2", touched, { idb: a.local.idb, yields: isFreshFuture });
+    // 起動する前に書き足した（更新時刻が進み、開いたばかりの印と合わなくなる）
+    a2.edit("自分で足した歩み");
+    expect(isFreshFuture(a2.store.doc)).toBe(false);
+    await a2.sync.start();
+    for (let i = 0; i < 50 && !(await remoteHas(a2.repo, "自分で足した歩み")); i++) await tick(10);
+    expect(await remoteHas(a2.repo, "自分で足した歩み")).toBe(true);
+    expect(a2.has("B の変更")).toBe(false);
+    expect(a2.local.backups.some((x) => x.kind === "conflict" && Object.values(x.doc.nodes).some((n) => n.title === "B の変更"))).toBe(true);
+    a2.sync.stop();
+  });
+
+  it("譲るはずの読み込みの直前に入力が始まったら、重なりにせず、入力が終わってから読み込む", async () => {
+    const { be, a } = await staleA();
+    const a2 = device(be, "A2", freshDoc("未来の道筋（開いたばかり）"), { idb: a.local.idb, yields: isFreshFuture, retryMs: 30 });
+    a2.local.onAdopt = () => {
+      a2.local.editing = true;
+      a2.local.onAdopt = null;
+    };
+    await a2.sync.start();
+    await tick(20);
+    expect(a2.has("B の変更")).toBe(false);
+    expect(a2.sync.state).toBe("pending");
+    expect(await remoteHas(a2.repo, "未来の道筋（開いたばかり）")).toBe(false);
+    a2.local.editing = false;
+    for (let i = 0; i < 60 && !a2.has("B の変更"); i++) await tick(20);
+    expect(a2.has("B の変更")).toBe(true);
+    expect(a2.local.backups.filter((x) => x.kind === "conflict")).toHaveLength(0);
+    a2.sync.stop();
   });
 });

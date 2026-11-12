@@ -133,7 +133,7 @@ export class CanvasView {
     this.requestRender();
   }
 
-  private pendingFit: { ids?: Iterable<ID>; animate?: boolean } | null = null;
+  private pendingFit: { ids?: Iterable<ID>; animate?: boolean; minZoom?: number } | null = null;
 
   private get measurable(): boolean {
     return this.width > 1 && !this.root.hidden && this.root.isConnected;
@@ -143,7 +143,7 @@ export class CanvasView {
     const p = this.pendingFit;
     if (!p || !this.measurable) return;
     this.pendingFit = null;
-    this.fit(p.ids, { animate: p.animate });
+    this.fit(p.ids, { animate: p.animate, minZoom: p.minZoom });
   }
 
   requestRender(): void {
@@ -192,15 +192,27 @@ export class CanvasView {
     for (const fn of this.cameraListeners) fn();
   }
 
-  fitBounds(b: { minX: number; minY: number; maxX: number; maxY: number }, opts: { animate?: boolean; maxZoom?: number } = {}): void {
-    const t = this.camera.fitTarget({ minX: b.minX - HALF_W, minY: b.minY - HALF_H, maxX: b.maxX + HALF_W, maxY: b.maxY + HALF_H }, this.width, this.height, this.insets, opts.maxZoom ?? 1.05);
+  /**
+   * 範囲が収まるように。minZoom: これより引かない（収まらなければ、範囲の左端を左の余白にそろえ、縦は範囲の中ほどに合わせる。
+   * 狭い画面でも、左から読み進める範囲（未来の道筋の今日など）の入口を、文字の読める大きさで見せる）
+   */
+  fitBounds(b: { minX: number; minY: number; maxX: number; maxY: number }, opts: { animate?: boolean; maxZoom?: number; minZoom?: number } = {}): void {
+    const box = { minX: b.minX - HALF_W, minY: b.minY - HALF_H, maxX: b.maxX + HALF_W, maxY: b.maxY + HALF_H };
+    const t = this.camera.fitTarget(box, this.width, this.height, this.insets, opts.maxZoom ?? 1.05);
+    if (opts.minZoom && t.zoom < opts.minZoom) {
+      const z = opts.minZoom;
+      const ah = Math.max(50, this.height - this.insets.top - this.insets.bottom);
+      t.zoom = z;
+      t.x = this.insets.left - box.minX * z;
+      t.y = this.insets.top + ah / 2 - ((box.minY + box.maxY) / 2) * z;
+    }
     this.animateTo(t, opts.animate === false ? 0 : 380);
   }
 
-  /** 全体（または指定したノード）が収まるように */
-  fit(ids?: Iterable<ID>, opts: { animate?: boolean } = {}): void {
+  /** 全体（または指定したノード）が収まるように（minZoom は fitBounds と同じ） */
+  fit(ids?: Iterable<ID>, opts: { animate?: boolean; minZoom?: number } = {}): void {
     if (!this.measurable || this.root.getBoundingClientRect().width < 2) {
-      this.pendingFit = { ids: ids ? [...ids] : undefined, animate: false };
+      this.pendingFit = { ids: ids ? [...ids] : undefined, animate: false, minZoom: opts.minZoom };
       return;
     }
     const b = this.vm.bounds(ids);

@@ -31,7 +31,10 @@ async function startServer() {
 }
 
 const results = [];
+/** 開発用: E2E_ONLY に名前の一部を渡すと、その確かめだけ動かす（前の確かめの状態を使う物は単独では動かない） */
+const ONLY = process.env.E2E_ONLY || "";
 async function check(name, fn) {
+  if (ONLY && !name.includes(ONLY)) return;
   const t0 = Date.now();
   try {
     await fn();
@@ -1715,8 +1718,10 @@ async function main() {
     const once = await ap.evaluate(() => ({
       undo: window.__fourD.store.history.undoStack.filter((e) => e.label === "未来の道筋を開く").length,
       toasts: [...document.querySelectorAll(".toast-text")].filter((t) => t.textContent.includes("を開きました")).length,
+      // 2 回目は「開いている途中」として黙って止まる（変わったので入れ替えなかった、とは言わない）
+      warn: [...document.querySelectorAll(".toast-text")].filter((t) => t.textContent.includes("入れ替えませんでした")).length,
     }));
-    assert(once.undo === 1 && once.toasts === 1, `二度押しで 2 回入れ替えた ${JSON.stringify(once)}`);
+    assert(once.undo === 1 && once.toasts === 1 && once.warn === 0, `二度押しで 2 回入れ替えた ${JSON.stringify(once)}`);
     // 遠くへ動かしてから押すと、今日（入口）が選ばれて画面に入る
     await ap.evaluate(() => {
       const v = window.__fourD.app.view;
@@ -1802,6 +1807,196 @@ async function main() {
     await p2.locator(".zoom-ctl .future-btn").click();
     await p2.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor();
     await c2.close();
+  });
+
+  /**
+   * 前から使っている人（ようこそを済ませた・何もしていないデモ）のブラウザ。開き直すと未来の道筋が自動で開く。
+   * sessionStorage の __bootOnce に書いておくと、次に開いたときに一度だけ、起動してすぐ（自動で開く前）にそれを始める
+   */
+  async function returningDemo(viewport = { width: 1440, height: 900 }) {
+    const ctx = await browser.newContext({ viewport });
+    await ctx.addInitScript(() => {
+      let what = null;
+      try {
+        what = sessionStorage.getItem("__bootOnce");
+        sessionStorage.removeItem("__bootOnce");
+      } catch {
+        /* about:blank など */
+      }
+      if (!what) return;
+      const t = setInterval(() => {
+        const f = window.__fourD;
+        if (!f?.app || !document.querySelector(".search-input")) return;
+        clearInterval(t);
+        if (what === "tour") f.app.startTour();
+        if (what === "search") document.querySelector(".search-input").focus();
+      }, 5);
+    });
+    const page = await ctx.newPage();
+    watch(page);
+    await page.goto(BASE, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "すぐに使う" }).click();
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
+    await waitSaved(page);
+    await page.waitForTimeout(300);
+    return { ctx, page };
+  }
+  const opened = (p, timeout = 10000) => p.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout });
+
+  await check("未来の道筋: 開く途中（保存・バックアップを待つ間）に地図が変わったら入れ替えず、「開いた」も立てずに知らせる", async () => {
+    const { ctx, page: p } = await returningDemo();
+    const r = await p.evaluate(async () => {
+      const f = window.__fourD;
+      const orig = f.persistence.createBackup;
+      let release;
+      const gate = new Promise((res) => (release = res));
+      f.persistence.createBackup = async function (...a) {
+        await gate;
+        return orig.apply(this, a);
+      };
+      const run = f.app.showFuture();
+      await new Promise((res) => setTimeout(res, 100));
+      f.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "待つ間に書いた目標", exact: true });
+      release();
+      await run;
+      f.persistence.createBackup = orig;
+      return {
+        roots: Object.values(f.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length,
+        own: Object.values(f.store.doc.nodes).some((n) => n.title === "待つ間に書いた目標"),
+        auto: f.ui.prefs.futureAutoOpened,
+        warn: [...document.querySelectorAll(".toast-text")].some((t) => t.textContent.includes("入れ替えませんでした")),
+      };
+    });
+    assert(r.roots === 0 && r.own && r.auto === false && r.warn, JSON.stringify(r));
+    await ctx.close();
+  });
+
+  await check("未来の道筋: 自動で開くのは、操作ガイドの最中は待ち、ガイドを閉じてから開く（お知らせの「元に戻す」が押せる）", async () => {
+    const { ctx, page: p } = await returningDemo();
+    await p.evaluate(() => sessionStorage.setItem("__bootOnce", "tour"));
+    await p.reload({ waitUntil: "networkidle" });
+    await p.locator(".tour").waitFor();
+    await p.waitForTimeout(2500);
+    assert(!(await hasFuture(p)), "操作ガイドの最中に入れ替えた");
+    await p.locator(".tour-skip").click();
+    await opened(p);
+    const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+    await done.waitFor();
+    const hit = await done.evaluate((t) => {
+      const b = t.querySelector(".toast-action").getBoundingClientRect();
+      const el = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      return !!el && t.contains(el);
+    });
+    assert(hit, "お知らせの「元に戻す」が押せない");
+    await ctx.close();
+  });
+
+  await check("未来の道筋: 自動で開くのは、検索に文字を入れている間は待つ（入れた文字を消さない）", async () => {
+    const { ctx, page: p } = await returningDemo();
+    await p.evaluate(() => sessionStorage.setItem("__bootOnce", "search"));
+    await p.reload({ waitUntil: "networkidle" });
+    await p.waitForFunction(() => document.activeElement?.classList.contains("search-input"));
+    await p.keyboard.type("広告", { delay: 150 });
+    await p.waitForTimeout(2500);
+    const mid = await p.evaluate(() => ({
+      q: document.querySelector(".search-input").value,
+      s: window.__fourD.ui.search,
+      r: Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true),
+    }));
+    assert(!mid.r && mid.q === "広告" && mid.s === "広告", `検索の途中に入れ替えた・文字が消えた ${JSON.stringify(mid)}`);
+    // 検索欄を離れたら開く
+    await p.locator(".search-input").blur();
+    await opened(p);
+    await ctx.close();
+  });
+
+  await check("未来の道筋: 開いたお知らせは、地図の右下の小さな地図・操作も、今日のカードも隠さない（1280・1440 の幅、右のパネルを開いたまま）", async () => {
+    for (const vp of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }]) {
+      const { ctx, page: p } = await returningDemo(vp);
+      await p.reload({ waitUntil: "networkidle" });
+      const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+      await done.waitFor({ timeout: 10000 });
+      await p.waitForTimeout(700);
+      const r = await p.evaluate(() => {
+        const f = window.__fourD;
+        const mm = document.querySelector(".minimap");
+        const visible = !!mm && !mm.hidden && !mm.classList.contains("idle") && getComputedStyle(mm).display !== "none";
+        let hits = 0;
+        if (visible) {
+          const b = mm.getBoundingClientRect();
+          for (let i = 1; i < 10; i++)
+            for (let j = 1; j < 6; j++) {
+              const el = document.elementFromPoint(b.x + (b.width * i) / 10, b.y + (b.height * j) / 6);
+              if (el?.closest(".toast")) hits++;
+            }
+        }
+        const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+        const cr = f.app.view.canvas.getBoundingClientRect();
+        const s = f.app.view.camera.toScreen(root.x, root.y);
+        const rootHit = document.elementFromPoint(cr.x + s.x, cr.y + s.y);
+        const ctl = [...document.querySelectorAll(".zoom-ctl button")].filter((btn) => {
+          const q = btn.getBoundingClientRect();
+          const el = document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2);
+          return !(el && btn.contains(el));
+        }).length;
+        return { visible, hits, rootCovered: !!rootHit?.closest(".toast"), ctl, rightOpen: f.ui.prefs.rightOpen };
+      });
+      assert(r.visible && r.rightOpen, `${vp.width}: 小さな地図・右のパネルが出ていない（確かめの前提）${JSON.stringify(r)}`);
+      assert(r.hits === 0 && !r.rootCovered && r.ctl === 0, `${vp.width}: お知らせが隠している ${JSON.stringify(r)}`);
+      await ctx.close();
+    }
+  });
+
+  await check("未来の道筋: スマホの幅（390px）でも、自動で開いたとき・「未来の道筋」を押したときに、今日のカードが文字の読める大きさで画面に入る", async () => {
+    const { ctx, page: p } = await returningDemo({ width: 390, height: 800 });
+    await p.reload({ waitUntil: "networkidle" });
+    await opened(p);
+    await p.waitForTimeout(700);
+    const look = () =>
+      p.evaluate(() => {
+        const f = window.__fourD;
+        const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+        const z = f.app.view.camera.zoom;
+        const s = f.app.view.camera.toScreen(root.x, root.y);
+        const half = 106 * z;
+        return { zoom: z, left: s.x - half, right: s.x + half, y: s.y, w: f.app.view.width, h: f.app.view.height };
+      });
+    const a = await look();
+    assert(a.zoom >= 0.3 && a.left >= 0 && a.right <= a.w && a.y > 0 && a.y < a.h, `自動で開いたとき ${JSON.stringify(a)}`);
+    await p.evaluate(() => {
+      const v = window.__fourD.app.view;
+      v.camera.x = -50000;
+      v.camera.zoom = 0.05;
+      v.cameraChanged();
+    });
+    await p.locator(".zoom-ctl .future-btn").click();
+    await p.waitForTimeout(800);
+    const b = await look();
+    assert(b.zoom >= 0.3 && b.left >= 0 && b.right <= b.w && b.y > 0 && b.y < b.h, `押したとき ${JSON.stringify(b)}`);
+    await shot("e2e-18-future-phone-fit", p);
+    await ctx.close();
+  });
+
+  await check("未来の道筋: メニューから読み込んで（追加でも入れ替えでも）元に戻したデモも、開き直したときにもう自動では入れ替えない", async () => {
+    for (const mode of ["追加する", "置き換える"]) {
+      const { ctx, page: p } = await returningDemo();
+      await p.getByRole("button", { name: "メニュー", exact: true }).click();
+      await p.getByRole("menuitem", { name: /未来の道筋（仕事・10 年）を読み込む/ }).click();
+      const dlg = p.getByRole("dialog", { name: "未来の道筋を読み込む" });
+      await dlg.waitFor();
+      await dlg.locator(".radio-card", { hasText: mode }).click();
+      await dlg.getByRole("button", { name: "読み込む" }).click();
+      await opened(p);
+      await p.locator(".toast", { hasText: mode === "追加する" ? "未来の道筋: " : "未来の道筋に入れ替えました" }).getByRole("button", { name: "元に戻す" }).click();
+      await p.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+      assert((await p.evaluate(() => window.__fourD.store.doc.meta.noAutoFuture)) === true, `${mode}: 戻した地図に印が付かない`);
+      await waitSaved(p);
+      await p.waitForTimeout(300);
+      await p.reload({ waitUntil: "networkidle" });
+      await p.waitForTimeout(3000);
+      assert(!(await hasFuture(p)), `${mode}: 元に戻したのに、開き直すと入れ替えた`);
+      await ctx.close();
+    }
   });
   await actx.close();
 

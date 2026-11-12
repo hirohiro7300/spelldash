@@ -2590,6 +2590,26 @@ textarea.input {
   gap: 8px;
   pointer-events: none;
 }
+/*
+ * 地図の右下の小さな地図（下から 58px・幅 210px）が出ている間は、お知らせをその左に寄せる（小さな地図を隠さない・
+ * お知らせの「元に戻す」を小さな地図の上に重ねて押し違えさせない）。232 = 右の 14 + 幅 210 + 間 8。
+ * 横に並べると狭すぎる幅（左のパネルを開いて 1100px 未満）では、左のパネルの下の端に少しかかるほうを採る
+ */
+@media (min-width: 641px) {
+  .app-shell:has(.minimap:not([hidden]):not(.idle)) ~ #overlay-root .toast-stack {
+    right: calc(232px + env(safe-area-inset-right, 0px));
+  }
+}
+@media (min-width: 861px) {
+  .app-shell:not(.right-closed):has(.minimap:not([hidden]):not(.idle)) ~ #overlay-root .toast-stack {
+    right: calc(var(--right-w) + 232px + env(safe-area-inset-right, 0px));
+  }
+}
+@media (min-width: 1100px) {
+  .app-shell:not(.left-closed):has(.minimap:not([hidden]):not(.idle)) ~ #overlay-root .toast-stack {
+    left: calc(var(--left-w) + 16px + env(safe-area-inset-left, 0px));
+  }
+}
 .toast {
   pointer-events: auto;
   display: flex;

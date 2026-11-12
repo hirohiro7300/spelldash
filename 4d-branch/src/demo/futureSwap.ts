@@ -51,6 +51,22 @@ export function withNoAutoFuture(doc: DocData): DocData {
 }
 
 /**
+ * 文書の meta の印: 未来の道筋を一度に開いた直後の更新時刻。これと文書の更新時刻が同じ間は、開いてから何も手を付けていない
+ * （編集・元に戻す・やり直すで時刻が進むと外れる）。その間にアカウントで別の端末の内容と重なったら、こちらを送らずに
+ * 別の端末の内容を読み込む（開いたばかりの未来の道筋は押せばまた開けるが、別の端末で書いた内容は書き直せない）
+ */
+export const FRESH_FUTURE = "freshFutureAt";
+
+/** 開いてから何も手を付けていない未来の道筋か */
+export function isFreshFuture(doc: DocData): boolean {
+  const at = doc.meta?.[FRESH_FUTURE];
+  return typeof at === "string" && at === doc.updatedAt;
+}
+
+/** 未来の道筋の入口に寄るときの、いちばん引いた大きさ（これより小さいとカードの文字が出ない。狭い画面では左端の今日から見せる） */
+export const FUTURE_MIN_ZOOM = 0.3;
+
+/**
  * 未来の道筋の入口（今日）から右へ 5 列・上下 600 までのノード（ids の中から）。全体は横に長すぎて読めないので、
  * 読み込んだ・開いたときはここに寄る（カードの文字が読める大きさで始める）。入口が無ければ ids をそのまま返す
  */

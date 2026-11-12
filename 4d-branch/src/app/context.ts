@@ -14,6 +14,8 @@ export interface LoadOpts {
   done?: string;
   /** 読み込んだ後に寄るノード（added: 足したノード。入れ替えではすべて） */
   fitTo?: (doc: DocData, added: ID[]) => ID[];
+  /** 寄るときに、これより引かない（収まらなければ左端から見せる。未来の道筋の今日を、狭い画面でも文字の読める大きさで） */
+  fitMinZoom?: number;
 }
 
 /** 入れ替えの条件と、入れ替える前の地図に付ける印 */
@@ -22,6 +24,11 @@ export interface ReplaceOpts extends LoadOpts {
   still?: () => boolean;
   /** 入れ替える前の地図（安全用バックアップ・「元に戻す」で戻る物）の meta に足す印 */
   markBefore?: Record<string, unknown>;
+  /**
+   * 入れ替えた直後の時刻を印にする（手を付けるまでの間に、アカウントで別の端末の内容と重なったら、こちらを送らずに読み込む。
+   * 押せばまた開ける物を一度に開いたときだけ）
+   */
+  fresh?: boolean;
 }
 
 export interface AppContext {

@@ -7,7 +7,7 @@ import type { DocData } from "../model/types";
 import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { buildWishlist } from "../demo/wishlistBundle";
 import { buildFuture } from "../demo/futureBundle";
-import { nearFutureRoot } from "../demo/futureSwap";
+import { FUTURE_MIN_ZOOM, nearFutureRoot } from "../demo/futureSwap";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, type BackupMeta } from "../persist/persistence";
@@ -193,7 +193,7 @@ interface ImportPreviewOpts {
   /** 追加したノードを選んでおく（数千件のときは選ばず、寄るだけにする） */
   selectAdded: boolean;
   /** 読み込んだ後の見せ方（お知らせの文・寄る所） */
-  after?: { replaceDone?: string; mergeDone?: string; fitTo?: LoadOpts["fitTo"] };
+  after?: { replaceDone?: string; mergeDone?: string; fitTo?: LoadOpts["fitTo"]; fitMinZoom?: number };
   onClose?: () => void;
 }
 
@@ -225,8 +225,8 @@ function openImportPreview(app: AppContext, pv: ImportPreview, o: ImportPreviewO
     done = true;
     go.disabled = true;
     m.close();
-    if (mode.v === "replace") await app.replaceDocSafely(pv.doc, o.label.replace, { done: o.after?.replaceDone, fitTo: o.after?.fitTo });
-    else app.mergeDoc(pv.doc, { label: o.label.merge, select: o.selectAdded, done: o.after?.mergeDone, fitTo: o.after?.fitTo });
+    if (mode.v === "replace") await app.replaceDocSafely(pv.doc, o.label.replace, { done: o.after?.replaceDone, fitTo: o.after?.fitTo, fitMinZoom: o.after?.fitMinZoom });
+    else app.mergeDoc(pv.doc, { label: o.label.merge, select: o.selectAdded, done: o.after?.mergeDone, fitTo: o.after?.fitTo, fitMinZoom: o.after?.fitMinZoom });
   });
   m.footer.append(h("button", { class: "btn", type: "button", onClick: () => m.close() }, "キャンセル"), go);
   setTimeout(() => go.focus());
@@ -345,8 +345,9 @@ export function openFutureDialog(app: AppContext): void {
     after: {
       replaceDone: "未来の道筋に入れ替えました。右の概要に 10 年後の行き先の見込みが出ます",
       mergeDone: "未来の道筋: ",
-      // 全体は横に長すぎて読めないので、今日から数歩先までに寄る（カードの文字が読める大きさで始める）
+      // 全体は横に長すぎて読めないので、今日から数歩先までに寄る（カードの文字が読める大きさで始める。狭い画面では今日から）
       fitTo: (doc, added) => nearFutureRoot(doc, added),
+      fitMinZoom: FUTURE_MIN_ZOOM,
     },
   });
 }
