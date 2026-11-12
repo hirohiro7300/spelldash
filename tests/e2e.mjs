@@ -29929,8 +29929,9 @@ console.log("guard (88.1):");
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
-// ===== 94.1 2 台で同じ単語帳（Batch 94。js/userItemsSync.js mergeCloudItems・js/myWords.js の足す道・js/myWordsCore.js myIdentityFor。docs/SPEC_MY_WORDS.md §18）: (1) 表が後: 電話（390 の指の端末）で渡された単語帳を足して 2 語 覚えた、パソコン（1200）でも同じリンクを足す。表を作り パソコン → 電話 → パソコン の順に開き直す → どちらも単語帳は 1 冊（「 2」の付いた単語帳なし）・覚えた 2・(2) 表がある: 電話が単語帳 1 で覚えて送る。パソコンはゲストで単語帳 2（同じ英語・違う訳の語を含む）を足し、ログインして「はい」→ 両方の端末にその英語の 2 語（電話の語は 覚えた のまま）・(3) エラー 0 =====
-// 15f0d76 では (1)(2) とも落ちる（取り込みで新しい行が語ごと勝つ: 電話の 3 状態と、同じ鍵の別の語が消え、同じ名前の単語帳が 2 つになる）。
+// ===== 94.1 2 台で同じ単語帳（Batch 94。js/userItemsSync.js mergeCloudItems・js/myWords.js の足す道・js/myWordsCore.js myIdentityFor。docs/SPEC_MY_WORDS.md §18）: (1) 表が後: 電話（390 の指の端末）で渡された単語帳を足して 2 語 覚えた、パソコン（1200）でも同じリンクを足す。表を作り パソコン → 電話 → パソコン の順に開き直す → どちらも単語帳は 1 冊（「 2」の付いた単語帳なし）・覚えた 2・(2) 表がある: 電話が単語帳 1 で覚えて送る。パソコンはゲストで単語帳 2（同じ英語・違う訳の語を含む）を足し、ログインして「はい」→ 両方の端末にその英語の 2 語（電話の語は 覚えた のまま）・(3) エラー 0・(4) パソコンがゲストで自分の違うカード（1 語・単語帳ごと）を消してから「はい」→ 電話の 覚えた は消えない・(5) 表を作ったときに開いていたパソコンのタブ（読めなかった）がセットの終わりに送っても、電話の 覚えた は消えない =====
+// 15f0d76 では (1)(2) とも落ちる（取り込みで新しい行が語ごと勝つ: 電話の 3 状態と、同じ鍵の別の語が消え、同じ名前の単語帳が 2 つになる）。(4)(5) は 7c6961a と 15f0d76 で落ちる
+// （(4) パソコンの墓標が電話の違うカードを消す・(5) 取り込まずに送ったパソコンの語が電話の語を上書きする）。
 // 表が無い間は偽のクラウドの failSelect と failWrite（読みも送りも「does not exist」で断る）。表を作るときは 2 つを外す。開き直しは同じ文脈の新しいタブ（端末の保存はそのまま）
 console.log("two devices (94.1):");
 {
@@ -30086,6 +30087,91 @@ console.log("two devices (94.1):");
       JSON.stringify({ learned, sentAlpha: sentAlpha?.ls ?? null, asked, back, phone: pv.words, pc: cv.words }));
     await phone.context().close();
     await page.context().close();
+  }
+  // ----- (4) 表がある: 電話が単語帳 1 で覚えて送る。パソコンはゲストで単語帳 2（alpha は同じ英語・違う訳）を足し、自分の alpha（丁）か単語帳 2 を消してから「はい」 -----
+  for (const mode of ["word", "book"]) {
+    const LINK1 = shareLink("試しの一冊目", [["alpha", "試しの訳 甲"], ["bravo", "試しの訳 乙"], ["charlie", "試しの訳 丙"]]);
+    const LINK2 = shareLink("試しの二冊目", [["alpha", "試しの訳 丁"], ["delta", "試しの訳 己"], ["echo", "試しの訳 庚"]]);
+    const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+    const phone = await device({ phone: true, storage: { spelldash_test_session: "1", spelldash_test_cloud: cloud.id } });
+    const book1 = await addShared(phone, LINK1);
+    await phone.goto(`${BASE}/?learn=my&book=${book1}&choice=en`, { waitUntil: "networkidle" });
+    const learned = await answerChoice(phone, 3);
+    await phone.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const alphaRow = () => cloud.rows("user_items").find((r) => r.kind === "my_word" && r.key === "alpha") ?? null;
+    await waitUntil(() => alphaRow()?.payload?.ls === 2, 10000); // 回の終わりに送る
+    await leave(phone, cloud);
+    const pc = await device({ guest: true, storage: { spelldash_test_cloud: cloud.id } });
+    const book2 = await addShared(pc, LINK2);
+    await pc.goto(`${BASE}/mywords.html?book=${book2}`, { waitUntil: "networkidle" });
+    // 単語帳 2 を消すときに最初の単語帳の語を 1 つ残す（最後の単語帳は消せない）。word は自分の alpha（丁）だけを消す
+    const removed = await pc.evaluate(async ({ mode, book2 }) => {
+      const M = await import("/js/myWords.js");
+      M.addMyWord("foxtrot", "試しの訳 辛");
+      if (mode === "word") { M.removeMyWord("alpha", "word"); return true; }
+      return M.deleteMyBook(book2).ok === true;
+    }, { mode, book2 });
+    await pc.evaluate(() => window.__stubAuth.signIn("1")).catch(() => {});
+    const asked = await pc.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 15000 }).then(() => true, () => false);
+    if (asked) await pc.click("#switchAskYes");
+    const back = await pc.waitForFunction(() => location.pathname !== "/switch.html" && window.SpellDashArea?.area === "u:test-user" && document.readyState === "complete", null, { timeout: 15000 }).then(() => true, () => false);
+    await syncDone(pc);
+    await leave(pc, cloud);
+    let page = await openMy(phone.context(), cloud);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud);
+    await page.evaluate(async () => { const S = await import("/js/sync.js"); await S.pushSync(); }); // パソコンがセットを終えたときの送り（js/game.js と同じ呼び出し）
+    await quiet(cloud);
+    await leave(page, cloud);
+    page = await openMy(phone.context(), cloud);
+    const pv = await view(page);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud);
+    const cv = await view(page);
+    const row = alphaRow();
+    check(`94.1 (4) パソコンがゲストで自分の違うカード（${mode === "word" ? "alpha=丁 の 1 語" : "単語帳 2"}）を消してから「はい」→ 電話とパソコンに alpha=甲 の 覚えた が残る・雲の alpha は墓標にならない`,
+      learned.length === 3 && removed && asked && back && [pv, cv].every((v) => v.words.includes("alpha=試しの訳 甲=2")) && !!row && !row.deleted,
+      JSON.stringify({ learned, removed, asked, back, phone: pv.words, pc: cv.words, alpha: row ? (row.deleted ? "墓標" : row.payload?.ja) : "なし" }));
+    await phone.context().close();
+    await page.context().close();
+  }
+
+  // ----- (5) 表が無い間に電話で覚える。パソコンのタブは表が無い間に開き（読めなかった）、単語帳 2 を足して開いたまま。表を作り、電話が新しいタブで送った後に、
+  // パソコンの開いたままのタブがセットを終えて送る（取り込まずに送る）→ 電話の 覚えた は消えない。パソコンも新しいタブで取り込めば両方の語を持つ -----
+  {
+    const LINK1 = shareLink("試しの一冊目", [["alpha", "試しの訳 甲"], ["bravo", "試しの訳 乙"], ["charlie", "試しの訳 丙"]]);
+    const LINK2 = shareLink("試しの二冊目", [["alpha", "試しの訳 丁"], ["bravo", "試しの訳 戊"], ["echo", "試しの訳 庚"]]);
+    const cloud = createCloud({ word_progress: [], user_progress: [] }, { failSelect: { user_items: NO_TABLE }, failWrite: { user_items: NO_TABLE } });
+    const login = { spelldash_test_session: "1", spelldash_test_cloud: cloud.id };
+    const phone = await device({ phone: true, storage: login });
+    const book1 = await addShared(phone, LINK1);
+    await phone.goto(`${BASE}/?learn=my&book=${book1}&choice=en`, { waitUntil: "networkidle" });
+    const learned = await answerChoice(phone, 3);
+    await phone.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    await leave(phone, cloud);
+    const pc = await device({ storage: login });
+    await addShared(pc, LINK2); // このタブは表が無い間に開いた（読めなかった）。閉じずに置いておく
+    await syncDone(pc);
+    cloud.config.failSelect = {}; // 表を作った
+    cloud.config.failWrite = {};
+    cloud.rows("user_items");
+    await leave(await openMy(phone.context(), cloud), cloud); // 電話の新しいタブ: 読んで（雲は空）送る
+    const before = cloud.log.length;
+    await pc.evaluate(async () => { const S = await import("/js/sync.js"); await S.pushSync(); }); // 開いたままのタブがセットを終えて送る
+    await quiet(cloud);
+    const pcSent = cloud.writes("user_items", before).reduce((n, e) => n + (e.kinds?.my_word ?? 0), 0); // そのタブが送った語の行の数
+    let page = await openMy(phone.context(), cloud);
+    const pv = await view(page);
+    await leave(page, cloud);
+    page = await openMy(pc.context(), cloud); // パソコンの新しいタブ: 取り込んでから送る
+    const cv = await view(page);
+    await leave(page, cloud);
+    const both = (v) => ["alpha=試しの訳 甲=2", "bravo=試しの訳 乙=2", "alpha=試しの訳 丁=0", "bravo=試しの訳 戊=0"].every((w) => v.words.includes(w));
+    check("94.1 (5) 表を作ったときに開いていたパソコンのタブ（読めなかった）は、取り込むまで語を送らない → 電話の alpha=甲・bravo=乙 の 覚えた は残る・パソコンは新しいタブで取り込むと両方の語を持つ",
+      learned.length === 3 && pcSent === 0 && ["alpha=試しの訳 甲=2", "bravo=試しの訳 乙=2"].every((w) => pv.words.includes(w)) && both(cv),
+      JSON.stringify({ learned, pcSent, phone: pv.words, pc: cv.words }));
+    await phone.context().close();
+    await pc.context().close();
   }
   check("94.1 (3) どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
