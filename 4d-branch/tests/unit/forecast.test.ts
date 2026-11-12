@@ -487,6 +487,18 @@ describe("未来の道筋の差し替え", () => {
     expect(yieldsToRemote(undone, written)).toBe(true);
     expect(yieldsToRemote(undone, fresh(pv.doc))).toBe(false);
     expect(yieldsToRemote(undone, undone)).toBe(true);
+    // 別の端末が開いた後に手を付けた（書いた）未来の道筋は、書かれた内容と同じく譲る（戻しただけの地図で押し流さない）
+    expect(yieldsToRemote(undone, { ...map, updatedAt: "2099-01-01T00:00:00.000Z" })).toBe(true);
+    expect(yieldsToRemote(undone, pv.doc)).toBe(true);
+    // ノードを動かしただけのデモ（捨ててよい・断った印が無い）には譲らない（断った印を消して、その端末で自動で開かせない）
+    const moved = buildDemoDoc();
+    moved.nodes = { ...moved.nodes };
+    const first = Object.keys(moved.nodes)[0]!;
+    moved.nodes[first] = { ...moved.nodes[first]!, x: moved.nodes[first]!.x + 40 };
+    expect(isDisposableDoc(moved)).toBe(true);
+    expect(yieldsToRemote(undone, moved)).toBe(false);
+    expect(yieldsToRemote(undone, withNoAutoFuture(moved))).toBe(true);
+    expect(yieldsToRemote(map, moved)).toBe(true);
     // 手を付けた手元は譲らない（ふつうの重なり: 手元を送り、相手はバックアップへ）
     expect(yieldsToRemote(written, map)).toBe(false);
     expect(yieldsToRemote({ ...map, updatedAt: "2099-01-01T00:00:00.000Z" }, written)).toBe(false);

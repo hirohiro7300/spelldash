@@ -67,6 +67,13 @@ function sameOn(a: BootDoc["on"], b: BootDoc["on"]): boolean {
 
 /** 「未来の道筋」を押したが、アカウントとの突き合わせが済むのを待つときのお知らせ */
 const WAIT_FUTURE = "アカウントの内容を確かめています。済んだら未来の道筋を開きます";
+
+/** 待つのをやめた・待ち終えた: 「済んだら開きます」のお知らせを下げる（もう果たさない約束を出したままにしない） */
+function closeWaitToast(): void {
+  for (const t of document.querySelectorAll(".toast:not(.closing)")) {
+    if (t.querySelector(".toast-text")?.textContent === WAIT_FUTURE) t.querySelector<HTMLButtonElement>(".toast-close")?.click();
+  }
+}
 /** 閲覧のみのタブで「未来の道筋」を押したときのお知らせ */
 const READ_ONLY_FUTURE = "このタブは閲覧のみです。未来の道筋を開くには、上の「このタブで編集する」を押してください。";
 /** 未来の道筋を一度に開く入れ替えの名前（履歴・安全用バックアップ） */
@@ -752,6 +759,7 @@ export class App implements AppContext {
   async replaceDocSafely(doc: DocData, label: string, opts: ReplaceOpts = {}): Promise<boolean> {
     if (this.store.readOnly) return false;
     // 別の中身に入れ替える（デモ・空・復元・インポート）: 突き合わせを待って開くはずだった未来の道筋の頼みは取り消す（選んだ中身を後から入れ替えない）
+    if (this.futureWait) closeWaitToast();
     this.futureWait = 0;
     await this.persistence.flush().catch(() => undefined);
     // 未来の道筋が何もしていないデモ・空に入ってくるなら、どの道から来ても入れ替える前の地図に印を付ける（メニューの読み込み・復元も）
@@ -778,6 +786,7 @@ export class App implements AppContext {
 
   mergeDoc(doc: DocData, opts: LoadOpts & { label?: string; select?: boolean } = {}): void {
     if (this.store.readOnly) return;
+    if (this.futureWait) closeWaitToast();
     this.futureWait = 0;
     const label = opts.label ?? "インポート（追加）";
     // 未来の道筋を何もしていないデモ・空に足す: 足す前の地図に印（「元に戻す」・バックアップで戻した地図は、もう自動では入れ替えない）
@@ -807,6 +816,7 @@ export class App implements AppContext {
   loadFuture(): void {
     if (this.store.readOnly) return;
     // 利用者がここで決める: 突き合わせを待って開くはずだった頼みも、この起動の自動で開くのもやめる（確認を閉じた後に、勝手に入れ替えない）
+    if (this.futureWait) closeWaitToast();
     this.futureWait = 0;
     this.futureAutoDeclined = true;
     if (!this.ui.prefs.futureOffered) this.ui.setPrefs({ futureOffered: true });
@@ -882,6 +892,7 @@ export class App implements AppContext {
         return;
       }
       this.futureWait = 0;
+      closeWaitToast();
       if (ready) void this.showFuture();
       else if (this.store.readOnly) toast(READ_ONLY_FUTURE, { tone: "warn" });
       else if (!busy) this.loadFuture();
@@ -1250,6 +1261,8 @@ export class App implements AppContext {
         // 手を付けていない中身（一度に開いた未来の道筋・それを元に戻した地図）からの読み込み（重なって譲った・送った後に別の端末が書いた）は、
         // 「元に戻す」の対象にしない（戻すと、押せばまた開ける中身で、別の端末で書いた内容をアカウントから押し流す。中身はバックアップに残る）
         const yielding = how === "remote" && isFreshFuture(this.store.doc);
+        // 入れ替える前に未来の道筋を見ていたか（見ていた地図がまだあるなら、見ている場所はそのままにする）
+        const hadMap = hasFutureRoot(this.store.doc);
         if (how === "remote" && !yielding) {
           this.adopting = true;
           try {
@@ -1270,7 +1283,12 @@ export class App implements AppContext {
         // 手元への保存を先に済ませる（同期の基準だけが先に残り、閉じたあとで古い手元を送ってしまうのを防ぐ）
         await this.persistence.flush().catch(() => undefined);
         this.ui.pruneSelection((kind, id) => (kind === "node" ? !!this.store.doc.nodes[id] : !!this.store.doc.edges[id]));
-        if (how !== "remote" || yielding) this.view.fit(undefined, { animate: false });
+        // 入れ替えた中身に寄る（ふつうの読み込みは見ている場所のまま）。未来の道筋は全体を収めると 4% で読めないので今日から。
+        // 見ていた未来の道筋に別の端末の書き足しが届いただけなら、見ている場所はそのまま
+        const nowMap = hasFutureRoot(this.store.doc);
+        if (how !== "remote" || (yielding && !(nowMap && hadMap))) {
+          this.view.fit(nowMap ? nearFutureRoot(this.store.doc) : undefined, { animate: false, minZoom: nowMap ? FUTURE_MIN_ZOOM : undefined });
+        }
         void this.refreshLastBackup();
         return ident;
       },

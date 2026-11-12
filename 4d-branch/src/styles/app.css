@@ -2618,6 +2618,10 @@ textarea.input {
   .toast-stack {
     bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   }
+  /* 確認の画面が開いている間（地図は隠れている）は元の高さに: 下に出すと、画面の下の端のボタン（読み込む・キャンセル）を隠す */
+  #overlay-root:has(> .modal-backdrop:not(.closing)) .toast-stack {
+    bottom: calc(var(--bottom-h) + 58px + env(safe-area-inset-bottom, 0px));
+  }
 }
 .toast {
   pointer-events: auto;

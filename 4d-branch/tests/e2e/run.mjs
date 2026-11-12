@@ -17,6 +17,8 @@ let server = null;
 async function startServer() {
   if (process.env.BASE_URL) return;
   if (!fs.existsSync(path.join(ROOT, "dist", "index.html"))) throw new Error("dist/ がありません。先に npm run build を実行してください");
+  // そのポートでもう別のサーバーが答えている: そのまま確かめると、そのサーバーの（古い・別の）物を確かめてしまう
+  if (await fetch(BASE).then(() => true, () => false)) throw new Error(`ポート ${PORT} では別のサーバーがもう答えています（E2E_PORT で変えられます）`);
   server = spawn(process.execPath, [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "preview", "--port", String(PORT), "--strictPort"], { cwd: ROOT, stdio: "pipe" });
   // ポートが使われていて起動できなかったのに、そのポートで答える別のサーバーを確かめてしまわないように
   let exited = false;
@@ -89,7 +91,7 @@ const screenOf = (page, id) =>
   }, id);
 
 async function waitSaved(page) {
-  await page.waitForFunction(() => window.__fourD.persistence.status === "saved", null, { timeout: 5000 });
+  await page.waitForFunction(() => window.__fourD?.persistence.status === "saved", null, { timeout: 5000 });
 }
 
 /** ms の間にキャンバスを描いた回数 */
@@ -956,8 +958,8 @@ async function main() {
     await page.waitForFunction(() => window.__fourD.store.readOnly === true);
     // 新しいタブで編集 → 元のタブ（閲覧のみ）に反映される
     await p2.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -600, y: 900 }, { title: "別タブの目標", exact: true }));
-    await p2.waitForFunction(() => window.__fourD.persistence.status === "saved");
-    await page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "別タブの目標"), null, { timeout: 4000 });
+    await p2.waitForFunction(() => window.__fourD?.persistence.status === "saved");
+    await page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.title === "別タブの目標"), null, { timeout: 4000 });
     await shot("e2e-05-readonly", page);
     await p2.close();
     // 元のタブに戻して編集を引き継ぐ
@@ -1009,7 +1011,7 @@ async function main() {
     await waitSaved(page);
     await bumpStoredRev(page);
     await page.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: -600, y: 1300 }, { title: "競合の前に足した", exact: true }));
-    await page.waitForFunction(() => window.__fourD.persistence.status === "conflict", null, { timeout: 5000 });
+    await page.waitForFunction(() => window.__fourD?.persistence.status === "conflict", null, { timeout: 5000 });
     await page.getByRole("button", { name: "保存されている最新を開く" }).waitFor();
     // 競合に気づいた後にも書き足す（この変更はまだどこにも無い）
     await page.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: -600, y: 1450 }, { title: "気づいた後の変更", exact: true }));
@@ -1019,7 +1021,7 @@ async function main() {
     const toasts = await page.locator(".toast-text").allTextContents();
     assert(!toasts.includes("保存しました"), `競合なのに「保存しました」: ${toasts.join(" / ")}`);
     await page.getByRole("button", { name: "保存されている最新を開く" }).click();
-    await page.waitForFunction(() => window.__fourD.persistence.status === "saved", null, { timeout: 5000 });
+    await page.waitForFunction(() => window.__fourD?.persistence.status === "saved", null, { timeout: 5000 });
     const kept = await page.evaluate(async () => {
       const p = window.__fourD.persistence;
       const b = (await p.listBackups()).find((x) => x.label === "保存されている最新を開く前のこのタブの内容");
@@ -1226,7 +1228,7 @@ async function main() {
     await wp.waitForFunction(() => window.__fourD.persistence.writer);
     await bumpStoredRev(wp);
     await wp.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: -600, y: 1300 }, { title: "幅の確かめ", exact: true }));
-    await wp.waitForFunction(() => window.__fourD.persistence.status === "conflict", null, { timeout: 5000 });
+    await wp.waitForFunction(() => window.__fourD?.persistence.status === "conflict", null, { timeout: 5000 });
     const m = await wp.evaluate(() => {
       const vw = window.innerWidth;
       const banner = document.querySelector(".banner");
@@ -1469,7 +1471,7 @@ async function main() {
     await shot("e2e-14-future-dialog", fp);
     await dlg.locator(".radio-card", { hasText: "置き換える" }).click();
     await dlg.getByRole("button", { name: "読み込む" }).click();
-    await fp.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    await fp.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
     await fp.waitForTimeout(500);
     const fc = await forecastOf();
     assert(fc.active && fc.ends >= 3, JSON.stringify(fc));
@@ -1620,7 +1622,7 @@ async function main() {
     const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版に差し替えますか？" });
     await confirm.waitFor();
     await confirm.getByRole("button", { name: "差し替える" }).click();
-    await fp.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true && n.meta.futureVersion !== "old"));
+    await fp.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true && n.meta.futureVersion !== "old"));
     const after = await fp.evaluate((own) => {
       const f = window.__fourD;
       const roots = Object.values(f.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true);
@@ -1655,7 +1657,7 @@ async function main() {
     await ap.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
     await waitSaved(ap);
     await ap.reload({ waitUntil: "networkidle" });
-    await ap.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout: 10000 });
+    await ap.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 10000 });
     const done = ap.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
     await done.waitFor();
     await ap.waitForTimeout(600);
@@ -1693,7 +1695,7 @@ async function main() {
     await shot("e2e-16-future-auto", ap);
     // 元に戻すとデモに戻り、戻したデモには入れ替えない印が付く
     await done.getByRole("button", { name: "元に戻す" }).click();
-    await ap.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    await ap.waitForFunction(() => !Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
     assert((await ap.evaluate(() => window.__fourD.store.doc.meta.noAutoFuture)) === true, "戻した地図に印が付かない");
     await waitSaved(ap);
     await ap.waitForTimeout(400);
@@ -1717,7 +1719,7 @@ async function main() {
     assert(await btn.isVisible(), "ボタンが見えない");
     // 入れ替えない印の付いた地図でも、押せば開く。二度押しても入れ替えは 1 回
     await btn.dblclick();
-    await ap.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    await ap.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
     await ap.waitForTimeout(800);
     const once = await ap.evaluate(() => ({
       undo: window.__fourD.store.history.undoStack.filter((e) => e.label === "未来の道筋を開く").length,
@@ -1790,7 +1792,7 @@ async function main() {
     const welcome = p3.getByRole("dialog", { name: "4D Branch へようこそ" });
     await welcome.waitFor();
     await welcome.getByRole("button", { name: "未来の道筋を開く" }).click();
-    await p3.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    await p3.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
     const prefs = await p3.evaluate(() => window.__fourD.ui.prefs);
     assert(prefs.onboardingDone === true && prefs.futureAutoOpened === true, JSON.stringify(prefs));
     await c3.close();
@@ -1861,7 +1863,7 @@ async function main() {
     await page.waitForTimeout(300);
     return { ctx, page };
   }
-  const opened = (p, timeout = 10000) => p.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout });
+  const opened = (p, timeout = 10000) => p.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout });
 
   await check("未来の道筋: 開く途中（保存・バックアップを待つ間）に地図が変わったら入れ替えず、「開いた」も立てずに知らせる", async () => {
     const { ctx, page: p } = await returningDemo();
@@ -2075,8 +2077,12 @@ async function main() {
     // いちばん引いた（「全体を表示」から縮小を押し切った）ところから押しても、ちょうど文字の出る大きさで止まる
     const zc = p.locator(".zoom-ctl");
     await zc.getByRole("button", { name: "全体を表示" }).click();
-    for (let i = 0; i < 16; i++) await zc.getByRole("button", { name: "縮小" }).click();
-    await p.waitForTimeout(600);
+    await p.waitForTimeout(500);
+    // 縮小を、いちばん引いた大きさになるまで（動きを待って）押す
+    for (let i = 0; i < 40 && (await p.evaluate(() => window.__fourD.app.view.camera.zoom)) > 0.04; i++) {
+      await zc.getByRole("button", { name: "縮小" }).click();
+      await p.waitForTimeout(250);
+    }
     await p.locator(".zoom-ctl .future-btn").click();
     await p.waitForTimeout(800);
     const c = await look();
@@ -2096,7 +2102,7 @@ async function main() {
       await dlg.getByRole("button", { name: "読み込む" }).click();
       await opened(p);
       await p.locator(".toast", { hasText: mode === "追加する" ? "未来の道筋: " : "未来の道筋に入れ替えました" }).getByRole("button", { name: "元に戻す" }).click();
-      await p.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+      await p.waitForFunction(() => !Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
       assert((await p.evaluate(() => window.__fourD.store.doc.meta.noAutoFuture)) === true, `${mode}: 戻した地図に印が付かない`);
       // 読み込む前の安全用バックアップにも印（バックアップから戻しても、もう入れ替えない）
       const label = mode === "追加する" ? "「未来の道筋を追加」の前" : "「未来の道筋に入れ替え」の前";

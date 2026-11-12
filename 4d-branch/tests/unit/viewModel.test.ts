@@ -163,6 +163,27 @@ describe("お知らせの「元に戻す」", () => {
     del2.run();
     expect(store.doc.nodes.d).toBeDefined();
   });
+
+  it("上部の「元に戻す」・⌘Z でもう戻した後に押すと、もう戻してあると知らせる（読み込んだ・別の操作をした、とは言わない）", () => {
+    const { store, cmd, toasts } = setup(graph("a>b"));
+    cmd.deleteNodes(["a"]);
+    const del = cmd.undoAction();
+    store.undo();
+    expect(store.doc.nodes.a).toBeDefined();
+    del.run();
+    expect(store.doc.nodes.a).toBeDefined();
+    expect(store.history.canRedo).toBe(true);
+    expect(toasts[toasts.length - 1]).toContain("もう元に戻してあります");
+  });
+
+  it("履歴ごと入れ替わった（読み込んだ）後に押すと、読み込んだので戻せないと知らせる", () => {
+    const { store, cmd, toasts } = setup(graph("a>b"));
+    cmd.deleteNodes(["a"]);
+    const del = cmd.undoAction();
+    store.load(graph("x>y"));
+    del.run();
+    expect(toasts[toasts.length - 1]).toContain("別の内容を読み込んだ");
+  });
 });
 
 describe("表示の設定の読み込み", () => {

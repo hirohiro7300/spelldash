@@ -2,6 +2,7 @@
 // 新しい版を同じ場所（入口の位置をそろえる）に入れる。ほかのノード・プロジェクト・シナリオはそのまま（同じ名前はまとめる）
 
 import { isForecastRoot } from "../model/forecast";
+import { isDisposableDoc } from "./demo";
 import type { DocData, ID } from "../model/types";
 import { mergeDocs } from "../persist/io";
 
@@ -65,12 +66,16 @@ export function isFreshFuture(doc: DocData): boolean {
 
 /**
  * アカウントで重なったとき、手元を送らずに相手（remote）を読み込むか。手元が手を付けていない中身のときだけ譲る。
- * ただし手元が、未来の道筋を開いた入れ替えを元に戻しただけの地図（開くのを断った）で、相手も開いたばかりの未来の道筋なら
- * 譲らない（断ったことを、別の端末が自動で開いた地図で上書きしない。相手の地図は押せばまた開ける）
+ * ただし手元が、未来の道筋を開いた入れ替えを元に戻しただけの地図（開くのを断った）なら、次の相手には譲らない:
+ * - 相手も開いたばかりの未来の道筋（断ったことを、別の端末が自動で開いた地図で上書きしない。相手の地図は押せばまた開ける）
+ * - 相手が、断った印の無い捨ててよい中身（ノードを動かしただけのデモ・空）。譲ると断った印が消え、その端末が次に開いたとき
+ *   自動で開いてしまう（動かしただけの中身は、重なりのバックアップに残る）
  */
 export function yieldsToRemote(local: DocData, remote: DocData): boolean {
   if (!isFreshFuture(local)) return false;
-  return hasFutureRoot(local) || !(isFreshFuture(remote) && hasFutureRoot(remote));
+  if (hasFutureRoot(local)) return true;
+  if (isFreshFuture(remote) && hasFutureRoot(remote)) return false;
+  return !(local.meta?.[NO_AUTO_FUTURE] === true && remote.meta?.[NO_AUTO_FUTURE] !== true && !hasFutureRoot(remote) && isDisposableDoc(remote));
 }
 
 /** 未来の道筋の入口に寄るときの、いちばん引いた大きさ（これより小さいとカードの文字が出ない。狭い画面では左端の今日から見せる） */
