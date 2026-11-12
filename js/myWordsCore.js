@@ -417,7 +417,7 @@ export function parseBooks(raw) {
 }
 
 // 語が持つ単語帳の id（形の正しい id だけ。無い・形の違う値は最初の単語帳 main）
-const bookRefOf = (w) => (typeof w?.book === "string" && BOOK_ID.test(w.book) ? w.book : MY_FIRST_BOOK.id);
+export const bookRefOf = (w) => (typeof w?.book === "string" && BOOK_ID.test(w.book) ? w.book : MY_FIRST_BOOK.id);
 
 // 語の単語帳の id。並び（books）に無い id は先頭の単語帳（並びは withWordBooks で語の単語帳まで足したものを渡す）
 export function bookIdOf(w, books) {
@@ -426,7 +426,8 @@ export function bookIdOf(w, books) {
 }
 
 export const MY_OTHER_BOOK_NAME = "ほかの端末の単語帳";
-const cleanBookName = (raw) => (typeof raw === "string" ? raw.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, MY_BOOK_NAME_MAX) : "");
+// 単語帳の名前を比べる形（NFKC・空白の並びは 1 つ・前後を落とす・20 字。取り込みの「同じ名前の単語帳」も同じ形で見る: js/userItemsSync.js）
+export const cleanBookName = (raw) => (typeof raw === "string" ? raw.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, MY_BOOK_NAME_MAX) : "");
 
 // 端末の一覧（books）+ 語が持つ単語帳（Batch 81）。一覧は同期しないが、語の book と bookName は同期で届く:
 // 一覧に無い id（ほかの端末で作った単語帳）は、語の bookName（無ければ「ほかの端末の単語帳」。main は「マイ単語帳」）で一覧の後ろに足す（語の並びで初めて出た順）。
