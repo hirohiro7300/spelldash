@@ -78,6 +78,11 @@ function closeWaitToast(): void {
 const READ_ONLY_FUTURE = "このタブは閲覧のみです。未来の道筋を開くには、上の「このタブで編集する」を押してください。";
 /** 未来の道筋を一度に開く入れ替えの名前（履歴・安全用バックアップ） */
 const FUTURE_OPEN_LABEL = "未来の道筋を開く";
+/**
+ * 自動で開く前に、アカウントとの最初の突き合わせを待つ長さ。これより遅い・つながらないときは開く
+ * （開いたばかりで手を付けていない未来の道筋は、後で重なったら別の端末の内容に譲るので、待ち続けて見せないより良い）
+ */
+const SYNC_WAIT_MS = 10_000;
 
 export class App implements AppContext {
   readonly store: Store;
@@ -964,30 +969,46 @@ export class App implements AppContext {
    * 開いた地図が何もしていないデモか空で、未来の道筋がまだ無ければ、未来の道筋を開く（このブラウザで 1 回。元に戻せる）。
    * 操作ガイドを済ませてから開いたときだけ（初めての人には、ようこそ画面とガイドを先に見せる）。
    * 入れ替えない印のある地図（一度開いて元に戻した・デモを読み込む・空にするで作った。別の端末から同期で受け取った物も）は開かない。
-   * アカウントへの同期は、この起動で最初の突き合わせが済むまで待つ（別の端末の内容を先に取り込み、取り込んで中身ができたら開かない）。
-   * つながらない・機能の返事を待っている・決めてもらう確認が出ているまま 30 秒たったら開かない（地図の右下の「未来の道筋」から開ける）
+   * アカウントとの最初の突き合わせは 10 秒まで待つ（別の端末の内容を先に取り込み、取り込んで中身ができたら開かない）。
+   * それより遅い・つながらないときは開く（開いたばかりで手を付けていない間は、後で重なったら別の端末の内容に譲る）。
+   * 確認・メニュー・操作ガイド・入力の途中、閲覧のみのタブでは、終わる・編集できるようになるまで待つ（閲覧のみは訳を知らせる）
    */
   private autoOpenFuture(): void {
     if (this.ephemeral || !this.ui.prefs.onboardingDone) return;
     const started = Date.now();
+    let toldReadOnly = false;
     const tick = (): void => {
       if (this.futureAutoDeclined || this.ui.prefs.futureAutoOpened || this.ui.storedPrefs().futureAutoOpened === true) return;
       if (this.store.doc.meta?.[NO_AUTO_FUTURE] === true) return;
       if (hasFutureRoot(this.store.doc)) return;
       if (!isDisposableDoc(this.store.doc)) return;
-      const st = this.cloudInfo?.state;
       const waited = Date.now() - started;
-      // 同期が無い（Artifact の外）か、この起動でアカウントと突き合わせ終えたときだけ。つながらない（あとで同期する）・
-      // 機能の返事を待っている（遅れて始まる）・この起動では同期しない間に開くと、後の同期で別の端末の新しい内容を上書きしかねない
-      const settled = st === undefined || st === "synced";
-      // 確認・メニュー・操作ガイドの途中（お知らせの「元に戻す」がガイドの下で押せない）・文字を入れている（検索欄など）間も待つ
-      if (!settled || this.store.readOnly || this.futureBusy()) {
-        if (waited < 30000) setTimeout(tick, 500);
+      // 長く開けないまま（閲覧のみ・何かの途中のまま）: やめる（地図の右下の「未来の道筋」からいつでも開ける）
+      if (waited > 10 * 60_000) return;
+      // 閲覧のみ（別のタブ・ウィンドウで開いている）: 一度だけ訳を知らせ、このタブで編集できるようになるのを待つ
+      if (this.store.readOnly) {
+        if (!toldReadOnly && waited > 3000) {
+          toldReadOnly = true;
+          toast("このタブは閲覧のみです（別のタブかウィンドウでも開いています）。上の「このタブで編集する」を押すと、未来の道筋を開きます", { tone: "warn", ms: 9000 });
+        }
+        setTimeout(tick, 500);
+        return;
+      }
+      // 確認・メニュー・操作ガイドの途中（お知らせの「元に戻す」がガイドの下で押せない）・文字を入れている（検索欄など）間は待つ
+      if (this.futureBusy()) {
+        setTimeout(tick, 500);
+        return;
+      }
+      // アカウントとの最初の突き合わせ（10 秒まで）: 済むのを待つ。遅い・つながらないときは開く
+      const st = this.cloudInfo?.state;
+      const settled = st === undefined || st === "synced" || this.syncQuiet();
+      if (!settled && waited < SYNC_WAIT_MS) {
+        setTimeout(tick, 500);
         return;
       }
       // 開く途中で何かが始まって入れ替えなかった: 落ち着くのを待って、もう一度確かめる（地図が変わっていれば、そこで止まる）
       void this.openFutureNow("auto").then((r) => {
-        if (r === "skipped" && Date.now() - started < 30000) setTimeout(tick, 500);
+        if (r === "skipped") setTimeout(tick, 500);
       });
     };
     setTimeout(tick, 800);
@@ -1268,6 +1289,8 @@ export class App implements AppContext {
         };
         const hadRoot = rootAt(this.store.doc);
         const idBefore = this.store.doc.id;
+        // 何もしていないデモ・空のまま読み込む（ほかの端末で開いた未来の道筋が届く など）: 届いた地図の今日に寄る
+        const wasDisposable = isDisposableDoc(this.store.doc);
         if (how === "remote" && !yielding) {
           this.adopting = true;
           try {
@@ -1294,7 +1317,7 @@ export class App implements AppContext {
         const nowRoot = rootAt(this.store.doc);
         const nowMap = !!nowRoot;
         const sameMap = !!nowRoot && !!hadRoot && (this.store.doc.id === idBefore || (nowRoot.x === hadRoot.x && nowRoot.y === hadRoot.y));
-        if (how !== "remote" || (yielding && !sameMap)) {
+        if (how !== "remote" || (yielding && !sameMap) || (wasDisposable && !hadRoot && nowMap)) {
           this.view.fit(nowMap ? nearFutureRoot(this.store.doc) : undefined, { animate: false, minZoom: nowMap ? FUTURE_MIN_ZOOM : undefined });
         }
         void this.refreshLastBackup();

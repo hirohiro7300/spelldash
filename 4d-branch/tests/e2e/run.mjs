@@ -1957,6 +1957,25 @@ async function main() {
     await ctx.close();
   });
 
+  await check("未来の道筋: 別のタブが編集中で閲覧のみのときは、訳を知らせ、「このタブで編集する」を押すと開く", async () => {
+    const { ctx, page: p1 } = await returningDemo();
+    // 1 つ目のタブは開き直してすぐ操作ガイドを始める（編集できるタブのまま、未来の道筋はまだ開かない）
+    await p1.evaluate(() => sessionStorage.setItem("__bootOnce", "tour"));
+    await p1.reload({ waitUntil: "networkidle" });
+    await p1.locator(".tour").waitFor();
+    // 2 つ目のタブは閲覧のみ
+    const p2 = await ctx.newPage();
+    watch(p2);
+    await p2.goto(BASE, { waitUntil: "networkidle" });
+    await p2.waitForFunction(() => window.__fourD?.store.readOnly === true, null, { timeout: 10000 });
+    await p2.locator(".toast", { hasText: "このタブは閲覧のみです（別のタブかウィンドウでも開いています）" }).waitFor({ timeout: 8000 });
+    assert(!(await hasFuture(p2)), "閲覧のみのタブで入れ替えた");
+    // このタブで編集すると、未来の道筋を開く
+    await p2.getByRole("button", { name: "このタブで編集する" }).click();
+    await opened(p2);
+    await ctx.close();
+  });
+
   await check("未来の道筋: 開いたお知らせは、地図の右下の小さな地図・操作も、今日のカードも隠さない（1280・1440 の幅で右のパネルを開いたまま・閉じて、800 の幅）", async () => {
     const cases = [
       { vp: { width: 1280, height: 800 }, right: true },

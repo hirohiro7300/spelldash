@@ -517,7 +517,8 @@ await check("つながらない間・同期の途中は、デモを未来の道�
   // デモのまま同期した端末 X と、同じアカウントで書き足した端末 Y（アカウントは Y の内容が新しい）
   const setup = (uid, autoFuture) => xyDemo(uid, { autoFuture });
 
-  // 1) 自動で開く: X を開き直したとき、アカウントに 3 秒つながらない（「つながらない」はあとで同期する。落ち着いたとは見ない）
+  // 1) 自動で開く: X を開き直したとき、アカウントにつながらない（15 秒ごとにやり直す）。10 秒たつと未来の道筋を開くが、
+  //    つながって別の端末の新しい内容が分かったら、手を付けていない未来の道筋は送らずにその内容を読み込む（押し流さない）
   {
     const { X, Y, m } = await setup("u_race1", true);
     await X.ctx.addInitScript(() => (window.__dbDownUntil = Date.now() + 3000));
@@ -526,8 +527,7 @@ await check("つながらない間・同期の途中は、デモを未来の道�
     await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 20000 });
     await X.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
     await X.page.waitForTimeout(1500);
-    assert((await rootsOf(X.page)) === 0, "つながらない間に未来の道筋へ入れ替えた");
-    assert(!(await everOpened(X.page)), "つながらない間に一度未来の道筋を開いた（後で別の端末の内容に譲っただけ）");
+    assert((await rootsOf(X.page)) === 0, "つながった後も未来の道筋が残り、別の端末の内容に譲らなかった");
     const m1 = JSON.parse(dbStore.get("data/users/u_race1/fourd"));
     assert(m1.nodes === m.nodes, `アカウントの写しが変わった ${m1.nodes} / ${m.nodes}`);
     assert((await ownOf(Y.page)) && (await rootsOf(Y.page)) === 0, "別の端末の内容が消えた");
@@ -555,6 +555,24 @@ await check("つながらない間・同期の途中は、デモを未来の道�
     await X.ctx.close();
     await Y.ctx.close();
   }
+});
+
+await check("アカウントに長くつながらなくても、何もしていないデモのままなら 10 秒ほどで未来の道筋を開く（待ち続けて見せないままにしない）", async () => {
+  const { X, Y } = await xyDemo("u_slow", { autoFuture: true, write: false });
+  await Y.ctx.close();
+  // 40 秒つながらない（15 秒ごとのやり直しも 2 回まで失敗する）
+  await X.ctx.addInitScript(() => (window.__dbDownUntil = Date.now() + 40000));
+  await X.page.reload({ waitUntil: "load" });
+  const t0 = Date.now();
+  await X.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "offline", null, { timeout: 10000 });
+  // 最初の突き合わせは少し待つ（すぐには開かない）
+  await X.page.waitForTimeout(5000);
+  assert((await rootsOf(X.page)) === 0, "突き合わせを待たずに開いた");
+  await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 12000 });
+  assert(Date.now() - t0 < 16000, `開くまで ${Date.now() - t0}ms`);
+  assert((await X.page.evaluate(() => window.__fourD.app.cloudInfo?.state)) !== "synced", "（確かめの前提）つながらないまま開いていない");
+  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 3000 });
+  await X.ctx.close();
 });
 
 await check("題名をその場で書き換えている間に別の端末の変更が届き、書き換えずに ⌘S で閉じても、読まずに「同期済み」にして未来の道筋で上書きしない", async () => {

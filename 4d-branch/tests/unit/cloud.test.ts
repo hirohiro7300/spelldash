@@ -2859,4 +2859,40 @@ describe("同期の決まり: 未来の道筋を自動で開く変更の再レ�
     expect(a2.local.backups.some((x) => x.kind === "conflict" && Object.keys(x.doc.nodes).length > 100)).toBe(true);
     a2.sync.stop();
   });
+
+  it("新しい端末で、開いたばかりの未来の道筋のまま初めて同期すると、聞かずにアカウントの内容を採る（アカウントがデモなら、開いた地図を送る）", async () => {
+    // アカウントに書かれた内容がある: 聞かずに採る
+    {
+      const { be } = memoryBackend();
+      const b = device(be, "B", realDoc("B で書いた目標"));
+      await b.sync.start();
+      for (let i = 0; i < 50 && !(await remoteHas(b.repo, "B で書いた目標")); i++) await tick(10);
+      b.sync.stop();
+      const fresh = realDoc("開いたばかりの未来の道筋");
+      fresh.meta = { ...fresh.meta, [FRESH_FUTURE]: fresh.updatedAt };
+      const x = device(be, "X", fresh, { yields: yieldsToRemote, choice: "later" });
+      await x.sync.start();
+      for (let i = 0; i < 50 && !x.has("B で書いた目標"); i++) await tick(10);
+      expect(x.has("B で書いた目標")).toBe(true);
+      expect(x.local.asked).toBe(0);
+      expect(x.local.adopted).toEqual(["first"]);
+      expect(await remoteHas(x.repo, "開いたばかりの未来の道筋")).toBe(false);
+      x.sync.stop();
+    }
+    // アカウントは何もしていないデモ: 開いた地図を送る
+    {
+      const { be } = memoryBackend();
+      const a = device(be, "A", buildDemoDoc());
+      await a.sync.start();
+      a.sync.stop();
+      const fresh = realDoc("開いたばかりの未来の道筋");
+      fresh.meta = { ...fresh.meta, [FRESH_FUTURE]: fresh.updatedAt };
+      const x = device(be, "X", fresh, { yields: yieldsToRemote, choice: "later" });
+      await x.sync.start();
+      for (let i = 0; i < 50 && !(await remoteHas(x.repo, "開いたばかりの未来の道筋")); i++) await tick(10);
+      expect(await remoteHas(x.repo, "開いたばかりの未来の道筋")).toBe(true);
+      expect(x.local.asked).toBe(0);
+      x.sync.stop();
+    }
+  });
 });

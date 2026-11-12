@@ -1384,6 +1384,16 @@ export class CloudSync {
     } else if (this.deps.isDisposable(remote.doc) && !foreign) {
       // アカウントにあるのは何もしていないデモ（か空）: 手元を送る（別のアカウントの中身なら聞く）
       return "push";
+    } else if (this.deps.yieldsOnConflict?.(local, remote.doc)) {
+      // 手元は一度に開いてから手を付けていない中身（未来の道筋）: 聞かずにアカウントの内容を採る（押せばまた開ける。元に戻す対象にしない）
+      const ident = await this.deps.adopt(remote.doc, "first", () => !!this.deps.yieldsOnConflict?.(this.deps.getDoc(), remote.doc) && !this.deps.isEditing() && this.deps.isWriter());
+      if (ident) {
+        await this.adopted(remote.manifest, ident, "アカウントに保存されていた内容を読み込みました。");
+        return "done";
+      }
+      if (!this.stillWriter()) return "done";
+      // 読み込む直前に入力が始まった（まだ手を付けていない）: 入力が終わってから突き合わせる。手を付けたなら、下で聞く
+      if (this.deps.yieldsOnConflict?.(this.deps.getDoc(), remote.doc)) return this.waitForEditing("入力が終わってから、アカウントの内容と突き合わせます");
     }
     this.setState("pending", "どちらの内容を使うか、選んでください");
     const choice = await this.deps.chooseFirst(remote);
