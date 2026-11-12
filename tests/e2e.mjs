@@ -31181,6 +31181,41 @@ console.log("shortcuts (92.1):");
     check("92.1 Batch 93 絵（K）: 1200 と 768 は寄せた絵を出さず、全体の絵（練習中と早見表・幅 560px）の札は 11px 以上（前は 8.8〜9.5px）・札はキーからはみ出さない／600×450（200% の拡大）は寄せた絵・札 11px 以上／枠は --ink-2・点線は --ink-3（昼・夜。朱でない）・寄せた絵は aria-hidden・全体の絵は role=img と読み上げの名前",
       pcOk && !!z?.focus && z.minPx >= 11 && z.under.length === 0 && colorOk, JSON.stringify({ rows, z: z && [z.focus, z.minPx, z.frames], looks }));
   });
+  // (14) 札の幅（CI の落ち: 既定の書体が広い端末で Ctrl の英語の並びの Backspace〔太字〕がキーからはみ出した）: 書体によらず札はキーに収まる。
+  //      全部の札を太字・字間 0.12em にして広く描いても（書体の名前は使わない）、320 の指の端末の早見表の詳しい欄（Ctrl と ⌘ の英語の並び・Ctrl の日本語の並び。
+  //      pc.delete-word ほか、寄せた絵に Backspace・Home・PrtSc・無変換・半/全・delete が入る組）と Ctrl の英語の並びの答えた後の絵、1200 の全体の絵（早見表と答えた後）で、札はキーからはみ出さない
+  await part("(14) 小節 28c", async () => {
+    const WIDE = ".kb-k text { font-weight: 700 !important; letter-spacing: 0.12em !important; }";
+    const IDS = ["pc.delete-word", "pc.copy", "pc.next-field", "pc.line-start-end"];
+    const bad = [];
+    let n = 0;
+    let wideOn = 0;
+    const judge = (tag, m, zoom) => {
+      n++;
+      if (!m?.over || m.focus !== zoom) bad.push(`${tag}: 絵 ${JSON.stringify(m && { focus: m.focus, over: m.over })}`);
+      if (m?.wide.length) bad.push(`${tag}: キーからはみ出す札 ${m.wide.slice(0, 4).join(",")}`);
+    };
+    for (const [width, layout, arr] of [[320, "ctrl", "us"], [320, "ctrl", "jis"], [320, "cmd", "us"], [1200, "ctrl", "us"], [1200, "ctrl", "jis"], [1200, "cmd", "us"]]) {
+      const answered = layout === "ctrl" && arr === "us";
+      const page = await scPage({ mobile: width < 600, viewport: { width, height: 800 }, storage: { spelldash_shortcut_device: JSON.stringify({ layout, arr }), ...(answered ? { spelldash_shortcuts: learnedExcept(["pc.delete-word"], layout) } : {}) } });
+      await openSc(page);
+      await page.addStyleTag({ content: WIDE });
+      const tag = `${width}/${layout}/${arr}`;
+      for (const id of width < 600 ? IDS : IDS.slice(0, 1)) if (byId(id)?.keys?.[layout]) judge(`${tag} 早見表 ${id}`, await kbLook(page, await openTile(page, id)), width < 600);
+      wideOn += await page.evaluate(() => { const t = document.querySelector(".kb-k text"); return t && getComputedStyle(t).fontWeight === "700" && parseFloat(getComputedStyle(t).letterSpacing) > 0 ? 1 : 0; });
+      if (answered) {
+        await start(page);
+        const id = (await play(page)).id;
+        await page.click("#scDunno");
+        await waitState(page, "done");
+        judge(`${tag} 答えた後 ${id}`, await kbLook(page, "#scKb"), width < 600);
+      }
+      if (page.errors.length) bad.push(`${tag}: ${page.errors[0]}`);
+      await closeCtx(page);
+    }
+    check("92.1 Batch 93 絵（K）: 札は書体によらずキーに収まる — 全部の札を太字・字間 0.12em で広く描いても（書体は替えない）、320 の指の端末の早見表の詳しい欄（Ctrl と ⌘ の英語の並び・Ctrl の日本語の並び。pc.delete-word ほか）と Ctrl の英語の並びの答えた後の絵、1200 の全体の絵（早見表と答えた後）で札はキーからはみ出さない（前は Backspace・半/全・無変換・Home がはみ出した）",
+      n >= 16 && wideOn === 6 && bad.length === 0, JSON.stringify({ n, wideOn, bad: bad.slice(0, 10) }));
+  });
 
   // (14b) 明かさない（K の受け入れ 3）: 答える前は #scKb に寄せた絵・枠・光るキーが無い（押す問いで修飾を押している間も）・指の端末の選ぶ問いは答えるまで絵ごと隠す。答えた後は寄せた絵と枠と光るキー
   await part("(14b) 小節 29", async () => {

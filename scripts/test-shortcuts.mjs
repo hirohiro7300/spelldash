@@ -980,7 +980,7 @@ t("12 絵（寄せた絵）: 320 の幅の絵（262px）で、窓に全部入る
   }
   return (n > 250 && minPx >= 11 && minSym >= 8.5 && bad.length === 0) || { n, minPx, minSym, bad: bad.slice(0, 20) };
 });
-// 窓の端（Batch 93 のレビュー）: 札の字の箱の見積もり = 横は中心 ± 字の幅の見積もり × 大きさ ÷ 2、縦は字の線の上 0.75・下 0.25（大きさの割合）。記号は線の箱
+// 窓の端（Batch 93 のレビュー）: 札の字の箱の見積もり = 横は中心 ± 描く幅（textLength。無ければ字の幅の見積もり × 大きさ）÷ 2、縦は字の線の上 0.75・下 0.25（大きさの割合）。記号は線の箱
 t("12 絵（寄せた絵）: 窓の端で札と記号が切れない（50 組 × 2 × 2 の全部の押す組。前は 198 組の絵のうち 174 で「In」「D」「Ho」・半分の「C」など）・窓に一部だけ入るキーは字も記号も描かず形（kb-cut）だけ残す（窓に掛かるキーは全部描く）・押すキーは寄せた絵の中で 1 か所だけ塗る（⇧ ⌘ 3 の ⇧ を 2 つの窓に金で出さない）", () => {
   if (artMissing()) return artMissing();
   const bad = [];
@@ -997,9 +997,10 @@ t("12 絵（寄せた絵）: 窓の端で札と記号が切れない（50 組 ×
     for (const w of svg.matchAll(/<svg x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)">([\s\S]*?)<\/svg>/g)) {
       const [x0, y0, ww, wh] = [+w[1], +w[2], +w[3], +w[4]];
       const inside = (a, b, c, d) => a >= x0 - 0.06 && b <= x0 + ww + 0.06 && c >= y0 - 0.06 && d <= y0 + wh + 0.06;
-      for (const m of w[5].matchAll(/<text x="([-\d.]+)" y="([-\d.]+)" font-size="([\d.]+)">([^<]*)<\/text>/g)) {
-        const [cx, by, fs, label] = [+m[1], +m[2], +m[3], unesc(m[4])];
-        const half = (emOf(label) * fs) / 2;
+      for (const m of w[5].matchAll(/<text x="([-\d.]+)" y="([-\d.]+)" font-size="([\d.]+)"([^>]*)>([^<]*)<\/text>/g)) {
+        const [cx, by, fs, label] = [+m[1], +m[2], +m[3], unesc(m[5])];
+        const tl = m[4].match(/textLength="([\d.]+)"/)?.[1];
+        const half = (tl === undefined ? emOf(label) * fs : +tl) / 2;
         if (!inside(cx - half, cx + half, by - 0.75 * fs, by + 0.25 * fs)) bad.push(`${id}: 札「${label}」が窓の端で切れる`);
       }
       for (const m of w[5].matchAll(/<path class="kb-sym" d="[^"]*" transform="translate\(([-\d.]+) ([-\d.]+)\) scale\(([\d.]+)\)"\/>/g)) {
@@ -1018,6 +1019,32 @@ t("12 絵（寄せた絵）: 窓の端で札と記号が切れない（50 組 ×
     }
   }
   return (n > 250 && shapes > 0 && bad.length === 0) || { n, shapes, nbad: bad.length, bad: bad.slice(0, 12) };
+});
+// 札の幅（CI の落ち: 既定の書体が広い端末で、Ctrl の英語の並びの Backspace〔太字〕がキーより 3px 広かった）: 字の幅の見積もりは書体で外れるので、
+// 2 字以上の札は描く幅を textLength で決める（lengthAdjust="spacingAndGlyphs" で字の形ごと縮める・伸ばす）。描く幅はキーの幅 − 4（左右 1 単位）以下
+t("12 絵: 2 字以上の札は書体によらずキーに収まる — 全体の絵 4 種と寄せた絵（50 組 × 2 × 2 の全部の押す組）の 2 字以上の札は textLength（キーの幅 − 4 以下・1 字 0.27 em 以上）と lengthAdjust=\"spacingAndGlyphs\" を持つ（前は持たず、書体の幅のまま描いた）・1 字の札は持たない", () => {
+  if (artMissing()) return artMissing();
+  const bad = [];
+  let n = 0;
+  let one = 0;
+  const look = (id, svg) => {
+    for (const m of String(svg).matchAll(/<g class="kb-k"[^>]*><rect [^>]*?width="([\d.]+)"[^>]*\/><text ([^>]*)>([^<]*)<\/text><\/g>/g)) {
+      const [w, attrs, label] = [+m[1] + 2, m[2], unesc(m[3])];
+      const fs = Number(attrs.match(/font-size="([\d.]+)"/)?.[1]);
+      const tl = attrs.match(/textLength="([^"]*)"/)?.[1];
+      const la = attrs.match(/lengthAdjust="([^"]*)"/)?.[1];
+      if ([...label].length < 2) {
+        one++;
+        if (tl !== undefined || la !== undefined) bad.push(`${id}: 1 字の札「${label}」に textLength`);
+      } else {
+        n++;
+        if (la !== "spacingAndGlyphs" || !(+tl <= w - 4 + 1e-9 && +tl >= 0.27 * [...label].length * fs)) bad.push(`${id}: 「${label}」 キー ${w}・大きさ ${fs}・textLength ${tl}・lengthAdjust ${la}`);
+      }
+    }
+  };
+  for (const l of LAYOUTS) for (const arr of ARRS) look(`${l}/${arr} 全体`, A.keyboardSvg(l, arr));
+  for (const x of ITEMS) for (const l of LAYOUTS) for (const arr of ARRS) for (const caps of capsSetsOf(x, l)) look(`${x.id}@${l}/${arr} ${caps.join("+")}`, A.focusSvg(l, arr, A.tokensOfCaps(caps, l)));
+  return (n > 600 && one > 1500 && bad.length === 0) || { n, one, nbad: bad.length, bad: [...new Set(bad)].slice(0, 12) };
 });
 t("12 絵（寄せた絵）: 窓の余白は押すキーの外に 1 キー、入らなければ ½ キー、それでも入らなければ 0（幅は 3 キー以上。仕様 §12。Ctrl のコピー・⌘ の左隣のタブ・⌘ の英語の並びの画面全体の写真）", () => {
   if (artMissing()) return artMissing();
