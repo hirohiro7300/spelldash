@@ -1181,13 +1181,17 @@ const hook = async (event, makeReq = streamReq, opts) => {
   const h2 = [...(await both(500)), ...(await both(503))];
   ok("本人確認 H2（Batch 94）: 本人確認が 500・503 で答えたら、2 つの口とも 502 auth_unavailable（ログに番号）",
     h2.length === 4 && h2.every((r) => unavailableOk(r, String(r.mode))), JSON.stringify(h2.map((r) => [r.name, r.mode, r.status, r.error, r.logs])));
+  // H2b: 本人確認が混み合い（429）・待ち切れ（408）で答えたときも確かめられない（502）。ログインし直しても直らないので「ログインが要る」と言わない
+  const h2b = [...(await both(429)), ...(await both(408))];
+  ok("本人確認 H2b（Batch 94 の直し）: 本人確認が 429・408 で答えたら、2 つの口とも 502 auth_unavailable（401 にしない・ログに番号）",
+    h2b.length === 4 && h2b.every((r) => unavailableOk(r, String(r.mode))), JSON.stringify(h2b.map((r) => [r.name, r.mode, r.status, r.error, r.logs])));
   const wrong = [...(await both(401)), ...(await both(null, "tok-nobody")), ...(await both(null, ""))];
   ok("本人確認 H2（Batch 94・守り）: 鍵が違う（本人確認が 401・知らないトークン）・トークンが無いときは今どおり 401 login_required「加入にはログインが必要です。」・決済の会社に出ない（トークンが無ければ本人確認にも聞かない）",
     wrong.length === 6 && wrong.every((r, i) => r.status === 401 && r.error === "login_required" && r.message === lib.MESSAGES?.login && r.beyond.length === 0 && r.asked === (i >= 4 ? 0 : 1)),
     JSON.stringify(wrong.map((r) => [r.name, r.mode, r.status, r.error, r.asked])));
   // H3: ログには種類と番号だけ
   ok("本人確認 H3（Batch 94・守り）: 確かめられないときのログにトークン・メール・鍵・相手の所を書かない（種類と番号だけ）",
-    quietLogs([...h1, ...h1b, ...h2, ...wrong]), JSON.stringify([...h1, ...h1b, ...h2].flatMap((r) => r.logs).slice(0, 6)));
+    quietLogs([...h1, ...h1b, ...h2, ...h2b, ...wrong]), JSON.stringify([...h1, ...h1b, ...h2].flatMap((r) => r.logs).slice(0, 6)));
   // 守り: verifyUserFull の約束（何があっても null。投げない）と AI の口（本人確認が 500 でも今どおり 401 login_required）
   const fullOf = async (mode, token = "tok-u1") => {
     fresh();
