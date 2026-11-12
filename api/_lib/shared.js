@@ -1,6 +1,6 @@
 // ===== API共通（Vercel関数から使う。`_` で始まるディレクトリはルートにならない） =====
 //
-// - Supabaseのアクセストークン検証（ログイン必須の機能に使う）。加入とお支払いの管理の口は verifyUserChecked（確かめられないときを
+// - 認証の会社のアクセストークン検証（ログイン必須の機能に使う）。加入とお支払いの管理の口は verifyUserChecked（確かめられないときを
 //   鍵が違うときと分ける: 502 auth_unavailable と 401。Batch 94）
 // - AI の入口（Batch 88）: aiGate（メソッド・鍵・ログイン。確認済みのメールで匿名でない人だけ）→ 各 api が入力を確かめる（400）→
 //   aiTake（同じ人の処理中は 429 busy・1 日の回数）→ モデル → aiTake が返した関数で処理中の印を外す。まちがった入力は回数を減らさない
@@ -77,8 +77,8 @@ export async function verifyUser(authorization) {
 }
 
 // 本人確認の答えを 3 つに分ける（Batch 94。加入の口とお支払いの管理の口だけが使う。ほかの口は verifyUserFull のまま）:
-//   { user }（本人）・{ problem: "denied" }（鍵が違う: トークンが無い・本人確認が 4xx・本人の id が無い → 呼ぶ側は 401）・
-//   { problem: "unavailable" }（確かめられない: 4 秒で打ち切り・通信の失敗・本人確認の 5xx・本文を読めない → 呼ぶ側は 502 auth_unavailable）。
+//   { user }（本人）・{ problem: "denied" }（鍵が違う: トークンが無い・本人確認が 429・408 でない 4xx・本人の id が無い → 呼ぶ側は 401）・
+//   { problem: "unavailable" }（確かめられない: 4 秒で打ち切り・通信の失敗・本人確認の 5xx と 429・408・本文を読めない → 呼ぶ側は 502 auth_unavailable）。
 // ログには種類と番号だけ（トークン・メール・鍵・相手の所は書かない）
 const VERIFY_TIMEOUT_MS = 4000;
 export async function verifyUserChecked(authorization) {
@@ -98,7 +98,8 @@ export async function verifyUserChecked(authorization) {
   } catch (error) {
     return unavailable(timedOut(error) ? "timeout" : "network");
   }
-  if (response.status >= 500) return unavailable(`status ${response.status}`);
+  // 5xx と、混み合い（429）・待ち切れ（408）は確かめられない（ログインし直しても直らない）。ほかの 4xx は鍵が違う
+  if (response.status >= 500 || response.status === 429 || response.status === 408) return unavailable(`status ${response.status}`);
   if (!response.ok) return { problem: "denied" };
   let body;
   try {
