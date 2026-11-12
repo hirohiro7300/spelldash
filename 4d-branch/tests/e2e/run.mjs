@@ -1641,7 +1641,7 @@ async function main() {
   await ap.getByRole("button", { name: "すぐに使う" }).click();
   const hasFuture = (p = ap) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
 
-  await check("未来の道筋: 何もしていないデモのまま開き直すと、全体が自動で開き、元に戻せて、戻した人には二度と開かない", async () => {
+  await check("未来の道筋: 何もしていないデモのまま開き直すと、今日から自動で開き、元に戻せて、戻した地図は（設定が消えても）もう入れ替えない", async () => {
     // 初めて開いたとき（ようこそ・ガイドの間）は入れ替えない
     await ap.waitForTimeout(1500);
     assert(!(await hasFuture()), "初めて開いたときに入れ替えた");
@@ -1663,31 +1663,60 @@ async function main() {
         auto: f.ui.prefs.futureAutoOpened,
         overview: document.querySelectorAll(".forecast-ends .end-row").length,
         text: document.querySelector(".toast-text")?.textContent ?? "",
+        root: (() => {
+          const n = Object.values(f.store.doc.nodes).find((x) => x.meta?.forecastRoot === true);
+          const p = f.app.view.camera.toScreen(n.x, n.y);
+          return { x: p.x, y: p.y, w: f.app.view.width, h: f.app.view.height };
+        })(),
+        // お知らせが、地図の右下の操作（未来の道筋・拡大縮小）を隠さない
+        covered: [...document.querySelectorAll(".zoom-ctl button")].filter((b) => {
+          const r = b.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return !(hit && b.contains(hit));
+        }).length,
       };
     });
     assert(s.nodes > 1500 && s.ends === 14 && Math.abs(s.sum - 1) < 1e-6, JSON.stringify(s));
-    // 最初は 10 年後まで分かれていく全体の形を見せる
-    assert(s.zoom < 0.1, `全体が見えていない（倍率 ${s.zoom}）`);
+    // 全体（横 8 万）はいちばん引いても収まらないので、今日（入口）が読める大きさで画面に入る
+    assert(s.root.x > 0 && s.root.x < s.root.w && s.root.y > 0 && s.root.y < s.root.h && s.zoom >= 0.3, `今日が読める大きさで画面に入らない ${JSON.stringify(s)}`);
     assert(s.auto === true, "印が立たない");
     assert(s.overview >= 3, "右の概要に行き先が出ない");
-    assert(/歩み 1,\d{3}/.test(s.text) && s.text.includes("行き先 14"), s.text);
+    assert(/歩み 1,\d{3}/.test(s.text) && s.text.includes("行き先 14") && s.text.includes("今日"), s.text);
+    assert(s.covered === 0, `お知らせが地図の右下の操作 ${s.covered} 個を隠している`);
     await shot("e2e-16-future-auto", ap);
-    // 元に戻すとデモに戻る
+    // 元に戻すとデモに戻り、戻したデモには入れ替えない印が付く
     await done.getByRole("button", { name: "元に戻す" }).click();
     await ap.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    assert((await ap.evaluate(() => window.__fourD.store.doc.meta.noAutoFuture)) === true, "戻した地図に印が付かない");
     await waitSaved(ap);
     await ap.waitForTimeout(400);
     await ap.reload({ waitUntil: "networkidle" });
     await ap.waitForTimeout(3000);
     assert(!(await hasFuture()), "元に戻したのに、開き直すとまた入れ替えた");
+    // このブラウザの「開いた」の設定が消えても（別の端末・設定をまるごと書く古いタブ）、地図の印で入れ替えない
+    await ap.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      p.futureAutoOpened = false;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+      localStorage.removeItem("4d-branch:futureAutoOpened");
+    });
+    await ap.reload({ waitUntil: "networkidle" });
+    await ap.waitForTimeout(3000);
+    assert(!(await hasFuture()), "設定が消えると、戻した地図をまた入れ替えた");
   });
 
-  await check("地図の右下の「未来の道筋」: デモなら押すとすぐ開き、開いた後は今日を選んで読める大きさで寄る（スマホの幅でも見える）", async () => {
+  await check("地図の右下の「未来の道筋」: デモなら押すとすぐ開き（二度押しでも 1 回）、開いた後は今日を選んで読める大きさで寄る（隠れていれば出す・スマホの幅でも見える）", async () => {
     const btn = ap.locator(".zoom-ctl .future-btn");
     assert(await btn.isVisible(), "ボタンが見えない");
-    await btn.click();
+    // 入れ替えない印の付いた地図でも、押せば開く。二度押しても入れ替えは 1 回
+    await btn.dblclick();
     await ap.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
-    await ap.waitForTimeout(500);
+    await ap.waitForTimeout(800);
+    const once = await ap.evaluate(() => ({
+      undo: window.__fourD.store.history.undoStack.filter((e) => e.label === "未来の道筋を開く").length,
+      toasts: [...document.querySelectorAll(".toast-text")].filter((t) => t.textContent.includes("を開きました")).length,
+    }));
+    assert(once.undo === 1 && once.toasts === 1, `二度押しで 2 回入れ替えた ${JSON.stringify(once)}`);
     // 遠くへ動かしてから押すと、今日（入口）が選ばれて画面に入る
     await ap.evaluate(() => {
       const v = window.__fourD.app.view;
@@ -1707,6 +1736,34 @@ async function main() {
     });
     assert(r.sel.length === 1 && r.sel[0] === r.root, `今日が選ばれない ${JSON.stringify(r)}`);
     assert(r.x > 0 && r.x < r.w && r.y > 0 && r.y < r.h && r.zoom >= 0.3, `今日が読める大きさで画面に入らない ${JSON.stringify(r)}`);
+    // メニューの「読み込む…」でも 2 つ目は足さず、今日へ寄る
+    await ap.getByRole("button", { name: "メニュー", exact: true }).click();
+    await ap.getByRole("menuitem", { name: /未来の道筋（仕事・10 年）を読み込む/ }).click();
+    await ap.locator(".toast", { hasText: "未来の道筋はもう地図にあります" }).waitFor();
+    const again = await ap.evaluate(() => ({ roots: Object.values(window.__fourD.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length, modal: document.querySelectorAll(".modal").length }));
+    assert(again.roots === 1 && again.modal === 0, `メニューから 2 つ目を読み込めた ${JSON.stringify(again)}`);
+    // 絞り込み（つながる相手だけ残して隠す）で今日が隠れていても、押せば「薄くする」にして出す
+    await ap.evaluate(() => {
+      const f = window.__fourD;
+      const pid = f.app.cmd.addProject("関係のないプロジェクト");
+      f.ui.setPrefs({ projectFilter: [pid], projectMode: "focus" });
+    });
+    await ap.waitForTimeout(300);
+    const hiddenBefore = await ap.evaluate(() => {
+      const f = window.__fourD;
+      const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+      return f.app.vm.node(root.id).hidden;
+    });
+    assert(hiddenBefore === true, "絞り込みで今日が隠れない（確かめの前提）");
+    await btn.click();
+    await ap.waitForTimeout(600);
+    const shown = await ap.evaluate(() => {
+      const f = window.__fourD;
+      const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+      return { hidden: f.app.vm.node(root.id).hidden, mode: f.ui.prefs.projectMode };
+    });
+    assert(!shown.hidden && shown.mode === "dim", `隠れた今日を出さない ${JSON.stringify(shown)}`);
+    await ap.evaluate(() => window.__fourD.ui.setPrefs({ projectFilter: [], projectMode: "dim" }));
     // スマホの幅でも、ボタンは画面の中にあって押せる
     await ap.setViewportSize({ width: 390, height: 800 });
     await ap.waitForTimeout(400);

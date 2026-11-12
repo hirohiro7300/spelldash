@@ -16,6 +16,14 @@ export interface LoadOpts {
   fitTo?: (doc: DocData, added: ID[]) => ID[];
 }
 
+/** 入れ替えの条件と、入れ替える前の地図に付ける印 */
+export interface ReplaceOpts extends LoadOpts {
+  /** 保存とバックアップを待った後に確かめ直す（偽なら入れ替えない。待つ間に同期で別の内容を読み込んだ など） */
+  still?: () => boolean;
+  /** 入れ替える前の地図（安全用バックアップ・「元に戻す」で戻る物）の meta に足す印 */
+  markBefore?: Record<string, unknown>;
+}
+
 export interface AppContext {
   store: Store;
   ui: UiState;
@@ -59,7 +67,8 @@ export interface AppContext {
   swapFuture(): Promise<void>;
   newEmptyDoc(): Promise<void>;
   /** 文書を入れ替える（label は元に戻す・安全用バックアップの名前） */
-  replaceDocSafely(doc: DocData, label: string, opts?: LoadOpts): Promise<void>;
+  /** 入れ替えたら true（閲覧のみ・確かめ直して当てはまらなければ入れ替えずに false） */
+  replaceDocSafely(doc: DocData, label: string, opts?: ReplaceOpts): Promise<boolean>;
   /** 取り込んだ文書を今のデータに足す（select: false なら足した分を選ばない） */
   mergeDoc(doc: DocData, opts?: LoadOpts & { label?: string; select?: boolean }): void;
 }

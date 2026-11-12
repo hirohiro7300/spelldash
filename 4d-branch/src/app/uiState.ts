@@ -97,17 +97,33 @@ export function onlyTimeCursor(p: Partial<Prefs>): boolean {
 
 const PREFS_KEY = "4d-branch:prefs";
 const CAMERA_KEY = "4d-branch:camera:";
+/**
+ * 「未来の道筋を開いた」（futureAutoOpened）は別の場所にも書く。設定をまるごと書く別のタブ（開いたことを知らない古いタブ・
+ * 前の版のタブ）に消されて、元に戻した人にもう一度開かないように。一度立てたら戻さない
+ */
+const FUTURE_OPENED_KEY = "4d-branch:futureAutoOpened";
+
+function futureOpenedMark(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(FUTURE_OPENED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function loadPrefs(): Prefs {
+  const mark = futureOpenedMark();
   try {
     const raw = globalThis.localStorage?.getItem(PREFS_KEY);
-    if (!raw) return structuredClone(DEFAULT_PREFS);
+    if (!raw) return { ...structuredClone(DEFAULT_PREFS), futureAutoOpened: mark };
     const p = JSON.parse(raw) as Partial<Prefs>;
     // 壊れた時点（前の版で保存された NaN など）は外す
     if (p.timeCursor != null && !isDateStr(p.timeCursor)) p.timeCursor = null;
-    return { ...structuredClone(DEFAULT_PREFS), ...p, sections: { ...DEFAULT_PREFS.sections, ...(p.sections ?? {}) }, listSort: { ...DEFAULT_PREFS.listSort, ...(p.listSort ?? {}) } };
+    const prefs: Prefs = { ...structuredClone(DEFAULT_PREFS), ...p, sections: { ...DEFAULT_PREFS.sections, ...(p.sections ?? {}) }, listSort: { ...DEFAULT_PREFS.listSort, ...(p.listSort ?? {}) } };
+    if (mark) prefs.futureAutoOpened = true;
+    return prefs;
   } catch {
-    return structuredClone(DEFAULT_PREFS);
+    return { ...structuredClone(DEFAULT_PREFS), futureAutoOpened: mark };
   }
 }
 
@@ -144,11 +160,13 @@ export class UiState {
 
   /** このブラウザに保存されている設定（別のタブが書いた物も含む。読めなければ空） */
   storedPrefs(): Partial<Prefs> {
+    let p: Partial<Prefs> = {};
     try {
-      return JSON.parse(globalThis.localStorage?.getItem(PREFS_KEY) || "{}") as Partial<Prefs>;
+      p = JSON.parse(globalThis.localStorage?.getItem(PREFS_KEY) || "{}") as Partial<Prefs>;
     } catch {
-      return {};
+      p = {};
     }
+    return futureOpenedMark() ? { ...p, futureAutoOpened: true } : p;
   }
 
   /** まとめて書く前の表示の設定を、今すぐ書く（閉じる・隠れるとき。すぐ開き直しても設定を失わない） */
@@ -163,6 +181,7 @@ export class UiState {
     if (!this.persistPrefs) return;
     try {
       globalThis.localStorage?.setItem(PREFS_KEY, JSON.stringify(this.prefs));
+      if (this.prefs.futureAutoOpened) globalThis.localStorage?.setItem(FUTURE_OPENED_KEY, "1");
     } catch {
       /* 保存できなくても動く */
     }

@@ -30,16 +30,24 @@ const leases = new Map();
 
 const FAKE_CLAUDE = () => {
   const flags = window.__fakeFlags || {};
+  // つながらない間（window.__dbDownUntil まで）: 読み書きは失敗し（コードの無いエラー = つながらない）、見張りは何も届けない
+  const down = () => Date.now() < (window.__dbDownUntil || 0);
+  const net = () => {
+    if (down()) throw new Error("Failed to fetch");
+  };
   const mkDoc = (path) => ({
     async get() {
+      net();
       const d = await window.__dbGet(path);
       return { exists: d !== null, data: () => (d === null ? undefined : d) };
     },
     async set(data) {
+      net();
       const r = await window.__dbSet(path, JSON.stringify(data));
       if (r) throw { code: r, message: r };
     },
     async delete() {
+      net();
       await window.__dbDel(path);
     },
     onSnapshot(next) {
@@ -47,6 +55,10 @@ const FAKE_CLAUDE = () => {
       let stop = false;
       const poll = async () => {
         if (stop) return;
+        if (down()) {
+          setTimeout(poll, 300);
+          return;
+        }
         const d = await window.__dbGet(path);
         const key = JSON.stringify(d);
         if (key !== last) {
@@ -61,6 +73,7 @@ const FAKE_CLAUDE = () => {
       };
     },
     async acquire({ holder, ttlMs }) {
+      net();
       return { acquired: await window.__dbLease(path, holder, ttlMs ?? 30000) };
     },
   });
@@ -92,7 +105,10 @@ const FAKE_CLAUDE = () => {
       if (name === "user") return Object.freeze({ id: async () => (flags.signedOut ? null : flags.uid || "u_test") });
       if (name === "db") {
         if (flags.signedOut) return null;
-        const list = async (p) => ({ docs: (await window.__dbList(p)).map((d) => ({ id: d.id, exists: true, data: () => d.data })) });
+        const list = async (p) => {
+          net();
+          return { docs: (await window.__dbList(p)).map((d) => ({ id: d.id, exists: true, data: () => d.data })) };
+        };
         return Object.freeze({ doc: mkDoc, collection: (p) => ({ doc: (id) => mkDoc(`${p}/${id}`), get: () => list(p), limit: () => ({ get: () => list(p) }) }) });
       }
       return null;
@@ -444,6 +460,65 @@ await check("デモのまま同期していた端末で開き直すと、同期�
   assert((await has(D2.page)) === 1, `入口が ${await has(D2.page)} つ`);
   await D2.ctx.close();
   await D.ctx.close();
+});
+
+await check("つながらない間・同期の途中は、デモを未来の道筋に入れ替えない（別の端末で書いた新しい内容を取り込み、押した「未来の道筋」は済んでから聞く）", async () => {
+  // デモのまま同期した端末 X と、同じアカウントで書き足した端末 Y（アカウントは Y の内容が新しい）
+  const setup = async (uid, autoFuture) => {
+    const X = await newDevice({ uid, autoFuture });
+    await X.page.getByRole("dialog", { name: "4D Branch へようこそ" }).waitFor();
+    await X.page.getByRole("button", { name: "すぐに使う" }).click();
+    await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+    await X.page.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
+    const Y = await newDevice({ uid });
+    await Y.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+    const welcome = Y.page.getByRole("dialog", { name: "4D Branch へようこそ" });
+    if (await welcome.isVisible()) await Y.page.getByRole("button", { name: "すぐに使う" }).click();
+    await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
+    await Y.page.evaluate(() => window.__fourD.app.cloud.flush());
+    await Y.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+    const m = JSON.parse(dbStore.get(`data/users/${uid}/fourd`));
+    assert(m.nodes > 23 && m.nodes < 40, `Y の写し ${m.nodes}`);
+    return { X, Y, m };
+  };
+  const ownOf = (p) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "別の端末で書いた目標"));
+  const rootsOf = (p) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length);
+
+  // 1) 自動で開く: X を開き直したとき、アカウントに 3 秒つながらない（「つながらない」はあとで同期する。落ち着いたとは見ない）
+  {
+    const { X, Y, m } = await setup("u_race1", true);
+    await X.ctx.addInitScript(() => (window.__dbDownUntil = Date.now() + 3000));
+    await X.page.reload({ waitUntil: "load" });
+    await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "offline", null, { timeout: 10000 });
+    await X.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 20000 });
+    await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+    await X.page.waitForTimeout(1500);
+    assert((await rootsOf(X.page)) === 0, "つながらない間に未来の道筋へ入れ替えた");
+    const m1 = JSON.parse(dbStore.get("data/users/u_race1/fourd"));
+    assert(m1.nodes === m.nodes, `アカウントの写しが変わった ${m1.nodes} / ${m.nodes}`);
+    assert((await ownOf(Y.page)) && (await rootsOf(Y.page)) === 0, "別の端末の内容が消えた");
+    const warn = await X.page.locator(".toast", { hasText: "重なった" }).count();
+    assert(warn === 0, "重なりのお知らせが出た");
+    await X.ctx.close();
+    await Y.ctx.close();
+  }
+
+  // 2) 押す: 同期の途中に右下の「未来の道筋」を押しても、すぐには入れ替えない（取り込んだ後、追加か入れ替えかを聞く）
+  {
+    const { X, Y, m } = await setup("u_race2", false);
+    await X.ctx.addInitScript(() => (window.__dbDownUntil = Date.now() + 2500));
+    await X.page.reload({ waitUntil: "load" });
+    await X.page.locator(".zoom-ctl .future-btn").click();
+    await X.page.locator(".toast", { hasText: "アカウントの内容を確かめています" }).waitFor({ timeout: 5000 });
+    assert((await rootsOf(X.page)) === 0, "同期の途中に入れ替えた");
+    await X.page.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor({ timeout: 25000 });
+    assert(await ownOf(X.page), "別の端末の内容を取り込む前に聞いた");
+    const m1 = JSON.parse(dbStore.get("data/users/u_race2/fourd"));
+    assert(m1.nodes === m.nodes && (await rootsOf(X.page)) === 0, `アカウントの写しが変わった ${m1.nodes} / ${m.nodes}`);
+    await X.page.keyboard.press("Escape");
+    await X.ctx.close();
+    await Y.ctx.close();
+  }
 });
 
 await check("ページのエラーが無い", async () => {

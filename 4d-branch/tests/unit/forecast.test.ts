@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildFutureDoc, countFuture, type FutureData } from "../../src/demo/future";
 import { buildFuture, futureData, futureVersion } from "../../src/demo/futureBundle";
-import { futureMaps, nearFutureRoot, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
+import { NO_AUTO_FUTURE, futureMaps, hasFutureRoot, nearFutureRoot, staleFutureMaps, swapFutureDoc, withNoAutoFuture } from "../../src/demo/futureSwap";
+import { Store } from "../../src/store/store";
 import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { mergeDocs } from "../../src/persist/io";
 import { NODE_H, NODE_W } from "../../src/model/constants";
@@ -411,6 +412,32 @@ describe("未来の道筋の差し替え", () => {
     expect(isDisposableDoc(demo)).toBe(true);
     expect(isDisposableDoc(createEmptyDoc())).toBe(true);
     expect(isDisposableDoc(doc)).toBe(false);
+  });
+
+  it("入れ替えない印: 写しに付き（元は変えない）、印があってもデモ・空は捨ててよいまま、保存・同期の形を通しても、「元に戻す」でも残る", () => {
+    const demo = buildDemoDoc();
+    const marked = withNoAutoFuture(demo);
+    expect(marked.meta[NO_AUTO_FUTURE]).toBe(true);
+    expect(demo.meta[NO_AUTO_FUTURE]).toBeUndefined();
+    // 初めての同期の「聞かずにアカウントの内容を採る」は変わらない
+    expect(isDisposableDoc(marked)).toBe(true);
+    expect(isDisposableDoc(withNoAutoFuture(createEmptyDoc()))).toBe(true);
+    // 保存・同期と同じく JSON を通して読み直しても残る
+    expect(normalizeDoc(JSON.parse(JSON.stringify(marked))).doc.meta[NO_AUTO_FUTURE]).toBe(true);
+    // 入れ替える直前に付けた印は、「元に戻す」で戻った地図にも残る（やり直すと未来の道筋）
+    const { pv } = buildFuture(TODAY);
+    const store = new Store(buildDemoDoc());
+    store.doc.meta = { ...store.doc.meta, [NO_AUTO_FUTURE]: true };
+    store.replaceDoc(pv.doc, "未来の道筋を開く");
+    expect(hasFutureRoot(store.doc)).toBe(true);
+    expect(store.doc.meta[NO_AUTO_FUTURE]).toBeUndefined();
+    store.undo();
+    expect(hasFutureRoot(store.doc)).toBe(false);
+    expect(store.doc.meta[NO_AUTO_FUTURE]).toBe(true);
+    expect(isDisposableDoc(store.doc)).toBe(true);
+    store.redo();
+    expect(hasFutureRoot(store.doc)).toBe(true);
+    expect(hasFutureRoot(demo)).toBe(false);
   });
 
   it("未来の道筋が無い文書では、ふつうの追加と同じく右側に足す", () => {

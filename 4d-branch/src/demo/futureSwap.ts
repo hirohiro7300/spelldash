@@ -33,6 +33,23 @@ export function futureMaps(doc: DocData): FutureMap[] {
   return maps;
 }
 
+/** 文書に未来の道筋（今日の入口）があるか */
+export function hasFutureRoot(doc: DocData): boolean {
+  return Object.values(doc.nodes).some((n) => isForecastRoot(n));
+}
+
+/**
+ * 文書の meta の印: この地図を自動で未来の道筋に入れ替えない（押せば開く）。未来の道筋を開く前の地図（「元に戻す」・
+ * バックアップで戻した物）と、「デモを読み込む」「空にする」で選んで作った地図に付ける。同期で別の端末にも届くので、
+ * どの端末でも開き直したときに入れ替えない
+ */
+export const NO_AUTO_FUTURE = "noAutoFuture";
+
+/** 印を付けた写し（元の文書は変えない） */
+export function withNoAutoFuture(doc: DocData): DocData {
+  return { ...doc, meta: { ...doc.meta, [NO_AUTO_FUTURE]: true } };
+}
+
 /**
  * 未来の道筋の入口（今日）から右へ 5 列・上下 600 までのノード（ids の中から）。全体は横に長すぎて読めないので、
  * 読み込んだ・開いたときはここに寄る（カードの文字が読める大きさで始める）。入口が無ければ ids をそのまま返す

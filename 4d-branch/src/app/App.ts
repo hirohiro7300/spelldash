@@ -23,14 +23,14 @@ import { buildInspector } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
-import { closeMenus, confirmDialog, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
+import { closeMenus, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
 import { Commands } from "./commands";
-import type { AppContext, LoadOpts } from "./context";
+import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
 import { buildFuture, futureVersion } from "../demo/futureBundle";
-import { futureMaps, nearFutureRoot, staleFutureMaps, swapFutureDoc } from "../demo/futureSwap";
+import { NO_AUTO_FUTURE, futureMaps, hasFutureRoot, nearFutureRoot, staleFutureMaps, swapFutureDoc, withNoAutoFuture } from "../demo/futureSwap";
 
 export interface AppOptions {
   store: Store;
@@ -88,6 +88,10 @@ export class App implements AppContext {
   cloud: CloudSync | null = null;
   private cloudStarting = false;
   private cloudLateArmed = false;
+  /** 未来の道筋を開いている途中（二度押し・自動で開くのと重なっても、入れ替えは 1 回） */
+  private openingFuture = false;
+  /** 「未来の道筋」を押したが、アカウントとの突き合わせが済むのを待っている */
+  private futureWaiting = false;
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null = null;
   onCloudChanged: () => void = () => undefined;
   private adopting = false;
@@ -725,13 +729,21 @@ export class App implements AppContext {
     this.onBackupsChanged();
   }
 
-  /** 入れ替える前に安全用バックアップを残し、Undo でも戻せるようにする */
-  async replaceDocSafely(doc: DocData, label: string, opts: LoadOpts = {}): Promise<void> {
-    if (this.store.readOnly) return;
+  /**
+   * 入れ替える前に安全用バックアップを残し、Undo でも戻せるようにする。入れ替えたら true。
+   * still: 保存とバックアップを待った後に確かめ直す（その間に同期で別の内容を読み込んだ・書き始めた なら入れ替えない）。
+   * markBefore: 入れ替える前の地図の meta に足す印（バックアップにも「元に戻す」で戻る物にも付く）
+   */
+  async replaceDocSafely(doc: DocData, label: string, opts: ReplaceOpts = {}): Promise<boolean> {
+    if (this.store.readOnly) return false;
     await this.persistence.flush().catch(() => undefined);
-    await this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
+    const marked = (d: DocData): DocData => (opts.markBefore ? { ...d, meta: { ...d.meta, ...opts.markBefore } } : d);
+    await this.persistence.createBackup("safety", `「${label}」の前`, marked(this.store.doc)).catch(() => undefined);
+    if (this.store.readOnly || (opts.still && !opts.still())) return false;
     this.editor.cancel();
-    this.store.replaceDoc(doc, label);
+    // 印は入れ替える直前に付ける（入れ替える物の前の姿として履歴に残り、「元に戻す」で印ごと戻る）
+    if (opts.markBefore) this.store.doc.meta = { ...this.store.doc.meta, ...opts.markBefore };
+    if (!this.store.replaceDoc(doc, label)) return false;
     this.ui.select([]);
     this.ui.setPrefs({ projectFilter: [], scenarioId: null, timeCursor: null });
     this.ui.setSearch("");
@@ -739,6 +751,7 @@ export class App implements AppContext {
     this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, all) : undefined);
     toast(opts.done ?? `${label}しました`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
+    return true;
   }
 
   mergeDoc(doc: DocData, opts: LoadOpts & { label?: string; select?: boolean } = {}): void {
@@ -764,10 +777,15 @@ export class App implements AppContext {
     openWishlistDialog(this);
   }
 
-  /** 未来の道筋（仕事・10 年）を、確かめてから読み込む */
+  /** 未来の道筋（仕事・10 年）を、確かめてから読み込む。もう地図にあれば、2 つ目は足さずに今日へ寄る */
   loadFuture(): void {
     if (this.store.readOnly) return;
     if (!this.ui.prefs.futureOffered) this.ui.setPrefs({ futureOffered: true });
+    if (hasFutureRoot(this.store.doc)) {
+      toast("未来の道筋はもう地図にあります。今日（入口）に寄りました（新しい版に入れ替えるときは、メニューの「未来の道筋だけを新しい版に差し替える…」）", { ms: 6000 });
+      void this.showFuture();
+      return;
+    }
     openFutureDialog(this);
   }
 
@@ -779,6 +797,8 @@ export class App implements AppContext {
     const root = Object.values(this.store.doc.nodes).find((x) => x.meta?.forecastRoot === true);
     if (root) {
       if (this.ui.prefs.view !== "map") this.ui.setPrefs({ view: "map" });
+      // 絞り込み・シナリオで隠れていたら「薄くする」にして出す（検索で選んだときと同じ）
+      this.cmd.revealNode(root.id);
       this.ui.select([root.id]);
       this.view.fit(nearFutureRoot(this.store.doc));
       return;
@@ -787,52 +807,106 @@ export class App implements AppContext {
       toast("このタブは閲覧のみです。未来の道筋を開くには、上の「このタブで編集する」を押してください。", { tone: "warn" });
       return;
     }
-    if (isDisposableDoc(this.store.doc)) return this.openFutureNow();
-    this.loadFuture();
+    if (!isDisposableDoc(this.store.doc)) return this.loadFuture();
+    // アカウントとの突き合わせの途中: 済んでから開く（先に入れ替えると、別の端末で書いた新しい内容をこの地図で上書きしてしまう）
+    if (!this.syncQuiet()) return this.openFutureAfterSync();
+    return this.openFutureNow("button");
   }
 
   /**
-   * 未来の道筋に入れ替えて、全体を見せる（何もしていないデモ・空の地図のとき。直前の地図はバックアップに残り、元に戻せる）。
-   * 最初は 10 年後まで分かれていく全体の形と 14 の行き先（見込みつき）を見せ、今日から読むときは右下の「未来の道筋」で寄る
+   * アカウントとの突き合わせが落ち着いたか（押されて地図を入れ替えてよいか）。同期が無い（Artifact の外）・この起動で突き合わせ終えた、
+   * またはこの起動ではもう同期しない（止められた・書けない共有・サインインしていない。機能の返事を待っている間は除く）。
+   * つながらない（あとで同期する）・突き合わせの途中・選んでもらう確認の途中は落ち着いていない
    */
-  private async openFutureNow(): Promise<void> {
-    let built: ReturnType<typeof buildFuture>;
+  private syncQuiet(): boolean {
+    const st = this.cloudInfo?.state;
+    return st === undefined || st === "synced" || st === "off" || st === "denied" || (st === "unavailable" && !this.cloudLateArmed);
+  }
+
+  /**
+   * 突き合わせが済むのを待ってから、もう一度「未来の道筋」を押したのと同じにする（読み込んだ別の端末の内容があれば、追加か入れ替えかを聞く）。
+   * 30 秒たっても済まなければ、追加か入れ替えかを選ぶ確認を出す（押した人が決める）
+   */
+  private openFutureAfterSync(): void {
+    if (this.futureWaiting) return;
+    this.futureWaiting = true;
+    toast("アカウントの内容を確かめています。済んだら未来の道筋を開きます", { ms: 5000 });
+    const started = Date.now();
+    const retry = (): void => {
+      const ready = this.syncQuiet() && !modalOpen();
+      if (!ready && Date.now() - started < 30000) {
+        setTimeout(retry, 400);
+        return;
+      }
+      this.futureWaiting = false;
+      if (ready) void this.showFuture();
+      else if (!modalOpen()) this.loadFuture();
+      else toast("未来の道筋は、開いている確認を閉じてから、地図の右下の「未来の道筋」で開けます", { ms: 6000 });
+    };
+    setTimeout(retry, 400);
+  }
+
+  /**
+   * 未来の道筋に入れ替えて、今日（入口）から見せる（何もしていないデモ・空の地図のとき。直前の地図はバックアップに残り、元に戻せる）。
+   * 全体（横 8 万）はいちばん引いても画面に収まらないので、読める大きさの入口から右へたどってもらう（10 年後の行き先は右の概要に並ぶ）。
+   * 入れ替える前の地図には印を付ける（元に戻した・バックアップから戻した地図は、この端末でも別の端末でも、もう自動では入れ替えない）
+   */
+  private async openFutureNow(how: "auto" | "button"): Promise<void> {
+    if (this.openingFuture) return;
+    this.openingFuture = true;
     try {
-      built = buildFuture();
-    } catch {
-      toast("未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください", { tone: "warn" });
-      return;
+      let built: ReturnType<typeof buildFuture>;
+      try {
+        built = buildFuture();
+      } catch {
+        toast("未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください", { tone: "warn" });
+        return;
+      }
+      const { pv, stats } = built;
+      const n = (v: number) => v.toLocaleString("ja-JP");
+      const at = this.store.doc;
+      // 押したボタン・お知らせの指す地図が見えるように（リストのままでは見えない）
+      if (this.ui.prefs.view !== "map") this.ui.setPrefs({ view: "map" });
+      const done = await this.replaceDocSafely(pv.doc, "未来の道筋を開く", {
+        done: `未来の道筋（仕事・10 年）を開きました: 歩み ${n(stats.steps)}・分かれ道 ${stats.forks}・10 年後の行き先 ${stats.ends}。左の「今日」から右へたどると分かれていきます（前の地図はバックアップに残ります）`,
+        fitTo: (d, ids) => nearFutureRoot(d, ids),
+        // 待っている間に中身が変わった（同期で別の端末の内容を読み込んだ・書き始めた・ほかで開いた）なら入れ替えない
+        still: () => this.store.doc === at && isDisposableDoc(at) && !hasFutureRoot(at),
+        markBefore: { [NO_AUTO_FUTURE]: true },
+      });
+      if (done) this.ui.setPrefs({ futureAutoOpened: true, futureOffered: true, futureNotified: futureVersion() });
+      // 押したのに入れ替えなかった（待つ間に地図が変わった・閲覧のみになった）: 黙らない
+      else if (how === "button") toast("開いている間に地図が変わったため、入れ替えませんでした。もう一度「未来の道筋」を押してください", { tone: "warn", ms: 6000 });
+    } finally {
+      this.openingFuture = false;
     }
-    const { pv, stats } = built;
-    const n = (v: number) => v.toLocaleString("ja-JP");
-    this.ui.setPrefs({ futureAutoOpened: true, futureOffered: true, futureNotified: futureVersion() });
-    await this.replaceDocSafely(pv.doc, "未来の道筋を開く", {
-      done: `未来の道筋（仕事・10 年）を開きました: 歩み ${n(stats.steps)}・分かれ道 ${stats.forks}・10 年後の行き先 ${stats.ends} の全体です。今日から読むときは右下の「未来の道筋」を押してください（前の地図はバックアップに残ります）`,
-    });
   }
 
   /**
    * 開いた地図が何もしていないデモか空で、未来の道筋がまだ無ければ、未来の道筋を開く（このブラウザで 1 回。元に戻せる）。
    * 操作ガイドを済ませてから開いたときだけ（初めての人には、ようこそ画面とガイドを先に見せる）。
-   * アカウントへの同期は最初の突き合わせを待つ（別の端末の内容を先に取り込み、取り込んで中身ができたら開かない）。
-   * 30 秒たっても落ち着かない（決めてもらう確認が出ているなど）なら開かない（地図の右下の「未来の道筋」から開ける）
+   * 入れ替えない印のある地図（一度開いて元に戻した・デモを読み込む・空にするで作った。別の端末から同期で受け取った物も）は開かない。
+   * アカウントへの同期は、この起動で最初の突き合わせが済むまで待つ（別の端末の内容を先に取り込み、取り込んで中身ができたら開かない）。
+   * つながらない・機能の返事を待っている・決めてもらう確認が出ているまま 30 秒たったら開かない（地図の右下の「未来の道筋」から開ける）
    */
   private autoOpenFuture(): void {
     if (this.ephemeral || !this.ui.prefs.onboardingDone) return;
     const started = Date.now();
     const tick = (): void => {
       if (this.ui.prefs.futureAutoOpened || this.ui.storedPrefs().futureAutoOpened === true) return;
-      if (Object.values(this.store.doc.nodes).some((x) => x.meta?.forecastRoot === true)) return;
+      if (this.store.doc.meta?.[NO_AUTO_FUTURE] === true) return;
+      if (hasFutureRoot(this.store.doc)) return;
       if (!isDisposableDoc(this.store.doc)) return;
       const st = this.cloudInfo?.state;
       const waited = Date.now() - started;
-      // 同期が無い（Artifact の外）・同期し終えた・つながらない（このブラウザだけ）なら落ち着いた
-      const settled = st === undefined || st === "synced" || st === "off" || st === "offline" || st === "denied" || (st === "unavailable" && waited > 8000);
-      if (!settled || this.store.readOnly || modalOpen() || this.editor.active) {
+      // 同期が無い（Artifact の外）か、この起動でアカウントと突き合わせ終えたときだけ。つながらない（あとで同期する）・
+      // 機能の返事を待っている（遅れて始まる）・この起動では同期しない間に開くと、後の同期で別の端末の新しい内容を上書きしかねない
+      const settled = st === undefined || st === "synced";
+      if (!settled || this.store.readOnly || modalOpen() || menuOpen() || this.editor.active || this.openingFuture) {
         if (waited < 30000) setTimeout(tick, 500);
         return;
       }
-      void this.openFutureNow();
+      void this.openFutureNow("auto");
     };
     setTimeout(tick, 800);
   }
@@ -926,12 +1000,13 @@ export class App implements AppContext {
 
   async loadDemo(): Promise<void> {
     const ok = await confirmDialog({ title: "デモを読み込みますか？", body: "今のデータをデモ（3 つのプロジェクト）に入れ替えます。今の内容は安全用バックアップに残り、「元に戻す」でも戻せます。", ok: "読み込む" });
-    if (ok) await this.replaceDocSafely(buildDemoDoc(), "デモを読み込む", { done: "デモを読み込みました" });
+    // 選んで作った地図は、開き直したときに未来の道筋へ入れ替えない（どの端末でも）
+    if (ok) await this.replaceDocSafely(withNoAutoFuture(buildDemoDoc()), "デモを読み込む", { done: "デモを読み込みました" });
   }
 
   async newEmptyDoc(): Promise<void> {
     const ok = await confirmDialog({ title: "空のドキュメントにしますか？", body: "すべてのノード・プロジェクト・シナリオを片付けて、白紙から始めます。今の内容は安全用バックアップに残り、「元に戻す」でも戻せます。", ok: "空にする", danger: true });
-    if (ok) await this.replaceDocSafely(createEmptyDoc(), "空のドキュメントにする", { done: "空のドキュメントにしました" });
+    if (ok) await this.replaceDocSafely(withNoAutoFuture(createEmptyDoc()), "空のドキュメントにする", { done: "空のドキュメントにしました" });
   }
 
   renameDoc(): void {

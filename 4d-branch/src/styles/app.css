@@ -2582,7 +2582,8 @@ textarea.input {
   /* 左右の両端に付けて、画面の幅いっぱいまで使えるように（left: 50% だと、縮む幅が画面の半分までになる） */
   left: calc(16px + env(safe-area-inset-left, 0px));
   right: calc(16px + env(safe-area-inset-right, 0px));
-  bottom: calc(var(--bottom-h) + 18px + env(safe-area-inset-bottom, 0px));
+  /* 地図の右下の操作（未来の道筋・拡大縮小。下から 14〜50px）に重ならない高さ（お知らせが押す先を隠さない・押し違えない） */
+  bottom: calc(var(--bottom-h) + 58px + env(safe-area-inset-bottom, 0px));
   z-index: 950;
   display: grid;
   justify-items: center;

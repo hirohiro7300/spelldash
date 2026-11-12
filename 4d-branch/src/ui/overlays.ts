@@ -178,6 +178,11 @@ export function modalOpen(): boolean {
   return openModals > 0;
 }
 
+/** メニューが開いているか（開いている間も、地図を勝手に入れ替えない。項目は開いたときの地図で作ってある） */
+export function menuOpen(): boolean {
+  return openMenu !== null;
+}
+
 function setShellInert(on: boolean): void {
   const shell = document.querySelector(".app-shell");
   if (!shell) return;
