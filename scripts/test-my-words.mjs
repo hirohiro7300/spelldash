@@ -1769,11 +1769,12 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   }
 }
 
-// ===== Batch 95 T22〜T35: 送る前に雲を読む（docs/SPEC_MY_WORDS.md §18.11。js/userItemsSync.js pullUserItems・pushUserItems・js/myWords.js の足す道と消す道） =====
+// ===== Batch 95 T22〜T46: 送る前に雲を読む（docs/SPEC_MY_WORDS.md §18.11。js/userItemsSync.js pullUserItems・pushUserItems・js/myWords.js の足す道と消す道） =====
 // 本物の取り込み・送り・足す道・消す道・答えの書き手を、T14〜T21 と同じ形の道具で動かす: 偽の時計（端末ごとにずらせる。new Date() のたびに 1 ms 進む）・
 // 端末ごとの保存・偽の雲（本物の表と同じく墓標の中身を空にし、鍵の並びの読みと「無いときだけ書く」送りに答える）。偽の雲には次の 2 つを足した:
 //   hold(種類): その種類の次の要求をあとで返す（読みは要求の時の雲の答えを後で届ける。書きは後で書く）。ページが止まった形
 //   lose(n): 次の n 回の書きは雲に書くが、答えを落とす（通信が切れた形）
+//   noRows(n): 次の n 回の「無いときだけ書く」書きは、書いても答えに行を返さない（答えの data が配列でない形。T44）
 // 種類: wordRead（語の鍵の並びの読み）・dayRead（日の行の読み）・range（全部の読み）・upsert（書き）。端末: P = 電話・C = パソコン・T = 3 台目。語と訳は試しの物だけ
 {
   const U = await import("../js/userItemsSync.js");
@@ -1793,7 +1794,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const devices = {};
   const use = (name) => { clock.cur = name; return (globalThis.localStorage = devices[name] ??= storeOf()); };
   const sky = new Map();
-  const st = { hold: [], held: [], lose: 0, reqs: { wordRead: 0, dayRead: 0, range: 0, upsert: 0 }, upserts: [] };
+  const st = { hold: [], held: [], lose: 0, noRows: 0, reqs: { wordRead: 0, dayRead: 0, range: 0, upsert: 0 }, upserts: [] };
   const copy = (v) => JSON.parse(JSON.stringify(v));
   // 要求をあとで返す（読みは今の雲の答えを後で届ける。書きは後で書く）
   const defer = (kind, fn) => {
@@ -1837,6 +1838,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
             wrote.push({ kind: r.kind, key: r.key });
           }
           if (st.lose > 0) { st.lose--; return null; } // 書いたが答えが届かない
+          if (ignore && st.noRows > 0) { st.noRows--; return { data: null, error: null, status: 201 }; } // 書いたが答えに行が無い
           return { data: cols ? wrote : null, error: null, status: 201 };
         }).then((r) => r ?? Promise.reject(new Error("network connection lost"))));
         const w = { select: (c) => ((cols = c ?? "*"), w), then: (ok, bad) => run().then(ok, bad) };
@@ -1864,7 +1866,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const pullStart = async (name) => { use(name); const done = U.pullUserItems(client, "u1", { now: nowOf() }).catch((e) => e); await settleTicks(); return { done }; };
   const sync = async (name) => { await pull(name); await push(name); }; // 新しいタブ（取り込み → 送る）
   const settle = async (names, rounds = 2) => { for (let r = 0; r < rounds; r++) for (const n of names) { clock.now += MIN; await sync(n); } };
-  const reset = () => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); st.hold.length = 0; st.held.length = 0; st.lose = 0; st.upserts.length = 0; for (const k of Object.keys(st.reqs)) st.reqs[k] = 0; clock.skew = {}; };
+  const reset = () => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); st.hold.length = 0; st.held.length = 0; st.lose = 0; st.noRows = 0; st.upserts.length = 0; for (const k of Object.keys(st.reqs)) st.reqs[k] = 0; clock.skew = {}; };
   const all = (name) => (use(name), JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
   const wordsOf = (name) => all(name).filter((w) => C.isWordEntry(w));
   const metaOf = (name) => (use(name), JSON.parse(localStorage.getItem("spelldash_user_items_meta") || "{}"));
@@ -2095,6 +2097,160 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ok("T35 待たせた語の書きの答えが落ちた後にほかの端末が消す: 乙 は電話にも PC にも戻らず、PC の lead=甲 は両方に残る",
       stateOf("P", "lead", "乙") === "-" && stateOf("C", "lead", "乙") === "-" && stateOf("P", "lead", "甲") === "s0" && stateOf("C", "lead", "甲") === "s0" && liveJa("lead") === "甲",
       JSON.stringify({ k35, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ===== T36〜T46（守り）: 設計の決まりを 1 つだけ外すと落ちる検査（ほかの検査が覆わない決まり。docs/SPEC_MY_WORDS.md §18.11） =====
+    // ---- T36（送りの要求ごとの 20 秒）: 電話が kite に答え、新しい語 plum を足して送る → 1 つ目の書き（plum の「無いときだけ書く」）が止まる →
+    // その間に PC が kite を消して送る → 2 分後に電話の書きが届く。2 つ目の書き（kite）は読み始めから 20 秒を過ぎたので送らない（消した kite を戻さない） ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("C"); M.addMyWord("kite", "試しの訳 凧"); setEnd("C"); await push("C");
+    at(1, 9, 5); await sync("P");
+    at(1, 9, 10); answer("P", "kite", ANSWER_KINDS.exact, 2); use("P"); M.addMyWord("plum", "試しの訳 梅"); setEnd("P");
+    st.hold.push("upsert"); const p36 = await pushStart("P");
+    at(1, 9, 11); await sync("C"); use("C"); M.removeMyWord("kite", "word"); setEnd("C"); await push("C");
+    at(1, 9, 12); await release("upsert"); await p36.done;
+    const race36 = { kite: sky.get("my_word:kite")?.deleted === true, plum: sky.get("my_word:plum")?.deleted === false };
+    at(1, 10); await settle(["P", "C"]);
+    ok("T36 送りの 2 つ目の書きは読み始めから 20 秒を過ぎたら送らない: PC が消した kite は戻らず（雲は墓標）、電話の plum は両方の端末に届く",
+      race36.kite && race36.plum && view("P") === "plum=梅[s0]" && view("C") === "plum=梅[s0]" && sky.get("my_word:kite")?.deleted === true, JSON.stringify({ race36, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T37（取り込みの 20 秒）: (a) 電話が kite に答えた後、新しいタブの取り込みの読みが止まる → その間に PC が kite を消して送る → 3 時間後に読みが届く:
+    // 古い読みで合わせた kite は送らない (b) 電話が kite に答えて plum を足した後、新しいタブの取り込みの 1 つ目の書き（plum）が止まる → その間に PC が kite を消して送る →
+    // 3 分後に届く: 2 つ目の書き（kite）は読み始めから 20 秒を過ぎたので送らない。どちらも消した kite は戻らない ----
+    const t37 = [];
+    for (const v of ["a", "b"]) {
+      reset(); at(1, 9); await sync("P"); await sync("C");
+      use("C"); M.addMyWord("kite", "試しの訳 凧"); setEnd("C"); await push("C");
+      at(1, 9, 5); await sync("P");
+      at(1, 9, 10); answer("P", "kite", ANSWER_KINDS.exact, 2);
+      if (v === "b") { use("P"); M.addMyWord("plum", "試しの訳 梅"); }
+      st.hold.push(v === "a" ? "range" : "upsert"); const p37 = await pullStart("P");
+      at(1, 9, 11); await sync("C"); use("C"); M.removeMyWord("kite", "word"); setEnd("C"); await push("C");
+      if (v === "a") at(1, 12); else at(1, 9, 13);
+      await release(v === "a" ? "range" : "upsert"); await p37.done;
+      const race = sky.get("my_word:kite")?.deleted === true;
+      at(1, 13); await settle(["P", "C"]);
+      const want = v === "b" ? "plum=梅[s0]" : "";
+      t37.push({ v, ok: race && view("P") === want && view("C") === want && sky.get("my_word:kite")?.deleted === true, race, P: view("P"), C: view("C"), cloud: cloudView() });
+    }
+    ok("T37 取り込みの送りも読み始めから 20 秒の内だけ: (a) 止まった読み (b) 止まった 1 つ目の書きの後の 2 つ目の書き。どちらも PC が消した kite は戻らない",
+      t37.every((x) => x.ok), JSON.stringify(t37));
+
+    // ---- T38（雲の墓標と同じ時刻）: PC の kite を電話も持つ → 電話が kite に答えて 覚えた（送らない）→ PC がちょうど同じ時刻（ミリ秒まで）に kite を消して送った →
+    // 電話の送りは墓標の時刻 + 1 ms で送り、覚えた kite が両方の端末に残る（同じ時刻は生きた語が勝つ） ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("C"); M.addMyWord("kite", "試しの訳 凧"); setEnd("C"); await push("C");
+    at(1, 9, 5); await sync("P");
+    at(1, 9, 10); answer("P", "kite", ANSWER_KINDS.exact, 3);
+    const t38 = metaOf("P")["my_word:kite"]?.updatedAt ?? null;
+    sky.set("my_word:kite", { user_id: "u1", kind: "my_word", key: "kite", payload: {}, deleted: true, updated_at: t38 }); // PC の消し（電話の答えと同じ時刻）
+    at(1, 9, 20); await sync("C"); // PC は墓標を取り込む（PC で消した形）
+    at(1, 9, 30); use("P"); setEnd("P"); await push("P");
+    const sent38 = sky.get("my_word:kite") ?? null;
+    at(1, 10); await settle(["P", "C"]);
+    ok("T38 雲の墓標と同じ時刻の語: 墓標の時刻 + 1 ms で送り、電話と PC に kite が 覚えた で残る",
+      !!t38 && sent38?.deleted === false && Date.parse(sent38.updated_at) === Date.parse(t38) + 1 && stateOf("P", "kite", "凧") === "s2" && stateOf("C", "kite", "凧") === "s2",
+      JSON.stringify({ t38, sent38: sent38 && { deleted: sent38.deleted, at: sent38.updated_at }, P: view("P"), C: view("C") }));
+
+    // ---- T39（取り込みの読みの間に送った墓標）: 1 台の 2 つのタブ。タブ 2（新しいページ）の取り込みの読みの答えが遅れて届く間に、タブ 1 が凧を消して送る →
+    // 凧は消えたまま（取り込みも、送ったばかりの墓標の鍵の古い生きた行を取り込まない） ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("P"); M.addMyWord("kite", "試しの訳 凧"); answer("P", "kite", ANSWER_KINDS.exact, 3); setEnd("P"); await push("P"); await sync("C");
+    at(1, 10); st.hold.push("range"); const p39 = await pullStart("P"); // タブ 2
+    use("P"); M.removeMyWord("kite", "word"); setEnd("P"); await push("P"); // タブ 1
+    await release("range"); await p39.done;
+    const race39 = view("P");
+    at(1, 10, 5); const k39 = keyOf("P", "kite", "凧"); if (k39) answer("P", k39, ANSWER_KINDS.exact, 1); setEnd("P"); await push("P");
+    await settle(["P", "C"]);
+    ok("T39 2 つのタブの取り込み: ほかのタブの遅れた読みで、消した凧が戻らない（電話・PC とも無く、雲は墓標）",
+      race39 === "" && view("P") === "" && view("C") === "" && sky.get("my_word:kite")?.deleted === true, JSON.stringify({ race39, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T40（送る待ちでない印は持たない）: 電話が凧を消して送った 2 秒後に始めた取り込みで、その墓標の印が外れる。前の版が残した印（送る待ちでない・語の無い鍵）も外れる ----
+    reset(); at(1, 9); await sync("P");
+    use("P"); M.addMyWord("kite", "試しの訳 凧"); M.addMyWord("plum", "試しの訳 梅"); setEnd("P"); await push("P");
+    at(1, 9, 30); use("P"); M.removeMyWord("kite", "word"); setEnd("P"); await push("P");
+    const m40 = metaOf("P");
+    m40["my_word:gone"] = { updatedAt: iso(1, 8), deleted: true, card: { addedAt: iso(1, 7), jaHash: hash("試しの訳 古") } };
+    localStorage.setItem("spelldash_user_items_meta", JSON.stringify(m40));
+    const before40 = Object.keys(metaOf("P")).filter((k) => k.startsWith("my_word:")).sort().join();
+    clock.now += 2000; await pull("P");
+    const after40 = Object.keys(metaOf("P")).filter((k) => k.startsWith("my_word:")).sort().join();
+    ok("T40 送る待ちでない印: 送った墓標の鍵の印は次の取り込み（送った後に読み始めた）で外れ、前の版の残した印も外れる（語のある plum の印だけ）",
+      before40 === "my_word:gone,my_word:kite,my_word:plum" && after40 === "my_word:plum", JSON.stringify({ before40, after40 }));
+
+    // ---- T41（雲の新しい鍵の候補はふさがった鍵を飛ばす）: 雲の lead は PC の 甲、lead~<乙の印 8・16・24・32 桁> はほかの端末が足して消した墓標 →
+    // 電話が lead=乙 を足して 覚えた にして送る → 同じ送りで 5 つ目の候補 lead~<印 32 桁>-2 に書く（新しいタブを待たない）。PC にも届く ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("C"); M.addMyWord("lead", "試しの訳 甲"); setEnd("C"); await push("C");
+    const h41 = hash("試しの訳 乙", 32);
+    for (const n of [8, 16, 24, 32]) sky.set(`my_word:lead~${h41.slice(0, n)}`, { user_id: "u1", kind: "my_word", key: `lead~${h41.slice(0, n)}`, payload: {}, deleted: true, updated_at: iso(1, 9, 1) });
+    at(1, 9, 10); use("P"); M.addMyWord("lead", "試しの訳 乙"); answer("P", "lead", ANSWER_KINDS.exact, 3); setEnd("P"); await push("P");
+    const k41 = `lead~${h41}-2`;
+    const first41 = sky.get(`my_word:${k41}`)?.payload?.en ? show(sky.get(`my_word:${k41}`).payload) : null;
+    at(1, 10); await sync("C"); await settle(["P", "C"]);
+    ok("T41 4 つの候補がふさがった語: 同じ送りで lead~<印 32 桁>-2=乙（覚えた）を書き、PC に届く（雲の lead は 甲 のまま）",
+      first41 === `${k41}=乙[s2,lf${dayNo(1)}]` && stateOf("C", "lead", "乙") === "s2" && keyOf("C", "lead", "乙") === k41 && sky.get("my_word:lead")?.payload?.ja === "試しの訳 甲",
+      JSON.stringify({ first41, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T42（雲の新しい鍵を新しい語に使わない）: 雲の lead は PC の 甲 → 電話が lead=乙 を足して送る（端末の鍵 lead のまま雲の lead~<乙の印> へ）→
+    // 電話でその語の訳を 丙 に直し、lead=乙 をもう一度足す → 新しい 乙 はその雲の鍵を使わない（直した 丙 の行と混ざらない）。両方の端末に 甲・丙・乙 が 1 つずつ ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("C"); M.addMyWord("lead", "試しの訳 甲"); setEnd("C"); await push("C");
+    at(1, 9, 10); use("P"); M.addMyWord("lead", "試しの訳 乙"); setEnd("P"); await push("P");
+    const to42 = metaOf("P").alias?.lead?.to ?? null;
+    at(1, 9, 20); use("P"); const e42 = M.setMyWordJa("lead", "試しの訳 丙");
+    at(1, 9, 21); use("P"); const a42 = M.addMyWord("lead", "試しの訳 乙");
+    const k42 = keyOf("P", "lead", "乙");
+    setEnd("P"); await push("P");
+    at(1, 10); await sync("P"); at(1, 11); await sync("C"); await settle(["P", "C"]);
+    const jas42 = (d) => wordsOf(d).filter((w) => C.answerKeyOf(w) === "lead").map((w) => short(w.ja)).sort().join(",");
+    const want42 = ["甲", "乙", "丙"].sort().join(",");
+    ok("T42 雲の新しい鍵へ送っている語の訳を直して同じ組を足し直す: 新しい 乙 はその雲の鍵を使わず、両方の端末に lead の 甲・丙・乙 が 1 つずつ",
+      to42 === `lead~${hash("試しの訳 乙")}` && e42?.ok === true && a42?.ok === true && !!k42 && k42 !== to42 && jas42("P") === want42 && jas42("C") === want42 && view("P") === view("C"),
+      JSON.stringify({ to42, k42, e42: e42?.ok ?? null, a42: a42?.ok ?? null, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T43（送っていない同じ組の足し直しはその鍵）: 電話が lead=甲 を足してすぐ消す（どちらも送らない）→ 同じ lead=甲 を足し直す → 鍵 lead を使う
+    // （雲に lead~ の鍵を作らない）。PC にも lead=甲 の 1 語 ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    at(1, 10); use("P"); M.addMyWord("lead", "試しの訳 甲"); M.removeMyWord("lead", "word");
+    at(1, 10, 1); use("P"); M.addMyWord("lead", "試しの訳 甲");
+    const k43 = keyOf("P", "lead", "甲");
+    setEnd("P"); await push("P");
+    at(1, 11); await settle(["P", "C"]);
+    ok("T43 送っていない同じ組の足し直し: 鍵 lead を使い（雲に lead~ の行を作らない）、電話と PC に lead=甲 の 1 語",
+      k43 === "lead" && view("P") === "lead=甲[s0]" && view("C") === "lead=甲[s0]" && ![...sky.keys()].some((id) => id.startsWith("my_word:lead~")), JSON.stringify({ k43, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T44（行を返さない書きの答え）: 電話が kite=凧 を足して 覚えた にして送る（雲に行の無い鍵へ「無いときだけ書く」。答えを遅らせる）→ その間に PC が kite=鳶 を足して送り、
+    // 消して送る → 電話の書きが届く（PC の墓標があるので書かれない）が、答えに行が無い → 電話は書けたと見ず送る待ちに残す → 次のタブで 凧 は雲の新しい鍵へ移る（消えない） ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    at(1, 9, 10); use("P"); M.addMyWord("kite", "試しの訳 凧"); answer("P", "kite", ANSWER_KINDS.exact, 3); setEnd("P");
+    st.hold.push("upsert"); const p44 = await pushStart("P");
+    at(1, 9, 11); use("C"); M.addMyWord("kite", "試しの訳 鳶"); setEnd("C"); await push("C");
+    at(1, 9, 12); use("C"); M.removeMyWord("kite", "word"); setEnd("C"); await push("C");
+    st.noRows = 1; await release("upsert"); await p44.done;
+    const left44 = dirtyOf("P");
+    at(1, 10); await sync("P"); at(1, 11); await sync("C"); await settle(["P", "C"]);
+    ok("T44 書きの答えに行が無い: 電話は kite=凧 を送る待ちに残し、次のタブで雲の新しい鍵へ移して送る（電話と PC に 覚えた で残る）",
+      left44.includes("my_word:kite") && stateOf("P", "kite", "凧") === "s2" && stateOf("C", "kite", "凧") === "s2", JSON.stringify({ left44, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T45（送る前の読みの範囲）: 送る待ちの語が 1 つなら、その鍵の並びで読む（全部の行は読まない） ----
+    reset(); at(1, 9); await sync("P");
+    use("P"); M.addMyWord("kite", "試しの訳 凧");
+    const r45 = { ...st.reqs }; await push("P");
+    const n45 = { wordRead: st.reqs.wordRead - r45.wordRead, range: st.reqs.range - r45.range };
+    ok("T45 送る前の読み: 送る待ちの語 1 つは鍵の並びの読み 1 回（全部の行の読みは 0 回）", n45.wordRead === 1 && n45.range === 0, JSON.stringify(n45));
+
+    // ---- T46（印 merged の時刻は 今 − 1 ms）: PC が kite=鳶 を足して送る（電話はまだ取り込まない）→ 電話のセットの終わりの送りが印を進めたのと同じミリ秒に、
+    // 電話が kite=凧 を足して 覚えた → PC が自分の 鳶 を消して送る → 電話の新しいタブ: 凧 はまだ雲に入っていない語なので PC の墓標で消えない（新しい鍵へ） ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("C"); M.addMyWord("kite", "試しの訳 鳶"); setEnd("C"); await push("C");
+    at(1, 9, 10); use("P"); setEnd("P"); await push("P");
+    use("P"); M.addMyWord("kite", "試しの訳 凧");
+    const edge46 = Date.parse(wordsOf("P").find((w) => w.en === "kite")?.addedAt ?? "") - Date.parse(metaOf("P").merged?.at ?? "");
+    answer("P", "kite", ANSWER_KINDS.exact, 3);
+    at(1, 9, 20); await sync("C"); use("C"); M.removeMyWord("kite", "word"); setEnd("C"); await push("C");
+    at(1, 9, 30); await sync("P"); at(1, 9, 40); await sync("C"); await settle(["P", "C"]);
+    ok("T46 印を進めたのと同じミリ秒に足した語: まだ雲に入っていない語と見て、PC の墓標で消えない（電話と PC に 凧 が 覚えた で残る）",
+      edge46 >= 0 && edge46 <= 1 && stateOf("P", "kite", "凧") === "s2" && stateOf("C", "kite", "凧") === "s2", JSON.stringify({ edge46, P: view("P"), C: view("C"), cloud: cloudView() }));
   } finally {
     globalThis.Date = RealDate;
   }
