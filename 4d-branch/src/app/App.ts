@@ -23,14 +23,14 @@ import { buildInspector } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
-import { closeMenus, confirmDialog, showMenu, toast, type MenuEntry } from "../ui/overlays";
+import { closeMenus, confirmDialog, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
 import { Commands } from "./commands";
 import type { AppContext, LoadOpts } from "./context";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
 import { buildFuture, futureVersion } from "../demo/futureBundle";
-import { futureMaps, staleFutureMaps, swapFutureDoc } from "../demo/futureSwap";
+import { futureMaps, nearFutureRoot, staleFutureMaps, swapFutureDoc } from "../demo/futureSwap";
 
 export interface AppOptions {
   store: Store;
@@ -142,6 +142,9 @@ export class App implements AppContext {
     const zoomCtl = h(
       "div",
       { class: "zoom-ctl" },
+      // 未来の道筋（仕事・10 年）: どの幅でも見える所に置く（あれば今日に寄る・無ければ開く）
+      h("button", { class: "future-btn", type: "button", title: "未来の道筋（仕事・10 年）: 地図にあれば今日に寄る・無ければ開く", onClick: () => void this.showFuture() }, icon("split", 15), h("span", null, "未来の道筋")),
+      h("span", { class: "zoom-sep" }),
       h("button", { class: "icon-btn", type: "button", title: "縮小（−）", ariaLabel: "縮小", onClick: () => this.view.zoomBy(0.8) }, icon("minus", 16)),
       this.zoomLabel,
       h("button", { class: "icon-btn", type: "button", title: "拡大（＋）", ariaLabel: "拡大", onClick: () => this.view.zoomBy(1.25) }, icon("plus", 16)),
@@ -159,7 +162,7 @@ export class App implements AppContext {
         { class: "btn-row center" },
         h("button", { class: "btn btn-primary", type: "button", onClick: () => this.cmd.createNode("goal", undefined, { edit: true }) }, icon("goal", 15), "目標を作る"),
         h("button", { class: "btn", type: "button", onClick: () => this.loadWishlist() }, icon("goal", 15), "やりたいことリスト"),
-        h("button", { class: "btn", type: "button", onClick: () => this.loadFuture() }, icon("split", 15), "未来の道筋"),
+        h("button", { class: "btn", type: "button", onClick: () => void this.showFuture() }, icon("split", 15), "未来の道筋"),
         h("button", { class: "btn", type: "button", onClick: () => void this.loadDemo() }, icon("sparkle", 15), "デモを読み込む"),
       ),
     );
@@ -221,6 +224,7 @@ export class App implements AppContext {
       if (opts.firstRun && !this.ui.prefs.onboardingDone && !this.ephemeral) openWelcome(this);
       else this.offerOnce();
       this.offerFutureUpdate();
+      this.autoOpenFuture();
       this.afterTour = () => void this.askPersistOnce();
     });
     void this.refreshLastBackup();
@@ -767,6 +771,72 @@ export class App implements AppContext {
     openFutureDialog(this);
   }
 
+  /**
+   * 「未来の道筋」ボタン: 地図にあれば今日の近くに寄る。何もしていないデモ・空の地図なら、すぐ未来の道筋を開く。
+   * 自分で書いた内容があれば、追加か入れ替えかを選ぶ確認を出す
+   */
+  async showFuture(): Promise<void> {
+    const root = Object.values(this.store.doc.nodes).find((x) => x.meta?.forecastRoot === true);
+    if (root) {
+      if (this.ui.prefs.view !== "map") this.ui.setPrefs({ view: "map" });
+      this.ui.select([root.id]);
+      this.view.fit(nearFutureRoot(this.store.doc));
+      return;
+    }
+    if (this.store.readOnly) {
+      toast("このタブは閲覧のみです。未来の道筋を開くには、上の「このタブで編集する」を押してください。", { tone: "warn" });
+      return;
+    }
+    if (isDisposableDoc(this.store.doc)) return this.openFutureNow();
+    this.loadFuture();
+  }
+
+  /**
+   * 未来の道筋に入れ替えて、全体を見せる（何もしていないデモ・空の地図のとき。直前の地図はバックアップに残り、元に戻せる）。
+   * 最初は 10 年後まで分かれていく全体の形と 14 の行き先（見込みつき）を見せ、今日から読むときは右下の「未来の道筋」で寄る
+   */
+  private async openFutureNow(): Promise<void> {
+    let built: ReturnType<typeof buildFuture>;
+    try {
+      built = buildFuture();
+    } catch {
+      toast("未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください", { tone: "warn" });
+      return;
+    }
+    const { pv, stats } = built;
+    const n = (v: number) => v.toLocaleString("ja-JP");
+    this.ui.setPrefs({ futureAutoOpened: true, futureOffered: true, futureNotified: futureVersion() });
+    await this.replaceDocSafely(pv.doc, "未来の道筋を開く", {
+      done: `未来の道筋（仕事・10 年）を開きました: 歩み ${n(stats.steps)}・分かれ道 ${stats.forks}・10 年後の行き先 ${stats.ends} の全体です。今日から読むときは右下の「未来の道筋」を押してください（前の地図はバックアップに残ります）`,
+    });
+  }
+
+  /**
+   * 開いた地図が何もしていないデモか空で、未来の道筋がまだ無ければ、未来の道筋を開く（このブラウザで 1 回。元に戻せる）。
+   * 操作ガイドを済ませてから開いたときだけ（初めての人には、ようこそ画面とガイドを先に見せる）。
+   * アカウントへの同期は最初の突き合わせを待つ（別の端末の内容を先に取り込み、取り込んで中身ができたら開かない）。
+   * 30 秒たっても落ち着かない（決めてもらう確認が出ているなど）なら開かない（地図の右下の「未来の道筋」から開ける）
+   */
+  private autoOpenFuture(): void {
+    if (this.ephemeral || !this.ui.prefs.onboardingDone) return;
+    const started = Date.now();
+    const tick = (): void => {
+      if (this.ui.prefs.futureAutoOpened || this.ui.storedPrefs().futureAutoOpened === true) return;
+      if (Object.values(this.store.doc.nodes).some((x) => x.meta?.forecastRoot === true)) return;
+      if (!isDisposableDoc(this.store.doc)) return;
+      const st = this.cloudInfo?.state;
+      const waited = Date.now() - started;
+      // 同期が無い（Artifact の外）・同期し終えた・つながらない（このブラウザだけ）なら落ち着いた
+      const settled = st === undefined || st === "synced" || st === "off" || st === "offline" || st === "denied" || (st === "unavailable" && waited > 8000);
+      if (!settled || this.store.readOnly || modalOpen() || this.editor.active) {
+        if (waited < 30000) setTimeout(tick, 500);
+        return;
+      }
+      void this.openFutureNow();
+    };
+    setTimeout(tick, 800);
+  }
+
   /** 文書に入っている未来の道筋だけを、同梱の新しい版に差し替える（ほかのノードはそのまま。元に戻せる） */
   async swapFuture(): Promise<void> {
     if (this.store.readOnly) return;
@@ -794,11 +864,7 @@ export class App implements AppContext {
     this.store.replaceDoc(res.doc, label);
     this.ui.setPrefs({ futureNotified: futureVersion(), futureOffered: true });
     this.ui.clearSelection();
-    const root = res.root ? this.store.doc.nodes[res.root] : undefined;
-    if (root) {
-      const near = Object.values(this.store.doc.nodes).filter((x) => x.x >= root.x && x.x <= root.x + 5 * 300 && Math.abs(x.y - root.y) <= 600).map((x) => x.id);
-      this.view.fit(near.length ? near : [root.id]);
-    }
+    if (res.root && this.store.doc.nodes[res.root]) this.view.fit(nearFutureRoot(this.store.doc));
     toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件）`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
   }
@@ -846,7 +912,7 @@ export class App implements AppContext {
       }
       if (this.ui.prefs.futureOffered || stored.futureOffered) return;
       this.ui.setPrefs({ futureOffered: true });
-      toast(`未来の道筋（仕事・10 年）を用意しました。分かれ道ごとの見込みと 10 年後の行き先が見られます（やりたいことリストも ${WISHLIST_SIZE_LABEL} 件になりました）`, { action: { label: "見る", run: () => this.loadFuture() }, ms: 15000 });
+      toast(`未来の道筋（仕事・10 年）を用意しました。分かれ道ごとの見込みと 10 年後の行き先が見られます（やりたいことリストも ${WISHLIST_SIZE_LABEL} 件になりました）`, { action: { label: "見る", run: () => void this.showFuture() }, ms: 15000 });
     };
     setTimeout(() => {
       if (!this.store.readOnly) return show();

@@ -89,7 +89,7 @@ const FAKE_CLAUDE = () => {
           },
         });
       }
-      if (name === "user") return Object.freeze({ id: async () => (flags.signedOut ? null : "u_test") });
+      if (name === "user") return Object.freeze({ id: async () => (flags.signedOut ? null : flags.uid || "u_test") });
       if (name === "db") {
         if (flags.signedOut) return null;
         const list = async (p) => ({ docs: (await window.__dbList(p)).map((d) => ({ id: d.id, exists: true, data: () => d.data })) });
@@ -138,6 +138,20 @@ async function newDevice(flags = {}, viewport = { width: 1440, height: 900 }) {
   });
   await ctx.addInitScript((f) => (window.__fakeFlags = f), flags);
   await ctx.addInitScript(FAKE_CLAUDE);
+  // 何もしていないデモを開き直したときの「未来の道筋」の自動表示は、専用の確かめ（autoFuture）のときだけ
+  if (!flags.autoFuture)
+    await ctx.addInitScript(() => {
+      try {
+        const k = "4d-branch:prefs";
+        const p = JSON.parse(localStorage.getItem(k) || "{}");
+        if (p.futureAutoOpened !== true) {
+          p.futureAutoOpened = true;
+          localStorage.setItem(k, JSON.stringify(p));
+        }
+      } catch {
+        /* about:blank など */
+      }
+    });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
@@ -401,6 +415,35 @@ await check("未来の道筋を追加で読み込むと、見込み（線の %�
   const m = JSON.parse(dbStore.get("data/users/u_test/fourd"));
   assert(m.gen !== before.gen && m.nodes === local.nodes && m.nodes > before.nodes, `写し: ${m.nodes} / ${local.nodes}`);
   assert((await cloudState(A.page)) === "synced", await cloudState(A.page));
+});
+
+await check("デモのまま同期していた端末で開き直すと、同期を待ってから未来の道筋が自動で開き、アカウントの写しも新しくなる（別の端末でも 1 つだけ出る）", async () => {
+  const U = "data/users/u_demo/fourd";
+  const D = await newDevice({ uid: "u_demo", autoFuture: true });
+  await D.page.getByRole("dialog", { name: "4D Branch へようこそ" }).waitFor();
+  await D.page.getByRole("button", { name: "すぐに使う" }).click();
+  await D.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  const has = (p) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length);
+  const m0 = JSON.parse(dbStore.get(U));
+  assert(m0.nodes < 40, `デモの写し ${m0.nodes}`);
+  // 初めて開いたとき（ようこそ）は入れ替えない
+  assert((await has(D.page)) === 0, "初めて開いたときに入れ替えた");
+  await D.page.waitForTimeout(500);
+  await D.page.reload({ waitUntil: "load" });
+  await D.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
+  await D.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor();
+  await D.page.evaluate(() => window.__fourD.app.cloud.flush());
+  await D.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  const m1 = JSON.parse(dbStore.get(U));
+  const local = await D.page.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
+  assert(m1.gen !== m0.gen && m1.nodes === local && m1.nodes > 1500, `写し: ${m1.nodes} / ${local}`);
+  // 同じアカウントの別の端末（初めて）で開くと、アカウントの未来の道筋が出る（2 つにならない）
+  const D2 = await newDevice({ uid: "u_demo", autoFuture: true });
+  await D2.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
+  await D2.page.waitForTimeout(2500);
+  assert((await has(D2.page)) === 1, `入口が ${await has(D2.page)} つ`);
+  await D2.ctx.close();
+  await D.ctx.close();
 });
 
 await check("ページのエラーが無い", async () => {

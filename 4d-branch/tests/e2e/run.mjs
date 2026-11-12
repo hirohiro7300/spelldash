@@ -46,6 +46,25 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+/**
+ * 何もしていないデモを開き直したときの「未来の道筋」の自動表示を、このコンテキストでは済んだことにする
+ * （デモのまま確かめる流れのため。自動表示そのものは専用のコンテキストで確かめる）
+ */
+async function skipAutoFuture(context) {
+  await context.addInitScript(() => {
+    try {
+      const k = "4d-branch:prefs";
+      const p = JSON.parse(localStorage.getItem(k) || "{}");
+      if (p.futureAutoOpened !== true) {
+        p.futureAutoOpened = true;
+        localStorage.setItem(k, JSON.stringify(p));
+      }
+    } catch {
+      /* about:blank など */
+    }
+  });
+}
+
 const state = (page) =>
   page.evaluate(() => {
     const f = window.__fourD;
@@ -154,6 +173,7 @@ async function main() {
   await startServer();
   const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  await skipAutoFuture(ctx);
   const page = await ctx.newPage();
   const errors = [];
   const watch = (p) => {
@@ -1083,6 +1103,7 @@ async function main() {
 
   // ---- 画面の幅（別のコンテキスト = 初めて開いた端末。ここまでのデータとは分ける）
   const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await skipAutoFuture(wctx);
   const wp = await wctx.newPage();
   watch(wp);
   await wp.goto(BASE, { waitUntil: "networkidle" });
@@ -1222,6 +1243,7 @@ async function main() {
 
   // ---- やりたいことリスト（別のコンテキスト = 初めて開いた端末）
   const lctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await skipAutoFuture(lctx);
   const lp = await lctx.newPage();
   watch(lp);
   await lp.goto(BASE, { waitUntil: "networkidle" });
@@ -1420,6 +1442,7 @@ async function main() {
 
   // ---- 未来の道筋（別のコンテキスト = 初めて開いた端末）
   const fctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await skipAutoFuture(fctx);
   const fp = await fctx.newPage();
   watch(fp);
   await fp.goto(BASE, { waitUntil: "networkidle" });
@@ -1595,6 +1618,121 @@ async function main() {
     assert((await fp.locator(".toast", { hasText: "未来の道筋の新しい版があります" }).count()) === 0, "差し替えた後も知らせた");
   });
   await fctx.close();
+
+  // ---- 未来の道筋の自動表示（別のコンテキスト = デモのまま使っていた端末）
+  const actx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const ap = await actx.newPage();
+  watch(ap);
+  await ap.goto(BASE, { waitUntil: "networkidle" });
+  await ap.getByRole("button", { name: "すぐに使う" }).click();
+  const hasFuture = (p = ap) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+
+  await check("未来の道筋: 何もしていないデモのまま開き直すと、全体が自動で開き、元に戻せて、戻した人には二度と開かない", async () => {
+    // 初めて開いたとき（ようこそ・ガイドの間）は入れ替えない
+    await ap.waitForTimeout(1500);
+    assert(!(await hasFuture()), "初めて開いたときに入れ替えた");
+    await ap.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
+    await waitSaved(ap);
+    await ap.reload({ waitUntil: "networkidle" });
+    await ap.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout: 10000 });
+    const done = ap.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+    await done.waitFor();
+    await ap.waitForTimeout(600);
+    const s = await ap.evaluate(() => {
+      const f = window.__fourD;
+      const fc = f.app.vm.forecast;
+      return {
+        nodes: Object.keys(f.store.doc.nodes).length,
+        ends: fc.ends.length,
+        sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0),
+        zoom: f.app.view.camera.zoom,
+        auto: f.ui.prefs.futureAutoOpened,
+        overview: document.querySelectorAll(".forecast-ends .end-row").length,
+        text: document.querySelector(".toast-text")?.textContent ?? "",
+      };
+    });
+    assert(s.nodes > 1500 && s.ends === 14 && Math.abs(s.sum - 1) < 1e-6, JSON.stringify(s));
+    // 最初は 10 年後まで分かれていく全体の形を見せる
+    assert(s.zoom < 0.1, `全体が見えていない（倍率 ${s.zoom}）`);
+    assert(s.auto === true, "印が立たない");
+    assert(s.overview >= 3, "右の概要に行き先が出ない");
+    assert(/歩み 1,\d{3}/.test(s.text) && s.text.includes("行き先 14"), s.text);
+    await shot("e2e-16-future-auto", ap);
+    // 元に戻すとデモに戻る
+    await done.getByRole("button", { name: "元に戻す" }).click();
+    await ap.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    await waitSaved(ap);
+    await ap.waitForTimeout(400);
+    await ap.reload({ waitUntil: "networkidle" });
+    await ap.waitForTimeout(3000);
+    assert(!(await hasFuture()), "元に戻したのに、開き直すとまた入れ替えた");
+  });
+
+  await check("地図の右下の「未来の道筋」: デモなら押すとすぐ開き、開いた後は今日を選んで読める大きさで寄る（スマホの幅でも見える）", async () => {
+    const btn = ap.locator(".zoom-ctl .future-btn");
+    assert(await btn.isVisible(), "ボタンが見えない");
+    await btn.click();
+    await ap.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    await ap.waitForTimeout(500);
+    // 遠くへ動かしてから押すと、今日（入口）が選ばれて画面に入る
+    await ap.evaluate(() => {
+      const v = window.__fourD.app.view;
+      v.camera.x = -50000;
+      v.camera.y = 3000;
+      v.camera.zoom = 0.05;
+      v.cameraChanged();
+    });
+    await btn.click();
+    await ap.waitForTimeout(800);
+    const r = await ap.evaluate(() => {
+      const f = window.__fourD;
+      const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+      const rect = f.app.view.canvas.getBoundingClientRect();
+      const s = f.app.view.camera.toScreen(root.x, root.y);
+      return { sel: [...f.ui.selection.nodes], root: root.id, x: s.x, y: s.y, w: rect.width, h: rect.height, zoom: f.app.view.camera.zoom };
+    });
+    assert(r.sel.length === 1 && r.sel[0] === r.root, `今日が選ばれない ${JSON.stringify(r)}`);
+    assert(r.x > 0 && r.x < r.w && r.y > 0 && r.y < r.h && r.zoom >= 0.3, `今日が読める大きさで画面に入らない ${JSON.stringify(r)}`);
+    // スマホの幅でも、ボタンは画面の中にあって押せる
+    await ap.setViewportSize({ width: 390, height: 800 });
+    await ap.waitForTimeout(400);
+    const box = await btn.boundingBox();
+    assert(box && box.x >= 0 && box.x + box.width <= 390 && box.y + box.height <= 800, `スマホの幅でボタンが外にはみ出す ${JSON.stringify(box)}`);
+    await shot("e2e-17-future-button-phone", ap);
+    await ap.setViewportSize({ width: 1440, height: 900 });
+  });
+
+  await check("ようこそ画面の「未来の道筋を開く」で、初めての人もすぐ開ける", async () => {
+    const c3 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const p3 = await c3.newPage();
+    watch(p3);
+    await p3.goto(BASE, { waitUntil: "networkidle" });
+    const welcome = p3.getByRole("dialog", { name: "4D Branch へようこそ" });
+    await welcome.waitFor();
+    await welcome.getByRole("button", { name: "未来の道筋を開く" }).click();
+    await p3.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    const prefs = await p3.evaluate(() => window.__fourD.ui.prefs);
+    assert(prefs.onboardingDone === true && prefs.futureAutoOpened === true, JSON.stringify(prefs));
+    await c3.close();
+  });
+
+  await check("自分で書いた地図は勝手に入れ替えず、「未来の道筋」は追加か入れ替えかを選ぶ確認を出す", async () => {
+    const c2 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const p2 = await c2.newPage();
+    watch(p2);
+    await p2.goto(BASE, { waitUntil: "networkidle" });
+    await p2.getByRole("button", { name: "すぐに使う" }).click();
+    await p2.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "自分で書いた目標", exact: true }));
+    await waitSaved(p2);
+    await p2.waitForTimeout(400);
+    await p2.reload({ waitUntil: "networkidle" });
+    await p2.waitForTimeout(3000);
+    assert(!(await hasFuture(p2)), "自分で書いた地図を勝手に入れ替えた");
+    await p2.locator(".zoom-ctl .future-btn").click();
+    await p2.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor();
+    await c2.close();
+  });
+  await actx.close();
 
   await check("ページのエラーが無い", async () => {
     assert(errors.length === 0, errors.join("\n"));

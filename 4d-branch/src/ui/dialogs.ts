@@ -7,6 +7,7 @@ import type { DocData } from "../model/types";
 import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { buildWishlist } from "../demo/wishlistBundle";
 import { buildFuture } from "../demo/futureBundle";
+import { nearFutureRoot } from "../demo/futureSwap";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, type BackupMeta } from "../persist/persistence";
@@ -345,16 +346,7 @@ export function openFutureDialog(app: AppContext): void {
       replaceDone: "未来の道筋に入れ替えました。右の概要に 10 年後の行き先の見込みが出ます",
       mergeDone: "未来の道筋: ",
       // 全体は横に長すぎて読めないので、今日から数歩先までに寄る（カードの文字が読める大きさで始める）
-      fitTo: (doc, added) => {
-        const root = added.find((id) => doc.nodes[id]?.meta.forecastRoot === true);
-        if (!root) return added;
-        const r = doc.nodes[root]!;
-        const near = added.filter((id) => {
-          const n = doc.nodes[id]!;
-          return n.x >= r.x && n.x <= r.x + 5 * 300 && Math.abs(n.y - r.y) <= 600;
-        });
-        return near.length ? near : added;
-      },
+      fitTo: (doc, added) => nearFutureRoot(doc, added),
     },
   });
 }
@@ -425,7 +417,34 @@ export function openWelcome(app: AppContext): void {
     types,
     h("div", { class: "welcome-demo" }, icon("sparkle", 16), h("div", null, h("b", null, "デモを開いています: "), "「SpellDash事業」「FCマーケティングでの業務」「広告運用事業での独立」の 3 つが、「広告運用を学ぶ」などの共通のノードでつながっています。")),
     h("div", { class: "welcome-demo" }, icon("goal", 16), h("div", null, h("b", null, "やりたいことリスト: "), `仕事・学び・お金・健康・旅などのやりたいこと ${WISHLIST_SIZE_LABEL} 件と、そこから分かれる道を、メニュー（右上の ⋯）からいつでも読み込めます。`)),
-    h("div", { class: "welcome-demo" }, icon("split", 16), h("div", null, h("b", null, "未来の道筋: "), "仕事の 3 つの道（両立・早期独立・SpellDash集中）が今日から 10 年後まで分かれていく地図です。分かれ道ごとの判断の線と見込み %、10 年後の行き先の見込みが見られます（メニューから読み込めます）。")),
+    h(
+      "div",
+      { class: "welcome-demo welcome-future" },
+      icon("split", 16),
+      h(
+        "div",
+        null,
+        h("b", null, "未来の道筋: "),
+        "仕事の 3 つの道（両立・早期独立・SpellDash集中）が今日から 10 年後まで分かれていく地図です。分かれ道ごとの判断の線と見込み %、10 年後の行き先の見込みが見られます（地図の右下の「未来の道筋」からいつでも開けます）。",
+        h(
+          "div",
+          { class: "btn-row" },
+          h(
+            "button",
+            {
+              class: "btn btn-sm",
+              type: "button",
+              onClick: () => {
+                m.close();
+                void app.showFuture();
+              },
+            },
+            icon("split", 14),
+            "未来の道筋を開く",
+          ),
+        ),
+      ),
+    ),
     h(
       "p",
       { class: "muted small" },

@@ -33,6 +33,20 @@ export function futureMaps(doc: DocData): FutureMap[] {
   return maps;
 }
 
+/**
+ * 未来の道筋の入口（今日）から右へ 5 列・上下 600 までのノード（ids の中から）。全体は横に長すぎて読めないので、
+ * 読み込んだ・開いたときはここに寄る（カードの文字が読める大きさで始める）。入口が無ければ ids をそのまま返す
+ */
+export function nearFutureRoot(doc: DocData, ids: ID[] = Object.keys(doc.nodes)): ID[] {
+  const root = ids.map((id) => doc.nodes[id]).find((n) => n !== undefined && isForecastRoot(n));
+  if (!root) return ids;
+  const near = ids.filter((id) => {
+    const n = doc.nodes[id];
+    return !!n && n.x >= root.x && n.x <= root.x + 5 * 300 && Math.abs(n.y - root.y) <= 600;
+  });
+  return near.length ? near : [root.id];
+}
+
 /** 新しい版と違う（または版の無い）未来の道筋があるか */
 export function staleFutureMaps(doc: DocData, version: string): FutureMap[] {
   return futureMaps(doc).filter((m) => m.version !== version);

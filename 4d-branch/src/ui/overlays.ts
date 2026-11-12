@@ -173,6 +173,11 @@ export interface ModalHandle {
 /** 開いているダイアログの数（後ろの画面を操作できなくする・Esc は一番上だけ） */
 let openModals = 0;
 
+/** ダイアログが開いているか（開いている間は、地図を勝手に入れ替えない） */
+export function modalOpen(): boolean {
+  return openModals > 0;
+}
+
 function setShellInert(on: boolean): void {
   const shell = document.querySelector(".app-shell");
   if (!shell) return;

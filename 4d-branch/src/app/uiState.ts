@@ -41,6 +41,8 @@ export interface Prefs {
   futureOffered: boolean;
   /** 「未来の道筋の新しい版があります」を知らせた版（同じ版では二度知らせない） */
   futureNotified: string;
+  /** 何もしていないデモ・空の地図を、開いたときに未来の道筋へ入れ替えた（このブラウザで 1 回だけ。元に戻した人に何度も出さない） */
+  futureAutoOpened: boolean;
   persistAsked: boolean;
   lastType: "goal" | "action" | "branch" | "result";
 }
@@ -67,6 +69,7 @@ export const DEFAULT_PREFS: Prefs = {
   wishlistOffered: false,
   futureOffered: false,
   futureNotified: "",
+  futureAutoOpened: false,
   persistAsked: false,
   lastType: "action",
 };

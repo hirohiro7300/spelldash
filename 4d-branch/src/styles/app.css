@@ -927,6 +927,30 @@ button.tag-chip:hover {
   background: var(--bg-hover);
   color: var(--text-1);
 }
+/* 未来の道筋（仕事・10 年）へ: どの幅でも見える所に、文字つきで置く */
+.future-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(139, 123, 255, 0.18);
+  color: #cfc7ff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.future-btn:hover {
+  background: rgba(139, 123, 255, 0.3);
+  color: #fff;
+}
+.future-btn:focus-visible {
+  outline: 2px solid #9a8bff;
+  outline-offset: 1px;
+}
 .zoom-sep {
   width: 1px;
   height: 18px;

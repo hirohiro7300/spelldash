@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildFutureDoc, countFuture, type FutureData } from "../../src/demo/future";
 import { buildFuture, futureData, futureVersion } from "../../src/demo/futureBundle";
-import { futureMaps, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
-import { buildDemoDoc } from "../../src/demo/demo";
+import { futureMaps, nearFutureRoot, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
+import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { mergeDocs } from "../../src/persist/io";
 import { NODE_H, NODE_W } from "../../src/model/constants";
 import { computeForecast, edgeProb, formatPercent } from "../../src/model/forecast";
@@ -388,6 +388,29 @@ describe("未来の道筋の差し替え", () => {
     // 見込みは新しい版で計算できる
     const r = computeForecast(doc, buildIndex(doc).out);
     expect(r.ends.reduce((n, id) => n + r.reach.get(id)!.p, 0)).toBeCloseTo(1);
+  });
+
+  it("開いたときに寄る所: 入口（今日）から右へ 5 列・上下 600 まで。入口が無ければそのまま。開いた後はデモ扱いにならない", () => {
+    const { pv } = buildFuture(TODAY);
+    const doc = pv.doc;
+    const root = Object.values(doc.nodes).find((n) => n.meta.forecastRoot === true)!;
+    const near = nearFutureRoot(doc);
+    expect(near).toContain(root.id);
+    expect(near.length).toBeGreaterThanOrEqual(5);
+    expect(near.length).toBeLessThan(Object.keys(doc.nodes).length / 5);
+    for (const id of near) {
+      const n = doc.nodes[id]!;
+      expect(n.x >= root.x && n.x <= root.x + 1500 && Math.abs(n.y - root.y) <= 600, n.title).toBe(true);
+    }
+    // ids を渡すとその中から選ぶ。入口の無い文書・入口を含まない ids はそのまま返す
+    const some = near.slice(0, 3);
+    expect(nearFutureRoot(doc, some).every((id) => some.includes(id))).toBe(true);
+    const demo = buildDemoDoc();
+    expect(nearFutureRoot(demo)).toEqual(Object.keys(demo.nodes));
+    // 何もしていないデモ・空は自動で開いてよいが、開いた後の未来の道筋は「捨ててよい」ではない（二度と勝手に入れ替えない）
+    expect(isDisposableDoc(demo)).toBe(true);
+    expect(isDisposableDoc(createEmptyDoc())).toBe(true);
+    expect(isDisposableDoc(doc)).toBe(false);
   });
 
   it("未来の道筋が無い文書では、ふつうの追加と同じく右側に足す", () => {

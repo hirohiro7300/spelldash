@@ -53,6 +53,8 @@ export interface AppContext {
   loadWishlist(): void;
   /** 未来の道筋（仕事・10 年）を読み込む前の確認を開く */
   loadFuture(): void;
+  /** 未来の道筋を見せる: 地図にあれば今日に寄る・何もしていないデモか空ならすぐ開く・ほかは読み込む前の確認を開く */
+  showFuture(): Promise<void>;
   /** 文書に入っている未来の道筋だけを、同梱の新しい版に差し替える（確かめてから。無ければ読み込みの確認を開く） */
   swapFuture(): Promise<void>;
   newEmptyDoc(): Promise<void>;
