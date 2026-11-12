@@ -30,6 +30,9 @@
 //      'unsafe-hashes'・'strict-dynamic' は無い。script-src のほかの指示は決めた字のまま（緩めない。締めるときはこの表も直す）。配る HTML の要素に
 //      on* の属性（onclick= など）と javascript: の URL が 0。違うときは足りない・余ったハッシュと、そのハッシュの script があるファイルを出す
 //      （inline の script を 1 字でも直したら、node scripts/lib/csp.mjs が出す script-src の値を vercel.json に写す）。写しを壊すと落ちる
+//   9. 特定商取引法の表記（Batch 94。tokushoho.html）: 記入待ちの［ ］（注記の中は数えない）が残る間だけ noindex、残らなくなったら noindex も無い
+//      （埋めたのに外し忘れると表記が検索に出ない・埋める前に外すと空欄が検索に出る）。今のファイルで通り、壊した写し 2 つ
+//      （［ ］を埋めたのに noindex が残る・noindex を消したのに［ ］が残る）で落ちる。埋めて noindex を外した写しは通る
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -428,6 +431,31 @@ mutate("frame-ancestors を消す", cspProblems(withCsp((v) => v.replace(" frame
 mutate("新しいページの inline の script（ハッシュを足していない）", cspProblems(vercelText, { ...served, "new-page.html": "<!doctype html><script>console.log(1)</script>" }));
 ok("8. 壊すと落ちる: 足りないハッシュはそのハッシュとファイルの名前を出す", cspProblems(vercelText, { ...served, "news.html": served["news.html"].replace("renderNews", "renderNews ") }).some((p) => /^足りないハッシュ 'sha256-[^']+'（1 ファイル: news\.html）$/.test(p)));
 ok("8. 壊すと落ちる: 消したハッシュは「余った」ではなく「足りない」と出す", cspProblems(withCsp((v) => v.replace(`${firstHash(v)} `, "")), served).every((p) => p.startsWith("足りないハッシュ")));
+
+// ── 9. 特定商取引法の表記: 記入待ちの［ ］と noindex は組（Batch 94）─────────────────────────
+// 記入待ちは注記（<!-- … -->）の外の［…］。頭の注記の「［ ］が埋まるまで…」は数えない（埋めた後も注記が残っていてよい）
+function tokushohoProblems(html) {
+  const blanks = (html.replace(/<!--[\s\S]*?-->/g, "").match(/［[^］\n]*］/g) ?? []).length;
+  const noindex = isNoindex(html);
+  if (blanks > 0 && !noindex) return [`記入待ちの［ ］が ${blanks} つ残るのに noindex が無い（空欄が検索に出る）`];
+  if (blanks === 0 && noindex) return ["記入待ちの［ ］が無いのに noindex が残る（埋めた表記が検索に出ない）"];
+  return [];
+}
+{
+  const html = pages["tokushoho.html"];
+  const blanksNow = (html.replace(/<!--[\s\S]*?-->/g, "").match(/［[^］\n]*］/g) ?? []).length;
+  const tp = tokushohoProblems(html);
+  ok(`9. 特商法の表記: 今の tokushoho.html は記入待ちの［ ］（${blanksNow} つ）と noindex がそろう`, tp.length === 0 && blanksNow > 0 && isNoindex(html), show(tp));
+  const filled = html.replace(/［[^］\n]*］/g, "試しの記入"); // 頭の注記の［ ］も置き換わるが、注記は数えないので同じ
+  const filledKeepNote = html.replace(/(<dd>[^<]*?)［[^］\n]*］/g, "$1試しの記入"); // 欄だけ埋めて、頭の注記の［ ］は残す
+  const unindexed = (h) => h.replace(/\n?\s*<meta name="robots"[^>]*>/, "");
+  const broken = (name, problems) => ok(`9. 壊すと落ちる: ${name}`, problems.length > 0);
+  broken("特商法の［ ］を埋めたのに noindex が残る", tokushohoProblems(filled));
+  broken("特商法の欄を埋めたのに noindex が残る（頭の注記の［ ］はそのまま）", tokushohoProblems(filledKeepNote));
+  broken("特商法の noindex を消したのに［ ］が残る", tokushohoProblems(unindexed(html)));
+  const done = tokushohoProblems(unindexed(filledKeepNote));
+  ok("9. 特商法の表記: 欄を埋めて noindex を外した写し（頭の注記は残る）は通る", done.length === 0 && !isNoindex(unindexed(filledKeepNote)), show(done));
+}
 
 if (failures.length) {
   console.error(`✗ ${failures.length} 件\n  ${failures.join("\n  ")}`);
