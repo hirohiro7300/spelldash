@@ -33,6 +33,8 @@
 //   9. 特定商取引法の表記（Batch 94。tokushoho.html）: 記入待ちの［ ］（注記の中は数えない）が残る間だけ noindex、残らなくなったら noindex も無い
 //      （埋めたのに外し忘れると表記が検索に出ない・埋める前に外すと空欄が検索に出る）。今のファイルで通り、壊した写し 2 つ
 //      （［ ］を埋めたのに noindex が残る・noindex を消したのに［ ］が残る）で落ちる。埋めて noindex を外した写しは通る
+//   10. お知らせの頭の文（Batch 94 の直し。js/news.js の lead）: どの lead も 60 字以内（js/news.js の頭の決まり。お知らせの一覧は lead だけを見せる）。
+//      字はコードポイントで数える（空白も 1 字）。lead の数がお知らせの数と同じ（読み落としが無い）。61 字の lead にした写しで落ちる
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -455,6 +457,25 @@ function tokushohoProblems(html) {
   broken("特商法の noindex を消したのに［ ］が残る", tokushohoProblems(unindexed(html)));
   const done = tokushohoProblems(unindexed(filledKeepNote));
   ok("9. 特商法の表記: 欄を埋めて noindex を外した写し（頭の注記は残る）は通る", done.length === 0 && !isNoindex(unindexed(filledKeepNote)), show(done));
+}
+
+// ── 10. お知らせの頭の文は 60 字以内（Batch 94 の直し。js/news.js の頭の決まり）─────────────────────────
+// src は js/news.js の文。lead の字（JSON と同じ書き方の文字列）を読み、60 字を超える lead と、お知らせ（date の欄）と lead の数の違いを返す
+const NEWS_LEAD_MAX = 60;
+function newsLeadProblems(src) {
+  const leads = [...src.matchAll(/\blead:\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`));
+  const entries = (src.match(/\bdate:\s*"/g) ?? []).length;
+  const problems = leads.filter((s) => [...s].length > NEWS_LEAD_MAX).map((s) => `${[...s].length} 字: ${[...s].slice(0, 24).join("")}…`);
+  if (leads.length !== entries) problems.push(`lead が ${leads.length} 個・お知らせが ${entries} 件`);
+  return problems;
+}
+{
+  const src = read("js/news.js");
+  const np = newsLeadProblems(src);
+  ok(`10. お知らせの頭の文: どの lead も ${NEWS_LEAD_MAX} 字以内（${(src.match(/\bdate:\s*"/g) ?? []).length} 件）`, np.length === 0, show(np));
+  const firstLead = (n) => src.replace(/(\blead:\s*")(?:[^"\\]|\\.)*"/, `$1${"字".repeat(n)}"`);
+  ok("10. 壊すと落ちる: 最初の lead を 61 字にする", newsLeadProblems(firstLead(NEWS_LEAD_MAX + 1)).length > 0);
+  ok("10. 最初の lead を 60 字ちょうどにした写しは通る（境は 60 字まで）", newsLeadProblems(firstLead(NEWS_LEAD_MAX)).length === 0, show(newsLeadProblems(firstLead(NEWS_LEAD_MAX))));
 }
 
 if (failures.length) {
