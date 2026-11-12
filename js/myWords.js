@@ -11,7 +11,7 @@
 // その英語の最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>。前からの語の鍵は変えない）。語は鍵で引く（同期の印・墓標・選んだ印・答えの書き手・消す・訳を直す）。
 // まとめて消す・移すは語の保存を 1 回で書く
 
-import { touchItem, touchItems, touchDeletedWords, getItemMeta, getDirtyItems, deletedCardInCloud, noteAddedWords } from "./userItemsSync.js";
+import { touchItem, touchItems, touchDeletedWords, getItemMeta, getDirtyItems, deletedCardInCloud, aliasTargets, noteAddedWords } from "./userItemsSync.js";
 import { isSpellAlt } from "./answers.js";
 import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
@@ -184,7 +184,8 @@ export function validateEntry(en, ja, existing = getMyWords(), books = getMyBook
 // 消した語の墓標をまだ送っていない鍵（送る待ちにあり、印が「消した」の my_word）: その間に同じ英語を足して英語の鍵を使い回すと、墓標が消えて
 // ほかの端末の前の語が戻る。新しい語はこの鍵を使わない（<英語の鍵>~<訳の印>）。墓標を送った後・雲に行が無くて外した後は今どおり英語の鍵。
 // 足し直しに使ってよいのは、消したカードが一度も雲に入っていないとき（deletedCardInCloud）だけ: 雲に入ったカードの鍵を使い回すと、
-// この端末で直した訳がまだ雲に無いとき、雲の前の版が「違うカード」に見えて戻ってしまう
+// この端末で直した訳がまだ雲に無いとき、雲の前の版が「違うカード」に見えて戻ってしまう。
+// Batch 95: 送りが端末の鍵のまま雲の新しい鍵へ送っている語の、その雲の鍵（aliasTargets）も使わない
 function unsentDeletedKeys() {
   const meta = getItemMeta();
   const keys = new Map();
@@ -193,6 +194,7 @@ function unsentDeletedKeys() {
     const card = meta[id].card ?? null;
     keys.set(id.slice("my_word:".length), card && !deletedCardInCloud(card, meta) ? card : null);
   }
+  for (const k of aliasTargets(meta)) if (!keys.has(k)) keys.set(k, null);
   return keys;
 }
 
