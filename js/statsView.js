@@ -633,7 +633,7 @@ function renderTyping() {
   ]);
 }
 
-// ===== 今月のまとめ（学習した日・覚えた・セット。値が 0 の項目は出さない） =====
+// ===== 今月のまとめ（学習した日・覚えた・セットを終えた日。値が 0 の項目は出さない） =====
 // 覚えた は学習状況の最初の画面と同じ数（3 状態。公開の語だけ）の今月の増え（Batch 90。js/growthLog.js getCoreMonthDelta）。分からない（null: この端末で
 // 数え始める前のほかの端末の学習した日が今月にある）ときは 覚えた の項目を出さない（学習した日とセットは出す）
 function renderMonthlySummary(myList = getMyWords()) {
@@ -658,7 +658,7 @@ function renderMonthlySummary(myList = getMyWords()) {
   const parts = [`学習した日 <b>${activeDays}</b>日`];
   if (learnedDelta > 0) parts.push(`${myMonth > 0 ? "英単語で " : ""}覚えた <b>+${learnedDelta}</b>`);
   if (myMonth > 0) parts.push(`マイ単語帳で 覚えた <b>+${myMonth}</b>`);
-  if (sets > 0) parts.push(`セット <b>${sets}</b>回`);
+  if (sets > 0) parts.push(`セットを終えた日 <b>${sets}</b>日`); // 数は今日のセットを終えた日の数（1 日に何セットしても 1。Batch 94 で「セット N回」から言い方だけ直した）
   container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月 ${parts.map((p) => `<span class="monthly-line__item">${p}</span>`).join(" ・ ")}</p>`;
 }
 
