@@ -178,13 +178,12 @@
     <section class="mw" aria-labelledby="myWordsSumTitle">
       <!-- 渡された単語帳（Batch 84。docs/SPEC_MY_WORDS.md §13）: リンク mywords.html#share=<code> を開くと上に出る（読むのは js/myWordsShare.js、描くのは js/myWordsPage.js。字は textContent だけ）。
            名前・語の数・最初の 5 語と、新しい単語帳として足す（既定）・今の単語帳に足す・やめる。足した後とやめた後は # を外す。読めないリンクは 1 行だけ。
-           Batch 85（§14.4）: 新しい単語帳として足した後は「この単語帳で学ぶ」「選択式で学ぶ」（単語帳の切り替えの下と同じ行き先）。初めての人には SpellDash の 1 行 -->
+           Batch 85（§14.4）: 新しい単語帳として足した後は「この単語帳で学ぶ」「選択式で学ぶ」（単語帳の切り替えの下と同じ行き先）。初めての人には SpellDash の 1 行。
+           Batch 94（§13.4）: 並びは 語の数 → 上限の文 → ボタン → 状況の 1 行 → 見本の語 → ほか N 語（長い訳でも、上限の文とボタンが 1 画面目に入る） -->
       <section class="mw-recv" id="myRecv" aria-labelledby="myRecvTitle" hidden>
         <h2 class="mw__h" id="myRecvTitle" tabindex="-1">渡された単語帳</h2>
         <p class="mw-recv__about" id="myRecvAbout" hidden>SpellDash は、英単語を打って覚えるアプリです。</p>
         <p class="mw-recv__sum" id="myRecvSum"></p>
-        <ul class="mw-recv__rows" id="myRecvRows" aria-label="最初の語"></ul>
-        <p class="mw-recv__more" id="myRecvMore" hidden></p>
         <p class="mw-recv__hint" id="myRecvHint"></p>
         <div class="mw-recv__acts" id="myRecvActs">
           <button type="button" class="btn mw-recv__btn" id="myRecvNew">新しい単語帳として足す</button>
@@ -195,6 +194,8 @@
           <button type="button" class="btn btn--ghost mw-recv__btn" id="myRecvClose" hidden>閉じる</button>
         </div>
         <p class="mw__status mw-recv__status" id="myRecvStatus" role="status" aria-live="polite"></p>
+        <ul class="mw-recv__rows" id="myRecvRows" aria-label="最初の語"></ul>
+        <p class="mw-recv__more" id="myRecvMore" hidden></p>
       </section>
       <!-- 単語帳（Batch 81。docs/SPEC_MY_WORDS.md §7）: 切り替え（押した単語帳が aria-pressed。描くのは js/myWordsPage.js）・作る・名前を変える・消す（確かめてから。最後の 1 冊は消せない） -->
       <div class="mw-books" id="myBooks">
