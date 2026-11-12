@@ -459,7 +459,8 @@ await check("デモのまま同期していた端末で開き直すと、同期�
   const local = await D.page.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
   assert(m1.gen !== m0.gen && m1.nodes === local && m1.nodes > 1500, `写し: ${m1.nodes} / ${local}`);
   // 同じアカウントの別の端末（初めて）で開くと、アカウントの未来の道筋が出る（2 つにならない）
-  const D2 = await newDevice({ uid: "u_demo", autoFuture: true });
+  // スマホの幅で開く（広い画面では、デモ全体に寄せた見え方にも今日が 33% で入ってしまい、今日に寄ったかを見分けられない）
+  const D2 = await newDevice({ uid: "u_demo", autoFuture: true }, { width: 400, height: 800 });
   await D2.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
   await D2.page.waitForTimeout(2500);
   assert((await has(D2.page)) === 1, `入口が ${await has(D2.page)} つ`);
@@ -713,6 +714,12 @@ await check("開いたままの未来の道筋に別の端末の書き足しが�
   // 見ている地図はまだ手を付けていない（譲る側の読み込みを通る）
   assert(await X.page.evaluate(() => window.__fourD.store.doc.meta.freshFutureAt === window.__fourD.store.doc.updatedAt), "見ている地図に手を付けた（確かめの前提）");
   await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
+  // Y は今日のカードも少し動かす（同じ文書なら、今日が動いても見ている場所はそのまま）
+  await Y.page.evaluate(() => {
+    const f = window.__fourD;
+    const r = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+    f.app.cmd.moveNodes([r.id], 10, 0, "少し移動");
+  });
   await Y.page.evaluate(() => window.__fourD.app.cloud.flush());
   await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 20000 });
   await X.page.waitForTimeout(800);
