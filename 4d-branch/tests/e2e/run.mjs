@@ -1557,7 +1557,7 @@ async function main() {
     }
   });
 
-  await check("未来の道筋: 前から使っている人には一度だけお知らせが出て、「見る」で確かめの画面が開く", async () => {
+  await check("未来の道筋: 前から使っている人には一度だけお知らせが出て、「見る」で地図の未来の道筋の今日へ寄る", async () => {
     await fp.waitForTimeout(500);
     await fp.evaluate(() => {
       const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
@@ -1568,9 +1568,23 @@ async function main() {
     await fp.reload({ waitUntil: "networkidle" });
     const offer = fp.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を用意しました" });
     await offer.waitFor({ timeout: 6000 });
+    // 遠くへ動かしておき、「見る」で今日（入口）が選ばれて画面に入る（地図に無ければ読み込みの確認が開く: 別の確かめ）
+    await fp.evaluate(() => {
+      const v = window.__fourD.app.view;
+      v.camera.x = -40000;
+      v.camera.zoom = 0.05;
+      v.cameraChanged();
+    });
     await offer.getByRole("button", { name: "見る" }).click();
-    await fp.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor();
-    await fp.keyboard.press("Escape");
+    await fp.waitForTimeout(800);
+    const r = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+      const rect = f.app.view.canvas.getBoundingClientRect();
+      const s = f.app.view.camera.toScreen(root.x, root.y);
+      return { sel: [...f.ui.selection.nodes], root: root.id, onScreen: s.x > 0 && s.x < rect.width && s.y > 0 && s.y < rect.height, dialog: !!document.querySelector(".modal") };
+    });
+    assert(r.sel.length === 1 && r.sel[0] === r.root && r.onScreen && !r.dialog, JSON.stringify(r));
     await fp.waitForTimeout(500);
     await fp.reload({ waitUntil: "networkidle" });
     await fp.waitForTimeout(1200 + 1000);
