@@ -5,6 +5,7 @@
 //   配信の補助が先に読み切って req.on を写しに付け替えた形〔本番の既定〕・写しが終わらなくても待ち続けない）・
 //   加入の守り（受付前・ログイン・二重加入・無料期間は初めての人だけ・確定の画面の文〔提供の時期も〕）・お支払いの管理の守り・Pro の判定と無料期間の終わり・
 //   受付前の config・比較表の AI の回数（サーバーの値と同じ）・ログに鍵とメールと顧客の番号を書かない。
+//   Batch 94（7d）: 受付中は 4 つの変数がそろってから（config・加入の口・AI の「Pro なら…」）・加入の表が無ければ加入の口は 503（決済の会社へ出ない）。
 // ネットワークには出ない: fetch を差し替え、決済の会社の API とデータベース（認証と REST）を偽物で答える。鍵は偽の値（本物の鍵の形にしない）。
 // 使い方: node scripts/test-billing.mjs [--root <木>]
 //   --root は別の木（例: 直す前の main を git archive した所。api/ と package.json があればよい）の api/ に同じ検査を流す（直す前に落ちることを確かめる）
@@ -122,6 +123,8 @@ async function dbRoute(call) {
     const user = USERS[token];
     return user ? json(200, { id: user.id, email: user.email, email_confirmed_at: "2026-01-01T00:00:00Z" }) : json(401, { msg: "invalid token" });
   }
+  // AI の回数の関数（Batch 94 の 7d で AI の「Pro なら…」を見る）: 関数がまだ無い形で答える（api/_lib/shared.js はインスタンスのメモリーで数える）
+  if (call.path === "/rest/v1/rpc/ai_take") return json(404, { code: "PGRST202", message: "Could not find the function" });
   if (call.path !== "/rest/v1/subscriptions") {
     unexpected.push(`${call.method} ${call.path}`);
     return json(404, { code: "PGRST205" });
@@ -1026,6 +1029,96 @@ const hook = async (event, makeReq = streamReq, opts) => {
   ok("秘密鍵まで外すと、管理と webhook も 503（決済の会社は webhook を再送する）・書かない", portalOff && res.statusCode === 503 && D.rows.get(U1)?.event_created === 200, String(res.statusCode));
 }
 
+// ===== 7d. 受付中の条件と加入の表（Batch 94。DECISION §2 C）: 受付中（config の configured・加入の口・AI の「Pro なら…」）は 4 つ
+// （秘密鍵 STRIPE_SECRET_KEY・月額の Price STRIPE_PRICE_MONTHLY・署名の鍵 STRIPE_WEBHOOK_SECRET・service role SUPABASE_SERVICE_ROLE_KEY）がそろってから。
+// 前は秘密鍵と月額の Price だけで受付中になり、署名の鍵か service role が無いと、払っても webhook が 503 のままで Pro にならなかった。
+// 加入の口は、本人の行を読むときに加入の表（subscriptions）が無ければ 503 not_configured（決済の会社へは 1 回も出ない）。前は「行が無い」と読んで手続きを作った。
+// お支払いの管理・webhook・AI の Pro の判定は今の読み方のまま（管理は秘密鍵だけを見る・表が無ければ「行なし」）
+{
+  const shared = await load("api/_lib/shared.js");
+  const providerAll = () => calls.filter((c) => c.origin !== DB).map((c) => `${c.method} ${c.path}`);
+  const notConfigured = lib.MESSAGES?.notConfigured;
+  // C1: 秘密鍵と月額の Price だけ（署名の鍵・service role なし）
+  fresh();
+  setEnv({ STRIPE_WEBHOOK_SECRET: null, SUPABASE_SERVICE_ROLE_KEY: null });
+  let res = await invoke(config, { method: "GET", headers: {} });
+  const c1Config = { status: res.statusCode, configured: res.body?.configured, prices: res.body?.prices?.length ?? null, provider: providerAll() };
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("受付の条件 C1（Batch 94）: 秘密鍵と月額の Price だけでは受付前（config は 200 で configured:false・価格を取りに出ない）・加入の口は 503 not_configured・決済の会社に 1 回も出ない",
+    c1Config.status === 200 && c1Config.configured === false && c1Config.prices === 0 && c1Config.provider.length === 0
+      && res.statusCode === 503 && res.body?.error === "not_configured" && res.body?.message === notConfigured && providerAll().length === 0,
+    JSON.stringify({ c1Config, checkout: [res.statusCode, res.body?.error], provider: providerAll() }));
+  // C2: 署名の鍵を足してもまだ受付前。service role も足すと受付中（4 つのどれが欠けても受付前）
+  const configuredWith = (over) => {
+    setEnv(over);
+    return lib.billingConfigured();
+  };
+  const matrix = [
+    configuredWith({}),
+    configuredWith({ SUPABASE_SERVICE_ROLE_KEY: null }),
+    configuredWith({ STRIPE_WEBHOOK_SECRET: null }),
+    configuredWith({ STRIPE_WEBHOOK_SECRET: null, SUPABASE_SERVICE_ROLE_KEY: null }),
+    configuredWith({ STRIPE_PRICE_MONTHLY: null }),
+    configuredWith({ STRIPE_SECRET_KEY: null })
+  ];
+  fresh();
+  setEnv({ SUPABASE_SERVICE_ROLE_KEY: null });
+  res = await invoke(config, { method: "GET", headers: {} });
+  const withSigning = res.body?.configured;
+  setEnv();
+  res = await invoke(config, { method: "GET", headers: {} });
+  const withAll = res.body?.configured;
+  ok("受付の条件 C2（Batch 94）: 署名の鍵を足してもまだ受付前（configured:false）・service role も足すと受付中（configured:true）・4 つのどれが欠けても受付前",
+    JSON.stringify(matrix) === JSON.stringify([true, false, false, false, false, false]) && withSigning === false && withAll === true,
+    JSON.stringify({ matrix, withSigning, withAll }));
+  // C3（守り）: 4 つそろって月額の Price を外す（急いで止める手）→ 受付前。お支払いの管理（秘密鍵だけ）と webhook（秘密鍵・署名の鍵・service role）は自分の条件で動く
+  fresh();
+  setEnv({ STRIPE_PRICE_MONTHLY: null });
+  res = await invoke(config, { method: "GET", headers: {} });
+  const c3Config = res.body?.configured;
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  const c3Checkout = res.statusCode;
+  D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_test_1", stripe_subscription_id: "sub_test_1", event_created: 100 });
+  res = await invoke(portal, post({}, "tok-u1"));
+  const c3Portal = res.statusCode;
+  res = await hook(eventOf("customer.subscription.updated", subOf({ cancel_at_period_end: true }), 200));
+  ok("受付の条件 C3（守り）: 4 つそろって月額の Price を外すと受付前（config・加入の口 503）。お支払いの管理は 200・webhook は 200 で書く（自分の条件のまま）",
+    c3Config === false && c3Checkout === 503 && c3Portal === 200 && res.statusCode === 200 && D.rows.get(U1)?.cancel_at_period_end === true,
+    JSON.stringify({ c3Config, c3Checkout, c3Portal, hook: res.statusCode }));
+  // C4: 4 つそろっていても、データベースに加入の表（subscriptions）が無い（docs/SQL_BILLING.md の前）
+  fresh();
+  setEnv();
+  D.missing = true;
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  const c4 = { status: res.statusCode, error: res.body?.error, message: res.body?.message, provider: providerAll() };
+  const beforePortal = providerAll().length;
+  res = await invoke(portal, post({}, "tok-u1"));
+  const c4Portal = [res.statusCode, res.body?.error, providerAll().length - beforePortal];
+  ok("受付の条件 C4（Batch 94）: 4 つそろっていても加入の表が無ければ、加入の口は 503 not_configured「Pro はまだ受付前です。」・決済の会社への要求 0（顧客も手続きも作らない）",
+    c4.status === 503 && c4.error === "not_configured" && c4.message === notConfigured && c4.provider.length === 0, JSON.stringify(c4));
+  ok("受付の条件 C4（守り）: お支払いの管理は今の読み方のまま（表が無ければ行なし → 404 no_subscription・決済の会社へ出ない）",
+    c4Portal[0] === 404 && c4Portal[1] === "no_subscription" && c4Portal[2] === 0, JSON.stringify(c4Portal));
+  // C5: AI の無料の上限の答えの「Pro なら…」（api/_lib/shared.js canOfferPro）も同じ条件。同じ人が無料の 1 回を使い切った 2 回目で見る
+  const aiOffer = async (over, scope) => {
+    fresh();
+    setEnv(over);
+    const user = { id: U3, email: "", token: "tok-u3" };
+    const req = { method: "POST", headers: { authorization: "Bearer tok-u3" } };
+    const first = typeof shared.aiTake === "function" ? await shared.aiTake(req, fakeRes(), user, { scope, limit: 1, proLimit: 5 }) : null;
+    if (typeof first === "function") first();
+    const second = fakeRes();
+    if (typeof shared.aiTake === "function") await shared.aiTake(req, second, user, { scope, limit: 1, proLimit: 5 });
+    return { first: typeof first, status: second.statusCode, body: second.body ?? null };
+  };
+  const offOffer = await aiOffer({ STRIPE_WEBHOOK_SECRET: null, SUPABASE_SERVICE_ROLE_KEY: null }, "b94-offer-off");
+  const onOffer = await aiOffer({}, "b94-offer-on");
+  ok("受付の条件 C5（Batch 94）: AI の無料の上限の答えの「Pro なら…」も 4 つそろうまで出さない（秘密鍵と月額の Price だけでは upgrade:false・offer なし）・4 つそろえば upgrade:true・「Pro なら1日5回」",
+    offOffer.first === "function" && offOffer.status === 429 && offOffer.body?.error === "daily_limit" && offOffer.body?.upgrade === false && !Object.hasOwn(offOffer.body ?? {}, "offer")
+      && onOffer.status === 429 && onOffer.body?.upgrade === true && onOffer.body?.offer === "Pro なら1日5回",
+    JSON.stringify({ offOffer, onOffer }));
+  setEnv();
+}
+
 // ===== 8. 価格（config）と比較表の AI の回数 =====
 {
   fresh();
@@ -1091,7 +1184,9 @@ const hook = async (event, makeReq = streamReq, opts) => {
   };
   eq("無料期間: 読めない・0・負の値は 0、小数は切り捨て", [parse({ STRIPE_TRIAL_MONTHS: "abc", STRIPE_TRIAL_DAYS: "-3" }), parse({ STRIPE_TRIAL_MONTHS: "1.9", STRIPE_TRIAL_DAYS: "7.5" })], [[0, 0], [1, 7]]);
   setEnv();
-  ok("受付中の判定: 秘密鍵と月額の Price の両方があるときだけ", lib.billingConfigured() === true && (setEnv({ STRIPE_PRICE_MONTHLY: null }), lib.billingConfigured()) === false && (setEnv({ STRIPE_SECRET_KEY: null }), lib.billingConfigured()) === false);
+  ok("受付中の判定: 秘密鍵・月額の Price・署名の鍵・service role の 4 つがそろうときだけ（Batch 94。どれか 1 つを外すと受付前）",
+    lib.billingConfigured() === true && (setEnv({ STRIPE_PRICE_MONTHLY: null }), lib.billingConfigured()) === false && (setEnv({ STRIPE_SECRET_KEY: null }), lib.billingConfigured()) === false
+      && (setEnv({ STRIPE_WEBHOOK_SECRET: null }), lib.billingConfigured()) === false && (setEnv({ SUPABASE_SERVICE_ROLE_KEY: null }), lib.billingConfigured()) === false);
   setEnv();
   eq("form: ネストは a[b][c]・配列は a[0]・空の値は送らない（確定の画面の文も同じ書き方）",
     lib.encodeForm({ mode: "subscription", line_items: [{ price: "p", quantity: 1 }], custom_text: { submit: { message: "毎月 → 解約" } }, skip: null }),
