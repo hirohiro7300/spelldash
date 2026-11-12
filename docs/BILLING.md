@@ -52,7 +52,7 @@
    - 本サービスを終えるときは 30 日前に知らせ、未提供の期間を返金する
    - 賠償の上限は、直近 1 か月に払った料金
    - 見る → 次へ: 合意した（直したい所があればこちらに言う）→ 7 へ
-7. **商品と Price を作る**（まずテストモードで。本番は 13 で）: Products → Add product → 名前「SpellDash Pro」。Price は定期（Recurring）・毎月・JPY・**980**。年額の Price は作らない（作って変数に入れると、画面に年額のボタンが出る）。Price ID（`price_` で始まる）を控える。
+7. **商品と Price を作る**（まずテストモードで。本番は 13 で。docs/FOUNDER_TODO.md の決めてほしいことの 26 でテストモードの一巡を飛ばすなら、7・9・11 を初めから本番モードで作り、10 には本番の値を入れる）: Products → Add product → 名前「SpellDash Pro」。Price は定期（Recurring）・毎月・JPY・**980**。年額の Price は作らない（作って変数に入れると、画面に年額のボタンが出る）。Price ID（`price_` で始まる）を控える。
    - 見る → 次へ: Price ID を控えた → 8 へ
 8. **subscriptions の表を作る**（docs/SQL_BILLING.md）。SQL を流すのは創業者だけ（こちらは流さない）。データベースの会社の SQL Editor で 1 回。これが無いと、加入の口（`/api/billing/checkout`）が 503 `not_configured` で答え、加入の手続きが始まらない（Batch 94。決済の会社には何も頼まない。加入画面は料金を出していても、押すと「Pro はまだ受付前。」になる。前は手続きが作られ、払っても webhook が 500 を返して Pro にならなかった）。
    - 見る → 次へ: 表の画面（Table Editor）に `subscriptions` がある（行は 0）→ 9 へ
@@ -84,7 +84,7 @@
     - 異議（チャージバック）の知らせのメールを ON にする（守り 2。来たときの手順は第 6 節）
     - 無料期間で始めた加入は、支払いとしては出ない（最初の請求は約 1 か月後）。1 人目が加入したかは、決済の会社の「定期の契約」（Subscriptions）の一覧か、管理画面（docs/CRM.md）のプランの列で見る
     - 見る → 次へ: 設定を保存した → 12 へ
-12. **テストモードで一巡する**（10 でテストの鍵を本番の www に入れているので、この間はだれでも加入画面を開け、公開されているテストのカードで加入の形だけを作れる〔お金は動かない〕。一巡はまとめて短い時間で行い、終わったらすぐ 13 へ進む〔13 でテストの行を全部消す〕。Preview の配信ではログインを止めているので、この一巡は本番の www でしか行えない）
+12. **テストモードで一巡する**（docs/FOUNDER_TODO.md の決めてほしいことの 26 で飛ばすなら、12 と 13 はしないで 14 へ。10 でテストの鍵を本番の www に入れているので、この間はだれでも加入画面を開け、公開されているテストのカードで加入の形だけを作れる〔お金は動かない〕。一巡はまとめて短い時間で行い、終わったらすぐ 13 へ進む〔13 でテストの行を全部消す〕。Preview の配信ではログインを止めているので、この一巡は本番の www でしか行えない）
     1. `/pro.html` を開く。見出しの下が「月額 ¥980（税込）。初めての方は最初の1か月無料。いつでも解約できる。」（年額は出ない）。「いつでも解約できる」の条件（期間の終わりまで使える・日割りの返金なし）は、同じ画面の「申し込みの前に」の解約の行と確定の画面の文にある。見出しの下の 1 行にも条件を入れたいと思ったら言ってもらえれば直せる（字の高さの検査も直す）。比較表はマイ単語帳・推移・テーマの 3 行（AI の鍵を入れたときは AI の覚え方を足した 4 行）。「申し込みの前に」は料金・無料期間・更新・解約・支払い・提供
     2. ログインして「1か月無料で始める（その後 月額 ¥980）」→ Stripe の確定の画面
     3. **確定の画面を見る**（特商法 12 条の 6 の最終確認の画面にあたる。スマホの幅でも）。払うボタンを押す前に、次が同じ画面で読めるか:
@@ -217,9 +217,9 @@ AI の上限の 429 の文: 無料「今日の無料ぶん（N回）は使い切
 | /pro.html に「Pro はまだ受付前。」 | `GET /api/billing/config` が `configured:false` / checkout が 503 `not_configured` | `STRIPE_SECRET_KEY`・`STRIPE_PRICE_MONTHLY`・`STRIPE_WEBHOOK_SECRET`・`SUPABASE_SERVICE_ROLE_KEY` のどれかが無い（Batch 94 から 4 つ。前は初めの 2 つ） | 第 2 節の 10 を入れて Redeploy |
 | 鍵と Price を入れたのに「いまは手続きを始められない。少し待って開き直す。」（Batch 94 から。前は「Pro はまだ受付前。」と出た） | config が 502 `upstream`、ログ `billing/config: upstream`（通信の失敗でも同じ文） | Price ID が違う（テスト／本番の取り違え）、キーが違う | 決済の会社の Price ID と鍵のモードをそろえる |
 | 料金は出るのに、押すと「Pro はまだ受付前。」 | checkout が 503 `not_configured`、ログ `billing/checkout: MissingTableError: missing table: subscriptions` | データベースに `subscriptions` の表が無い（Batch 94: 表が無ければ手続きを作らない。決済の会社には何も頼まない） | 第 2 節の 8（docs/SQL_BILLING.md）を流す |
-| 加入・「解約・お支払いの管理」で「いまは確かめられない。少し待ってもう一度」 | checkout・portal が 502 `auth_unavailable`、ログ `auth/verify: unavailable <種類>`（timeout・network・status 5xx・body） | 本人確認が 4 秒で答えない・つながらない・5xx（Batch 94。401 `login_required` は鍵が違うときだけ。AI の口と管理画面は前のまま） | 少し待ってもう一度。続くならデータベースが止まっていないか（第 2 節の 2） |
+| 加入・「解約・お支払いの管理」で「いまは確かめられない。少し待ってもう一度」 | checkout・portal が 502 `auth_unavailable`、ログ `auth/verify: unavailable <種類>`（timeout・network・status 5xx・status 429・status 408・body） | 本人確認が 4 秒で答えない・つながらない・5xx・429（混み合い）・408（打ち切り）（Batch 94。401 `login_required` は鍵が違うときだけ。AI の口と管理画面は前のまま） | 少し待ってもう一度。続くならデータベースが止まっていないか（第 2 節の 2） |
 | 年額ボタンが出ない | config の `prices` に year が無い | 年額は出さない決定（`STRIPE_PRICE_YEARLY` を入れていない） | 正常 |
-| 支払ったのに Free のまま（`?pro=done` で「反映を待っている」） | 決済の会社の画面の Webhooks に配信が無い、または 400 / 500 / 503 | webhook 未設定／URL 違い／`STRIPE_WEBHOOK_SECRET` 違い（400 `bad_signature`）／`subscriptions` 未作成（500、ログ `subscriptions table missing`）／変数の不足（503） | 第 2 節の 8〜10。決済の会社は失敗した配信を再送する。直したら Webhooks → 該当イベント → 再送のボタン。設定を開き直すと反映 |
+| 支払ったのに Free のまま（`?pro=done` で「反映を待っている」） | 決済の会社の画面の Webhooks に配信が無い、または 400 / 500 / 503 | webhook 未設定／URL 違い／`STRIPE_WEBHOOK_SECRET` 違い（400 `bad_signature`）／`subscriptions` 未作成（500、ログ `subscriptions table missing`。Batch 94 から表が無いと手続きを作らないので、これは Batch 94 より前に作った手続きだけ）／変数の不足（503） | 第 2 節の 8〜10。決済の会社は失敗した配信を再送する。直したら Webhooks → 該当イベント → 再送のボタン。設定を開き直すと反映 |
 | Webhook が 400 `bad_signature` | `billing/webhook: bad_signature` | Signing secret の取り違え（テスト／本番、別エンドポイント）、またはプロキシで本文が変わった | 該当エンドポイントの Signing secret を入れ直して Redeploy。時刻ずれなら 300 秒以内か確かめる |
 | Webhook が 400 で、ログに `(no raw body)` | `billing/webhook: bad_signature (no raw body)` | 届いた本文のバイト列が読めない（配信の側が先に読み切り、生の値も写しも残していない。今の Vercel の既定の形〔写しを `req.on` に付け替える〕は読める） | コードの側で直す（`readRawBody`。第 7 節）。それまで Stripe は再送を続ける |
 | Webhook が 500 | `billing/webhook <type>: upstream subscriptions <status> <code>`（Supabase に書けない）/ `billing/webhook: <type> subscriptions table missing`（テーブル無し）/ `billing/webhook <type>: upstream stripe …`（checkout.session.completed で subscription を取り直せない） | Supabase に書けない（テーブル無し、service role key 違い） | docs/SQL_BILLING.md を実行、`SUPABASE_SERVICE_ROLE_KEY` を確かめる。再送で入る |
@@ -242,7 +242,7 @@ AI の上限の 429 の文: 無料「今日の無料ぶん（N回）は使い切
 | Price が見つからない（加入画面が「いまは手続きを始められない。少し待って開き直す。」のまま） | テストモードと本番モードの取り違え（Price ID と `STRIPE_SECRET_KEY` のモードが違う） | 第 2 節の 7・10 |
 | 「解約・お支払いの管理」が 502 | 決済の会社の Customer portal の設定を保存していない（テストモードと本番で別々） | 第 2 節の 11 |
 | 加入が 409「すでに Pro。」 | 前の行（テストモードの `subscriptions` の行）が残っている | 第 2 節の 13 の 2 |
-| 払ったのに無料のまま | 署名の鍵の取り違え（webhook が 400 `bad_signature`）か、`subscriptions` の表が無い | 第 2 節の 8・9・10 |
+| 払ったのに無料のまま | 署名の鍵の取り違え（webhook が 400 `bad_signature`）。表が無いときは、Batch 94 から手続きが始まらない（上の表の「料金は出るのに、押すと…」） | 第 2 節の 9・10 |
 | 受付前のまま | `STRIPE_SECRET_KEY`・`STRIPE_PRICE_MONTHLY`・`STRIPE_WEBHOOK_SECRET`・`SUPABASE_SERVICE_ROLE_KEY` のどれかが無い（1 か月無料の字だけが無ければ `STRIPE_TRIAL_MONTHS`） | 第 2 節の 10 |
 
 Stripe のダッシュボードで見る場所: Payments（支払い・返金）、Subscriptions（状態・解約予定）、Customers（メールで検索。SpellDash の `user_id` は subscription の metadata）、Developers → Webhooks（配信ログ。応答本文も見える）、Developers → Logs（API 呼び出し。Idempotency の重複も分かる）。
@@ -254,7 +254,7 @@ Stripe のダッシュボードで見る場所: Payments（支払い・返金）
 | エンドポイント | 認証 | 応答 |
 |---|---|---|
 | `GET /api/billing/config` | 不要 | `{ configured: boolean, prices: [{ interval: "month"\|"year", amount: number, currency: "jpy" }], trialMonths: number, trialDays: number, trialEndsAt?: string, ai: { explain: { free, pro } } \| null }`（無料期間は初めての人だけ。月が設定されていれば trialDays は 0。`ai` は AI の鍵があるときだけ、`api/_lib/aiLimits.js` の 1 日の回数）。未設定（`STRIPE_SECRET_KEY`・`STRIPE_PRICE_MONTHLY`・`STRIPE_WEBHOOK_SECRET`・`SUPABASE_SERVICE_ROLE_KEY` のどれかが無い。Batch 94 で後の 2 つを足した）なら `{ configured:false, prices:[], trialDays:0, trialMonths:0, ai }`（200）。Price は 10 分メモリキャッシュ。`amount` は `unit_amount` そのまま（JPY はゼロ小数） |
-| `POST /api/billing/checkout` `{ interval }` | Bearer 必須 | `{ url }`（決済の会社の手続きの画面）。503 `not_configured`（受付前。Batch 94 から、`subscriptions` の表が無いときも。そのときは決済の会社に何も頼まない）/ 401 `login_required`（鍵が違う・無い）/ 502 `auth_unavailable`（Batch 94。本人確認が 4 秒で答えない・つながらない・5xx）/ 400 `bad_request`（interval が month / year 以外、または year 未設定）/ 409 `already_subscribed`（行が Pro か、本人の顧客に生きている契約がある）/ 429 `too_many`（1 人 1 分 10 回。Batch 88）/ 502 `upstream` |
+| `POST /api/billing/checkout` `{ interval }` | Bearer 必須 | `{ url }`（決済の会社の手続きの画面）。503 `not_configured`（受付前。Batch 94 から、`subscriptions` の表が無いときも。そのときは決済の会社に何も頼まない）/ 401 `login_required`（鍵が違う・無い）/ 502 `auth_unavailable`（Batch 94。本人確認が 4 秒で答えない・つながらない・5xx・429・408）/ 400 `bad_request`（interval が month / year 以外、または year 未設定）/ 409 `already_subscribed`（行が Pro か、本人の顧客に生きている契約がある）/ 429 `too_many`（1 人 1 分 10 回。Batch 88）/ 502 `upstream` |
 | `POST /api/billing/portal` | Bearer 必須 | `{ url }`（Billing Portal、return は `/profile.html`）。404 `no_subscription` / 503（秘密鍵が無い。月額の Price は見ない）/ 401 / 502 `auth_unavailable`（Batch 94。加入の口と同じ）/ 429 `too_many`（1 人 1 分 10 回。Batch 88）/ 502 |
 | `POST /api/billing/webhook` | `Stripe-Signature` | `{ received: true }`（200）。400 `bad_signature`（署名不正・300 秒超・生の本文が読めない）/ 400 `bad_request`（JSON でない）/ 503（署名の鍵・秘密鍵・service role の鍵のどれかが無い。月額の Price は見ない）/ 500（Supabase 書き込み失敗 → Stripe が再送） |
 
