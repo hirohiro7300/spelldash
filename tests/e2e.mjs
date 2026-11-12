@@ -19408,6 +19408,49 @@ console.log("pro:");
     await page2.close();
   }
 
+  // 15. 設定が取れない（Batch 94。DECISION §2 D）: config が 502 か通信の失敗（取れなかった）なら「Pro はまだ受付前。」と言わず
+  //     「いまは手続きを始められない。少し待って開き直す。」。料金の 1 行・購入のボタン・「ログインして始める」は出さない（未ログインもログイン済みも）。
+  //     200 で configured:false なら今どおり「Pro はまだ受付前。」。アプリでは今どおり config を取りに行かず、料金も購入のボタンも出さない。
+  //     前は取れなかったときも「受付前」と言った（受付中でも、決済の会社が一時的に答えないと「受付前」に見えた）
+  {
+    const UNAVAILABLE = "いまは手続きを始められない。少し待って開き直す。";
+    const configCase = async (how, { storage = {}, native = false } = {}) => {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage });
+      if (native) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
+      let asked = 0;
+      await page.route("**/api/billing/config", async (route) => {
+        asked++;
+        if (how === "502") return route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "upstream", message: "手続きを始められませんでした。時間をおいてお試しください。" }) });
+        if (how === "abort") return route.abort("failed");
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ configured: false, prices: [], trialDays: 0, trialMonths: 0, ai: null }) });
+      });
+      await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+      await waitUntil(async () => !(await page.evaluate(() => document.body.hasAttribute("data-pending"))) && !(await text(page, "#proPlans")).includes("読み込み中"), 5000);
+      const v = await page.evaluate(() => {
+        const plans = document.getElementById("proPlans");
+        const price = document.getElementById("proPrice");
+        return {
+          plans: plans.hidden ? null : plans.textContent.replace(/\s+/g, " ").trim(),
+          price: price.hidden ? "" : price.textContent.trim(),
+          buttons: document.querySelectorAll("#proPlans button, #proPlans [data-interval], #proLoginStart, #proCheckoutMonth, #proCheckoutYear").length,
+          body: document.body.innerText
+        };
+      });
+      const out = { how, native, login: Boolean(storage.spelldash_test_session), plans: v.plans, price: v.price, buttons: v.buttons, notYet: /受付前/.test(v.body), unavailable: v.body.includes(UNAVAILABLE), asked, errors: page.errors.slice(0, 1) };
+      await page.close();
+      return out;
+    };
+    const failed = [await configCase("502"), await configCase("abort"), await configCase("502", { storage: { spelldash_test_session: "1" } }), await configCase("abort", { storage: { spelldash_test_session: "1" } })];
+    check("Pro（Batch 94）: config が取れない（502・通信の失敗。未ログインとログイン済み）ときは「いまは手続きを始められない。少し待って開き直す。」・「受付前」の字なし・料金の 1 行と購入のボタン（ログインして始める・月額で始める）なし・エラー 0",
+      failed.every((c) => c.plans === UNAVAILABLE && !c.notYet && c.price === "" && c.buttons === 0 && c.asked > 0 && c.errors.length === 0), JSON.stringify(failed));
+    const closed = await configCase("closed");
+    check("Pro（Batch 94・守り）: 200 で configured:false（受付前）なら今どおり「Pro はまだ受付前。」（取れなかったときの文は出さない）・料金の 1 行と購入のボタンなし",
+      closed.plans === "Pro はまだ受付前。" && !closed.unavailable && closed.price === "" && closed.buttons === 0 && closed.errors.length === 0, JSON.stringify(closed));
+    const app = await configCase("502", { storage: { spelldash_test_session: "1" }, native: true });
+    check("Pro（Batch 94・守り・アプリ）: アプリは今どおり config を取りに行かず、料金・購入のボタン・取れなかったときの文・受付前の文を出さない（Web 版の案内だけ）",
+      app.plans === null && app.price === "" && app.buttons === 0 && !app.unavailable && !app.notYet && app.asked === 0 && app.errors.length === 0, JSON.stringify(app));
+  }
+
   // Batch 67 C1: 読み込みの CLS（直す前は 1200 で 0.07〜0.09・390 で 0.04〜0.05。題の下の料金の 1 行〔#proPrice。config が届くまで hidden〕が後から出て、
   // 比較表と料金の節を押し下げた。Pro の人は js が比較表を隠すまで料金の節が下にあり、500px 跳ね上がった〔0.15〜0.48〕）
   {
