@@ -17,7 +17,11 @@
 
 import { normJa, parseBooks, cleanBookName, bookRefOf, answerKeyOf, isWordEntry, myIdentityFor, jaHash } from "./myWordsCore.js";
 
-const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }（マイ単語帳の墓標は card・noRow も持つ: 下の「消した語の印」）
+const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }（マイ単語帳の墓標は card・noRow も持つ: 下の「消した語の印」）と、行でない印 UNMERGED
+// 取り込みで雲を読めなかった印（Batch 94 の直し。meta の中の 1 つ。行の id はいつも「kind:key」なので重ならない。docs/SPEC_MY_WORDS.md §18.9）:
+// 付いている間、pushUserItems はマイ単語帳の語を送らない（送る待ちに残す）。雲と合わせていない語を送ると、ほかの端末の同じ鍵の違うカードを
+// 新しい時刻で上書きして消す（取り込みは同じタブの最初のページだけで、読めなくても同期の取り込み済みの印は付く: js/sync.js）。次に読めた取り込みが外す
+const UNMERGED = "unmerged";
 const DIRTY_KEY = "spelldash_user_items_dirty"; // ["kind:key", ...]
 const MY_WORDS_KEY = "spelldash_my_words";
 const MY_BOOKS_KEY = "spelldash_my_books"; // js/myWords.js（単語帳の一覧。読むだけ）
@@ -383,6 +387,7 @@ function moveDifferentCards(cloud, myWords, meta) {
 
 export function mergeCloudItems(rows, userId = null) {
   const meta = getItemMeta();
+  delete meta[UNMERGED]; // 雲を読めた: この端末の送る待ちの語はここで雲と合わせる（下の最後に meta を書く）
   const changed = { my_word: false, note: false, pack: false, day: false };
   const toUpload = [];
   const adopted = [];
@@ -663,7 +668,9 @@ export async function pushUserItems(supabase, userId, { now = Date.now() } = {})
   if (all.length === 0) return;
   const metaAtStart = getItemMeta(); // 送信中にまた変わった項目（印の時刻が変わった）は dirty に残す
   // 断られて待っている行・雲に行の無い鍵の墓標（印 noRow。§18.8）は送らない（送る待ちには残る）
-  const held = (r) => r.kind === "my_word" && r.deleted && !!metaAtStart[rowId(r)]?.noRow;
+  // 取り込みで雲を読めなかった後（印 UNMERGED）は語を全部待たせる（メモ・パック・日の記録は今どおり送る。§18.9）
+  const unmerged = !!metaAtStart[UNMERGED];
+  const held = (r) => r.kind === "my_word" && (unmerged || (r.deleted && !!metaAtStart[rowId(r)]?.noRow));
   const due = all.filter((r) => r.kind === "day" || (!waiting(metaAtStart[rowId(r)], now) && !held(r)));
   const days = await mergeDayRowsWithCloud(supabase, due.filter((r) => r.kind === "day"));
   const { send } = prepareRows([...due.filter((r) => r.kind !== "day"), ...days]); // 鍵に送り先が受け付けない字がある行は送らない（送る待ちに残る）
@@ -773,7 +780,13 @@ export async function pullUserItems(supabase, userId, options = {}) {
   const now = options.now ?? Date.now();
   const read = await readAllRows(supabase, "user_items", ["kind", "key"]);
   if (!read.ok) {
-    // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）。送り方は前のまま
+    // 雲と合わせられなかった: 次に読めるまで語を送らない（§18.9。印は meta の中の 1 つ: 新しい保存の鍵は作らない）
+    const meta = getItemMeta();
+    if (!meta[UNMERGED]) {
+      meta[UNMERGED] = { since: new Date(now).toISOString() };
+      writeJson(META_KEY, meta);
+    }
+    // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）。語は上の印で、表ができて読めるまで送らない
     if (isMissingTable(read)) {
       noteTable(true);
       return { changed: null, missing: true };
