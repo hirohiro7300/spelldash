@@ -192,7 +192,18 @@ export async function initializeAuth() {
 
   // ホバーはCSS（.dropdown:hover）が担当。クリックはタッチ端末用の開閉。
   setupDropdownToggle(loginToggleElement, accountGuestElement, () => {
-    emailInputElement.focus();
+    // 物理キーボードの端末は今どおりメールの欄。指の端末では入力欄に置かない（画面のキーボードが出て欄とページを隠す。Batch 94）:
+    // 外部アカウントのボタンが見えていればそこ、無ければ（アプリ・確認用の Preview）欄の箱。送った後の失敗で欄へ戻す焦点（refocusLogin）は変えない
+    if (!window.matchMedia?.("(pointer: coarse)").matches) {
+      emailInputElement.focus();
+      return;
+    }
+    if (googleLoginButtonElement.getClientRects().length > 0 && !googleLoginButtonElement.disabled) {
+      googleLoginButtonElement.focus();
+      return;
+    }
+    if (!accountLoginElement.hasAttribute("tabindex")) accountLoginElement.tabIndex = -1;
+    accountLoginElement.focus();
   });
   setupDropdownToggle(avatarButtonElement, accountUserElement);
 
