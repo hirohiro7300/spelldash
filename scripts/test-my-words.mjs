@@ -1311,15 +1311,18 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const sky = new Map(); // 雲の行（鍵は kind:key）
   const sent = []; // 雲が受け取った行（送りと、取り込みの後の送り返し）
   let table = true;
+  let failReads = 0; // 表はあるが、読みが通信の失敗で落ちる回数（T19b）
   const copy = (v) => JSON.parse(JSON.stringify(v));
   const answer = (make) => Promise.resolve(table ? make() : { data: null, error: { code: "42P01", message: 'relation "public.user_items" does not exist' }, status: 404 });
+  const failed = () => (failReads > 0 && table ? (failReads--, true) : false);
+  // 雲は本物の表と同じく、消した印（墓標）の中身を空にして入れる（docs/SQL_USER_ITEMS.md §4 の見張り）
   const client = { from() { const q = { select: () => q, order: () => q, eq: () => q, in: () => q,
-    range: (a, b) => answer(() => { const all = [...sky.values()].map(copy); return { data: all.slice(a, b + 1), count: all.length, error: null, status: 200 }; }),
-    upsert: (rows) => answer(() => { for (const r of rows) { sent.push(copy(r)); sky.set(`${r.kind}:${r.key}`, copy(r)); } return { error: null, status: 201 }; }) }; return q; } };
+    range: (a, b) => (failed() ? Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 }) : answer(() => { const all = [...sky.values()].map(copy); return { data: all.slice(a, b + 1), count: all.length, error: null, status: 200 }; })),
+    upsert: (rows) => answer(() => { for (const r of rows) { sent.push(copy(r)); sky.set(`${r.kind}:${r.key}`, r.deleted ? { ...copy(r), payload: {} } : copy(r)); } return { error: null, status: 201 }; }) }; return q; } };
   const pull = (name) => (use(name), U.pullUserItems(client, "u1", { now: NOW }));
   const push = (name) => (use(name), U.pushUserItems(client, "u1", { now: NOW }));
   const sync = async (...names) => { for (const name of names) { await pull(name); await push(name); } }; // ページを開いた同期と同じ順（取り込み → 送る）
-  const reset = (hasTable) => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); sent.length = 0; table = hasTable; };
+  const reset = (hasTable) => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); sent.length = 0; table = hasTable; failReads = 0; };
   // 表が後: 電話 p<tag>（1 日目）と PC c<tag>（2 日目の 20 時）がそれぞれ足す → day 日目に表ができ、PC → 電話 → PC（fresh なら → 新しい端末 n<tag>）の順に同期
   const lateTable = async (tag, phone, pc, { day = 3, fresh = false } = {}) => {
     reset(false);
@@ -1577,6 +1580,121 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     at(3, 10); const from17e = sent.length; await sync("p17e");
     const back17 = sent.slice(from17e).filter((r) => r.kind === "my_word").map((r) => r.key);
     ok("T17e 単語帳の id だけが違う語は送り返さない（電話の取り込みと送りで 0 行）", back17.length === 0, JSON.stringify(back17));
+
+    // ===== Batch 94 の直し: T14i・T18〜T20（消した語の墓標・読めなかったページの送り・送ってある語の鍵の移し） =====
+    // ---- T14i（守り）: 足した時刻の無い 2 つの違うカード（訳が違う）は同じカードにしない（足した時刻は両方にあるときだけ比べる） ----
+    reset(true);
+    use("x14i");
+    localStorage.setItem("spelldash_my_words", JSON.stringify([C.applyMyAnswer({ en: "lead", ja: "試しの訳 甲" }, ANSWER_KINDS.exact, D0)]));
+    localStorage.setItem("spelldash_user_items_meta", JSON.stringify({ "my_word:lead": { updatedAt: iso(1, 9), deleted: false } }));
+    sky.set("my_word:lead", { user_id: "u1", kind: "my_word", key: "lead", payload: { en: "lead", ja: "試しの訳 乙" }, deleted: false, updated_at: iso(1, 10) });
+    at(1, 11); await sync("x14i");
+    const i14 = [...cardsOf("x14i", "lead").map(show), show(sky.get("my_word:lead")?.payload)];
+    ok("T14i 足した時刻の無い違うカード（訳が違う）には 3 状態と lf を写さない（雲の新しい語は これから のまま・送り返さない）",
+      JSON.stringify(i14) === JSON.stringify(["lead|試しの訳 乙|s0|lf-", "lead|試しの訳 乙|s0|lf-"]), JSON.stringify(i14));
+
+    // 電話が単語帳 1（alpha=甲・bravo=乙・charlie=丙）を足して alpha と bravo を 覚えた にして送る（表はある）
+    const tomb18 = (key) => sky.get(`my_word:${key}`)?.deleted === true;
+    const learnedOn = (name) => wordsOn(name).filter((w) => C.isWordEntry(w) && C.myStateOf(w) === 2).map((w) => `${C.answerKeyOf(w)}=${w.ja}`).sort().join(",");
+    const want18 = "alpha=試しの訳 甲,bravo=試しの訳 乙";
+    const phoneLearnsB1 = async (tag) => {
+      at(1, 8); await sync(`p${tag}`); use(`p${tag}`); M.addSharedWords(B1, { name: "試しの一冊目" }); await push(`p${tag}`);
+      at(1, 9); use(`p${tag}`); M.recordMyAnswer("alpha", ANSWER_KINDS.exact); M.recordMyAnswer("bravo", ANSWER_KINDS.exact); await push(`p${tag}`);
+    };
+    // ---- T18a: PC はゲストで単語帳 2（alpha=丁・bravo=戊・delta=己）を足し、自分の alpha（丁）を消してから「はい」→ 電話の alpha=甲 の 覚えた は消えない（違うカードを消した墓標は送らない） ----
+    reset(true);
+    await phoneLearnsB1("18a");
+    at(2, 20); use("c18a"); M.addSharedWords(B2, { name: "試しの二冊目" });
+    at(2, 21); use("c18a"); M.removeMyWord("alpha", "word"); // ゲストのまま、自分の alpha（丁）を消す
+    at(2, 22); await sync("c18a"); // ログインして「はい」: この端末の初めての同期
+    at(3, 9); await sync("p18a"); at(3, 10); await sync("c18a");
+    ok("T18a PC がゲストで自分の違うカード（alpha=丁）を消してから「はい」→ 電話と PC に alpha=甲・bravo=乙 の 覚えた が残る・雲の alpha は墓標にならない",
+      learnedOn("p18a") === want18 && learnedOn("c18a") === want18 && !tomb18("alpha"), JSON.stringify({ phone: learnedOn("p18a"), pc: learnedOn("c18a"), alpha: sky.get("my_word:alpha") }));
+    // ---- T18b: PC はゲストで単語帳 2 を足して丸ごと消してから「はい」→ 電話の 覚えた は消えない・雲に墓標は入らない（delta は雲に無かった鍵） ----
+    reset(true);
+    await phoneLearnsB1("18b");
+    at(2, 20); use("c18b"); const book18b = M.addSharedWords(B2, { name: "試しの二冊目" }).book?.id;
+    at(2, 21); use("c18b"); M.deleteMyBook(book18b);
+    at(2, 22); await sync("c18b"); at(3, 9); await sync("p18b"); at(3, 10); await sync("c18b");
+    const tombs18b = [...sky.values()].filter((r) => r.kind === "my_word" && r.deleted).map((r) => r.key);
+    ok("T18b PC がゲストで単語帳 2 を丸ごと消してから「はい」→ 電話と PC に alpha=甲・bravo=乙 の 覚えた が残る・雲に墓標は入らない",
+      learnedOn("p18b") === want18 && learnedOn("c18b") === want18 && tombs18b.length === 0, JSON.stringify({ phone: learnedOn("p18b"), pc: learnedOn("c18b"), tombs18b }));
+    // ---- T18c: 表が後。PC は表ができる前に自分の bravo（戊）を消した → 表ができて PC → 電話 → PC の順に同期 → 電話の bravo=乙 の 覚えた は消えない（雲に無かった鍵の墓標は送らない） ----
+    const phoneB1 = () => { M.addSharedWords(B1, { name: "試しの一冊目" }); at(1, 9); M.recordMyAnswer("alpha", ANSWER_KINDS.exact); M.recordMyAnswer("bravo", ANSWER_KINDS.exact); };
+    await lateTable("18c", phoneB1, () => { M.addSharedWords(B2, { name: "試しの二冊目" }); at(2, 21); M.removeMyWord("bravo", "word"); });
+    ok("T18c 表が後・PC が表の前に自分の違うカード（bravo=戊）を消した → 電話と PC に alpha=甲・bravo=乙 の 覚えた が残る・雲の bravo は墓標にならない",
+      learnedOn("p18c") === want18 && learnedOn("c18c") === want18 && !tomb18("bravo"), JSON.stringify({ phone: learnedOn("p18c"), pc: learnedOn("c18c"), bravo: sky.get("my_word:bravo") }));
+    // ---- T18d（守り）: 同じカードを消した墓標は今どおり届く: (1) 送ってある語を消して、送る前に取り込む (2) 2 台が同じ渡された単語帳を表の前に足し、PC が 1 語を消した
+    // （雲に無かった鍵）→ 電話がその語を送った後に届く (3) 消した語の印の無い前の版の墓標は今どおり（新しい方が勝つ） ----
+    const d18 = [];
+    reset(true);
+    at(1, 8); use("x18d"); M.addMyWord("venue", "試しの訳 場"); await push("x18d");
+    at(1, 9); await sync("y18d");
+    at(2, 9); use("x18d"); M.removeMyWord("venue", "word");
+    at(2, 10); await sync("x18d"); at(2, 11); await sync("y18d");
+    d18.push(`${cardsOf("x18d", "venue").length}/${cardsOf("y18d", "venue").length}/${tomb18("venue") ? "墓標" : "生"}`);
+    await lateTable("18e", addSix, () => { addSix(); at(2, 21); M.removeMyWord("harbor", "word"); });
+    at(3, 12); await sync("p18e");
+    d18.push(`${cardsOf("p18e", "harbor").length}/${cardsOf("c18e", "harbor").length}/${tomb18("harbor") ? "墓標" : "生"}`);
+    reset(true);
+    use("z18d");
+    localStorage.setItem("spelldash_my_words", "[]");
+    localStorage.setItem("spelldash_user_items_meta", JSON.stringify({ "my_word:venue": { updatedAt: iso(2, 9), deleted: true } }));
+    localStorage.setItem("spelldash_user_items_dirty", JSON.stringify(["my_word:venue"]));
+    sky.set("my_word:venue", { user_id: "u1", kind: "my_word", key: "venue", payload: { en: "venue", ja: "試しの訳 別", addedAt: iso(1, 8) }, deleted: false, updated_at: iso(1, 9) });
+    at(2, 10); await sync("z18d");
+    d18.push(`${cardsOf("z18d", "venue").length}/${tomb18("venue") ? "墓標" : "生"}`);
+    ok("T18d 同じカードを消した墓標は今どおり届く（送る前に取り込む・雲に無かった鍵はほかの端末が送った後）・消した語の印の無い前の版の墓標は今どおり新しい方が勝つ",
+      JSON.stringify(d18) === JSON.stringify(["0/0/墓標", "0/0/墓標", "0/墓標"]), JSON.stringify(d18));
+
+    // ---- T19a: 表が無い間に電話が単語帳 1 で 2 語 覚えた。PC のタブは表が無い間に開き（読めなかった）、そのまま単語帳 2 を足す。表ができて電話が新しいタブで送った後、
+    // PC の開いたままのタブがセットの終わりに送る（取り込まずに送る）→ PC の語は送らない（読めるまで待つ）・電話の 覚えた は消えない ----
+    reset(false);
+    at(1, 8); use("p19a"); M.addSharedWords(B1, { name: "試しの一冊目" }); at(1, 9); M.recordMyAnswer("alpha", ANSWER_KINDS.exact); M.recordMyAnswer("bravo", ANSWER_KINDS.exact); await sync("p19a");
+    at(2, 20); await sync("c19a"); use("c19a"); M.addSharedWords(B2, { name: "試しの二冊目" }); // PC のタブは表が無い間に開いた（読めなかった）。足したのはその後
+    at(3, 8); table = true; // 表を作った
+    at(3, 9); await sync("p19a"); // 電話の新しいタブ: 読んで（雲は空）送る
+    at(3, 10); const from19a = sent.length; await push("c19a"); // PC の開いたままのタブがセットを終えて送る（取り込まない）
+    const held19a = sent.slice(from19a).filter((r) => r.kind === "my_word").length;
+    at(3, 11); await sync("p19a"); at(3, 12); await sync("c19a"); at(3, 13); await sync("p19a");
+    ok("T19a 表を作ったときに開いていた PC のタブ（読めなかった）は、取り込むまで語を送らない → 電話と PC に alpha=甲・bravo=乙 の 覚えた が残る",
+      held19a === 0 && learnedOn("p19a") === want18 && learnedOn("c19a") === want18, JSON.stringify({ held19a, phone: learnedOn("p19a"), pc: learnedOn("c19a") }));
+    // ---- T19b: 表はある。PC はゲストで単語帳 2 を足して「はい」。最初の読みが通信の失敗で落ち、そのタブがセットの終わりに送る → 語は送らない（メモは今どおり送る）・
+    // 次に読めたら取り込んでから送る → 電話の 覚えた は消えない ----
+    reset(true);
+    await phoneLearnsB1("19b");
+    at(2, 20); use("c19b"); M.addSharedWords(B2, { name: "試しの二冊目" }); localStorage.setItem("spelldash_word_notes", JSON.stringify({ "my-delta": "試しのメモ" })); U.touchItem("note", "my-delta");
+    at(2, 21); failReads = 1; await pull("c19b"); // ログインして「はい」: 最初の読みが落ちた（同期の取り込み済みの印はそれでも付く: js/sync.js）
+    at(2, 22); const from19b = sent.length; await push("c19b"); // セットの終わりの送り（取り込まない）
+    const kinds19b = sent.slice(from19b).map((r) => r.kind).join(",");
+    at(3, 9); await sync("c19b"); at(3, 10); await sync("p19b"); at(3, 11); await sync("c19b");
+    ok("T19b 最初の読みが落ちたタブは語を送らない（メモは送る）・次に読めたら取り込んでから送る → 電話と PC に alpha=甲・bravo=乙 の 覚えた が残る",
+      kinds19b === "note" && learnedOn("p19b") === want18 && learnedOn("c19b") === want18, JSON.stringify({ kinds19b, phone: learnedOn("p19b"), pc: learnedOn("c19b") }));
+    // ---- T19c（守り）: 読めた後は、取り込まないページ（同じタブの 2 つ目からのページ: 取り込みは最初のページだけ）の送りでも、足した語を送る ----
+    reset(true);
+    at(1, 8); await sync("x19c"); // 最初のページ: 読んで送る
+    const nextPage = await import("../js/userItemsSync.js?page=2"); // 同じタブの次のページ（このページの中の値は新しい・取り込みはしない）
+    at(1, 9); use("x19c"); M.addMyWord("quota", "試しの訳 割");
+    const from19c = sent.length; await nextPage.pushUserItems(client, "u1", { now: NOW });
+    const c19 = sent.slice(from19c).filter((r) => r.kind === "my_word").map((r) => r.key).join(",");
+    ok("T19c 読めた後は、取り込まない次のページでも足した語を送る", c19 === "quota", c19);
+
+    // ---- T20（決めた形を留める）: 送ってある語（甲）に答えて送る前に、ほかの端末がその語を消して同じ英語を違う訳（丁）で足し直した（墓標を送った後なので英語の鍵）
+    // → 新しい語（丁）は両方の端末に残り、答えた前の語（甲）も別の鍵で戻る（消える語は無い。戻るのは残る物: docs/SPEC_MY_WORDS.md §18.6） ----
+    const t20 = [];
+    for (const answerFirst of [true, false]) {
+      reset(true);
+      at(1, 8); use("p20"); M.addMyWord("lead", "試しの訳 甲"); await push("p20");
+      at(1, 9); await sync("c20");
+      if (answerFirst) { at(2, 9); use("c20"); M.recordMyAnswer("lead", ANSWER_KINDS.exact); } // 消す前に答えた（送っていない）
+      at(2, 10); use("p20"); M.removeMyWord("lead", "word"); await push("p20");
+      at(2, 11); use("p20"); M.addMyWord("lead", "試しの訳 丁"); await push("p20");
+      if (!answerFirst) { at(2, 12); use("c20"); M.recordMyAnswer("lead", ANSWER_KINDS.exact); } // 足し直した後に、前に開いたタブで答えた
+      at(3, 9); await sync("c20"); at(3, 10); await sync("p20"); at(3, 11); await sync("c20");
+      t20.push(["p20", "c20"].map((n) => cardsOf(n, "lead").map((w) => `${w.ja}|s${C.myStateOf(w)}`).sort().join(",")).join("/"));
+    }
+    ok("T20 送ってある語に答えて送る前に、ほかの端末で消して違う訳で足し直した → 新しい語（丁）は両方の端末に残り、答えた前の語（甲）も別の鍵で戻る（決めた形）",
+      t20.every((s) => s === "試しの訳 丁|s0,試しの訳 甲|s2/試しの訳 丁|s0,試しの訳 甲|s2"), JSON.stringify(t20));
   } finally {
     globalThis.Date = RealDate;
   }
