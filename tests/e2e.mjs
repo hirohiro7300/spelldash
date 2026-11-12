@@ -19416,7 +19416,7 @@ console.log("pro:");
     const UNAVAILABLE = "いまは手続きを始められない。少し待って開き直す。";
     const configCase = async (how, { storage = {}, native = false } = {}) => {
       const page = await newPage({ viewport: { width: 1200, height: 900 }, storage });
-      if (native) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
+      if (native) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "app", nativePromise: () => Promise.resolve({}) }; });
       let asked = 0;
       await page.route("**/api/billing/config", async (route) => {
         asked++;
@@ -29093,6 +29093,66 @@ console.log("login panel message (87.2):");
     check("87.2 欄の中の段落の字の明るさの比（昼・夜 × ふつう・error・success）が 4.5 以上",
       rows.length === 2 && rows.every((r) => r.res && ["plain", "error", "success"].every((t) => r.res[t].ratio >= 4.5) && !r.err),
       JSON.stringify(rows));
+  }
+
+  // ----- (6) 開いたときの焦点（Batch 94。DECISION §2 G）: 390 の指の端末でヘッダーの「ログイン」（ホーム・マイ単語帳）と加入画面の「ログインして始める」をタップすると、
+  //       焦点は入力欄に置かない（外部アカウントのボタン #googleLoginButton。メールの欄に置くと画面のキーボードが出て欄とページを隠す）。外部アカウントのボタンが
+  //       見えない（アプリ）ときは欄の箱（#accountLogin）。1200 の物理キーボードの端末（クリック）は今どおり #emailInput（加入画面も同じ）。
+  //       送った後の失敗で欄へ戻す焦点（(1)・(2)）は変えない。前は指の端末でもメールの欄に焦点を置いた
+  {
+    const opened = async (page) => {
+      await waitUntil(() => page.evaluate(() => document.getElementById("loginToggle")?.getAttribute("aria-expanded") === "true"), 3000);
+      await page.waitForTimeout(200);
+      return page.evaluate(() => {
+        const ae = document.activeElement;
+        return {
+          focus: ae ? `${ae.tagName}#${ae.id}` : null, coarse: matchMedia("(pointer: coarse)").matches,
+          panelShown: getComputedStyle(document.querySelector("#accountGuest .dropdown__panel")).display !== "none",
+          native: document.documentElement.classList.contains("native-app"), googleShown: document.getElementById("googleLoginButton").getClientRects().length > 0
+        };
+      });
+    };
+    const rows = [];
+    for (const p of ["/index.html", "/mywords.html"]) {
+      const page = await openAt(CONF, p, { viewport: { width: 390, height: 844 }, mobile: true });
+      await page.tap("#loginToggle");
+      rows.push({ how: `tap ${p}`, ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    {
+      const page = await openAt(CONF, "/pro.html", { viewport: { width: 390, height: 844 }, mobile: true });
+      await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
+      await page.tap("#proLoginStart");
+      rows.push({ how: "tap /pro.html start", ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    {
+      const page = await authPage(CONF, { viewport: { width: 390, height: 844 }, mobile: true });
+      await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "app", nativePromise: () => Promise.resolve({}) }; });
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await waitUntil(() => page.evaluate(() => { const t = document.getElementById("loginToggle"); return !!t && t.getClientRects().length > 0; }), 6000);
+      await page.tap("#loginToggle");
+      rows.push({ how: "app tap /index.html", ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    for (const p of ["/index.html", "/pro.html"]) {
+      const page = await openAt(CONF, p);
+      if (p === "/pro.html") {
+        await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
+        await page.click("#proLoginStart");
+      } else await page.click("#loginToggle");
+      rows.push({ how: `click ${p}`, ...(await opened(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    const taps = rows.filter((r) => r.how.startsWith("tap "));
+    const app = rows.find((r) => r.how.startsWith("app "));
+    const clicks = rows.filter((r) => r.how.startsWith("click "));
+    check("87.2 開いたときの焦点（Batch 94）: 390 の指の端末でヘッダーの「ログイン」（ホーム・マイ単語帳）と加入画面の「ログインして始める」をタップすると、欄は開き、焦点は外部アカウントのボタン（入力欄に置かない）・エラー 0",
+      taps.length === 3 && taps.every((r) => r.coarse && r.panelShown && r.googleShown && r.focus === "BUTTON#googleLoginButton" && !r.err), JSON.stringify(taps));
+    check("87.2 開いたときの焦点（Batch 94・アプリ）: 外部アカウントのボタンが見えない（アプリ）ときは欄の箱（#accountLogin）・入力欄でない・エラー 0",
+      !!app && app.coarse && app.native && !app.googleShown && app.focus === "FORM#accountLogin" && !app.err, JSON.stringify(app));
+    check("87.2 開いたときの焦点（Batch 94・守り）: 1200 の物理キーボードの端末でクリックすると今どおりメールの欄（#emailInput。ホームの「ログイン」と加入画面の「ログインして始める」）",
+      clicks.length === 2 && clicks.every((r) => !r.coarse && r.panelShown && r.focus === "INPUT#emailInput" && !r.err), JSON.stringify(clicks));
   }
   check("87.2 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
