@@ -11,7 +11,7 @@
 // その英語の最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>。前からの語の鍵は変えない）。語は鍵で引く（同期の印・墓標・選んだ印・答えの書き手・消す・訳を直す）。
 // まとめて消す・移すは語の保存を 1 回で書く
 
-import { touchItem, touchItems, getItemMeta, getDirtyItems } from "./userItemsSync.js";
+import { touchItem, touchItems, touchDeletedWords, getItemMeta, getDirtyItems } from "./userItemsSync.js";
 import { isSpellAlt } from "./answers.js";
 import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
@@ -231,9 +231,11 @@ export function recordMyAnswer(key, kind, nowMs = Date.now()) {
 // kind: "concept"（場面カード）／"word"（英単語）。省略時は鍵が同じものをすべて（英単語と場面カードの鍵は重なりうる）
 export function removeMyWord(en, kind) {
   const same = (w) => w.en === en && (!kind || (w.kind === "concept") === (kind === "concept"));
-  const list = getMyWords().filter((w) => !same(w));
-  save(list);
-  touchItem("my_word", en, true); // 墓標: 他の端末からも消える
+  const all = getMyWords();
+  const gone = all.filter(same);
+  save(all.filter((w) => !same(w)));
+  // 墓標: 他の端末からも消える。消したカードも印に書く（ほかの端末の同じ鍵の違うカードは消さない。Batch 94 の直し: js/userItemsSync.js touchDeletedWords）
+  touchDeletedWords([{ key: en, word: gone.length === 1 ? gone[0] : null }]);
 }
 
 // まとめて追加: 1 行に「english, 訳」（カンマ・タブ・全角読点。区切りが無ければ英語と日本語の境、それも無ければ最初の空白）。
@@ -438,12 +440,14 @@ function splitByRefs(list, refs) {
   return { keep, hit };
 }
 
-// 消した語の同期の印: 同じ鍵の語（英語の語と場面カード）が残っていれば墓標にしない（残った方を消さない）
+// 消した語の同期の印: 同じ鍵の語（英語の語と場面カード）が残っていれば墓標にしない（残った方を消さない）。墓標には消したカードも書く
+// （同じ鍵で消した語が 1 つのときだけ。Batch 94 の直し: js/userItemsSync.js touchDeletedWords。印と送る待ちは 1 回ずつ書く）
 function touchRemoved(hit, keep) {
   const left = new Set(keep.map((w) => w.en));
-  const gone = [...new Set(hit.map((w) => w.en))];
-  touchItems("my_word", gone.filter((k) => !left.has(k)), true);
-  touchItems("my_word", gone.filter((k) => left.has(k)));
+  const byKey = new Map(); // 鍵 → 消した語（同じ鍵で 2 つ以上なら null）
+  for (const w of hit) byKey.set(w.en, byKey.has(w.en) ? null : w);
+  touchDeletedWords([...byKey].filter(([k]) => !left.has(k)).map(([key, word]) => ({ key, word })));
+  touchItems("my_word", [...byKey.keys()].filter((k) => left.has(k)));
 }
 
 // まとめて消す（選んだ語。語の保存は 1 回で書く）。返り値 { ok, removed }

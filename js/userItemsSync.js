@@ -15,9 +15,9 @@
 // 取り込み全体を止める。取り込みで送れた行・クラウドから取り込んだ行は、送る待ち（dirty）から外す（同じ行を次の送信で送り直さない）。
 // 2 台の取り込み（Batch 94。docs/SPEC_MY_WORDS.md §18）: マイ単語帳の同じカードは 3 状態と lf を残し、ほかの端末で作った同じ名前の単語帳はこの端末の単語帳に入れる。
 
-import { normJa, parseBooks, cleanBookName, bookRefOf, answerKeyOf, isWordEntry, myIdentityFor } from "./myWordsCore.js";
+import { normJa, parseBooks, cleanBookName, bookRefOf, answerKeyOf, isWordEntry, myIdentityFor, jaHash } from "./myWordsCore.js";
 
-const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }
+const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }（マイ単語帳の墓標は card・noRow も持つ: 下の「消した語の印」）
 const DIRTY_KEY = "spelldash_user_items_dirty"; // ["kind:key", ...]
 const MY_WORDS_KEY = "spelldash_my_words";
 const MY_BOOKS_KEY = "spelldash_my_books"; // js/myWords.js（単語帳の一覧。読むだけ）
@@ -79,6 +79,32 @@ export function touchItems(kind, keys, deleted = false, at = new Date().toISOStr
   }
   writeJson(META_KEY, meta);
   writeJson(DIRTY_KEY, [...dirty]);
+}
+
+// ---- 消した語の印（Batch 94 の直し。docs/SPEC_MY_WORDS.md §18.8） ----
+// 雲の墓標の中身は空になる（docs/SQL_USER_ITEMS.md §4）ので、ほかの端末はどのカードが消えたかを知らない。マイ単語帳の語を消す道（js/myWords.js）は
+// touchItems(..., true) の代わりにこれを呼び、同じ墓標の印と送る待ちに、消したカード card（足した時刻と訳の印 jaHash）を足す（印と送る待ちは 1 回ずつ書く）。
+// 取り込み（mergeCloudItems）は、雲にある同じ鍵の生きた語が card と違うカードなら、その語を取り込んで墓標を送らない（ほかの端末の違う語を消さない）。
+// gone: [{ key, word }]（word は消した英語の語。場面カード・同じ鍵の語が 2 つ以上なら null: card を付けない＝今どおり新しい方が勝つ）
+export function touchDeletedWords(gone, at = new Date().toISOString()) {
+  const list = (Array.isArray(gone) ? gone : []).filter((g) => g && g.key);
+  if (list.length === 0) return;
+  const meta = getItemMeta();
+  const dirty = getDirtyItems();
+  for (const { key, word } of list) {
+    const id = `my_word:${key}`;
+    meta[id] = { updatedAt: at, deleted: true, ...(isWordEntry(word) ? { card: { addedAt: word.addedAt ?? null, jaHash: jaHash(word.ja) } } : {}) };
+    dirty.add(id);
+  }
+  writeJson(META_KEY, meta);
+  writeJson(DIRTY_KEY, [...dirty]);
+}
+
+// 墓標の印 m の消したカードと、雲の生きた語 payload が違うカードか（足した時刻も訳も違う。§18.1 の同じカードの逆）。card の無い墓標（前の版）は違うと見ない
+function deletedOtherCard(m, payload) {
+  const card = m?.deleted ? m.card : null;
+  if (!card || !isWordEntry(payload)) return false;
+  return !((card.addedAt != null && card.addedAt === payload.addedAt) || card.jaHash === jaHash(payload.ja));
 }
 
 // ---- ローカルの現在値を項目に展開 ----
@@ -399,7 +425,9 @@ export function mergeCloudItems(rows, userId = null) {
     const cloudTime = Date.parse(r.updated_at ?? 0) || 0;
     const lTime = localTime(id, item);
     const localKnown = item || meta[id];
-    if (localKnown && lTime >= cloudTime) continue; // ローカルが新しい（または同時刻）
+    // この端末で消したカードと違う生きた語は、墓標の方が新しくても取り込む（墓標は送る待ちから外れる: 下の adopted。§18.8）
+    const otherCard = r.kind === "my_word" && !item && !r.deleted && deletedOtherCard(meta[id], r.payload);
+    if (localKnown && lTime >= cloudTime && !otherCard) continue; // ローカルが新しい（または同時刻）
 
     if (r.kind === "my_word") {
       const idx = myWords.findIndex((w) => w.en === r.key);
@@ -456,6 +484,18 @@ export function mergeCloudItems(rows, userId = null) {
   for (const { key, payload, at } of relabeled) {
     toUpload.push({ user_id: userId, kind: "my_word", key, payload, deleted: false, updated_at: at });
     meta[`my_word:${key}`] = { updatedAt: at, deleted: false };
+  }
+
+  // 雲に行の無い鍵の墓標（この端末で足して、送る前に消した語）に印 noRow を付ける: pushUserItems は送らない（雲に消す物が無く、送るとほかの端末がまだ
+  // 送っていない同じ鍵の違う語を消す）。雲にその鍵の行が来たら印を外し、今どおり新しい方が勝つ（違うカードは上で取り込んだ。§18.8）
+  for (const id of getDirtyItems()) {
+    if (!id.startsWith("my_word:") || !meta[id]?.deleted || items.has(id)) continue;
+    const noRow = !cloud.has(id);
+    if (!!meta[id].noRow === noRow) continue;
+    const next = { ...meta[id] };
+    if (noRow) next.noRow = true;
+    else delete next.noRow;
+    meta[id] = next;
   }
 
   if (changed.my_word) writeJson(MY_WORDS_KEY, myWords);
@@ -622,7 +662,9 @@ export async function pushUserItems(supabase, userId, { now = Date.now() } = {})
   const all = buildDirtyRows(userId);
   if (all.length === 0) return;
   const metaAtStart = getItemMeta(); // 送信中にまた変わった項目（印の時刻が変わった）は dirty に残す
-  const due = all.filter((r) => r.kind === "day" || !waiting(metaAtStart[rowId(r)], now)); // 断られて待っている行は送らない（送る待ちには残る）
+  // 断られて待っている行・雲に行の無い鍵の墓標（印 noRow。§18.8）は送らない（送る待ちには残る）
+  const held = (r) => r.kind === "my_word" && r.deleted && !!metaAtStart[rowId(r)]?.noRow;
+  const due = all.filter((r) => r.kind === "day" || (!waiting(metaAtStart[rowId(r)], now) && !held(r)));
   const days = await mergeDayRowsWithCloud(supabase, due.filter((r) => r.kind === "day"));
   const { send } = prepareRows([...due.filter((r) => r.kind !== "day"), ...days]); // 鍵に送り先が受け付けない字がある行は送らない（送る待ちに残る）
   if (send.length === 0) return;
