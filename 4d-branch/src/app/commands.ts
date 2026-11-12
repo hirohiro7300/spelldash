@@ -179,6 +179,8 @@ export class Commands {
       run: () => {
         const top = this.store.history.undoStack[this.store.history.undoStack.length - 1];
         if (entry && top === entry) this.undo();
+        // 履歴ごと入れ替わった（初めての同期・別の端末の内容に譲った など）: 上部の「元に戻す」でも戻せない
+        else if (!top) this.hooks.toast("その後に別の内容を読み込んだため、ここからは戻せません", { tone: "warn" });
         else this.hooks.toast("そのあとに別の操作をしたため、ここからは戻せません（上部の「元に戻す」で順に戻せます）", { tone: "warn" });
       },
     };

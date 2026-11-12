@@ -474,6 +474,8 @@ async function xyDemo(uid, { autoFuture = false, write = true, xFlags = {}, yFla
   await X.page.getByRole("button", { name: "すぐに使う" }).click();
   await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   await X.page.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
+  // Y が書く間、X は閉じていたことにする（開いたままだと見張りで Y の内容を取り込み始め、確かめの開き直しがその途中に当たる）
+  if (write) await X.page.evaluate(() => window.__fourD.app.cloud?.stop());
   const Y = await newDevice({ uid, ...yFlags });
   await Y.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   const welcome = Y.page.getByRole("dialog", { name: "4D Branch へようこそ" });
@@ -490,6 +492,9 @@ async function xyDemo(uid, { autoFuture = false, write = true, xFlags = {}, yFla
 const ownOf = (p) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "別の端末で書いた目標"));
 const rootsOf = (p) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length);
 const manifestOf = (uid) => JSON.parse(dbStore.get(`data/users/${uid}/fourd`));
+/** このブラウザで一度でも未来の道筋を開いたか（後で別の端末の内容に譲って消えていても分かる: 「開いた」の設定と開く前の安全用バックアップ） */
+const everOpened = (p) =>
+  p.evaluate(async () => window.__fourD.ui.prefs.futureAutoOpened === true || (await window.__fourD.persistence.listBackups()).some((b) => b.label === "「未来の道筋を開く」の前"));
 /** デモのノードの題名を、その場の入力で書き換え始める（確定しない） */
 const startTitleEdit = (p) =>
   p.evaluate(() => {
@@ -513,6 +518,7 @@ await check("つながらない間・同期の途中は、デモを未来の道�
     await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
     await X.page.waitForTimeout(1500);
     assert((await rootsOf(X.page)) === 0, "つながらない間に未来の道筋へ入れ替えた");
+    assert(!(await everOpened(X.page)), "つながらない間に一度未来の道筋を開いた（後で別の端末の内容に譲っただけ）");
     const m1 = JSON.parse(dbStore.get("data/users/u_race1/fourd"));
     assert(m1.nodes === m.nodes, `アカウントの写しが変わった ${m1.nodes} / ${m.nodes}`);
     assert((await ownOf(Y.page)) && (await rootsOf(Y.page)) === 0, "別の端末の内容が消えた");
@@ -548,13 +554,20 @@ await check("題名をその場で書き換えている間に別の端末の変�
   await X.page.reload({ waitUntil: "load" });
   await X.page.waitForFunction(() => !!window.__fourD?.app);
   await startTitleEdit(X.page);
-  await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "pending" && window.__fourD.app.cloudInfo.message.includes("入力が終わってから"), null, { timeout: 15000 });
+  // 入力の終わりを待つ状態に落ち着いてから（見張りの最初の知らせで読み直す間の、一瞬の「待つ」には当てない）
+  const waiting = () => window.__fourD.app.cloudInfo?.state === "pending" && window.__fourD.app.cloudInfo.message.includes("入力が終わってから");
+  await X.page.waitForFunction(waiting, null, { timeout: 15000 });
+  await X.page.waitForTimeout(1500);
+  await X.page.waitForFunction(waiting, null, { timeout: 15000 });
   assert(!(await ownOf(X.page)), "入力の途中に取り込んだ（確かめの前提）");
-  // 書き換えずに ⌘S（入力を閉じて、すぐ同期する）
+  // 書き換えずに ⌘S（入力を閉じて、すぐ同期する）: 読まずに「同期済み」と言わない
   await X.page.keyboard.press("Control+s");
+  const st = await X.page.evaluate(() => ({ s: window.__fourD.app.cloudInfo?.state, own: Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "別の端末で書いた目標") }));
+  assert(st.s !== "synced" || st.own, `読まずに「同期済み」にした ${JSON.stringify(st)}`);
   await X.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 15000 });
   await X.page.waitForTimeout(2500);
   assert((await rootsOf(X.page)) === 0, "取り込む前に未来の道筋を開いた");
+  assert(!(await everOpened(X.page)), "取り込む前に一度未来の道筋を開いた（後で別の端末の内容に譲っただけ）");
   assert(manifestOf("u_flush").nodes === m.nodes, `アカウントの写しが変わった ${manifestOf("u_flush").nodes} / ${m.nodes}`);
   assert((await ownOf(Y.page)) && (await rootsOf(Y.page)) === 0, "別の端末の内容が消えた");
   assert((await X.page.locator(".toast", { hasText: "重なった" }).count()) === 0, "重なりのお知らせが出た");
@@ -579,6 +592,33 @@ await check("自動で開いた未来の道筋は、送る前に別の端末で�
   assert((await X.page.locator(".toast", { hasText: "重なった" }).count()) === 0, "重なりのお知らせが出た");
   const kept = await X.page.evaluate(async () => (await window.__fourD.persistence.listBackups()).some((b) => b.label.includes("別の端末の内容を読み込む前")));
   assert(kept, "開いた未来の道筋がバックアップに残っていない");
+  // 譲った読み込みは「元に戻す」の対象にしない（戻すと、開いた地図で別の端末の内容を押し流す）
+  assert(!(await X.page.evaluate(() => window.__fourD.store.history.canUndo)), "譲った読み込みを元に戻せる");
+  await X.page.keyboard.press("Control+z");
+  await X.page.waitForTimeout(6500);
+  const m2 = manifestOf("u_yield");
+  assert(m2.gen === m.gen && (await ownOf(Y.page)) && (await rootsOf(Y.page)) === 0, `元に戻す（⌘Z）で別の端末の内容を押し流した ${m2.nodes}`);
+  await X.ctx.close();
+  await Y.ctx.close();
+});
+
+await check("自動で開いた未来の道筋をすぐ元に戻しても、送る前に別の端末で書かれた内容を、戻しただけの地図で押し流さない", async () => {
+  const { X, Y } = await xyDemo("u_undoyield", { autoFuture: true, write: false });
+  await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
+  await X.page.reload({ waitUntil: "load" });
+  const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+  await done.waitFor({ timeout: 15000 });
+  // 開いたお知らせの「元に戻す」で、開く前のデモに戻す（まだ送っていない）
+  await done.getByRole("button", { name: "元に戻す" }).click();
+  await X.page.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+  // Y の送信が届くと、X は戻しただけのデモを送らずに、Y の内容を読み込む
+  await X.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 25000 });
+  await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  await X.page.waitForTimeout(2000);
+  const m = manifestOf("u_undoyield");
+  assert(m.nodes > 23 && m.nodes < 40, `アカウントの写しが変わった ${m.nodes}`);
+  assert((await ownOf(Y.page)) && (await rootsOf(Y.page)) === 0, "別の端末の内容が消えた");
+  assert((await X.page.locator(".toast", { hasText: "重なった" }).count()) === 0, "重なりのお知らせが出た");
   await X.ctx.close();
   await Y.ctx.close();
 });
@@ -608,6 +648,13 @@ await check("別の端末から同期で受け取った未来の道筋を元に�
   await A.page.evaluate(() => window.__fourD.app.cmd.undo());
   await A.page.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
   assert((await A.page.evaluate(() => window.__fourD.store.doc.meta.noAutoFuture)) === true, "戻したデモに印が付かない");
+  // 受け取る前のバックアップにも印（バックアップから戻しても、もう入れ替えない）
+  const backupMark = await A.page.evaluate(async () => {
+    const per = window.__fourD.persistence;
+    const b = (await per.listBackups()).find((x) => x.label === "別の端末の内容を読み込む前");
+    return b ? ((await per.readBackup(b.id))?.meta?.noAutoFuture ?? null) : "バックアップが無い";
+  });
+  assert(backupMark === true, `別の端末の内容を読み込む前のバックアップに印が付かない ${backupMark}`);
   await A.page.evaluate(() => window.__fourD.app.cloud.flush());
   await A.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   assert(manifestOf(uid).nodes < 40, `戻したデモが送られていない ${manifestOf(uid).nodes}`);
@@ -623,7 +670,7 @@ await check("別の端末から同期で受け取った未来の道筋を元に�
   for (const d of [A, B, C]) await d.ctx.close();
 });
 
-await check("押した「未来の道筋」が突き合わせを待つ間に、題名を書きかけていたら入れ替えない（書きかけを消さない）。メニューから開いた確認を閉じたら、勝手に入れ替えない", async () => {
+await check("押した「未来の道筋」が突き合わせを待つ間に、題名を書きかけていたら入れ替えない（書きかけを消さない）。メニューから開いた確認を閉じたら・自分でデモを読み込んだら、勝手に入れ替えない（自動で開くのも）", async () => {
   // 1) 書きかけ: アカウントは変わっていないが、開き直したとき 4 秒つながらない（つながらない間は待つ）
   {
     const { X, Y } = await xyDemo("u_wait1", { write: false });
@@ -646,8 +693,9 @@ await check("押した「未来の道筋」が突き合わせを待つ間に、�
     await X.ctx.close();
   }
   // 2) 確認を閉じる: 待っている間に、メニューの「未来の道筋（仕事・10 年）を読み込む…」を開いてキャンセルした
+  //    （自動で開く端末: 押した頼みも、この起動の自動で開くのも、どちらも入れ替えない）
   {
-    const { X, Y } = await xyDemo("u_wait2", { write: false });
+    const { X, Y } = await xyDemo("u_wait2", { autoFuture: true, write: false });
     await Y.ctx.close();
     await X.ctx.addInitScript(() => (window.__dbDownUntil = Date.now() + 4000));
     await X.page.reload({ waitUntil: "load" });
@@ -661,7 +709,25 @@ await check("押した「未来の道筋」が突き合わせを待つ間に、�
     await dlg.getByRole("button", { name: "キャンセル" }).click();
     await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 25000 });
     await X.page.waitForTimeout(2500);
-    assert((await rootsOf(X.page)) === 0, "キャンセルしたのに、待っていた頼みで入れ替えた");
+    assert((await rootsOf(X.page)) === 0, "キャンセルしたのに、待っていた頼み・自動で開くので入れ替えた");
+    await X.ctx.close();
+  }
+  // 3) 自分で選んだ地図: 待っている間に「デモを読み込む（置き換え）」で読み込んだ
+  {
+    const { X, Y } = await xyDemo("u_wait3", { write: false });
+    await Y.ctx.close();
+    await X.ctx.addInitScript(() => (window.__dbDownUntil = Date.now() + 4000));
+    await X.page.reload({ waitUntil: "load" });
+    await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "offline", null, { timeout: 10000 });
+    await X.page.locator(".zoom-ctl .future-btn").click();
+    await X.page.locator(".toast", { hasText: "アカウントの内容を確かめています" }).waitFor({ timeout: 5000 });
+    await X.page.getByRole("button", { name: "メニュー", exact: true }).click();
+    await X.page.getByRole("menuitem", { name: "デモを読み込む（置き換え）" }).click();
+    await X.page.getByRole("dialog", { name: "デモを読み込みますか？" }).getByRole("button", { name: "読み込む" }).click();
+    await X.page.locator(".toast", { hasText: "デモを読み込みました" }).waitFor({ timeout: 5000 });
+    await X.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 25000 });
+    await X.page.waitForTimeout(2500);
+    assert((await rootsOf(X.page)) === 0, "選んで読み込んだデモを、待っていた頼みで入れ替えた");
     await X.ctx.close();
   }
 });
@@ -690,6 +756,20 @@ await check("同期が止まっている・機能の返事が遅れて使えな�
     await L.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout: 8000 });
     assert(Date.now() - t0 < 8000, `開くまで ${Date.now() - t0}ms`);
     await L.ctx.close();
+  }
+  // 3) 押した後で同期が止まった（新しい版の写しを、遅い db で読む）: 30 秒待たせずに、止まった訳を知らせて確認を出す
+  {
+    dbStore.set("data/users/u_paused2/fourd", JSON.stringify({ format: 2, gen: "g_new2", parts: 1, hash: "h" }));
+    const P = await newDevice({ uid: "u_paused2", dbDelayMs: 2500 });
+    await P.page.getByRole("button", { name: "すぐに使う" }).click();
+    assert((await cloudState(P.page)) !== "paused", "押す前に止まった（確かめの前提）");
+    const t0 = Date.now();
+    await P.page.locator(".zoom-ctl .future-btn").click();
+    await P.page.locator(".toast", { hasText: "アカウントの内容を確かめています" }).waitFor({ timeout: 3000 });
+    await P.page.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor({ timeout: 12000 });
+    assert(Date.now() - t0 < 12000, `確認が出るまで ${Date.now() - t0}ms`);
+    assert((await P.page.locator(".toast", { hasText: "同期が止まっている" }).count()) === 1, "止まった訳を知らせない");
+    await P.ctx.close();
   }
 });
 

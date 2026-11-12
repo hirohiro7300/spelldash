@@ -57,10 +57,20 @@ export function withNoAutoFuture(doc: DocData): DocData {
  */
 export const FRESH_FUTURE = "freshFutureAt";
 
-/** 開いてから何も手を付けていない未来の道筋か */
+/** 開いてから何も手を付けていない未来の道筋か（開いた入れ替えを元に戻した・やり直しただけの地図も） */
 export function isFreshFuture(doc: DocData): boolean {
   const at = doc.meta?.[FRESH_FUTURE];
   return typeof at === "string" && at === doc.updatedAt;
+}
+
+/**
+ * アカウントで重なったとき、手元を送らずに相手（remote）を読み込むか。手元が手を付けていない中身のときだけ譲る。
+ * ただし手元が、未来の道筋を開いた入れ替えを元に戻しただけの地図（開くのを断った）で、相手も開いたばかりの未来の道筋なら
+ * 譲らない（断ったことを、別の端末が自動で開いた地図で上書きしない。相手の地図は押せばまた開ける）
+ */
+export function yieldsToRemote(local: DocData, remote: DocData): boolean {
+  if (!isFreshFuture(local)) return false;
+  return hasFutureRoot(local) || !(isFreshFuture(remote) && hasFutureRoot(remote));
 }
 
 /** 未来の道筋の入口に寄るときの、いちばん引いた大きさ（これより小さいとカードの文字が出ない。狭い画面では左端の今日から見せる） */

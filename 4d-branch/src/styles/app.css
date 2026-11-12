@@ -2610,6 +2610,15 @@ textarea.input {
     left: calc(var(--left-w) + 16px + env(safe-area-inset-left, 0px));
   }
 }
+/*
+ * 背の低い画面（横向きのスマホなど。地図の高さが 200px 前後）: 地図の上に出すと、真ん中に寄せた今日のカードを隠す。
+ * 下の時間軸の上に出す（数秒の間だけ時間軸の帯を隠す）
+ */
+@media (max-height: 480px) {
+  .toast-stack {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+}
 .toast {
   pointer-events: auto;
   display: flex;

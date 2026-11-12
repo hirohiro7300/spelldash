@@ -3,7 +3,8 @@ import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
 import { buildWishlist } from "../../src/demo/wishlistBundle";
 import { buildFuture } from "../../src/demo/futureBundle";
-import { FRESH_FUTURE, isFreshFuture } from "../../src/demo/futureSwap";
+import { FRESH_FUTURE, NO_AUTO_FUTURE, isFreshFuture, yieldsToRemote } from "../../src/demo/futureSwap";
+import { nextStamp } from "../../src/model/ids";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
 import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
@@ -114,8 +115,8 @@ interface DeviceOpts {
   fallback?: boolean;
   /** App と同じく、手元に保存できないと基準を書かずに持っておく（local.saveFails の間） */
   deferBase?: boolean;
-  /** 重なったら、手元を送らずに相手を読み込む手元か（App: 開いてから手を付けていない未来の道筋） */
-  yields?: (doc: DocData) => boolean;
+  /** 重なったら、手元を送らずに相手を読み込むか（App: 開いてから手を付けていない未来の道筋。yieldsToRemote） */
+  yields?: (local: DocData, remote: DocData) => boolean;
 }
 
 const onOf = (b: SyncBase | null): BootDoc["on"] => (b ? { gen: b.gen, docId: b.docId, docUpdatedAt: b.docUpdatedAt } : null);
@@ -2812,6 +2813,50 @@ describe("同期の決まり: 未来の道筋を自動で開く変更の再レ�
     for (let i = 0; i < 60 && !a2.has("B の変更"); i++) await tick(20);
     expect(a2.has("B の変更")).toBe(true);
     expect(a2.local.backups.filter((x) => x.kind === "conflict")).toHaveLength(0);
+    a2.sync.stop();
+  });
+
+  /** 未来の道筋を開いた入れ替えを元に戻しただけの地図（App: 元に戻すと、開く前のデモに印と開いたばかりの印が付く） */
+  function undoneDemo(base: DocData): DocData {
+    const updatedAt = nextStamp(base.updatedAt);
+    return { ...base, updatedAt, meta: { ...base.meta, [NO_AUTO_FUTURE]: true, [FRESH_FUTURE]: updatedAt } };
+  }
+
+  it("開いた未来の道筋を、送る前に元に戻しただけの地図も、別の端末で書かれた内容と重なったら送らずに読み込む", async () => {
+    const { be, a } = await staleA();
+    const a2 = device(be, "A2", undoneDemo(a.store.doc), { idb: a.local.idb, yields: yieldsToRemote });
+    await a2.sync.start();
+    for (let i = 0; i < 50 && !a2.has("B の変更"); i++) await tick(10);
+    expect(a2.has("B の変更")).toBe(true);
+    expect(a2.local.backups.filter((x) => x.kind === "conflict")).toHaveLength(0);
+    expect(await remoteHas(a2.repo, "B の変更")).toBe(true);
+    a2.sync.stop();
+  });
+
+  it("元に戻しただけの地図は、別の端末が開いたばかりの未来の道筋には譲らない（開くのを断ったことが通り、相手の地図はバックアップへ）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", buildDemoDoc());
+    await a.sync.start();
+    a.sync.stop();
+    // B も同じデモから始めて、未来の道筋を開き（開いたばかりの印）、送る
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    const { pv } = buildFuture(new Date(2026, 10, 10));
+    b.store.replaceDoc(pv.doc, "未来の道筋を開く");
+    b.store.doc.meta = { ...b.store.doc.meta, [FRESH_FUTURE]: b.store.doc.updatedAt };
+    await b.sync.flush();
+    for (let i = 0; i < 50 && Object.keys((await b.repo.read())!.doc.nodes).length < 100; i++) await tick(10);
+    const pushed = (await b.repo.read())!.doc;
+    expect(isFreshFuture(pushed)).toBe(true);
+    b.sync.stop();
+    // A は開いた地図を送る前に元に戻していた（デモ・印つき）。開き直すと、アカウントには B の開いたばかりの地図がある
+    const a2 = device(be, "A2", undoneDemo(a.store.doc), { idb: a.local.idb, yields: yieldsToRemote });
+    await a2.sync.start();
+    for (let i = 0; i < 50 && Object.keys((await a2.repo.read())!.doc.nodes).length > 100; i++) await tick(10);
+    const after = (await a2.repo.read())!.doc;
+    expect(Object.keys(after.nodes).length).toBeLessThan(100);
+    expect(after.meta[NO_AUTO_FUTURE]).toBe(true);
+    expect(a2.local.backups.some((x) => x.kind === "conflict" && Object.keys(x.doc.nodes).length > 100)).toBe(true);
     a2.sync.stop();
   });
 });

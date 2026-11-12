@@ -18,7 +18,11 @@ async function startServer() {
   if (process.env.BASE_URL) return;
   if (!fs.existsSync(path.join(ROOT, "dist", "index.html"))) throw new Error("dist/ がありません。先に npm run build を実行してください");
   server = spawn(process.execPath, [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "preview", "--port", String(PORT), "--strictPort"], { cwd: ROOT, stdio: "pipe" });
+  // ポートが使われていて起動できなかったのに、そのポートで答える別のサーバーを確かめてしまわないように
+  let exited = false;
+  server.on("exit", () => (exited = true));
   for (let i = 0; i < 100; i++) {
+    if (exited) throw new Error(`preview サーバーが起動しません（ポート ${PORT} が使われているかもしれません。E2E_PORT で変えられます）`);
     try {
       const r = await fetch(BASE);
       if (r.ok) return;
@@ -1830,6 +1834,22 @@ async function main() {
         clearInterval(t);
         if (what === "tour") f.app.startTour();
         if (what === "search") document.querySelector(".search-input").focus();
+        if (what === "gate") {
+          // 自動で開く途中の安全用バックアップを、離すまで止めておく（その間に利用者が何かを始めた、を作る）
+          const per = f.persistence;
+          const orig = per.createBackup.bind(per);
+          let release;
+          const gate = new Promise((r) => (release = r));
+          window.__gateHits = 0;
+          window.__releaseGate = () => release();
+          per.createBackup = async (kind, label, doc) => {
+            if (label === "「未来の道筋を開く」の前") {
+              window.__gateHits++;
+              await gate;
+            }
+            return orig(kind, label, doc);
+          };
+        }
       }, 5);
     });
     const page = await ctx.newPage();
@@ -1878,6 +1898,9 @@ async function main() {
     await p.locator(".tour").waitFor();
     await p.waitForTimeout(2500);
     assert(!(await hasFuture(p)), "操作ガイドの最中に入れ替えた");
+    // 最中は開こうともしない（開きかけては止める、を繰り返して安全用バックアップを書き続けない）
+    const tried = await p.evaluate(async () => (await window.__fourD.persistence.listBackups()).filter((b) => b.label === "「未来の道筋を開く」の前").length);
+    assert(tried === 0, `操作ガイドの最中に開こうとして、安全用のバックアップを ${tried} 件書いた`);
     await p.locator(".tour-skip").click();
     await opened(p);
     const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
@@ -1904,15 +1927,48 @@ async function main() {
       r: Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true),
     }));
     assert(!mid.r && mid.q === "広告" && mid.s === "広告", `検索の途中に入れ替えた・文字が消えた ${JSON.stringify(mid)}`);
+    const tried = await p.evaluate(async () => (await window.__fourD.persistence.listBackups()).filter((b) => b.label === "「未来の道筋を開く」の前").length);
+    assert(tried === 0, `検索の途中に開こうとして、安全用のバックアップを ${tried} 件書いた`);
     // 検索欄を離れたら開く
     await p.locator(".search-input").blur();
     await opened(p);
     await ctx.close();
   });
 
-  await check("未来の道筋: 開いたお知らせは、地図の右下の小さな地図・操作も、今日のカードも隠さない（1280・1440 の幅、右のパネルを開いたまま）", async () => {
-    for (const vp of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }]) {
+  await check("未来の道筋: 自動で開く途中（安全用バックアップを書く間）にメニューを開いたら入れ替えず、閉じてから開く", async () => {
+    const { ctx, page: p } = await returningDemo();
+    await p.evaluate(() => sessionStorage.setItem("__bootOnce", "gate"));
+    await p.reload({ waitUntil: "networkidle" });
+    await p.waitForFunction(() => window.__gateHits === 1, null, { timeout: 10000 });
+    await p.getByRole("button", { name: "メニュー", exact: true }).click();
+    await p.locator('[role="menu"]').waitFor();
+    await p.evaluate(() => window.__releaseGate());
+    await p.waitForTimeout(1500);
+    const mid = await p.evaluate(() => ({
+      r: Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true),
+      menu: !!document.querySelector('[role="menu"]'),
+    }));
+    assert(!mid.r && mid.menu, `メニューを開いている間に入れ替えた ${JSON.stringify(mid)}`);
+    // メニューを閉じると、確かめ直して開く
+    await p.keyboard.press("Escape");
+    await opened(p);
+    await ctx.close();
+  });
+
+  await check("未来の道筋: 開いたお知らせは、地図の右下の小さな地図・操作も、今日のカードも隠さない（1280・1440 の幅で右のパネルを開いたまま・閉じて、800 の幅）", async () => {
+    const cases = [
+      { vp: { width: 1280, height: 800 }, right: true },
+      { vp: { width: 1440, height: 900 }, right: true },
+      { vp: { width: 1280, height: 800 }, right: false },
+      // 860px 以下は、パネルを閉じて始まる
+      { vp: { width: 800, height: 800 }, right: false },
+    ];
+    for (const { vp, right } of cases) {
       const { ctx, page: p } = await returningDemo(vp);
+      if (!right && vp.width > 860) {
+        await p.locator(".topbar").getByRole("button", { name: "右のパネルを開閉" }).click();
+        await p.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").rightOpen === false);
+      }
       await p.reload({ waitUntil: "networkidle" });
       const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
       await done.waitFor({ timeout: 10000 });
@@ -1922,6 +1978,7 @@ async function main() {
         const mm = document.querySelector(".minimap");
         const visible = !!mm && !mm.hidden && !mm.classList.contains("idle") && getComputedStyle(mm).display !== "none";
         let hits = 0;
+        let undoOver = false;
         if (visible) {
           const b = mm.getBoundingClientRect();
           for (let i = 1; i < 10; i++)
@@ -1929,6 +1986,11 @@ async function main() {
               const el = document.elementFromPoint(b.x + (b.width * i) / 10, b.y + (b.height * j) / 6);
               if (el?.closest(".toast")) hits++;
             }
+          // お知らせの「元に戻す」が小さな地図に重なると、地図を押したつもりで元に戻してしまう
+          undoOver = [...document.querySelectorAll(".toast .toast-action")].some((btn) => {
+            const a = btn.getBoundingClientRect();
+            return a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y;
+          });
         }
         const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
         const cr = f.app.view.canvas.getBoundingClientRect();
@@ -1939,10 +2001,47 @@ async function main() {
           const el = document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2);
           return !(el && btn.contains(el));
         }).length;
-        return { visible, hits, rootCovered: !!rootHit?.closest(".toast"), ctl, rightOpen: f.ui.prefs.rightOpen };
+        return { visible, hits, undoOver, rootCovered: !!rootHit?.closest(".toast"), ctl, rightOpen: f.ui.prefs.rightOpen };
       });
-      assert(r.visible && r.rightOpen, `${vp.width}: 小さな地図・右のパネルが出ていない（確かめの前提）${JSON.stringify(r)}`);
-      assert(r.hits === 0 && !r.rootCovered && r.ctl === 0, `${vp.width}: お知らせが隠している ${JSON.stringify(r)}`);
+      const where = `${vp.width}（右のパネル ${right ? "開" : "閉"}）`;
+      assert(r.visible && r.rightOpen === right, `${where}: 小さな地図・右のパネルが思った形でない（確かめの前提）${JSON.stringify(r)}`);
+      assert(r.hits === 0 && !r.undoOver && !r.rootCovered && r.ctl === 0, `${where}: お知らせが隠している ${JSON.stringify(r)}`);
+      await ctx.close();
+    }
+  });
+
+  await check("未来の道筋: 横向きのスマホ（背の低い画面）でも、開いたお知らせが今日のカードと右下の操作を隠さない", async () => {
+    for (const vp of [{ width: 844, height: 390 }, { width: 740, height: 360 }, { width: 667, height: 375 }]) {
+      const { ctx, page: p } = await returningDemo(vp);
+      await p.reload({ waitUntil: "networkidle" });
+      const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+      await done.waitFor({ timeout: 10000 });
+      await p.waitForTimeout(700);
+      const r = await p.evaluate(() => {
+        const f = window.__fourD;
+        const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+        const cr = f.app.view.canvas.getBoundingClientRect();
+        const z = f.app.view.camera.zoom;
+        const s = f.app.view.camera.toScreen(root.x, root.y);
+        let covered = 0;
+        let total = 0;
+        // 今日のカード（幅 212・高さ 96）の上の 15 点
+        for (let i = -2; i <= 2; i++)
+          for (let j = -1; j <= 1; j++) {
+            const x = cr.x + s.x + (i * 100 * z) / 2;
+            const y = cr.y + s.y + j * 40 * z;
+            if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
+            total++;
+            if (document.elementFromPoint(x, y)?.closest(".toast")) covered++;
+          }
+        const ctl = [...document.querySelectorAll(".zoom-ctl button")].filter((btn) => {
+          const q = btn.getBoundingClientRect();
+          const el = document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2);
+          return !(el && btn.contains(el));
+        }).length;
+        return { covered, total, ctl };
+      });
+      assert(r.total >= 10 && r.covered === 0 && r.ctl === 0, `${vp.width}x${vp.height}: お知らせが隠している ${JSON.stringify(r)}`);
       await ctx.close();
     }
   });
@@ -1973,6 +2072,15 @@ async function main() {
     await p.waitForTimeout(800);
     const b = await look();
     assert(b.zoom >= 0.3 && b.left >= 0 && b.right <= b.w && b.y > 0 && b.y < b.h, `押したとき ${JSON.stringify(b)}`);
+    // いちばん引いた（「全体を表示」から縮小を押し切った）ところから押しても、ちょうど文字の出る大きさで止まる
+    const zc = p.locator(".zoom-ctl");
+    await zc.getByRole("button", { name: "全体を表示" }).click();
+    for (let i = 0; i < 16; i++) await zc.getByRole("button", { name: "縮小" }).click();
+    await p.waitForTimeout(600);
+    await p.locator(".zoom-ctl .future-btn").click();
+    await p.waitForTimeout(800);
+    const c = await look();
+    assert(c.zoom >= 0.3 && c.left >= 0 && c.right <= c.w && c.y > 0 && c.y < c.h, `いちばん引いたところから押したとき ${JSON.stringify(c)}`);
     await shot("e2e-18-future-phone-fit", p);
     await ctx.close();
   });
@@ -1990,6 +2098,14 @@ async function main() {
       await p.locator(".toast", { hasText: mode === "追加する" ? "未来の道筋: " : "未来の道筋に入れ替えました" }).getByRole("button", { name: "元に戻す" }).click();
       await p.waitForFunction(() => !Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
       assert((await p.evaluate(() => window.__fourD.store.doc.meta.noAutoFuture)) === true, `${mode}: 戻した地図に印が付かない`);
+      // 読み込む前の安全用バックアップにも印（バックアップから戻しても、もう入れ替えない）
+      const label = mode === "追加する" ? "「未来の道筋を追加」の前" : "「未来の道筋に入れ替え」の前";
+      const backupMark = await p.evaluate(async (label) => {
+        const per = window.__fourD.persistence;
+        const b = (await per.listBackups()).find((x) => x.label === label);
+        return b ? ((await per.readBackup(b.id))?.meta?.noAutoFuture ?? null) : "バックアップが無い";
+      }, label);
+      assert(backupMark === true, `${mode}: 読み込む前のバックアップに印が付かない ${backupMark}`);
       await waitSaved(p);
       await p.waitForTimeout(300);
       await p.reload({ waitUntil: "networkidle" });

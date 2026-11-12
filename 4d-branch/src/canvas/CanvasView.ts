@@ -188,7 +188,13 @@ export class CanvasView {
     this.camera.zoom = zoom;
     this.camera.x = W - cx * zoom;
     this.camera.y = H - cy * zoom;
-    if (p >= 1) this.camAnim = null;
+    if (p >= 1) {
+      // 最後はちょうど目標に（補間の丸めで 0.3 が 0.2999… になると、文字の出る大きさの境目を下回る）
+      this.camera.zoom = a.to.zoom;
+      this.camera.x = a.to.x;
+      this.camera.y = a.to.y;
+      this.camAnim = null;
+    }
     for (const fn of this.cameraListeners) fn();
   }
 

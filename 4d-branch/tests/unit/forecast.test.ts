@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFutureDoc, countFuture, type FutureData } from "../../src/demo/future";
 import { buildFuture, futureData, futureVersion } from "../../src/demo/futureBundle";
-import { FRESH_FUTURE, NO_AUTO_FUTURE, futureMaps, hasFutureRoot, isFreshFuture, nearFutureRoot, staleFutureMaps, swapFutureDoc, withNoAutoFuture } from "../../src/demo/futureSwap";
+import { FRESH_FUTURE, NO_AUTO_FUTURE, futureMaps, hasFutureRoot, isFreshFuture, nearFutureRoot, staleFutureMaps, swapFutureDoc, withNoAutoFuture, yieldsToRemote } from "../../src/demo/futureSwap";
 import { Store } from "../../src/store/store";
 import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { mergeDocs } from "../../src/persist/io";
@@ -468,6 +468,28 @@ describe("未来の道筋の差し替え", () => {
     const odd = buildDemoDoc();
     odd.meta = { [FRESH_FUTURE]: 1 };
     expect(isFreshFuture(odd)).toBe(false);
+  });
+
+  it("重なったときに譲るか: 手を付けていない中身だけが譲り、開くのを断った（戻した）地図は、別の端末が開いたばかりの地図には譲らない", () => {
+    const fresh = (d: DocData): DocData => ({ ...d, meta: { ...d.meta, [FRESH_FUTURE]: d.updatedAt } });
+    const { pv } = buildFuture(TODAY);
+    const map = fresh(pv.doc);
+    const undone = fresh(withNoAutoFuture(buildDemoDoc()));
+    const written = buildDemoDoc();
+    written.nodes = { ...written.nodes };
+    const own = makeNode({ title: "別の端末で書いた目標" });
+    written.nodes[own.id] = own;
+    // 開いたままの未来の道筋: 書かれた内容にも、別の端末が開いた・戻した地図にも譲る（どれでも 1 つにそろう）
+    expect(yieldsToRemote(map, written)).toBe(true);
+    expect(yieldsToRemote(map, fresh(pv.doc))).toBe(true);
+    expect(yieldsToRemote(map, undone)).toBe(true);
+    // 戻しただけの地図: 書かれた内容には譲る。別の端末が開いたばかりの未来の道筋には譲らない（断ったことが通る）
+    expect(yieldsToRemote(undone, written)).toBe(true);
+    expect(yieldsToRemote(undone, fresh(pv.doc))).toBe(false);
+    expect(yieldsToRemote(undone, undone)).toBe(true);
+    // 手を付けた手元は譲らない（ふつうの重なり: 手元を送り、相手はバックアップへ）
+    expect(yieldsToRemote(written, map)).toBe(false);
+    expect(yieldsToRemote({ ...map, updatedAt: "2099-01-01T00:00:00.000Z" }, written)).toBe(false);
   });
 
   it("未来の道筋が無い文書では、ふつうの追加と同じく右側に足す", () => {

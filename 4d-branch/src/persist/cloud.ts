@@ -573,10 +573,10 @@ export interface CloudSyncDeps {
   /** その場の入力（題名の書き換えなど）の途中か。確定するまで取り込みを待つ */
   isEditing(): boolean;
   /**
-   * 手元が、一度に開いてから何も手を付けていない中身（未来の道筋）か。そうなら、アカウントで別の端末の内容と重なったとき、
-   * 手元を送らずに別の端末の内容を読み込む（手元はバックアップに残る。押せばまた開ける物で、書いた内容を押し流さない）
+   * 手元（local）が、一度に開いてから何も手を付けていない中身（未来の道筋）などで、アカウントで別の端末の内容（remote）と
+   * 重なったとき、手元を送らずにその内容を読み込むか（手元はバックアップに残る。押せばまた開ける物で、書いた内容を押し流さない）
    */
-  yieldsOnConflict?(doc: DocData): boolean;
+  yieldsOnConflict?(local: DocData, remote: DocData): boolean;
   /** このブラウザの内容が、前に別のアカウントで同期していた物か（聞かずにこのアカウントへ送らない） */
   isForeign(): boolean;
   /**
@@ -1271,16 +1271,16 @@ export class CloudSync {
       // 読み込む直前に手元が変わった: 重なりとして扱う
     }
     // 手元は一度に開いてから手を付けていない中身（未来の道筋）: 重なっても送らずに、別の端末の内容を読み込む（手元はバックアップへ）
-    if (this.deps.yieldsOnConflict?.(this.deps.getDoc())) {
+    if (this.deps.yieldsOnConflict?.(this.deps.getDoc(), remote.doc)) {
       if (this.deps.isEditing()) return this.waitForEditing("入力が終わってから、別の端末の変更を読み込みます");
-      const ident = await this.deps.adopt(remote.doc, "remote", () => !!this.deps.yieldsOnConflict?.(this.deps.getDoc()) && !this.deps.isEditing() && this.deps.isWriter());
+      const ident = await this.deps.adopt(remote.doc, "remote", () => !!this.deps.yieldsOnConflict?.(this.deps.getDoc(), remote.doc) && !this.deps.isEditing() && this.deps.isWriter());
       if (ident) {
-        await this.adopted(remote.manifest, ident, "別の端末で保存された内容を読み込みました（開いたばかりの未来の道筋は、バックアップに残しています）。");
+        await this.adopted(remote.manifest, ident, "別の端末で保存された内容を読み込みました（この端末で開いていた地図は、バックアップに残しています）。");
         return "done";
       }
       if (!this.stillWriter()) return "done";
       // 読み込む直前に入力が始まった（まだ手を付けていない）: 入力が終わってから読み直す。手を付けたなら、ふつうの重なり
-      if (this.deps.yieldsOnConflict?.(this.deps.getDoc())) return this.waitForEditing("入力が終わってから、別の端末の変更を読み込みます");
+      if (this.deps.yieldsOnConflict?.(this.deps.getDoc(), remote.doc)) return this.waitForEditing("入力が終わってから、別の端末の変更を読み込みます");
     }
     // この端末の基準の世代が、読めずに置き換えられていた: 置き換えた内容を残して、手元の内容で戻す
     if (remote.manifest.lost?.includes(this.base.gen)) {
