@@ -41,7 +41,8 @@ export const MESSAGES = {
   badSignature: "署名が正しくありません。",
   badRequest: "リクエストが正しくありません。",
   webhookFailed: "保存できませんでした。",
-  tooMany: "少し待ってからもう一度お試しください。"
+  tooMany: "少し待ってからもう一度お試しください。",
+  authUnavailable: "いまは確かめられない。少し待ってもう一度" // 本人確認を確かめられない（502 auth_unavailable。Batch 94。_lib/shared.js verifyUserChecked）
 };
 
 // ----- 1 人 1 分の回数（Batch 88。加入とお支払いの管理。インスタンスのメモリー: 同じ人の連打で決済の会社を叩かない） -----

@@ -1,6 +1,7 @@
 // ===== API共通（Vercel関数から使う。`_` で始まるディレクトリはルートにならない） =====
 //
-// - Supabaseのアクセストークン検証（ログイン必須の機能に使う）
+// - Supabaseのアクセストークン検証（ログイン必須の機能に使う）。加入とお支払いの管理の口は verifyUserChecked（確かめられないときを
+//   鍵が違うときと分ける: 502 auth_unavailable と 401。Batch 94）
 // - AI の入口（Batch 88）: aiGate（メソッド・鍵・ログイン。確認済みのメールで匿名でない人だけ）→ 各 api が入力を確かめる（400）→
 //   aiTake（同じ人の処理中は 429 busy・1 日の回数）→ モデル → aiTake が返した関数で処理中の印を外す。まちがった入力は回数を減らさない
 // - 1 日の回数: まずデータベースの ai_take（本人のトークン。docs/SQL_AI_USAGE.md。全部のインスタンスで 1 つの数）。
@@ -52,23 +53,61 @@ export async function verifyUserFull(authorization) {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` }
     });
     if (!response.ok) return null;
-    const user = await response.json();
-    if (!user?.id) return null;
-    return {
-      id: String(user.id),
-      email: typeof user.email === "string" ? user.email : "",
-      emailConfirmed: Boolean(user.email_confirmed_at || user.confirmed_at),
-      isAnonymous: user.is_anonymous === true
-    };
+    return authUser(await response.json());
   } catch {
     return null;
   }
+}
+
+// 本人確認の答えの本文 → { id, email, emailConfirmed, isAnonymous }（id が無ければ null）。verifyUserFull と verifyUserChecked で同じ
+function authUser(user) {
+  if (!user?.id) return null;
+  return {
+    id: String(user.id),
+    email: typeof user.email === "string" ? user.email : "",
+    emailConfirmed: Boolean(user.email_confirmed_at || user.confirmed_at),
+    isAnonymous: user.is_anonymous === true
+  };
 }
 
 // ユーザーIDだけ要るとき（無効なら null）
 export async function verifyUser(authorization) {
   const user = await verifyUserFull(authorization);
   return user ? user.id : null;
+}
+
+// 本人確認の答えを 3 つに分ける（Batch 94。加入の口とお支払いの管理の口だけが使う。ほかの口は verifyUserFull のまま）:
+//   { user }（本人）・{ problem: "denied" }（鍵が違う: トークンが無い・本人確認が 4xx・本人の id が無い → 呼ぶ側は 401）・
+//   { problem: "unavailable" }（確かめられない: 4 秒で打ち切り・通信の失敗・本人確認の 5xx・本文を読めない → 呼ぶ側は 502 auth_unavailable）。
+// ログには種類と番号だけ（トークン・メール・鍵・相手の所は書かない）
+const VERIFY_TIMEOUT_MS = 4000;
+export async function verifyUserChecked(authorization) {
+  const token = bearerToken(authorization);
+  if (!token) return { problem: "denied" };
+  const unavailable = (kind) => {
+    console.error(`auth/verify: unavailable ${kind}`);
+    return { problem: "unavailable" };
+  };
+  const timedOut = (error) => error?.name === "TimeoutError" || error?.name === "AbortError";
+  let response;
+  try {
+    response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS)
+    });
+  } catch (error) {
+    return unavailable(timedOut(error) ? "timeout" : "network");
+  }
+  if (response.status >= 500) return unavailable(`status ${response.status}`);
+  if (!response.ok) return { problem: "denied" };
+  let body;
+  try {
+    body = await response.json();
+  } catch (error) {
+    return unavailable(timedOut(error) ? "timeout" : "body");
+  }
+  const user = authUser(body);
+  return user ? { user } : { problem: "denied" };
 }
 
 // このインスタンスのメモリー: 回数（"<scope>:<user>" → { day, count }。ai_take が使えないときだけ）・Pro の覚え・処理中の人
