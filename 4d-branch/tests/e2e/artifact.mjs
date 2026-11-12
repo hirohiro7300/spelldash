@@ -655,8 +655,7 @@ await check("自動で開いた未来の道筋を元に戻してやり直した�
 await check("自動で開いた未来の道筋を元に戻して断ったら、別の端末が自動で開いた地図が後から届いても、断ったままにする", async () => {
   const uid = "u_refuse";
   const { X, Y } = await xyDemo(uid, { autoFuture: true, write: false, yFlags: { autoFuture: true } });
-  const yw = Y.page.getByRole("dialog", { name: "4D Branch へようこそ" });
-  if (await yw.isVisible()) await Y.page.getByRole("button", { name: "すぐに使う" }).click();
+  // ようこそは xyDemo で済ませている（閉じかけのようこそをもう一度押さない）
   await Y.page.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
   await X.page.reload({ waitUntil: "load" });
   const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
@@ -720,8 +719,7 @@ await check("別の端末から同期で受け取った未来の道筋を元に�
   await C.page.waitForTimeout(500);
   await C.page.goto("about:blank");
   // B を開き直すと未来の道筋が自動で開き、送られる。開いたままの A は同期で受け取る
-  const bw = B.page.getByRole("dialog", { name: "4D Branch へようこそ" });
-  if (await bw.isVisible()) await B.page.getByRole("button", { name: "すぐに使う" }).click();
+  // ようこそは xyDemo で済ませている
   await B.page.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
   await B.page.waitForTimeout(500);
   await B.page.reload({ waitUntil: "load" });
