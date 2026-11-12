@@ -20,6 +20,7 @@ import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending, fresh
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
   notConfigured: "Pro はまだ受付前。",
+  unavailable: "いまは手続きを始められない。少し待って開き直す。", // config が取れなかった（502・通信の失敗。Batch 94）: 受付前とは限らないので「受付前」と言わない
   nativeOnly: "Pro の加入と管理は Web 版（www.spelldash.net）で。",
   alreadyPro: "すでに Pro。",
   canceled: "支払いは中止した。請求は無い。",
@@ -37,7 +38,7 @@ const PAID_WAIT_TEXT = "手続きは完了。反映を待っている。もう�
 const stateElement = document.getElementById("proState");
 const messageElement = document.getElementById("proMessage");
 
-let config = null; // { configured, prices, trialMonths, trialDays, trialEndsAt, ai }（取得前は null）
+let config = null; // { ok, configured, prices, trialMonths, trialDays, trialEndsAt, ai }（取得前は null。ok は取れたか: 偽なら 502・通信の失敗）
 let configReady = null; // config を取りに行った約束（加入直後の一覧が AI の回数を待つ。アプリでは取りに行かない）
 let session = null;
 let busy = false;
@@ -161,7 +162,7 @@ stateElement.addEventListener("click", (event) => {
 async function loadConfig() {
   const fetched = await fetchBillingConfig(); // 全ページのキャッシュと同じ規則（js/proFunnel.js）
   rememberBillingConfig(fetched); // 取れなかったときは受付前と覚えない（前の値のまま 10 分後に取り直す）
-  config = { configured: fetched.configured, prices: fetched.prices, trialMonths: fetched.trialMonths, trialDays: fetched.trialDays, trialEndsAt: fetched.trialEndsAt, ai: fetched.ai ?? null };
+  config = { ok: fetched.ok, configured: fetched.configured, prices: fetched.prices, trialMonths: fetched.trialMonths, trialDays: fetched.trialDays, trialEndsAt: fetched.trialEndsAt, ai: fetched.ai ?? null };
   renderAiRow();
 }
 
@@ -285,7 +286,8 @@ function renderPlans(plan) {
   }
   if (!config.configured) {
     setPriceLine(null); // 空けていた場所は畳む（受付前・取れなかったときは 1 行を出さない）
-    plansElement.innerHTML = `<p class="pro-pending">${MESSAGES.notConfigured}</p>`;
+    // 取れなかった（502・通信の失敗）ときは「受付前」と言わない（Batch 94。受付中でも決済の会社が一時的に答えないことがある）。200 で受付前なら今どおり
+    plansElement.innerHTML = `<p class="pro-pending">${config.ok === false ? MESSAGES.unavailable : MESSAGES.notConfigured}</p>`;
     return "none";
   }
 
