@@ -148,15 +148,14 @@ export function aliasTargets(meta = getItemMeta()) {
     .filter((k) => typeof k === "string" && k);
 }
 
-// ---- 答えを待つ「無いときだけ書く」（Batch 95 の直し。meta の中の行でない印 TRIED: { 雲の鍵: 送った印〔字〕か答えの時刻〔ms〕}。雲へは送らない） ----
-// 書きは答えが来るまで雲に後から入るかもしれず、答えより前に始めた読みには行が出ないことがある。そういう読みでは、その鍵の送る待ちの墓標を外さずに送る
-// （resolveMyWords）。断られたら外す。行の出た読み・答えの時刻より後に始めた読みで外す
+// ---- 答えを待つ「無いときだけ書く」の印 TRIED（Batch 95 の直し。meta の中の行でない印 { 雲の鍵: 送った印〔字〕か答えの時刻〔ms〕}。雲へは送らない） ----
+// 答えより前に始めた読みには、後から入る行が出ない（resolveMyWords が墓標を外さない）。断られたら外す
 const TRIED = "tried";
 function triedMap(meta) {
   const t = meta[TRIED];
   return t && typeof t === "object" && !Array.isArray(t) ? t : {};
 }
-// 鍵 keys の印を to にする（from: 今の印がこれの鍵だけ。null はどれも。to が null なら外す）
+// 鍵の印を to に（from: 今の印がそれの鍵だけ・null はどれも。to が null なら外す）
 function setTried(keys, from, to) {
   if (keys.length === 0) return;
   const meta = getItemMeta();
@@ -468,7 +467,7 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
   const seen = (w, id) => !dirty.has(id) || (Number.isFinite(markMs) && (w.addedAt == null || tOf(w.addedAt) <= markMs) && !unsent.has(w.en));
   const aliases = { ...aliasMap(meta) };
   let aliasChanged = false;
-  // 答えを待つ書きの印（TRIED）: この読みに行の出た鍵・答えの時刻がこの読みの始めより前の鍵は外す（送りは読んだ鍵だけ）
+  // 印 TRIED: 行の出た鍵・答えがこの読みの始めより前の鍵は外す（送りは読んだ鍵だけ）
   const tried = { ...triedMap(meta) };
   let triedChanged = false;
   for (const [k, v] of Object.entries(tried)) {
@@ -637,8 +636,8 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
     meta[id] = { updatedAt: r.updated_at, deleted: false };
     out.adopted.push([id, r.updated_at]);
   };
-  // 送る待ちの墓標 m（端末の鍵 k）で、読みに雲の鍵 ck の行が無い（Batch 95 の直し）。その鍵の書きの印（TRIED）が残っていれば、墓標も「無いときだけ書く」で送る
-  // （後から入る生きた行は書かれない。生きた行が先なら次の送りが読んで消す）。印が無くても墓標がこの読みの始めより後なら、外さずに次の読みで決める。true: 外さない
+  // 送る待ちの墓標 m で読みに雲の鍵 ck の行が無い（Batch 95 の直し）。印 TRIED があれば墓標も「無いときだけ書く」で送る（生きた行が先なら次の送りが消す）。
+  // 印が無くても墓標が読みの始めより後なら次の読みで決める。true: 外さない
   const tombNoRow = (k, ck, m) => {
     if (!m?.deleted) return false;
     if (!(ck in tried)) return tOf(m.updatedAt) >= readAt;
@@ -1040,11 +1039,9 @@ let dayRejected = false;
 
 // 戻り値 { failed（送れなかった行: 次の送信で送り直す）, rejected（行の中身で断られた行・上限で確かめられなかった行: 印を付けて待つ）,
 //   skipped（送らなかった行・書かれなかった行: 送る待ちに残し、次に読んでから送る） }
-// options.deadline（Batch 95）: マイ単語帳の語の行を送ってよい最後の時刻（読み始めから READ_FRESH_MS）。語の行を送る要求のたびに直前に確かめ、
-//   過ぎていれば語の行は送らずに skipped に入れる（止まっていたページの古い読みで書かない）。メモ・パック・日は送る。
-// options.absent（Batch 95）: 読んだときに雲に行の無かった語の鍵。その行は「無いときだけ書く」（upsert の ignoreDuplicates。同じ鍵の行があれば書かない）で
-//   別の要求にし、書いた行だけを返させる（.select）。返らなかった行は書かれていない（読んだ後にほかの端末が同じ鍵に書いた）ので skipped。
-//   行を返さない答え（data が配列でない）は、どの行も書けたと確かめられないので全部 skipped（次の送りが読んで合わせる）
+// options.deadline（Batch 95）: 語の行を送ってよい最後の時刻（読み始めから READ_FRESH_MS）。語の行を送る要求のたびに確かめ、過ぎていれば skipped（メモ・パック・日は送る）。
+// options.absent（Batch 95）: 読んだときに雲に行の無かった語の鍵。「無いときだけ書く」（ignoreDuplicates）の別の要求にし、書いた行だけを返させる（.select）。
+//   返らなかった行・行を返さない答えの行は書けたと確かめられないので skipped（次の送りが読んで合わせる）
 async function upsertRows(supabase, rows, { deadline = Infinity, absent = null } = {}) {
   const isNew = (r) => r.kind === "my_word" && !!absent && absent.has(r.key);
   // 組: 雲に行の無かった鍵の語（無いときだけ書く）・ほかの語とメモ・パック（前のとおり 1 つの要求）・日
@@ -1061,7 +1058,7 @@ async function upsertRows(supabase, rows, { deadline = Infinity, absent = null }
   };
   const send = async (chunk) => {
     const onlyNew = isNew(chunk[0]);
-    // 答えを待つ間、生きた語の書きは雲に後から入るかもしれない（TRIED）。答えが来たら答えの時刻・断られたら外す
+    // 印 TRIED: 答えが来たら答えの時刻・断られたら外す
     const keys = onlyNew ? chunk.filter((r) => !r.deleted).map((r) => r.key) : [];
     const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
     setTried(keys, null, stamp);
@@ -1103,23 +1100,28 @@ async function upsertRows(supabase, rows, { deadline = Infinity, absent = null }
       else failed.push(...half);
     }
   };
+  // 断られた「無いときだけ書く」の組は、語の墓標があれば墓標の後にもう 1 回送る（消していない語の上限〔docs/SQL_USER_ITEMS.md §4〕で、同じ回に消して足した語）
+  const later = [];
+  const tombs = groups[1].some((r) => r.kind === "my_word" && r.deleted);
+  const sendChunk = async (chunk, again = false) => {
+    const r = await send(chunk);
+    if (r.ok) skipped.push(...r.skipped);
+    else if (chunk[0]?.kind === "day") {
+      failed.push(...chunk);
+      if (r.code === "23514") dayRejected = true;
+    } else if (!r.rowError) failed.push(...chunk);
+    else if (!again && tombs && isNew(chunk[0])) later.push(chunk);
+    else await split(chunk);
+  };
   for (const group of groups) {
     for (let i = 0; i < group.length; i += UPLOAD_CHUNK) {
       const chunk = fresh(group.slice(i, i + UPLOAD_CHUNK));
-      if (chunk.length === 0) continue;
-      const r = await send(chunk);
-      if (r.ok) {
-        skipped.push(...r.skipped);
-        continue;
-      }
-      if (chunk[0]?.kind === "day") {
-        failed.push(...chunk);
-        if (r.code === "23514") dayRejected = true;
-      } else if (r.rowError) {
-        await split(chunk);
-      } else {
-        failed.push(...chunk);
-      }
+      if (chunk.length > 0) await sendChunk(chunk);
+    }
+    if (group !== groups[1]) continue;
+    for (const c of later.splice(0)) {
+      const chunk = fresh(c);
+      if (chunk.length > 0) await sendChunk(chunk, true);
     }
   }
   return { failed, rejected, skipped };
@@ -1412,8 +1414,7 @@ export async function pullUserItems(supabase, userId, options = {}) {
       return { changed: null };
     }
     noteTable(false);
-    // 読み始めから READ_FRESH_MS を過ぎて届いた読み（ページが止まっていた）では合わせない: その間にほかのタブ・端末が消した語を戻し、
-    // 古い答えを写す（送った墓標の印 sentAt も、それより古い読みを捨てるので外れる）。1 回だけ読み直し、また古ければ読めなかった回と同じ
+    // 読み始めから READ_FRESH_MS を過ぎた読みでは合わせない（ほかのタブが消した語を戻す。印 sentAt も外れている）。1 回読み直し、また古ければ読めなかった回と同じ
     if (Date.now() - readAt <= READ_FRESH_MS) break;
     if (tries > 0) return { changed: null };
   }
