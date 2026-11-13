@@ -2461,6 +2461,30 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     st.missing = false; at(1, 10); await sync("P");
     ok("T56c 最初の送りが日の行だけでも、日の読みで表が無いと分かれば次の送りは語を読まない（日の読み 2・語の読み 0）・表ができたら送る",
       d56c.dayRead === 2 && d56c.wordRead === 0 && liveJa("ant") === "蟻", JSON.stringify({ d56c, cloud: cloudView() }));
+    // ---- T56d（E2E 94.1 (5) の形）: 表が無いと分かったページを開いたまま表を作り、取り込まずに送る → その送りで読んでから語を送る（取り込みを待たない）。
+    // (a) 日の行の無い送りは語を読む。(b) 日の行のある送りは日を先に読み、表があると分かれば同じ送りで語を読む（表が無い間は日の読みの 1 つだけ） ----
+    reset(); at(1, 9); st.missing = true;
+    const U4 = await import("../js/userItemsSync.js?t56d");
+    use("P"); M.addMyWord("ant", "試しの訳 蟻"); M.addMyWord("bee", "試しの訳 蜂");
+    await U4.pullUserItems(client, "u1", { now: nowOf() }); // このページは表が無いと知る
+    st.missing = false; // 表を作った
+    const r56d = { ...st.reqs };
+    use("P"); await U4.pushUserItems(client, "u1", { now: nowOf() }); // 日の行の無い送り
+    const a56d = { reqs: Object.fromEntries(Object.entries(st.reqs).map(([k, v]) => [k, v - r56d[k]])), ant: liveJa("ant"), bee: liveJa("bee"), dirty: dirtyOf("P").length };
+    reset(); at(1, 9); st.missing = true;
+    const U5 = await import("../js/userItemsSync.js?t56e");
+    use("P"); M.addMyWord("cat", "試しの訳 猫");
+    await U5.pullUserItems(client, "u1", { now: nowOf() });
+    const r56e = { ...st.reqs };
+    answer("P", "cat", ANSWER_KINDS.exact, 1); setEnd("P"); await U5.pushUserItems(client, "u1", { now: nowOf() }); // 表が無い間のセットの終わり
+    const d56e = Object.fromEntries(Object.entries(st.reqs).map(([k, v]) => [k, v - r56e[k]]));
+    st.missing = false; // 表を作った
+    const r56f = { ...st.reqs };
+    setEnd("P"); await U5.pushUserItems(client, "u1", { now: nowOf() }); // 表ができた後のセットの終わり（取り込まない）
+    const d56f = Object.fromEntries(Object.entries(st.reqs).map(([k, v]) => [k, v - r56f[k]]));
+    ok("T56d 表が無いと分かったページで表を作った後、取り込まずに送る: 日の行の無い送りは語を読んで送る・日の行のある送りは日を先に読み、表があれば同じ送りで語を読んで送る（表が無い間は日の読み 1・語の読み 0）",
+      a56d.reqs.wordRead === 1 && a56d.ant === "蟻" && a56d.bee === "蜂" && a56d.dirty === 0 && d56e.dayRead === 1 && d56e.wordRead === 0 && d56f.dayRead === 1 && d56f.wordRead === 1 && liveJa("cat") === "猫" && dirtyOf("P").length === 0,
+      JSON.stringify({ a56d, d56e, d56f, cloud: cloudView(), dirty: dirtyOf("P") }));
 
     // ===== T57〜（守り。Batch 95 の直し）: 決まりを 1 つだけ外すと落ちる検査（T36〜T46 が覆わなかった決まり・この直しで足した決まり） =====
     // ---- T51b（古い読みは 1 回だけ読み直す）: 取り込みの 1 回目の読みが 20 秒を過ぎて届いても、読み直しが新しければ合わせる ----
