@@ -1134,7 +1134,11 @@ async function mergeDayRowsWithCloud(supabase, dayRows) {
   let cloud;
   try {
     const result = await supabase.from("user_items").select("key,payload").eq("kind", "day").in("key", dayRows.map((r) => r.key));
-    if (!result || result.error || !Array.isArray(result.data)) return [];
+    if (!result || result.error || !Array.isArray(result.data)) {
+      if (isMissingTable(result)) noteTable(true);
+      return [];
+    }
+    noteTable(false);
     cloud = new Map(result.data.map((r) => [r.key, r.payload]));
   } catch {
     return [];
@@ -1296,7 +1300,8 @@ export async function pushUserItems(supabase, userId, { now = Date.now() } = {})
   const readKeys = [...new Set(keys.map((k) => (typeof aliases[k]?.to === "string" && aliases[k].to) || k))];
   const others = buildDirtyRows(userId).filter((r) => r.kind !== "my_word" && (r.kind === "day" || !waiting(metaAtStart[rowId(r)], now)));
   const readAt = Date.now();
-  const [read, days] = await Promise.all([keys.length > 0 ? readWordRows(supabase, readKeys) : null, mergeDayRowsWithCloud(supabase, others.filter((r) => r.kind === "day"))]);
+  // 表がまだ無いと分かったページ（取り込み・確かめ・日の読み）は語を読まない（失敗する要求を増やさない）
+  const [read, days] = await Promise.all([keys.length > 0 && tableMissing !== true ? readWordRows(supabase, readKeys) : null, mergeDayRowsWithCloud(supabase, others.filter((r) => r.kind === "day"))]);
   // 2. 合わせる（読み始めから READ_FRESH_MS の内だけ）。待たせた語は雲の新しい鍵の候補を読み、行の無い鍵へ送る（端末の鍵は動かさない）
   let words = null;
   if (read?.ok) {
