@@ -1809,7 +1809,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const devices = {};
   const use = (name) => { clock.cur = name; return (globalThis.localStorage = devices[name] ??= storeOf()); };
   const sky = new Map();
-  const st = { hold: [], held: [], lose: 0, noRows: 0, failReads: 0, reqs: { wordRead: 0, dayRead: 0, range: 0, upsert: 0 }, upserts: [] };
+  const st = { hold: [], held: [], lose: 0, noRows: 0, failReads: 0, cap: 0, reqs: { wordRead: 0, dayRead: 0, range: 0, upsert: 0 }, upserts: [] };
   const copy = (v) => JSON.parse(JSON.stringify(v));
   // failReads（Batch 95 の直し）: 次の n 回の読み（どの種類も）は通信の失敗で答える（圏外の形）
   const readFails = () => (st.failReads > 0 ? (st.failReads--, Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 })) : null);
@@ -1851,6 +1851,19 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
         let p = null;
         const run = () => (p ??= defer("upsert", () => {
           st.upserts.push({ ignore, rows: sent });
+          // cap（Batch 95 の直し）: 表の守りの「消していない語の上限」（docs/SQL_USER_ITEMS.md §4。本物は 1,000 語）。行を順に見て、語が増える行で上限に
+          // 届いていれば文ごと断る（400・23514。1 行も書かない）。同じ文の前の行（墓標）が減らした数は数える
+          if (st.cap > 0) {
+            const t = new Map(sky);
+            for (const r of sent) {
+              const id = `${r.kind}:${r.key}`;
+              const old = t.get(id);
+              if (ignore && old) continue;
+              const more = r.kind === "my_word" && !r.deleted && !(old?.kind === "my_word" && !old.deleted);
+              if (more && [...t.values()].filter((x) => x.kind === "my_word" && !x.deleted).length >= st.cap) return { data: null, error: { code: "23514", message: "user_items too many words" }, status: 400 };
+              t.set(id, r);
+            }
+          }
           const wrote = [];
           for (const r of sent) {
             const id = `${r.kind}:${r.key}`;
@@ -1887,7 +1900,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const pullStart = async (name) => { use(name); const done = U.pullUserItems(client, "u1", { now: nowOf() }).catch((e) => e); await settleTicks(); return { done }; };
   const sync = async (name) => { await pull(name); await push(name); }; // 新しいタブ（取り込み → 送る）
   const settle = async (names, rounds = 2) => { for (let r = 0; r < rounds; r++) for (const n of names) { clock.now += MIN; await sync(n); } };
-  const reset = () => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); st.hold.length = 0; st.held.length = 0; st.lose = 0; st.noRows = 0; st.failReads = 0; st.upserts.length = 0; for (const k of Object.keys(st.reqs)) st.reqs[k] = 0; clock.skew = {}; };
+  const reset = () => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); st.hold.length = 0; st.held.length = 0; st.lose = 0; st.noRows = 0; st.failReads = 0; st.cap = 0; st.upserts.length = 0; for (const k of Object.keys(st.reqs)) st.reqs[k] = 0; clock.skew = {}; };
   const all = (name) => (use(name), JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
   const wordsOf = (name) => all(name).filter((w) => C.isWordEntry(w));
   const metaOf = (name) => (use(name), JSON.parse(localStorage.getItem("spelldash_user_items_meta") || "{}"));
@@ -2388,6 +2401,29 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ok("T54 書きの答えが読みの始めより後に来た凧: 読みに行が無くても墓標を外さない（凧は電話・PC・雲とも無い・書きの印も残らない）",
       kept54 && stateOf("P", "kite", "凧") === "-" && stateOf("C", "kite", "凧") === "-" && liveJa("kite") === "" && !tried("P"),
       JSON.stringify({ kept54, P: view("P"), C: view("C"), cloud: cloudView(), tried: tried("P") }));
+
+    // ---- T55（消していない語の上限）: 偽の雲の守りの上限を 5 語にする（本物は 1,000 語。決まりは同じ）。上限の 5 語のうち 3 語を消し、新しい 3 語を足して 1 回の送り:
+    // 新しい語が先に断られても、墓標を送った後にもう一度送るので、新しい 3 語は雲に入る（1 日待たない）。
+    // (b) 1 語を消して 3 語を足す: 上限まで（1 語）は入り、残りの 2 語は断られて待つ（前のとおり）----
+    const capRun = async (drop, add) => {
+      reset(); st.cap = 5; at(1, 9); await sync("P");
+      const base = [["ant", "蟻"], ["bee", "蜂"], ["cat", "猫"], ["dog", "犬"], ["elk", "鹿"]];
+      use("P"); for (const [en, ja] of base) M.addMyWord(en, `試しの訳 ${ja}`);
+      setEnd("P"); await push("P");
+      at(1, 10); use("P");
+      for (const [en] of base.slice(0, drop)) M.removeMyWord(en, "word");
+      for (const [en, ja] of [["fox", "狐"], ["gnu", "牛"], ["hen", "鶏"]].slice(0, add)) M.addMyWord(en, `試しの訳 ${ja}`);
+      setEnd("P"); const up0 = st.reqs.upsert; await push("P");
+      const live = [...sky.values()].filter((r) => r.kind === "my_word" && !r.deleted).map((r) => r.key).sort().join(",");
+      const waits = Object.entries(metaOf("P")).filter(([, m]) => m?.failAt).map(([id]) => id.slice(8)).sort().join(",");
+      return { live, waits, dirty: dirtyOf("P"), upserts: st.reqs.upsert - up0 };
+    };
+    const cap55 = await capRun(3, 3);
+    const cap55b = await capRun(1, 3);
+    ok("T55 消していない語の上限: 上限の 5 語から 3 語を消し 3 語を足した送りで、新しい 3 語も雲に入る（断られて 1 日待たない）・送る待ちが残らない",
+      cap55.live === "dog,elk,fox,gnu,hen" && cap55.waits === "" && cap55.dirty.length === 0, JSON.stringify(cap55));
+    ok("T55b 1 語を消して 3 語を足すと、上限までの 1 語だけ雲に入り、残りの 2 語は断られて待つ（上限は越えない）",
+      cap55b.live.split(",").length === 5 && cap55b.live.startsWith("bee,cat,dog,elk,") && cap55b.waits.split(",").length === 2 && cap55b.dirty.length === 2, JSON.stringify(cap55b));
   } finally {
     globalThis.Date = RealDate;
   }
