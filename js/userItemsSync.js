@@ -148,6 +148,32 @@ export function aliasTargets(meta = getItemMeta()) {
     .filter((k) => typeof k === "string" && k);
 }
 
+// ---- 答えを待つ「無いときだけ書く」（Batch 95 の直し。meta の中の行でない印 TRIED: { 雲の鍵: 送った印〔字〕か答えの時刻〔ms〕}。雲へは送らない） ----
+// 書きは答えが来るまで雲に後から入るかもしれず、答えより前に始めた読みには行が出ないことがある。そういう読みでは、その鍵の送る待ちの墓標を外さずに送る
+// （resolveMyWords）。断られたら外す。行の出た読み・答えの時刻より後に始めた読みで外す
+const TRIED = "tried";
+function triedMap(meta) {
+  const t = meta[TRIED];
+  return t && typeof t === "object" && !Array.isArray(t) ? t : {};
+}
+// 鍵 keys の印を to にする（from: 今の印がこれの鍵だけ。null はどれも。to が null なら外す）
+function setTried(keys, from, to) {
+  if (keys.length === 0) return;
+  const meta = getItemMeta();
+  const t = { ...triedMap(meta) };
+  let n = 0;
+  for (const k of keys) {
+    if (from !== null && t[k] !== from) continue;
+    if (to === null) delete t[k];
+    else t[k] = to;
+    n++;
+  }
+  if (n === 0) return;
+  if (Object.keys(t).length > 0) meta[TRIED] = t;
+  else delete meta[TRIED];
+  writeJson(META_KEY, meta);
+}
+
 // 印 merged の out（まだ雲に入っていない送る待ちの語の鍵）
 function markOut(meta) {
   const out = meta[MERGED]?.out;
@@ -442,6 +468,14 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
   const seen = (w, id) => !dirty.has(id) || (Number.isFinite(markMs) && (w.addedAt == null || tOf(w.addedAt) <= markMs) && !unsent.has(w.en));
   const aliases = { ...aliasMap(meta) };
   let aliasChanged = false;
+  // 答えを待つ書きの印（TRIED）: この読みに行の出た鍵・答えの時刻がこの読みの始めより前の鍵は外す（送りは読んだ鍵だけ）
+  const tried = { ...triedMap(meta) };
+  let triedChanged = false;
+  for (const [k, v] of Object.entries(tried)) {
+    if ((read && !read.has(k)) || !(cloud.has(idOf(k)) || (typeof v === "number" && v < readAt))) continue;
+    delete tried[k];
+    triedChanged = true;
+  }
   const dropAlias = (k) => {
     if (k in aliases) {
       delete aliases[k];
@@ -603,6 +637,16 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
     meta[id] = { updatedAt: r.updated_at, deleted: false };
     out.adopted.push([id, r.updated_at]);
   };
+  // 送る待ちの墓標 m（端末の鍵 k）で、読みに雲の鍵 ck の行が無い（Batch 95 の直し）。その鍵の書きの印（TRIED）が残っていれば、墓標も「無いときだけ書く」で送る
+  // （後から入る生きた行は書かれない。生きた行が先なら次の送りが読んで消す）。印が無くても墓標がこの読みの始めより後なら、外さずに次の読みで決める。true: 外さない
+  const tombNoRow = (k, ck, m) => {
+    if (!m?.deleted) return false;
+    if (!(ck in tried)) return tOf(m.updatedAt) >= readAt;
+    out.toUpload.push({ user_id: userId, kind: "my_word", key: ck, payload: {}, deleted: true, updated_at: m.updatedAt });
+    out.absent.add(ck);
+    if (ck !== k) out.local.set(idOf(ck), idOf(k));
+    return true;
+  };
   // 端末の生きた語 w（端末の鍵 k）と雲の行 r（雲の鍵 ck）が同じカード: 新しい方。同じ時刻で中身も同じなら送れたとみなす
   const settleSameCard = (k, w, i, r, ck) => {
     const id = idOf(k);
@@ -653,6 +697,7 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
         } else if (isWordEntry(r.payload) && sameCard(w, r.payload)) settleSameCard(k, w, i, r, ck);
         else out.held.push(k); // 雲の鍵に違うカード（読まずに送る前の版の上書き）: 次の取り込みで
       } else if (!w && d && m?.deleted) {
+        if (!r && tombNoRow(k, ck, m)) continue;
         if (!r || r.deleted) {
           dirty.delete(id);
           delete meta[id];
@@ -699,6 +744,7 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
     }
     if (d) {
       // 送る待ちの墓標（印の無い送る待ちも buildDirtyRows と同じく墓標）
+      if (!r && tombNoRow(k, k, m)) continue;
       if (!r || r.deleted) {
         dirty.delete(id);
         delete meta[id];
@@ -731,6 +777,10 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
     else delete meta[ALIAS];
   }
   if (outChanged && meta[MERGED]) meta[MERGED] = { ...meta[MERGED], out: [...unsent] };
+  if (triedChanged) {
+    if (Object.keys(tried).length > 0) meta[TRIED] = tried;
+    else delete meta[TRIED];
+  }
   return out;
 }
 
@@ -1010,9 +1060,15 @@ async function upsertRows(supabase, rows, { deadline = Infinity, absent = null }
     return chunk.filter((r) => r.kind !== "my_word");
   };
   const send = async (chunk) => {
+    const onlyNew = isNew(chunk[0]);
+    // 答えを待つ間、生きた語の書きは雲に後から入るかもしれない（TRIED）。答えが来たら答えの時刻・断られたら外す
+    const keys = onlyNew ? chunk.filter((r) => !r.deleted).map((r) => r.key) : [];
+    const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+    setTried(keys, null, stamp);
     try {
-      const onlyNew = isNew(chunk[0]);
       const result = await (onlyNew ? supabase.from("user_items").upsert(chunk, { ignoreDuplicates: true }).select("kind,key") : supabase.from("user_items").upsert(chunk));
+      if (result && !result.error) setTried(keys, stamp, Date.now());
+      else if (result?.status >= 400 && result.status < 500) setTried(keys, stamp, null);
       if (result && !result.error) {
         if (!onlyNew) return { ok: true, skipped: [] };
         const wrote = new Set((Array.isArray(result.data) ? result.data : []).map((r) => `${r?.kind}:${r?.key}`));
