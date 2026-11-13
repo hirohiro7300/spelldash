@@ -2449,8 +2449,125 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ok("T56 表がまだ無い: 取り込みで表が無いと分かったページの送りは語を読まない（3 回の送りで日の読み 3・語の読み 0・書き 0）・印 merged を作らない・語は送る待ちに残り、表ができたら送る",
       d56.wordRead === 0 && d56.dayRead === 3 && d56.upsert === 0 && !mark56 && dirty56 === 3 && liveJa("ant") === "蟻" && liveJa("cat") === "猫" && dirtyOf("P").length === 0,
       JSON.stringify({ d56, mark56, dirty56, cloud: cloudView(), dirty: dirtyOf("P") }));
-    ok("T56b 取り込みの無いページ: 最初の送りの日の読みで表が無いと分かれば、次の送りは語を読まない（語の読み 1・日の読み 2）",
+    ok("T56b 取り込みの無いページ: 最初の送りの読みで表が無いと分かれば、次の送りは語を読まない（語の読み 1・日の読み 2）",
       d56b.wordRead === 1 && d56b.dayRead === 2 && d56b.upsert === 0, JSON.stringify(d56b));
+    // ---- T56c: 取り込みの無いページの最初の送りが日の行だけ（語の送る待ちが無い）でも、日の読みで表が無いと分かれば、次の送りから語を読まない ----
+    reset(); at(1, 9); st.missing = true;
+    const U3 = await import("../js/userItemsSync.js?t56c");
+    const r56c = { ...st.reqs };
+    use("P"); setEnd("P"); await U3.pushUserItems(client, "u1", { now: nowOf() });
+    use("P"); M.addMyWord("ant", "試しの訳 蟻"); setEnd("P"); await U3.pushUserItems(client, "u1", { now: nowOf() });
+    const d56c = Object.fromEntries(Object.entries(st.reqs).map(([k, v]) => [k, v - r56c[k]]));
+    st.missing = false; at(1, 10); await sync("P");
+    ok("T56c 最初の送りが日の行だけでも、日の読みで表が無いと分かれば次の送りは語を読まない（日の読み 2・語の読み 0）・表ができたら送る",
+      d56c.dayRead === 2 && d56c.wordRead === 0 && liveJa("ant") === "蟻", JSON.stringify({ d56c, cloud: cloudView() }));
+
+    // ===== T57〜（守り。Batch 95 の直し）: 決まりを 1 つだけ外すと落ちる検査（T36〜T46 が覆わなかった決まり・この直しで足した決まり） =====
+    // ---- T51b（古い読みは 1 回だけ読み直す）: 取り込みの 1 回目の読みが 20 秒を過ぎて届いても、読み直しが新しければ合わせる ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("C"); M.addMyWord("kite", "試しの訳 凧"); setEnd("C"); await push("C");
+    at(1, 10); const range51b = st.reqs.range; st.hold.push("range"); const p51b = await pullStart("P");
+    clock.now += 25000; await release("range"); await p51b.done;
+    ok("T51b 取り込みの 1 回目の読みが古くても、読み直しが新しければ取り込む（凧が電話に入る・読み 2 回）",
+      stateOf("P", "kite", "凧") === "s0" && st.reqs.range - range51b === 2, JSON.stringify({ P: view("P"), reads: st.reqs.range - range51b }));
+
+    // ---- T52b（読みの始めより新しい墓標は外さない）: タブ 2 の取り込みの読みは雲が答えた（凧の行は無い）が処理は後 → 前の版のタブ 1（書きの印 tried を付けない）が凧を雲に書いて
+    // 送る待ちから外し、凧を消す → タブ 2 が読みを処理する: 墓標は読みの始めより新しいので外さない（次の読みで決める）。凧は電話・PC・雲とも無い ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    at(1, 10); use("P"); M.addMyWord("kite", "試しの訳 凧");
+    clock.now += 1000; st.hold.push("range"); const p52b = await pullStart("P"); // タブ 2
+    clock.now += 300; use("P");
+    { // 前の版のタブ 1 の送り: 凧の行を書き、送る待ちから外す
+      const w = wordsOf("P").find((x) => x.en === "kite");
+      sky.set("my_word:kite", { user_id: "u1", kind: "my_word", key: "kite", payload: { ...w }, deleted: false, updated_at: metaOf("P")["my_word:kite"].updatedAt });
+      localStorage.setItem("spelldash_user_items_dirty", JSON.stringify(JSON.parse(localStorage.getItem("spelldash_user_items_dirty") || "[]").filter((id) => id !== "my_word:kite")));
+    }
+    clock.now += 500; use("P"); M.removeMyWord("kite", "word"); // タブ 1: 凧を消す
+    clock.now += 2000; await release("range"); await p52b.done;
+    const kept52b = dirtyOf("P").includes("my_word:kite") && metaOf("P")["my_word:kite"]?.deleted === true;
+    clock.now += 5000; setEnd("P"); await push("P");
+    await settle(["P", "C"], 2);
+    ok("T52b 読みの始めより新しい墓標は、読みに行が無くても外さない（前の版のタブの書きでも凧は電話・PC・雲とも無い）",
+      kept52b && stateOf("P", "kite", "凧") === "-" && stateOf("C", "kite", "凧") === "-" && liveJa("kite") === "", JSON.stringify({ kept52b, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T46b（印 merged の時刻は 今 − 1 ms・前の版のタブ）: T46 と同じ形で、凧を足すのは前の版のタブ（足した語を印の out に入れない）で、印を進めたのとちょうど同じミリ秒 ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("C"); M.addMyWord("kite", "試しの訳 鳶"); setEnd("C"); await push("C");
+    at(1, 9, 10); use("P"); setEnd("P"); await push("P");
+    const ms46b = clock.now; // 印を進めた送りの終わりのミリ秒
+    use("P"); M.addMyWord("kite", "試しの訳 凧");
+    { // 前の版のタブの足し方にする: 足した時刻は印を進めたミリ秒ちょうど・印の out には入れない
+      const list = all("P");
+      list.find((x) => x.en === "kite").addedAt = new RealDate(ms46b).toISOString();
+      localStorage.setItem("spelldash_my_words", JSON.stringify(list));
+      const meta = metaOf("P");
+      const out = (meta.merged?.out ?? []).filter((k) => k !== "kite");
+      if (meta.merged) meta.merged = out.length > 0 ? { ...meta.merged, out } : { at: meta.merged.at };
+      localStorage.setItem("spelldash_user_items_meta", JSON.stringify(meta));
+    }
+    answer("P", "kite", ANSWER_KINDS.exact, 3);
+    at(1, 9, 20); await sync("C"); use("C"); M.removeMyWord("kite", "word"); setEnd("C"); await push("C");
+    at(1, 9, 30); await sync("P"); at(1, 9, 40); await sync("C"); await settle(["P", "C"]);
+    ok("T46b 印を進めたのとちょうど同じミリ秒に前の版のタブが足した語も、まだ雲に入っていない語と見る（PC の墓標で消えない）",
+      stateOf("P", "kite", "凧") === "s2" && stateOf("C", "kite", "凧") === "s2", JSON.stringify({ ms46b, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T57（送りの 2 つの読みは同時）: 送りの語の読みが止まっている間に、日の行の読みはもう出ている（読みと送りの間に別の待ちをはさまない） ----
+    reset(); at(1, 9); await sync("P");
+    use("P"); M.addMyWord("kite", "試しの訳 凧"); setEnd("P");
+    const day57 = st.reqs.dayRead;
+    st.hold.push("wordRead"); const p57 = await pushStart("P");
+    const both57 = st.held.length === 1 && st.reqs.dayRead === day57 + 1;
+    await release("wordRead"); await p57.done;
+    ok("T57 送りの語の読みが止まっている間に、日の行の読みも出ている（2 つの読みを同時に出す）・凧は雲に入る",
+      both57 && liveJa("kite") === "凧", JSON.stringify({ both57, dayReads: st.reqs.dayRead - day57 }));
+
+    // ---- T58（分けて送り直す要求も 20 秒を確かめる）: 守りの上限（偽の雲は 3 語）で断られた「無いときだけ書く」の組を分けて送り直す前に、読み始めから 20 秒を過ぎていたら語は送らない ----
+    reset(); st.cap = 3; at(1, 9); await sync("P");
+    use("P"); for (const [en, ja] of [["ant", "蟻"], ["bee", "蜂"], ["cat", "猫"]]) M.addMyWord(en, `試しの訳 ${ja}`);
+    setEnd("P"); await push("P");
+    at(1, 10); use("P"); M.addMyWord("dog", "試しの訳 犬"); M.addMyWord("elk", "試しの訳 鹿");
+    st.hold.push("upsert"); const p58 = await pushStart("P");
+    const up58 = st.reqs.upsert;
+    clock.now += 25000; await release("upsert"); await p58.done;
+    const waits58 = Object.values(metaOf("P")).filter((m) => m?.failAt).length;
+    ok("T58 断られた組を分けて送り直す前に読み始めから 20 秒を過ぎていたら、語は送らない（送り直し 0・断られた印も付けない・送る待ちに残る）",
+      st.reqs.upsert === up58 && waits58 === 0 && dirtyOf("P").length === 2, JSON.stringify({ more: st.reqs.upsert - up58, waits58, dirty: dirtyOf("P") }));
+
+    // ---- T59（送りが合わせるのは今も送る待ちの鍵だけ）: タブ 1 の送りの語の読みが止まる間に、タブ 2 が同じ凧を送り終える → タブ 1 は送り終えた凧を合わせず・送らない ----
+    reset(); at(1, 9); await sync("P");
+    use("P"); M.addMyWord("kite", "試しの訳 凧");
+    st.hold.push("wordRead"); const p59 = await pushStart("P"); // タブ 1（読みは凧の行の無い雲）
+    await push("P"); // タブ 2 が凧を送り終える
+    const ups59 = st.upserts.length;
+    await release("wordRead"); await p59.done;
+    ok("T59 送りが合わせるのは今も送る待ちの鍵だけ: ほかのタブが送り終えた凧を古い読みで送り直さない（書き 0・送る待ちに戻さない）",
+      st.upserts.length === ups59 && dirtyOf("P").length === 0 && liveJa("kite") === "凧", JSON.stringify({ more: st.upserts.slice(ups59).map((u) => u.rows.map((r) => r.key)), dirty: dirtyOf("P") }));
+
+    // ---- T60（R4: 一度も雲に入っていない語の墓標は、ほかの端末の同じ組を消さない）: PC が凧を足して送る → 電話（取り込む前）が同じ組の凧を足してすぐ消す（送らない）→
+    // 電話の取り込み: 電話の墓標は PC の凧より新しく同じ組でも、電話の凧は雲に入っていないので PC の凧を消さない（電話も PC の凧を取り込む） ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    at(1, 10); use("C"); M.addMyWord("kite", "試しの訳 凧"); setEnd("C"); await push("C");
+    at(1, 10, 1); use("P"); M.addMyWord("kite", "試しの訳 凧"); M.removeMyWord("kite", "word");
+    at(1, 10, 5); await sync("P"); await settle(["P", "C"]);
+    ok("T60 一度も雲に入っていない語の墓標は、ほかの端末の同じ組の語を消さない（電話・PC・雲に凧）",
+      stateOf("P", "kite", "凧") === "s0" && stateOf("C", "kite", "凧") === "s0" && liveJa("kite") === "凧", JSON.stringify({ P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ---- T61（送る待ちの語の鍵が 200 を超えたら全部の行を読む）: Pro の電話が 201 語を足して送る ----
+    const many = (n, pre) => Array.from({ length: n }, (_, i) => `${pre}${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + (Math.floor(i / 26) % 26))}`);
+    reset(); at(1, 9); use("P"); localStorage.setItem("spelldash_plan", JSON.stringify({ status: "active", interval: "month", periodEnd: null })); await sync("P");
+    use("P"); for (const en of many(201, "capw")) M.addMyWord(en, `試しの訳 ${en}`);
+    const r61 = { ...st.reqs }; await push("P");
+    ok("T61 送る待ちの語の鍵が 200 を超えたら（201 語）、鍵の並びでなく全部の行を読む（全部の読み 1・鍵の読み 0）・201 語とも雲に入る",
+      st.reqs.range - r61.range === 1 && st.reqs.wordRead === r61.wordRead && [...sky.values()].filter((r) => r.kind === "my_word" && !r.deleted).length === 201,
+      JSON.stringify({ range: st.reqs.range - r61.range, wordRead: st.reqs.wordRead - r61.wordRead }));
+
+    // ---- T62（鍵の並びの読みは 1,500 字ごとに分ける）: 28 字の鍵の語 60 語を送る: 鍵の並びの読みを 2 つに分ける（URL が長くなりすぎない） ----
+    reset(); at(1, 9); await sync("P");
+    use("P"); for (const en of many(60, "abcdefghijklmnopqrstuvwxyz")) M.addMyWord(en, `試しの訳 ${en}`);
+    const r62 = { ...st.reqs }; await push("P");
+    ok("T62 鍵の並びの読みは 1,500 字ごとに分ける（28 字の鍵 60 語で鍵の読み 2）・60 語とも雲に入る",
+      st.reqs.wordRead - r62.wordRead === 2 && st.reqs.range === r62.range && [...sky.values()].filter((r) => r.kind === "my_word" && !r.deleted).length === 60,
+      JSON.stringify({ wordRead: st.reqs.wordRead - r62.wordRead, range: st.reqs.range - r62.range }));
   } finally {
     globalThis.Date = RealDate;
   }
