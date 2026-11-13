@@ -14,17 +14,20 @@
 // 読み方（Batch 87。docs/SPEC_MY_WORDS.md §16.1・§16.2）: 主キーの列で並べて READ_PAGE 行ずつ、全部の行の数に届き、満ちていないページが来るまで読む（readAllRows）。1 ページでも読めなければ
 // 取り込み全体を止める。取り込みで送れた行・クラウドから取り込んだ行は、送る待ち（dirty）から外す（同じ行を次の送信で送り直さない）。
 // 2 台の取り込み（Batch 94。docs/SPEC_MY_WORDS.md §18）: マイ単語帳の同じカードは 3 状態と lf を残し、ほかの端末で作った同じ名前の単語帳はこの端末の単語帳に入れる。
+// 送る前に読む（Batch 95。docs/SPEC_MY_WORDS.md §18.11）: マイ単語帳の語は、送る前にその鍵の雲の行を読み、取り込みと同じ決まり（resolveMyWords）で合わせてから送る。
+// 読めない回・読み始めから READ_FRESH_MS を過ぎた回は語を送らない（送る待ちに残す）。読んだときに雲に行の無かった鍵は「無いときだけ書く」で送る。
+// 語の鍵を動かすのは取り込みだけ。送りは、雲で使えない鍵の語を雲の新しい鍵へ端末の鍵のまま送る（印 ALIAS）。
 
 import { normJa, parseBooks, cleanBookName, bookRefOf, answerKeyOf, isWordEntry, myIdentityFor, jaHash } from "./myWordsCore.js";
 
-const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }（マイ単語帳の墓標は card・noRow も持つ: 下の「消した語の印」）と、行でない印 UNMERGED・MERGED
-// 取り込みで雲を読めなかった印（Batch 94 の直し。meta の中の 1 つ。行の id はいつも「kind:key」なので重ならない。docs/SPEC_MY_WORDS.md §18.9）:
-// 付いている間、pushUserItems はマイ単語帳の語を送らない（送る待ちに残す）。雲と合わせていない語を送ると、ほかの端末の同じ鍵の違うカードを
-// 新しい時刻で上書きして消す（取り込みは同じタブの最初のページだけで、読めなくても同期の取り込み済みの印は付く: js/sync.js）。次に読めた取り込みが外す
-const UNMERGED = "unmerged";
-// 最後に雲と合わせた時刻（Batch 94 の直し。meta の中の 1 つ。{ at }。docs/SPEC_MY_WORDS.md §18.10）: 取り込みの終わりに書く。雲の墓標より古い送る待ちの語を
-// 消すか移すかを決める（下の moveDifferentCards）。無い = この端末はまだ一度も雲と合わせていない（ゲストの「はい」・表の前から使っている端末）
+const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }（送る待ちの語の墓標は card も持つ: 下の「消した語の印」）と、行でない印 MERGED・ALIAS
+// 雲と合わせた印（Batch 95。meta の中の 1 つ。{ at, out? }。行の id はいつも「kind:key」なので重ならない。雲へは送らない。docs/SPEC_MY_WORDS.md §18.10）:
+// 「足した時刻が at まで（足した時刻の無い前からの語も）の端末の生きた語は、out の鍵の語を除いて、どれも一度は雲に入った（送れた・雲から取り込んだ）」。
+// out はまだ雲に入っていない送る待ちの語の鍵（ふつうは 0〜数個）。雲を読めて合わせた回の終わり（advanceMark）に at を進め、out を数え直す。
+// 無い = この端末はまだ一度も雲を読めて合わせていない（ゲストの「はい」・表の前から使っている端末・前の版の端末）
 const MERGED = "merged";
+// 前の版（Batch 94）の印「雲を読めなかった」。今は使わない（どの送りも先に読む）。雲を読めたときに外す
+const UNMERGED = "unmerged";
 const DIRTY_KEY = "spelldash_user_items_dirty"; // ["kind:key", ...]
 const MY_WORDS_KEY = "spelldash_my_words";
 const MY_BOOKS_KEY = "spelldash_my_books"; // js/myWords.js（単語帳の一覧。読むだけ）
@@ -88,30 +91,117 @@ export function touchItems(kind, keys, deleted = false, at = new Date().toISOStr
   writeJson(DIRTY_KEY, [...dirty]);
 }
 
-// ---- 消した語の印（Batch 94 の直し。docs/SPEC_MY_WORDS.md §18.8） ----
+// ---- 消した語の印（docs/SPEC_MY_WORDS.md §18.8） ----
 // 雲の墓標の中身は空になる（docs/SQL_USER_ITEMS.md §4）ので、ほかの端末はどのカードが消えたかを知らない。マイ単語帳の語を消す道（js/myWords.js）は
-// touchItems(..., true) の代わりにこれを呼び、同じ墓標の印と送る待ちに、消したカード card（足した時刻と訳の印 jaHash）を足す（印と送る待ちは 1 回ずつ書く）。
-// 取り込み（mergeCloudItems）は、雲にある同じ鍵の生きた語が card と違うカードなら、その語を取り込んで墓標を送らない（ほかの端末の違う語を消さない）。
-// gone: [{ key, word }]（word は消した英語の語。場面カード・同じ鍵の語が 2 つ以上なら null: card を付けない＝今どおり新しい方が勝つ）
+// touchItems(..., true) の代わりにこれを呼び、墓標の印に消したカード card を足す（印と送る待ちは 1 回ずつ書く）。
+// card: 足した時刻 addedAt・訳の印 jaHash・seen（消したカードが一度は雲に入っていたか: 送る待ちでなかったか、足した時刻が印 merged の at までで out に無い）。
+// card は送る待ちの間だけ持つ（送れた墓標・要らなくなった墓標は印ごと外す: settleRows・resolveMyWords）。
+// 消す印の時刻は「今」と「この端末の印の時刻 + 1 ms」の遅い方（Batch 95: 時計が遅れた端末でも、見えていた版より後に並べて消せる）。
+// gone: [{ key, word }]（word は消した 1 語。同じ鍵の語が 2 つ以上なら null: card を付けない＝雲の生きた行に会えば取り込んで戻す）
 export function touchDeletedWords(gone, at = new Date().toISOString()) {
   const list = (Array.isArray(gone) ? gone : []).filter((g) => g && g.key);
   if (list.length === 0) return;
   const meta = getItemMeta();
   const dirty = getDirtyItems();
+  const atMs = Date.parse(at);
   for (const { key, word } of list) {
     const id = `my_word:${key}`;
-    meta[id] = { updatedAt: at, deleted: true, ...(isWordEntry(word) ? { card: { addedAt: word.addedAt ?? null, jaHash: jaHash(word.ja) } } : {}) };
+    const card = word && typeof word === "object" && word.en ? { addedAt: word.addedAt ?? null, jaHash: jaHash(word.ja ?? ""), seen: !dirty.has(id) || (cardBeforeMark(word.addedAt, meta) && !markOut(meta).has(key)) } : null;
+    const prev = Date.parse(meta[id]?.updatedAt ?? "");
+    const t = Number.isFinite(prev) && Number.isFinite(atMs) && prev >= atMs ? new Date(prev + 1).toISOString() : at;
+    meta[id] = { updatedAt: t, deleted: true, ...(card ? { card } : {}) };
     dirty.add(id);
   }
   writeJson(META_KEY, meta);
   writeJson(DIRTY_KEY, [...dirty]);
 }
 
-// 墓標の印 m の消したカードと、雲の生きた語 payload が違うカードか（足した時刻も訳も違う。§18.1 の同じカードの逆）。card の無い墓標（前の版）は違うと見ない
-function deletedOtherCard(m, payload) {
-  const card = m?.deleted ? m.card : null;
-  if (!card || !isWordEntry(payload)) return false;
-  return !((card.addedAt != null && card.addedAt === payload.addedAt) || card.jaHash === jaHash(payload.ja));
+// 足した語を「まだ雲に入っていない」語に数える（Batch 95。足す 4 つの道が語を書いた後に呼ぶ。added: [[鍵, 足した時刻], ...]）。
+// ふつうは足した時刻が印 merged の at より後なので何もしない。時計が at より前に戻った端末だけ、足した時刻では見分けられないので、
+// その鍵を印の out に入れる（「雲に入った語」と見誤って、雲の古い墓標で消さない）
+export function noteAddedWords(added) {
+  const list = (Array.isArray(added) ? added : []).filter((a) => Array.isArray(a) && a[0]);
+  if (list.length === 0) return;
+  const meta = getItemMeta();
+  const m = meta[MERGED];
+  if (!m) return; // まだ一度も雲と合わせていない端末: 送る待ちの語はどれも雲に入っていないと見る
+  const markMs = Date.parse(m.at ?? "");
+  if (!Number.isFinite(markMs)) return;
+  const late = list.filter(([, addedAt]) => !(Date.parse(addedAt ?? "") > markMs)).map(([k]) => k);
+  if (late.length === 0) return;
+  meta[MERGED] = { ...m, out: [...new Set([...markOut(meta), ...late])] };
+  writeJson(META_KEY, meta);
+}
+
+// ---- 雲の新しい鍵へ端末の鍵のまま送る語（Batch 95。meta の中の行でない印 ALIAS: { 端末の鍵: { to: 雲の鍵, at: 足した時刻 } }。雲へは送らない） ----
+// 送りは回の途中かもしれないので、端末の語の鍵を動かさない。雲で使えない鍵（雲の墓標の鍵: K1・違うカードの鍵: A2）の語は、雲に行の無い
+// 新しい鍵（<英語の鍵>~<訳の印>）へ送り、その後の答え・訳の直し・消す印もその鍵へ送る。次の取り込みの初めに、端末の語をその鍵へ移して印を外す
+const ALIAS = "alias";
+function aliasMap(meta) {
+  const a = meta[ALIAS];
+  return a && typeof a === "object" && !Array.isArray(a) ? a : {};
+}
+// 雲の鍵として送っている鍵（js/myWords.js unsentDeletedKeys: 新しい語に使わない）
+export function aliasTargets(meta = getItemMeta()) {
+  return Object.values(aliasMap(meta))
+    .map((v) => v?.to)
+    .filter((k) => typeof k === "string" && k);
+}
+
+// ---- 答えを待つ「無いときだけ書く」の印 TRIED（Batch 95 の直し。meta の中の行でない印 { 雲の鍵: 送った印〔字〕か答えの時刻〔ms〕}。雲へは送らない） ----
+// 答えより前に始めた読みには、後から入る行が出ない（resolveMyWords が墓標を外さない）。断られたら外す
+const TRIED = "tried";
+function triedMap(meta) {
+  const t = meta[TRIED];
+  return t && typeof t === "object" && !Array.isArray(t) ? t : {};
+}
+// 鍵の印を to に（from: 今の印がそれの鍵だけ・null はどれも。to が null なら外す）
+function setTried(keys, from, to) {
+  if (keys.length === 0) return;
+  const meta = getItemMeta();
+  const t = { ...triedMap(meta) };
+  let n = 0;
+  for (const k of keys) {
+    if (from !== null && t[k] !== from) continue;
+    if (to === null) delete t[k];
+    else t[k] = to;
+    n++;
+  }
+  if (n === 0) return;
+  if (Object.keys(t).length > 0) meta[TRIED] = t;
+  else delete meta[TRIED];
+  writeJson(META_KEY, meta);
+}
+
+// 印 merged の out（まだ雲に入っていない送る待ちの語の鍵）
+function markOut(meta) {
+  const out = meta[MERGED]?.out;
+  return new Set(Array.isArray(out) ? out : []);
+}
+
+// 足した時刻 addedAt の語が、印 merged の at までに足されたか（印が無ければ false。足した時刻の無い語・時刻の読めない印は true）
+function cardBeforeMark(addedAt, meta) {
+  if (!meta[MERGED]) return false;
+  const markMs = Date.parse(meta[MERGED].at ?? "");
+  const a = Date.parse(addedAt ?? "");
+  return !Number.isFinite(markMs) || !Number.isFinite(a) || a <= markMs;
+}
+
+// 消したカード card が一度は雲に入ったか（消したときの seen。seen の無い前の版の card は、足した時刻と印 merged で見る）。
+// js/myWords.js が、送っていない墓標の鍵を同じ組の足し直しに使ってよいかを決める（使ってよいのは雲に入っていないカードだけ）
+export function deletedCardInCloud(card, meta = getItemMeta()) {
+  return typeof card?.seen === "boolean" ? card.seen : cardBeforeMark(card?.addedAt, meta);
+}
+
+// 送る待ちの墓標の印 m が消したカードと、雲の生きた行の中身 payload が同じカードか: "same" | "other" | "unknown"（card の無い墓標: 前の版か、
+// 同じ鍵の 2 語を一緒に消した）。足した時刻が同じなら同じカード。訳の印が同じでも同じと見るのは、消したカードが一度は雲に入っていたときだけ
+// （雲に入っていないカード〔ゲスト・表の前・送る前に消した語〕の墓標は、ほかの端末の同じ組を見ずに自分の写しを消しただけ）
+function tombVsLive(m, payload, meta) {
+  const card = m?.card;
+  if (!card || !payload || !payload.en) return "unknown";
+  if (card.addedAt != null && card.addedAt === payload.addedAt) return "same";
+  if (deletedCardInCloud(card, meta) && card.jaHash === jaHash(payload.ja ?? "")) return "same";
+  return "other";
 }
 
 // ---- ローカルの現在値を項目に展開 ----
@@ -346,61 +436,445 @@ function bookMapper(myWords) {
   };
 }
 
-// ---- 同じ鍵の違うカード（Batch 94・A2） ----
-// 2 台で同じ英語を違う訳で足すと、どちらの端末でも最初の語は英語の鍵になる（js/myWordsCore.js myIdentityFor）。雲の行が生きた英語の語で、端末の同じ鍵の
-// 英語の語が違うカード（足した時刻も訳も違う）で、その鍵が送る待ちにあるときだけ、端末の語を新しい鍵へ移して両方残す。新しい鍵は、雲に同じ組（答えの英語と訳）が
-// 別の鍵であればその鍵（端末にその鍵が無いときだけ。同じカードとしてまとまる）、無ければ myIdentityFor（端末の語と雲の生きた語の鍵を全部使っていると見る）。
-// text が無ければ答えの英語を入れる。ほかの欄（訳・単語帳・3 状態・lf・足した時刻）はそのまま。新しい鍵に前の印の時刻を付けて送る待ちに足し、前の鍵の印と
-// 送る待ちは外す（雲の行をそのまま取り込む）。場面カードは今のまま。移した語のメモと回答の履歴は前の鍵（my-<前の鍵>）に残る。
-// 雲の墓標（Batch 94 の直し。§18.10）: 中身が空で、どのカードを消したかは分からない。墓標がその鍵の送る待ちの英語の語より新しく、その語をほかの端末が
-// 見られなかった（この端末がまだ一度も雲と合わせていない〔印 MERGED が無い〕か、語を足したのが最後に合わせた時刻より後）ときだけ、生きた行と同じに移す
-// （ほかの端末が消したのは自分の別のカード）。最後に合わせたときに端末にあった語・足した時刻の無い語は、今どおり新しい墓標が勝つ（送った後に消された語を戻さない）
-// 戻り値: 移したか（移したら、送る待ち・語・印の順にすぐ書く: この後の localItems が語を読む。前の鍵を送る待ちに残したまま語だけ移すと、前の鍵の墓標を送ってしまう）
-function moveDifferentCards(cloud, myWords, meta) {
-  const dirty = getDirtyItems();
-  const alive = [...cloud.values()].filter((r) => r.kind === "my_word" && !r.deleted && isWordEntry(r.payload));
-  const tombs = [...cloud.values()].filter((r) => r.kind === "my_word" && r.deleted);
-  const mergedAt = meta[MERGED] ? Date.parse(meta[MERGED].at ?? "") || 0 : null; // null = まだ一度も雲と合わせていない
-  let moved = false;
-  for (const r of [...alive, ...tombs]) {
-    const id = `my_word:${r.key}`;
-    const i = dirty.has(id) ? myWords.findIndex((w) => w.en === r.key && isWordEntry(w)) : -1;
-    if (i < 0) continue;
-    if (r.deleted) {
-      const lTime = Date.parse(meta[id]?.updatedAt ?? myWords[i].addedAt ?? 0) || 0; // mergeCloudItems の localTime と同じ
-      if (lTime >= (Date.parse(r.updated_at ?? 0) || 0)) continue; // 端末の語が新しい（または同時刻）: 今どおり端末の語が勝つ
-      if (mergedAt !== null && (Date.parse(myWords[i].addedAt ?? "") || 0) <= mergedAt) continue; // ほかの端末が見られた語: 今どおり墓標が勝つ
-    } else if (sameCard(myWords[i], r.payload)) continue;
-    const w = myWords[i];
-    const answer = answerKeyOf(w);
-    const same = alive.find((x) => x.key !== r.key && answerKeyOf({ en: x.key }) === answer && normJa(x.payload.ja) === normJa(w.ja) && !myWords.some((m) => m.en === x.key));
-    const key = same ? same.key : myIdentityFor([...myWords, ...alive.map((x) => ({ en: x.key }))], answer, w.ja);
-    myWords[i] = { ...w, en: key, text: typeof w.text === "string" && w.text ? w.text : answer };
-    meta[`my_word:${key}`] = { updatedAt: meta[id]?.updatedAt ?? w.addedAt ?? new Date().toISOString(), deleted: false };
-    delete meta[id];
-    dirty.delete(id);
-    dirty.add(`my_word:${key}`);
-    moved = true;
+// ---- マイ単語帳の語の合わせ方（Batch 95。1 つの決まり: 取り込み〔phase "pull"〕と送る前〔phase "push"〕の両方が使う。docs/SPEC_MY_WORDS.md §18） ----
+// 鍵ごとに、端末の語（か送る待ちの墓標）と雲の行を合わせる。語の行の勝ち負けは前のとおり新しい方（雲の updated_at と端末の印の時刻）。守り:
+//  K1 雲に一度も入っていない語（seen でない語）は、雲の墓標の鍵を使わない（その墓標はほかのカードを消した印かもしれない）。
+//  A1 同じカード（足した時刻が同じか同じ訳）: 3 状態は答えの新しい側・lf は早い方（mergeMyWordPair）。雲の行が勝って形が変わった語は「雲の時刻 + 1 ms」で送り返す。
+//  A2 雲の生きた行が違うカード: いつも両方残す。
+//  K1・A2 の語は、取り込みでは新しい鍵へ移す。送りでは端末の鍵を動かさず（回の途中かもしれない）held に入れ、呼び手が雲の新しい鍵へ送る（ALIAS）。
+//  同じ時刻: 中身も同じなら同じ版（送れたとみなす）。違えば雲の行を土台に 3 状態と lf を合わせる。
+//  雲の墓標と、雲に入った語: 新しい方が勝つ（消した後に答えた・直した語は戻る。同じ時刻なら「墓標の時刻 + 1 ms」で送る）。
+//  送る待ちの墓標: 雲に行が無い・雲も墓標 → 外す（消す物が無い）。雲の生きた行が消したカードと同じ（tombVsLive）で墓標が新しい → 送る。
+//    それ以外（違うカード・分からない・雲が新しい）→ 雲の行を取り込んで墓標を外す（消すより戻す）。
+//  送った墓標の印（sentAt）: 読みが送るより前に始まっていたら、その鍵の生きた行を取り込まない（ほかのタブの古い読みで、消した語を戻さない）。
+//  送る待ちでない印（送った墓標・前の版の印）は持たない（外す）。雲の生きた行があれば取り込む。
+// 引数: cloud（"my_word:鍵" → 雲の行。pull は全部の行、push は読んだ鍵の行）、myWords・meta・dirty（その場で書き換える。保存は呼び手）、
+//   scope（push: 送る待ちの端末の鍵）、read（push: 読んだ雲の鍵）、readAt（雲を読み始めた時刻）。
+//   送りは「今も送る待ちの鍵」だけを合わせる（読んでいる間にほかのタブが送って外した鍵は触らない）。
+// 戻り値: { changed, toUpload（送る行）, adopted（取り込んだ [端末の id, updated_at]）, held（送りで待たせた端末の鍵）,
+//   absent（読んだときに雲に行の無かった送る行の鍵）, local（雲の id → 端末の id: 端末の鍵のまま雲の別の鍵へ送る行） }
+function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, scope = null, read = null, readAt = Date.now() }) {
+  const out = { changed: false, toUpload: [], adopted: [], held: [], absent: new Set(), local: new Map() };
+  const markMs = meta[MERGED] ? Date.parse(meta[MERGED].at ?? "") : NaN;
+  const nowIso = new Date().toISOString();
+  const tOf = (iso) => Date.parse(iso ?? "") || 0;
+  const idOf = (k) => `my_word:${k}`;
+  const inScope = (k) => !scope || scope.has(k);
+  const localTime = (id, w) => tOf(meta[id]?.updatedAt ?? w?.addedAt);
+  // 一度は雲に入った語か: 送る待ちでない（送れた・取り込んだ）か、足した時刻が印の at まで（足した時刻の無い前からの語も）で out に無い
+  const unsent = markOut(meta);
+  let outChanged = false;
+  const seen = (w, id) => !dirty.has(id) || (Number.isFinite(markMs) && (w.addedAt == null || tOf(w.addedAt) <= markMs) && !unsent.has(w.en));
+  const aliases = { ...aliasMap(meta) };
+  let aliasChanged = false;
+  // 印 TRIED: 行の出た鍵・答えがこの読みの始めより前の鍵は外す（送りは読んだ鍵だけ）
+  const tried = { ...triedMap(meta) };
+  let triedChanged = false;
+  for (const [k, v] of Object.entries(tried)) {
+    if ((read && !read.has(k)) || !(cloud.has(idOf(k)) || (typeof v === "number" && v < readAt))) continue;
+    delete tried[k];
+    triedChanged = true;
   }
-  if (moved) {
-    writeJson(DIRTY_KEY, [...dirty]);
-    writeJson(MY_WORDS_KEY, myWords);
+  const dropAlias = (k) => {
+    if (k in aliases) {
+      delete aliases[k];
+      aliasChanged = true;
+    }
+  };
+  // 鍵 → 端末の語の位置（小さい順。any: どの語も・words: 英語の語だけ）。1,000 語で鍵ごとに並びを探さない。
+  // 消す語は合わせ終わるまで並びに残して removed に入れ、最後に詰める
+  const removed = new Set();
+  let index = null;
+  const addIdx = (m, k, i) => {
+    const a = m.get(k);
+    if (!a) m.set(k, [i]);
+    else {
+      a.push(i);
+      if (a[a.length - 2] > i) a.sort((x, y) => x - y);
+    }
+  };
+  const delIdx = (m, k, i) => {
+    const a = m.get(k);
+    if (!a) return;
+    const j = a.lastIndexOf(i);
+    if (j >= 0) a.splice(j, 1);
+    if (a.length === 0) m.delete(k);
+  };
+  const reindex = () => {
+    index = { any: new Map(), words: new Map() };
+    myWords.forEach((w, i) => {
+      if (removed.has(i)) return;
+      addIdx(index.any, w.en, i);
+      if (isWordEntry(w)) addIdx(index.words, w.en, i);
+    });
+  };
+  // 同じ鍵の最後の語の位置（localItems・buildDirtyRows と同じ: 鍵が重なれば後ろの語）
+  const lastIndex = (k, words = false) => {
+    if (!index) reindex();
+    const a = (words ? index.words : index.any).get(k);
+    return a ? a[a.length - 1] : -1;
+  };
+  const setAt = (i, w) => {
+    const prev = myWords[i];
+    myWords[i] = w;
+    if (!index) return;
+    if (prev.en !== w.en || isWordEntry(prev) !== isWordEntry(w)) {
+      delIdx(index.any, prev.en, i);
+      delIdx(index.words, prev.en, i);
+      addIdx(index.any, w.en, i);
+      if (isWordEntry(w)) addIdx(index.words, w.en, i);
+    }
+  };
+  const removeAt = (i, k) => {
+    removed.add(i);
+    if (index) {
+      delIdx(index.any, k, i);
+      delIdx(index.words, k, i);
+    }
+    out.changed = true;
+  };
+  const pushWord = (w) => {
+    myWords.push(w);
+    if (index) {
+      addIdx(index.any, w.en, myWords.length - 1);
+      if (isWordEntry(w)) addIdx(index.words, w.en, myWords.length - 1);
+    }
+  };
+  const withKey = (w, key) => ({ ...w, en: key, text: typeof w.text === "string" && w.text ? w.text : answerKeyOf(w) });
+  // 同じ版か（同じ時刻の行どうし）: 3 状態・lf・訳・字・足した時刻が同じ（単語帳の id は端末ごとに違ってよい: bookMapper）
+  const sameVersion = (a, b) => !learnDiff(a, b) && (a?.ja ?? null) === (b?.ja ?? null) && (a?.text ?? null) === (b?.text ?? null) && (a?.addedAt ?? null) === (b?.addedAt ?? null);
+  const relabeled = [];
+
+  // 0. 取り込みの初め: 送りで雲の新しい鍵へ送った語（ALIAS）を、その鍵へ移して印を外す（ページの初め。回の前）
+  if (phase === "pull") {
+    for (const [k, v] of Object.entries(aliases)) {
+      dropAlias(k);
+      const a = typeof v?.to === "string" ? v.to : "";
+      if (!a || a === k) continue;
+      const id = idOf(k);
+      const aid = idOf(a);
+      const i = lastIndex(k, true);
+      if (i >= 0 && lastIndex(a) < 0 && (v.at == null || myWords[i].addedAt === v.at)) {
+        setAt(i, withKey(myWords[i], a));
+        if (meta[id]) meta[aid] = { updatedAt: meta[id].updatedAt, deleted: false };
+        delete meta[id];
+        if (dirty.delete(id)) dirty.add(aid);
+        // 移した語は「雲に入った語」と見る: 送りの答えが落ちて、届いたか分からないことがある。その鍵は送る前に行の無かった鍵で、
+        // その後に書けるのはこの語か同じ組（同じカード）だけ。だからその鍵が墓標なら新しい方が勝つ（K1 で移し直さない）
+        if (unsent.delete(k)) outChanged = true;
+        out.changed = true;
+      } else if (i < 0 && dirty.has(id) && meta[id]?.deleted && !meta[aid]) {
+        meta[aid] = meta[id]; // まだ送っていない墓標は、雲の鍵の墓標にする
+        delete meta[id];
+        dirty.delete(id);
+        dirty.add(aid);
+      }
+    }
+  }
+
+  // 1. 取り込みだけ: K1・A2 の語を新しい鍵へ移す
+  if (phase === "pull") {
+    const rows = [...cloud.values()].filter((r) => r.kind === "my_word");
+    const alive = rows.filter((r) => !r.deleted && isWordEntry(r.payload));
+    for (const r of rows) {
+      const id = idOf(r.key);
+      const i = lastIndex(r.key, true);
+      if (i < 0) continue;
+      const w = myWords[i];
+      const move = r.deleted ? !seen(w, id) : isWordEntry(r.payload) && !sameCard(w, r.payload);
+      if (!move) continue;
+      const answer = answerKeyOf(w);
+      // 雲に同じ組（答えの英語と訳）が別の鍵であればその鍵（端末にその鍵が無いときだけ: 同じカードとして合わさる）。
+      // 無ければ myIdentityFor（端末の語と雲の行の鍵を全部使っていると見る）
+      const same = alive.find((x) => x.key !== r.key && answerKeyOf({ en: x.key }) === answer && normJa(x.payload.ja) === normJa(w.ja) && lastIndex(x.key) < 0);
+      const key = same ? same.key : myIdentityFor([...myWords, ...rows.map((x) => ({ en: x.key }))], answer, w.ja);
+      const nid = idOf(key);
+      setAt(i, withKey(w, key));
+      meta[nid] = { updatedAt: meta[id]?.updatedAt ?? w.addedAt ?? nowIso, deleted: false };
+      delete meta[id];
+      dirty.delete(id);
+      dirty.add(nid);
+      unsent.add(key); // 移した語はまだ雲に入っていない
+      outChanged = true;
+      out.changed = true;
+    }
+  }
+
+  // 2. 鍵ごとに合わせる
+  // 送る行を足す（cloudKey: 雲の鍵。端末の鍵のまま雲の別の鍵へ送る語は ALIAS の鍵）
+  const upload = (k, payload, at = null, cloudKey = k) => {
+    const id = idOf(k);
+    const time = at ?? meta[id]?.updatedAt ?? payload?.addedAt ?? nowIso;
+    if (at || !meta[id]) meta[id] = { updatedAt: time, deleted: false };
+    out.toUpload.push({ user_id: userId, kind: "my_word", key: cloudKey, payload: cloudKey === k ? payload : withKey(payload, cloudKey), deleted: false, updated_at: time });
+    if (!cloud.has(idOf(cloudKey))) out.absent.add(cloudKey);
+    if (cloudKey !== k) out.local.set(idOf(cloudKey), id);
+  };
+  // 雲の行 r（雲の鍵 k）を取り込む（i: 端末の語の位置か -1。localKey: 端末の鍵〔ALIAS の語は雲の鍵と違う〕）
+  const adopt = (k, r, i, localKey = k) => {
+    const id = idOf(localKey);
+    if (r.deleted) {
+      if (i >= 0) removeAt(i, localKey);
+      delete meta[id];
+      dirty.delete(id);
+      return;
+    }
+    const w = i >= 0 ? myWords[i] : null;
+    if (r.payload && r.payload.en) {
+      const kept = mapBook(w && isWordEntry(w) && isWordEntry(r.payload) ? mergeMyWordPair(r.payload, w) : r.payload);
+      const here = localKey === k ? kept : { ...kept, en: localKey, ...(w && typeof w.text === "string" && w.text ? { text: w.text } : {}) };
+      if (i >= 0) setAt(i, here);
+      else pushWord(here);
+      if (learnDiff(kept, r.payload)) relabeled.push({ key: k, local: localKey, payload: here, at: new Date(tOf(r.updated_at) + 1).toISOString() });
+      // ALIAS の語が雲の鍵の同じカードを取り込んだら、印の足した時刻もそれにする（次の取り込みで雲の鍵へ移せるように。移さないと同じカードが 2 つの鍵に残る）
+      if (localKey !== k && aliases[localKey] && aliases[localKey].at !== (here.addedAt ?? null)) {
+        aliases[localKey] = { ...aliases[localKey], at: here.addedAt ?? null };
+        aliasChanged = true;
+      }
+    }
+    out.changed = true;
+    meta[id] = { updatedAt: r.updated_at, deleted: false };
+    out.adopted.push([id, r.updated_at]);
+  };
+  // 送る待ちの墓標 m で読みに雲の鍵 ck の行が無い（Batch 95 の直し）。印 TRIED があれば墓標も「無いときだけ書く」で送る（生きた行が先なら次の送りが消す）。
+  // 印が無くても墓標が読みの始めより後なら次の読みで決める。true: 外さない
+  const tombNoRow = (k, ck, m) => {
+    if (!m?.deleted) return false;
+    if (!(ck in tried)) return tOf(m.updatedAt) >= readAt;
+    out.toUpload.push({ user_id: userId, kind: "my_word", key: ck, payload: {}, deleted: true, updated_at: m.updatedAt });
+    out.absent.add(ck);
+    if (ck !== k) out.local.set(idOf(ck), idOf(k));
+    return true;
+  };
+  // 端末の生きた語 w（端末の鍵 k）と雲の行 r（雲の鍵 ck）が同じカード: 新しい方。同じ時刻で中身も同じなら送れたとみなす
+  const settleSameCard = (k, w, i, r, ck) => {
+    const id = idOf(k);
+    const tL = localTime(id, w);
+    const tR = tOf(r.updated_at);
+    if (tL > tR) {
+      let payload = w;
+      const kept = mergeMyWordPair(w, r.payload); // 端末が勝つときも、雲の新しい 3 状態と早い lf を写してから送る（A1）
+      if (kept !== w) {
+        setAt(i, withLearning(w, kept));
+        payload = myWords[i];
+        out.changed = true;
+      }
+      upload(k, payload, null, ck);
+    } else if (tL < tR || !sameVersion(w, r.payload)) adopt(ck, r, i, k);
+    else if (dirty.has(id)) out.adopted.push([id, r.updated_at]);
+  };
+
+  const keys = new Set();
+  for (const r of cloud.values()) if (r.kind === "my_word") keys.add(r.key);
+  for (const w of myWords) keys.add(w.en);
+  for (const id of [...dirty, ...Object.keys(meta)]) if (id.startsWith("my_word:")) keys.add(id.slice(8));
+  for (const k of keys) {
+    if (!inScope(k)) continue;
+    const id = idOf(k);
+    const d = dirty.has(id);
+    if (phase === "push" && !d) continue; // 送り: 今も送る待ちの鍵だけ
+    const alias = phase === "push" ? aliases[k] : null;
+    const ck = alias && typeof alias.to === "string" && alias.to ? alias.to : k;
+    if (read && !read.has(ck)) continue; // 雲の鍵を読んでいない（読んだ後にほかのタブが ALIAS を付けた）: 次の送りで
+    const r = cloud.get(idOf(ck)) ?? null;
+    const i = lastIndex(k);
+    const w = i >= 0 ? myWords[i] : null;
+    const m = meta[id];
+    if (ck !== k) {
+      // 端末の鍵のまま雲の別の鍵へ送っている語（送りだけ）
+      if (w && isWordEntry(w)) {
+        if (!r) upload(k, w, null, ck);
+        else if (r.deleted) {
+          const tL = localTime(id, w);
+          const tR = tOf(r.updated_at);
+          if (tL > tR) upload(k, w, null, ck);
+          else if (tL === tR) upload(k, w, new Date(tR + 1).toISOString(), ck);
+          else {
+            adopt(ck, r, i, k); // 雲に入った語を、ほかの端末が後で消した
+            dropAlias(k);
+          }
+        } else if (isWordEntry(r.payload) && sameCard(w, r.payload)) settleSameCard(k, w, i, r, ck);
+        else out.held.push(k); // 雲の鍵に違うカード（読まずに送る前の版の上書き）: 次の取り込みで
+      } else if (!w && d && m?.deleted) {
+        if (!r && tombNoRow(k, ck, m)) continue;
+        if (!r || r.deleted) {
+          dirty.delete(id);
+          delete meta[id];
+          dropAlias(k);
+        } else if (tombVsLive(m, r.payload, meta) === "same" && tOf(m.updatedAt) > tOf(r.updated_at)) {
+          out.toUpload.push({ user_id: userId, kind: "my_word", key: ck, payload: {}, deleted: true, updated_at: m.updatedAt });
+          out.local.set(idOf(ck), id);
+        } else {
+          dirty.delete(id); // 違うカード・雲が新しい: 雲の行を取り込む（端末の鍵はもう無いので雲の鍵で）
+          delete meta[id];
+          dropAlias(k);
+          if (lastIndex(ck) < 0) adopt(ck, r, -1);
+        }
+      }
+      continue;
+    }
+    if (w) {
+      if (!r) {
+        upload(k, w); // 送る待ちでなくても送る（雲に行が無いのは送れていない証拠）
+        continue;
+      }
+      const tL = localTime(id, w);
+      const tR = tOf(r.updated_at);
+      if (r.deleted) {
+        if (isWordEntry(w) && !seen(w, id)) out.held.push(k); // K1（送りだけ。取り込みは 1. で移した）
+        else if (tL > tR) upload(k, w);
+        else if (tL === tR) upload(k, w, new Date(tR + 1).toISOString());
+        else adopt(k, r, i);
+        continue;
+      }
+      const both = isWordEntry(w) && isWordEntry(r.payload);
+      if (both && !sameCard(w, r.payload)) {
+        out.held.push(k); // A2（送りだけ。取り込みは 1. で移した）
+        continue;
+      }
+      if (both) settleSameCard(k, w, i, r, k);
+      else {
+        // 場面カードと語が同じ鍵: 前のとおり新しい方
+        if (tL > tR) upload(k, w);
+        else if (tL < tR) adopt(k, r, i);
+        else if (d && sameJson(w, r.payload)) out.adopted.push([id, r.updated_at]);
+      }
+      continue;
+    }
+    if (d) {
+      // 送る待ちの墓標（印の無い送る待ちも buildDirtyRows と同じく墓標）
+      if (!r && tombNoRow(k, k, m)) continue;
+      if (!r || r.deleted) {
+        dirty.delete(id);
+        delete meta[id];
+        continue;
+      }
+      if (tombVsLive(m?.deleted ? m : null, r.payload, meta) === "same" && tOf(m.updatedAt) > tOf(r.updated_at)) {
+        out.toUpload.push({ user_id: userId, kind: "my_word", key: k, payload: {}, deleted: true, updated_at: m.updatedAt });
+        continue;
+      }
+      dirty.delete(id);
+      adopt(k, r, -1);
+      continue;
+    }
+    if (m?.deleted && m.sentAt && readAt <= tOf(m.sentAt)) continue; // 送ったばかりの墓標: この読みは送る前の雲かもしれない
+    if (m) delete meta[id];
+    if (r && !r.deleted) adopt(k, r, -1);
+  }
+  if (removed.size > 0) {
+    let j = 0;
+    for (let i = 0; i < myWords.length; i++) if (!removed.has(i)) myWords[j++] = myWords[i];
+    myWords.length = j;
+  }
+  for (const { key, local, payload, at } of relabeled) {
+    out.toUpload.push({ user_id: userId, kind: "my_word", key, payload: local === key ? payload : withKey(payload, key), deleted: false, updated_at: at });
+    meta[idOf(local)] = { updatedAt: at, deleted: false };
+    if (local !== key) out.local.set(idOf(key), idOf(local));
+  }
+  if (aliasChanged) {
+    if (Object.keys(aliases).length > 0) meta[ALIAS] = aliases;
+    else delete meta[ALIAS];
+  }
+  if (outChanged && meta[MERGED]) meta[MERGED] = { ...meta[MERGED], out: [...unsent] };
+  if (triedChanged) {
+    if (Object.keys(tried).length > 0) meta[TRIED] = tried;
+    else delete meta[TRIED];
+  }
+  return out;
+}
+
+// 送りで待たせた語（端末の鍵）の、雲の新しい鍵の候補: <英語の鍵>~<訳の印 8・16・24・32 桁>・~<32 桁>-2・-3 の 6 つ（js/myWordsCore.js myIdentityFor と同じ並び。
+// 短い印は長い印の頭なので、印は 1 回だけ数える）。端末の鍵・ほかの ALIAS の鍵（taken）は除く
+const ALIAS_TRIES = 6;
+function aliasCandidates(w, taken) {
+  const answer = answerKeyOf(w);
+  const h = jaHash(w.ja ?? "", 32);
+  const all = [8, 16, 24, 32].map((n) => `${answer}~${h.slice(0, n)}`);
+  for (let n = 2; all.length < ALIAS_TRIES; n++) all.push(`${answer}~${h}-${n}`);
+  return all.filter((c) => !taken.has(c));
+}
+
+// 待たせた語に雲の鍵を決め、送る行を作る（2 回目の読みの後。語・送る待ち・印は今の保存から読み直す）。
+// 雲の鍵は、読んで雲に行の無かった最初の候補（「無いときだけ書く」で送る）。どの候補にも行があれば待たせたまま（次の取り込みで移す）
+function aliasHeld(held, candRows, candRead, userId) {
+  const meta = getItemMeta();
+  const dirty = getDirtyItems();
+  const myWords = readJson(MY_WORDS_KEY, []).filter((w) => w && w.en);
+  const aliases = { ...aliasMap(meta) };
+  const cloud = new Set((candRows ?? []).filter((r) => r && r.kind === "my_word").map((r) => r.key));
+  const taken = new Set([...myWords.map((w) => w.en), ...Object.values(aliases).map((v) => v?.to)]);
+  const res = { toUpload: [], absent: new Set(), local: new Map() };
+  const byKey = new Map();
+  for (const x of myWords) if (isWordEntry(x)) byKey.set(x.en, x); // 同じ鍵の最後の語
+  for (const k of held) {
+    const id = `my_word:${k}`;
+    if (!dirty.has(id) || aliases[k]) continue;
+    const w = byKey.get(k);
+    if (!w) continue;
+    const c = aliasCandidates(w, taken).find((x) => candRead.has(x) && !cloud.has(x));
+    if (!c) continue;
+    taken.add(c);
+    aliases[k] = { to: c, at: w.addedAt ?? null };
+    const time = meta[id]?.updatedAt ?? w.addedAt ?? new Date().toISOString();
+    res.toUpload.push({ user_id: userId, kind: "my_word", key: c, payload: { ...w, en: c, text: typeof w.text === "string" && w.text ? w.text : answerKeyOf(w) }, deleted: false, updated_at: time });
+    res.absent.add(c);
+    res.local.set(`my_word:${c}`, id);
+  }
+  if (res.toUpload.length > 0) {
+    meta[ALIAS] = aliases;
     writeJson(META_KEY, meta);
   }
-  return moved;
+  return res;
+}
+
+// 印 merged を進める（雲を読めて合わせた回の終わり。印のある端末は語を読めなかった回も）: at を「今 − 1 ms」まで進め（戻さない）、out を数え直す。
+// out = 送る待ちに残った生きた語のうち、前の印で「雲に入った」と言えない語（この回で送れた・取り込んだ語〔settled〕と、鍵を送れないとても古い語は除く）。
+// 送る待ちに残った語は印を止めない（止めると、その後に雲に入った語まで「入っていない」と見て、ほかの端末で消した語を戻してしまう）。
+// 送った墓標の印（sentAt）は READ_FRESH_MS + 5 秒を過ぎたら外す（それより古い読みは捨てるので、もう要らない）
+function advanceMark(nowMs, settled = new Set()) {
+  const meta = getItemMeta();
+  const dirty = getDirtyItems();
+  const list = readJson(MY_WORDS_KEY, []);
+  const old = meta[MERGED] ?? null;
+  const oldMs = old ? Date.parse(old.at ?? "") : NaN;
+  const oldOut = markOut(meta);
+  const out = [];
+  for (const w of Array.isArray(list) ? list : []) {
+    if (!w || !w.en) continue;
+    const id = `my_word:${w.en}`;
+    if (!dirty.has(id) || settled.has(id)) continue;
+    if (cleanSendText(w.en) !== w.en) continue;
+    const a = Date.parse(w.addedAt ?? "");
+    const seenBefore = Number.isFinite(oldMs) && (w.addedAt == null || (Number.isFinite(a) && a <= oldMs)) && !oldOut.has(w.en);
+    if (!seenBefore) out.push(w.en);
+  }
+  let swept = false;
+  for (const [id, m] of Object.entries(meta)) {
+    if (!id.startsWith("my_word:") || !m?.deleted || !m.sentAt || dirty.has(id)) continue;
+    if (nowMs - (Date.parse(m.sentAt) || 0) > READ_FRESH_MS + 5000) {
+      delete meta[id];
+      swept = true;
+    }
+  }
+  const t = nowMs - 1; // 印の時刻ちょうどに足した語（同じミリ秒）は入ったと見ない
+  const at = new Date(Number.isFinite(oldMs) ? Math.max(oldMs, t) : t).toISOString();
+  const next = out.length > 0 ? { at, out } : { at };
+  if (!swept && old && old.at === at && JSON.stringify(old.out ?? []) === JSON.stringify(out) && !(UNMERGED in meta)) return;
+  meta[MERGED] = next;
+  delete meta[UNMERGED];
+  writeJson(META_KEY, meta);
 }
 
 // ---- クラウドの行をローカルへ反映（項目ごとに新しい方が勝つ） ----
-// 戻り値: { changed: {my_word,note,pack,day} の変更有無, toUpload: クラウドに無い／古いローカル項目,
-//   adopted: クラウドの方が新しくて端末に取り込んだ項目の [id, その行の updated_at]（Batch 87: 取り込みの後で送る待ちから外す） }
-// マイ単語帳の語（Batch 91・94）: 雲の行が勝っても、同じカードなら端末の新しい 3 状態と早い lf を残し（mergeMyWordPair）、3 状態か lf が雲の行と違う形になった語だけを
-// 「勝った雲の行の時刻 + 1 ms」で送り返す（ほかの端末にも届ける。単語帳だけの違い〔bookMapper〕は送り返さない）。
-// 今の時刻にしない: 中身は雲の行のままなので、雲の行より後にほかの端末がした、まだ送っていない変更（訳の直し・消す・答え）が、その端末の次の取り込みで負けて消える。
-// 1 ms 後なら、その変更が勝ち、勝った端末の行に雲の 3 状態と lf を写して送る（下の端末の行が勝つ向き）
+// 戻り値: { changed: {my_word,note,pack,day} の変更有無, toUpload: クラウドに無い／古いローカル項目（マイ単語帳は送る墓標も）,
+//   adopted: クラウドの方が新しくて端末に取り込んだ項目の [id, その行の updated_at]（Batch 87: 取り込みの後で送る待ちから外す）,
+//   absent・local: マイ単語帳の送る行のうち、読んだときに雲に行の無かった鍵と、端末の鍵のまま雲の別の鍵へ送る行（resolveMyWords） }
+// マイ単語帳の語は resolveMyWords（送る前の合わせと同じ決まり）。メモ・パック・日は前のまま。
+// 印 merged はここでは進めない（送れなかった語を「雲に入った」と見ないため。送った後に pullUserItems が進める）。readAt: 雲を読み始めた時刻
 
-export function mergeCloudItems(rows, userId = null) {
+export function mergeCloudItems(rows, userId = null, readAt = Date.now()) {
   const meta = getItemMeta();
-  delete meta[UNMERGED]; // 雲を読めた: この端末の送る待ちの語はここで雲と合わせる（下の最後に meta を書く）
+  delete meta[UNMERGED];
   const changed = { my_word: false, note: false, pack: false, day: false };
   const toUpload = [];
   const adopted = [];
@@ -425,44 +899,31 @@ export function mergeCloudItems(rows, userId = null) {
     meta[`day:${date}`] = { updatedAt: nowIso, deleted: false };
   }
 
+  // マイ単語帳の語（A1・A2・A3・K1・墓標）
   const myWords = readJson(MY_WORDS_KEY, []).filter((w) => w && w.en);
-  if (moveDifferentCards(cloud, myWords, meta)) changed.my_word = true; // 同じ鍵の違うカードは両方残す（A2。localItems より前: 移した語を読む）
-  const items = localItems();
-  for (const id of items.keys()) if (id.startsWith("day:")) items.delete(id); // day は上で済ませた
+  const dirty = getDirtyItems();
+  const words = resolveMyWords({ cloud, myWords, meta, dirty, mapBook: bookMapper(myWords), userId, phase: "pull", readAt });
+  if (words.changed) changed.my_word = true;
+  toUpload.push(...words.toUpload);
+  adopted.push(...words.adopted);
 
+  // メモ・パック（前のまま）
+  const items = localItems();
+  for (const [id, item] of items) if (item.kind !== "note" && item.kind !== "pack") items.delete(id);
   const notes = readJson(NOTES_KEY, {});
   let packs = readJson(PACKS_KEY, []).filter((id) => typeof id === "string");
-  const mapBook = bookMapper(myWords); // 同じ名前の単語帳はこの端末の id へ（A3）
-
   const localTime = (id, item) => Date.parse(meta[id]?.updatedAt ?? item?.payload?.addedAt ?? 0) || 0;
-  const relabeled = []; // 勝った雲の行に端末の 3 状態か早い lf を残した語と送る時刻（Batch 91・94。雲の行の時刻 + 1 ms で送り返す）
-
-  // クラウド → ローカル
   for (const [id, r] of cloud) {
+    if (r.kind !== "note" && r.kind !== "pack") continue;
     const item = items.get(id);
     const cloudTime = Date.parse(r.updated_at ?? 0) || 0;
     const lTime = localTime(id, item);
-    const localKnown = item || meta[id];
-    // この端末で消したカードと違う生きた語は、墓標の方が新しくても取り込む（墓標は送る待ちから外れる: 下の adopted。§18.8）
-    const otherCard = r.kind === "my_word" && !item && !r.deleted && deletedOtherCard(meta[id], r.payload);
-    if (localKnown && lTime >= cloudTime && !otherCard) continue; // ローカルが新しい（または同時刻）
-
-    if (r.kind === "my_word") {
-      const idx = myWords.findIndex((w) => w.en === r.key);
-      if (r.deleted) {
-        if (idx >= 0) myWords.splice(idx, 1);
-      } else if (r.payload && r.payload.en) {
-        const kept = mapBook(idx >= 0 ? mergeMyWordPair(r.payload, myWords[idx]) : r.payload);
-        if (idx >= 0) myWords[idx] = kept;
-        else myWords.push(kept);
-        if (learnDiff(kept, r.payload)) relabeled.push({ key: r.key, payload: kept, at: new Date(cloudTime + 1).toISOString() });
-      }
-      changed.my_word = true;
-    } else if (r.kind === "note") {
+    if ((item || meta[id]) && lTime >= cloudTime) continue; // ローカルが新しい（または同時刻）
+    if (r.kind === "note") {
       if (r.deleted || !r.payload?.text) delete notes[r.key];
       else notes[r.key] = String(r.payload.text).slice(0, 80);
       changed.note = true;
-    } else if (r.kind === "pack") {
+    } else {
       const on = !r.deleted && r.payload?.enabled !== false;
       packs = packs.filter((p) => p !== r.key);
       if (on) packs.push(r.key);
@@ -471,57 +932,24 @@ export function mergeCloudItems(rows, userId = null) {
     meta[id] = { updatedAt: r.updated_at, deleted: !!r.deleted };
     adopted.push([id, r.updated_at]);
   }
-
-  // ローカルだけにある／ローカルが新しい項目 → アップロード対象
   for (const [id, item] of items) {
     const r = cloud.get(id);
     const lTime = localTime(id, item);
     const cloudTime = r ? Date.parse(r.updated_at ?? 0) || 0 : -1;
     if (!r || lTime > cloudTime) {
       const at = meta[id]?.updatedAt ?? item.payload?.addedAt ?? new Date().toISOString();
-      let payload = item.payload;
-      // 端末の語が新しくて勝つときも、同じカードなら雲の行の新しい 3 状態と早い lf を端末の語に写してから送る（雲の答えと早い日を消さない。Batch 91・94）。
-      // 写す語は localItems と同じ、同じ鍵の最後の語。送る時刻は前のまま
-      if (item.kind === "my_word" && r && !r.deleted && r.payload) {
-        const kept = mergeMyWordPair(item.payload, r.payload);
-        if (kept !== item.payload) {
-          let i = myWords.length - 1;
-          while (i >= 0 && myWords[i].en !== item.key) i--;
-          if (i >= 0) {
-            myWords[i] = withLearning(myWords[i], kept);
-            payload = myWords[i];
-            changed.my_word = true;
-          }
-        }
-      }
-      toUpload.push({ user_id: userId, kind: item.kind, key: item.key, payload, deleted: false, updated_at: at });
+      toUpload.push({ user_id: userId, kind: item.kind, key: item.key, payload: item.payload, deleted: false, updated_at: at });
       if (!meta[id]) meta[id] = { updatedAt: at, deleted: false };
     }
   }
 
-  for (const { key, payload, at } of relabeled) {
-    toUpload.push({ user_id: userId, kind: "my_word", key, payload, deleted: false, updated_at: at });
-    meta[`my_word:${key}`] = { updatedAt: at, deleted: false };
-  }
-
-  // 雲に行の無い鍵の墓標（この端末で足して、送る前に消した語）に印 noRow を付ける: pushUserItems は送らない（雲に消す物が無く、送るとほかの端末がまだ
-  // 送っていない同じ鍵の違う語を消す）。雲にその鍵の行が来たら印を外し、今どおり新しい方が勝つ（違うカードは上で取り込んだ。§18.8）
-  for (const id of getDirtyItems()) {
-    if (!id.startsWith("my_word:") || !meta[id]?.deleted || items.has(id)) continue;
-    const noRow = !cloud.has(id);
-    if (!!meta[id].noRow === noRow) continue;
-    const next = { ...meta[id] };
-    if (noRow) next.noRow = true;
-    else delete next.noRow;
-    meta[id] = next;
-  }
-
-  meta[MERGED] = { at: new Date().toISOString() }; // 雲と合わせた時刻（§18.10。この後に足す語は、次の取り込みまでほかの端末が見られなかった語）
+  // 書く順: 語 → 送る待ち → メモ・パック → 印
   if (changed.my_word) writeJson(MY_WORDS_KEY, myWords);
+  writeJson(DIRTY_KEY, [...dirty]);
   if (changed.note) writeJson(NOTES_KEY, notes);
   if (changed.pack) writeJson(PACKS_KEY, packs);
   writeJson(META_KEY, meta);
-  return { changed, toUpload, adopted };
+  return { changed, toUpload, adopted, absent: words.absent, local: words.local };
 }
 
 // ---- 送る形と送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3） ----
@@ -546,6 +974,14 @@ const ROW_ERRORS = new Set([400, 413, 422]); // 行の中身で断られた（�
 const SEND_REFUSED = /\u0000|[\uD800-\uDFFF]/gu;
 
 const rowId = (r) => `${r.kind}:${r.key}`;
+// 同じ時刻か（雲の時刻の文字は「+00:00」で秒の端数の末尾の 0 を落とす: 時刻で比べる）
+const sameTime = (a, b) => {
+  const x = Date.parse(a ?? "");
+  return Number.isFinite(x) && x === Date.parse(b ?? "");
+};
+// 中身が同じか（雲の payload〔jsonb〕は物の鍵の並びを変えて返す: 並びに依らずに比べる）
+const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v);
+const sameJson = (a, b) => JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
 
 // 送る文字を整える（送り先が受け付けない字だけを 1 字ずつ U+FFFD に。字を落とさない）
 export function cleanSendText(text) {
@@ -577,13 +1013,13 @@ function waiting(m, now) {
 }
 
 // 断られた行に印を付ける（送った時と同じ版の行だけ。送っている間に変わった行は印を付けず、次の送信で新しい版を送る）。送る待ちにも入れる
-// （取り込みの送り直しの行は送る待ちに無いので、待つ間が過ぎたら次の送信で送る）
-function markRejected(rows, now) {
+// （取り込みの送り直しの行は送る待ちに無いので、待つ間が過ぎたら次の送信で送る）。local: 雲の id → 端末の id（端末の鍵のまま雲の別の鍵へ送った語は端末の鍵の印に）
+function markRejected(rows, now, local = null) {
   if (rows.length === 0) return;
   const meta = getItemMeta();
   const dirty = getDirtyItems();
   for (const r of rows) {
-    const id = rowId(r);
+    const id = local?.get(rowId(r)) ?? rowId(r);
     const m = meta[id];
     if (m && m.updatedAt !== r.updated_at) continue;
     meta[id] = { ...(m ?? { updatedAt: r.updated_at, deleted: !!r.deleted }), failAt: now, failFor: m?.updatedAt ?? r.updated_at };
@@ -601,16 +1037,40 @@ function markRejected(rows, now) {
 // dirty には残すので、表が直った後の次のページで送られる
 let dayRejected = false;
 
-// 戻り値 { failed（送れなかった行: 次の送信で送り直す）, rejected（行の中身で断られた行・上限で確かめられなかった行: 印を付けて待つ） }
-async function upsertRows(supabase, rows) {
-  const groups = [rows.filter((r) => r.kind !== "day"), dayRejected ? [] : rows.filter((r) => r.kind === "day")];
+// 戻り値 { failed（送れなかった行: 次の送信で送り直す）, rejected（行の中身で断られた行・上限で確かめられなかった行: 印を付けて待つ）,
+//   skipped（送らなかった行・書かれなかった行: 送る待ちに残し、次に読んでから送る） }
+// options.deadline（Batch 95）: 語の行を送ってよい最後の時刻（読み始めから READ_FRESH_MS）。語の行を送る要求のたびに確かめ、過ぎていれば skipped（メモ・パック・日は送る）。
+// options.absent（Batch 95）: 読んだときに雲に行の無かった語の鍵。「無いときだけ書く」（ignoreDuplicates）の別の要求にし、書いた行だけを返させる（.select）。
+//   返らなかった行・行を返さない答えの行は書けたと確かめられないので skipped（次の送りが読んで合わせる）
+async function upsertRows(supabase, rows, { deadline = Infinity, absent = null } = {}) {
+  const isNew = (r) => r.kind === "my_word" && !!absent && absent.has(r.key);
+  // 組: 雲に行の無かった鍵の語（無いときだけ書く）・ほかの語とメモ・パック（前のとおり 1 つの要求）・日
+  const groups = [rows.filter(isNew), rows.filter((r) => r.kind !== "day" && !isNew(r)), dayRejected ? [] : rows.filter((r) => r.kind === "day")];
   const failed = dayRejected ? rows.filter((r) => r.kind === "day") : [];
   const rejected = [];
+  const skipped = [];
   let budget = UPLOAD_SPLIT_MAX;
+  // 読み始めから時間がたった: 組の語の行は送らずに skipped へ（メモ・パックは送る）
+  const fresh = (chunk) => {
+    if (Date.now() <= deadline || !chunk.some((r) => r.kind === "my_word")) return chunk;
+    skipped.push(...chunk.filter((r) => r.kind === "my_word"));
+    return chunk.filter((r) => r.kind !== "my_word");
+  };
   const send = async (chunk) => {
+    const onlyNew = isNew(chunk[0]);
+    // 印 TRIED: 答えが来たら答えの時刻・断られたら外す
+    const keys = onlyNew ? chunk.filter((r) => !r.deleted).map((r) => r.key) : [];
+    const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+    setTried(keys, null, stamp);
     try {
-      const result = await supabase.from("user_items").upsert(chunk);
-      if (result && !result.error) return { ok: true };
+      const result = await (onlyNew ? supabase.from("user_items").upsert(chunk, { ignoreDuplicates: true }).select("kind,key") : supabase.from("user_items").upsert(chunk));
+      if (result && !result.error) setTried(keys, stamp, Date.now());
+      else if (result?.status >= 400 && result.status < 500) setTried(keys, stamp, null);
+      if (result && !result.error) {
+        if (!onlyNew) return { ok: true, skipped: [] };
+        const wrote = new Set((Array.isArray(result.data) ? result.data : []).map((r) => `${r?.kind}:${r?.key}`));
+        return { ok: true, skipped: chunk.filter((r) => !wrote.has(rowId(r))) };
+      }
       return { ok: false, rowError: ROW_ERRORS.has(Number(result?.status)), code: result?.error?.code };
     } catch {
       return { ok: false, rowError: false };
@@ -623,34 +1083,48 @@ async function upsertRows(supabase, rows) {
       return;
     }
     const mid = Math.ceil(chunk.length / 2);
-    for (const half of [chunk.slice(0, mid), chunk.slice(mid)]) {
+    for (const whole of [chunk.slice(0, mid), chunk.slice(mid)]) {
+      const half = fresh(whole);
+      if (half.length === 0) continue;
       if (budget <= 0) {
         rejected.push(...half);
         continue;
       }
       budget--;
       const r = await send(half);
-      if (r.ok) continue;
+      if (r.ok) {
+        skipped.push(...r.skipped);
+        continue;
+      }
       if (r.rowError) await split(half);
       else failed.push(...half);
     }
   };
+  // 断られた「無いときだけ書く」の組は、語の墓標があれば墓標の後にもう 1 回送る（消していない語の上限〔docs/SQL_USER_ITEMS.md §4〕で、同じ回に消して足した語）
+  const later = [];
+  const tombs = groups[1].some((r) => r.kind === "my_word" && r.deleted);
+  const sendChunk = async (chunk, again = false) => {
+    const r = await send(chunk);
+    if (r.ok) skipped.push(...r.skipped);
+    else if (chunk[0]?.kind === "day") {
+      failed.push(...chunk);
+      if (r.code === "23514") dayRejected = true;
+    } else if (!r.rowError) failed.push(...chunk);
+    else if (!again && tombs && isNew(chunk[0])) later.push(chunk);
+    else await split(chunk);
+  };
   for (const group of groups) {
     for (let i = 0; i < group.length; i += UPLOAD_CHUNK) {
-      const chunk = group.slice(i, i + UPLOAD_CHUNK);
-      const r = await send(chunk);
-      if (r.ok) continue;
-      if (chunk[0]?.kind === "day") {
-        failed.push(...chunk);
-        if (r.code === "23514") dayRejected = true;
-      } else if (r.rowError) {
-        await split(chunk);
-      } else {
-        failed.push(...chunk);
-      }
+      const chunk = fresh(group.slice(i, i + UPLOAD_CHUNK));
+      if (chunk.length > 0) await sendChunk(chunk);
+    }
+    if (group !== groups[1]) continue;
+    for (const c of later.splice(0)) {
+      const chunk = fresh(c);
+      if (chunk.length > 0) await sendChunk(chunk, true);
     }
   }
-  return { failed, rejected };
+  return { failed, rejected, skipped };
 }
 
 // day の行は、送る前にクラウドの同じ日の行を読んで max／OR で合わせる（別の端末が先に送った完了や語数を巻き戻さない）。
@@ -660,7 +1134,11 @@ async function mergeDayRowsWithCloud(supabase, dayRows) {
   let cloud;
   try {
     const result = await supabase.from("user_items").select("key,payload").eq("kind", "day").in("key", dayRows.map((r) => r.key));
-    if (!result || result.error || !Array.isArray(result.data)) return [];
+    if (!result || result.error || !Array.isArray(result.data)) {
+      if (isMissingTable(result)) noteTable(true);
+      return [];
+    }
+    noteTable(false);
     cloud = new Map(result.data.map((r) => [r.key, r.payload]));
   } catch {
     return [];
@@ -676,29 +1154,178 @@ async function mergeDayRowsWithCloud(supabase, dayRows) {
   return rows;
 }
 
+// ---- 送る（Batch 95。pushSync の最後の await。答えの道・pushSync の頭は変えない。docs/SPEC_MY_WORDS.md §18.11） ----
+// マイ単語帳の語の行は、送る前にその鍵の雲の行を読み、取り込みと同じ決まり（resolveMyWords の phase "push"）で合わせ、合わせた後の行だけを送る。
+// 読み方: 送る待ちの鍵が PUSH_READ_KEYS_MAX 以下で、どれも英語の鍵の形（英字・数字・空白・ハイフン・アポストロフィ・「~」）なら鍵の並びで読む
+// （鍵の長さの合計 KEYS_PER_READ_CHARS ごとに要求を分ける: URL が長くなりすぎない）。それより多い・古い形の鍵がある → 全部の行を 1,000 行ずつ（readAllRows）。
+// 読めない回は語を送らない（送る待ちに残す。次の送りか取り込みが読み直す）。メモ・パック・日は前のとおり送る。
+// ページを離れるとき（pagehide・裏に回す）も同じ（読む → 送る）。途中でページが閉じても送る待ちに残り、次に読んでから送る
+export const PUSH_READ_KEYS_MAX = 200;
+export const KEYS_PER_READ_CHARS = 1500;
+// 読み始めから READ_FRESH_MS を過ぎた読み（裏に回したページが止まっていた）では語を書かない: その間にほかの端末が書いた新しい行を、
+// 古い読みで合わせた行で上書きしてしまう。確かめるのは合わせる前と、語の行を送る要求のたび（upsertRows の deadline）。取り込みも同じ
+export const READ_FRESH_MS = 20000;
+const KEY_LIST_SAFE = /^[a-z0-9' ~-]+$/i;
+
+function keyChunks(keys) {
+  const out = [];
+  let cur = [];
+  let len = 0;
+  for (const k of keys) {
+    const n = encodeURIComponent(k).length + 3;
+    if (cur.length > 0 && len + n > KEYS_PER_READ_CHARS) {
+      out.push(cur);
+      cur = [];
+      len = 0;
+    }
+    cur.push(k);
+    len += n;
+  }
+  if (cur.length > 0) out.push(cur);
+  return out;
+}
+
+// 鍵の雲の行（戻り値は readAllRows と同じ形。鍵の並びで読んだときは、その鍵の my_word の行だけ）
+async function readWordRows(client, keys) {
+  if (keys.length > PUSH_READ_KEYS_MAX || !keys.every((k) => KEY_LIST_SAFE.test(k))) return readAllRows(client, "user_items", ["kind", "key"]);
+  const rows = [];
+  for (const chunk of keyChunks(keys)) {
+    let result;
+    try {
+      result = await client.from("user_items").select("kind,key,payload,deleted,updated_at").eq("kind", "my_word").in("key", chunk);
+    } catch (error) {
+      return { ok: false, error, status: null };
+    }
+    if (!result || result.error || !Array.isArray(result.data)) return { ok: false, error: result?.error ?? null, status: result?.status ?? null };
+    rows.push(...result.data);
+  }
+  return { ok: true, rows };
+}
+
+// 読めた雲の行で、送る待ちの語を合わせる（語・送る待ち・印をその場で書く）。keys: 送る待ちの端末の鍵、read: 読んだ雲の鍵
+function mergeBeforeSend(rows, keys, read, userId, readAt) {
+  const meta = getItemMeta();
+  delete meta[UNMERGED];
+  const cloud = new Map();
+  for (const r of rows ?? []) if (r && r.kind === "my_word" && r.key && read.has(r.key)) cloud.set(`my_word:${r.key}`, r);
+  const myWords = readJson(MY_WORDS_KEY, []).filter((w) => w && w.en);
+  const dirty = getDirtyItems();
+  const res = resolveMyWords({ cloud, myWords, meta, dirty, mapBook: bookMapper(myWords), userId, phase: "push", scope: new Set(keys), read, readAt });
+  if (res.changed) writeJson(MY_WORDS_KEY, myWords);
+  writeJson(DIRTY_KEY, [...dirty]);
+  writeJson(META_KEY, meta);
+  if (res.changed) window.dispatchEvent(new CustomEvent("spelldash:mywords"));
+  return res;
+}
+
+// 送った行の端末の id（端末の鍵のまま雲の別の鍵へ送った語は端末の鍵）
+const localIdOf = (r, local) => local?.get(rowId(r)) ?? rowId(r);
+
+// 送れた行・取り込んだ項目を送る待ちから外す（送った時と同じ版だけ: 送っている間に変わった行は残す。マイ単語帳でない行は、
+// metaAtStart を渡せば前のとおり「印の時刻が送りの初めと同じ」で見る）。送れたマイ単語帳の墓標は、雲の鍵の印に
+// { updatedAt, deleted: true, sentAt } だけを残す（card は外す。advanceMark が後で外す: 送るより前に始めたほかのタブの読みで消した語を戻さない）
+function settleRows(sent, adopted = [], metaAtStart = null, local = null) {
+  if (sent.length === 0 && adopted.length === 0) return;
+  const meta = getItemMeta();
+  const dirty = getDirtyItems();
+  const before = dirty.size;
+  let metaChanged = false;
+  const sentAt = new Date().toISOString();
+  for (const r of sent) {
+    const id = localIdOf(r, local);
+    const m = meta[id];
+    const same = metaAtStart && r.kind !== "my_word" ? m?.updatedAt === metaAtStart[id]?.updatedAt : m?.updatedAt === r.updated_at;
+    if (!same) continue;
+    dirty.delete(id);
+    if (r.kind === "my_word" && r.deleted && m?.deleted) {
+      if (id !== rowId(r)) {
+        delete meta[id];
+        const aliases = { ...aliasMap(meta) };
+        delete aliases[id.slice(8)];
+        if (Object.keys(aliases).length > 0) meta[ALIAS] = aliases;
+        else delete meta[ALIAS];
+      }
+      meta[rowId(r)] = { updatedAt: r.updated_at, deleted: true, sentAt };
+      metaChanged = true;
+    }
+  }
+  for (const [id, at] of adopted) if (sameTime(meta[id]?.updatedAt, at)) dirty.delete(id);
+  if (dirty.size !== before) writeJson(DIRTY_KEY, [...dirty]);
+  if (metaChanged) writeJson(META_KEY, meta);
+}
+
+// 送れなかった行（通信の失敗・読みが古くて送らなかった・書かれなかった）を送る待ちに残す（印は合わせたときのまま。墓標の card も残す）
+function markUnsent(rows, local = null) {
+  if (rows.length === 0) return;
+  const meta = getItemMeta();
+  const dirty = getDirtyItems();
+  for (const r of rows) {
+    const id = localIdOf(r, local);
+    dirty.add(id);
+    if (!meta[id] && id === rowId(r)) meta[id] = { updatedAt: r.updated_at, deleted: !!r.deleted };
+  }
+  writeJson(META_KEY, meta);
+  writeJson(DIRTY_KEY, [...dirty]);
+}
+
+// 送りで待たせた語（words.held）の雲の鍵の候補を 2 回目の読みで確かめ、雲に行の無い鍵へ送る行を words に足す
+async function sendHeldWords(client, words, userId) {
+  const meta = getItemMeta();
+  const myWords = readJson(MY_WORDS_KEY, []).filter((w) => w && w.en);
+  const taken = new Set([...myWords.map((w) => w.en), ...aliasTargets(meta)]);
+  const cand = new Set();
+  const byKey = new Map();
+  for (const x of myWords) if (isWordEntry(x)) byKey.set(x.en, x); // 同じ鍵の最後の語
+  for (const k of words.held) {
+    const w = byKey.get(k);
+    if (w) for (const c of aliasCandidates(w, taken)) cand.add(c);
+  }
+  if (cand.size === 0) return;
+  const read = await readWordRows(client, [...cand]);
+  if (!read.ok) return;
+  const res = aliasHeld(words.held, read.rows, cand, userId);
+  words.toUpload.push(...res.toUpload);
+  for (const k of res.absent) words.absent.add(k);
+  for (const [c, l] of res.local) words.local.set(c, l);
+}
+
 // options.now: 今の時刻（ms。待つ間の確かめと印。検査が渡す）
 export async function pushUserItems(supabase, userId, { now = Date.now() } = {}) {
-  const all = buildDirtyRows(userId);
-  if (all.length === 0) return;
   const metaAtStart = getItemMeta(); // 送信中にまた変わった項目（印の時刻が変わった）は dirty に残す
-  // 断られて待っている行・雲に行の無い鍵の墓標（印 noRow。§18.8）は送らない（送る待ちには残る）
-  // 取り込みで雲を読めなかった後（印 UNMERGED）は語を全部待たせる（メモ・パック・日の記録は今どおり送る。§18.9）
-  const unmerged = !!metaAtStart[UNMERGED];
-  const held = (r) => r.kind === "my_word" && (unmerged || (r.deleted && !!metaAtStart[rowId(r)]?.noRow));
-  const due = all.filter((r) => r.kind === "day" || (!waiting(metaAtStart[rowId(r)], now) && !held(r)));
-  const days = await mergeDayRowsWithCloud(supabase, due.filter((r) => r.kind === "day"));
-  const { send } = prepareRows([...due.filter((r) => r.kind !== "day"), ...days]); // 鍵に送り先が受け付けない字がある行は送らない（送る待ちに残る）
-  if (send.length === 0) return;
-  const { failed, rejected } = await upsertRows(supabase, send); // ベストエフォート
-  const notSent = new Set([...failed, ...rejected].map(rowId));
-  const metaNow = getItemMeta();
-  const sentIds = new Set(
-    send
-      .map(rowId)
-      .filter((id) => !notSent.has(id) && metaNow[id]?.updatedAt === metaAtStart[id]?.updatedAt)
-  );
-  writeJson(DIRTY_KEY, [...getDirtyItems()].filter((id) => !sentIds.has(id))); // 送れた分だけ dirty から外す（読めなかった day は残る）
-  markRejected(rejected, now);
+  const dirtyIds = [...getDirtyItems()];
+  if (dirtyIds.length === 0) return;
+  // 1. 読む: 語の送る待ちの鍵（ALIAS の語は雲の鍵）と日の行を同時に（読みと送りの間に別の待ちをはさまない）。断られて待っている行は読まない・送らない
+  const aliases = aliasMap(metaAtStart);
+  const keys = dirtyIds.filter((id) => id.startsWith("my_word:") && !waiting(metaAtStart[id], now)).map((id) => id.slice(8));
+  const readKeys = [...new Set(keys.map((k) => (typeof aliases[k]?.to === "string" && aliases[k].to) || k))];
+  const others = buildDirtyRows(userId).filter((r) => r.kind !== "my_word" && (r.kind === "day" || !waiting(metaAtStart[rowId(r)], now)));
+  const dayRows = others.filter((r) => r.kind === "day");
+  // 表が無いと分かったページは日を先に読み、表があれば同じ送りで語を読む（無い間の失敗は 1 つ。日を読まなければ語を読む）
+  const dayFirst = keys.length > 0 && tableMissing === true && dayRows.length > 0 && !dayRejected ? await mergeDayRowsWithCloud(supabase, dayRows) : null;
+  const readAt = Date.now();
+  const [read, days] = await Promise.all([keys.length > 0 && !(dayFirst && tableMissing) ? readWordRows(supabase, readKeys) : null, dayFirst ?? mergeDayRowsWithCloud(supabase, dayRows)]);
+  // 2. 合わせる（読み始めから READ_FRESH_MS の内だけ）。待たせた語は雲の新しい鍵の候補を読み、行の無い鍵へ送る（端末の鍵は動かさない）
+  let words = null;
+  if (read?.ok) {
+    noteTable(false);
+    if (Date.now() - readAt <= READ_FRESH_MS) {
+      words = mergeBeforeSend(read.rows, keys, new Set(readKeys), userId, readAt);
+      if (words.held.length > 0) await sendHeldWords(supabase, words, userId);
+    }
+  } else if (read && isMissingTable(read)) noteTable(true);
+  // 3. 送る（鍵に送り先が受け付けない字がある行は送らない: 送る待ちに残る）
+  const { send } = prepareRows([...(words?.toUpload ?? []), ...others.filter((r) => r.kind !== "day"), ...days]);
+  let sent = [];
+  if (send.length > 0) {
+    const { failed, rejected, skipped } = await upsertRows(supabase, send, { deadline: readAt + READ_FRESH_MS, absent: words?.absent }); // ベストエフォート
+    const notSent = new Set([...failed, ...rejected, ...skipped].map(rowId));
+    sent = send.filter((r) => !notSent.has(rowId(r)));
+    markUnsent([...failed, ...skipped].filter((r) => r.kind === "my_word"), words?.local);
+    markRejected(rejected, now, words?.local);
+  }
+  settleRows(sent, words?.adopted ?? [], metaAtStart, words?.local);
+  // 印 merged は回の終わりに進める（印の無い端末は、語を読めて合わせた回だけ: 最初の印は雲を読めた印）
+  if (words || getItemMeta()[MERGED]) advanceMark(Date.now(), new Set([...sent.map((r) => localIdOf(r, words?.local)), ...(words?.adopted ?? []).map(([id]) => id)]));
 }
 
 // ---- 表がまだ無い（Batch 86。docs/SPEC_MY_WORDS.md §4） ----
@@ -776,52 +1403,44 @@ export async function readAllRows(client, table, orderCols) {
   return { ok: false, error: null, status: null };
 }
 
-// 取り込みの後で、送る待ち（dirty）から外す項目: 取り込みで送れた行（その後に変わっていない: 印の時刻が送った行と同じ）と、
-// クラウドの方が新しくて取り込んだ項目（その後に変わっていない）。送っている間に直した項目は残り、次の送信で新しい版を送る
-function clearSettledDirty(sent, adopted) {
-  if (sent.length === 0 && adopted.length === 0) return;
-  const meta = getItemMeta();
-  const settled = new Set();
-  for (const r of sent) if (meta[rowId(r)]?.updatedAt === r.updated_at) settled.add(rowId(r));
-  for (const [id, at] of adopted) if (meta[id]?.updatedAt === at) settled.add(id);
-  const dirty = [...getDirtyItems()];
-  const left = dirty.filter((id) => !settled.has(id));
-  if (left.length !== dirty.length) writeJson(DIRTY_KEY, left);
-}
-
 // options.deferPacksEvent: true なら spelldash:packs を投げない（呼び出し側が語の読み直しを 1 回にまとめる）。options.now: 今の時刻（ms。検査が渡す）
 export async function pullUserItems(supabase, userId, options = {}) {
   const now = options.now ?? Date.now();
-  const read = await readAllRows(supabase, "user_items", ["kind", "key"]);
-  if (!read.ok) {
-    // 雲と合わせられなかった: 次に読めるまで語を送らない（§18.9。印は meta の中の 1 つ: 新しい保存の鍵は作らない）
-    const meta = getItemMeta();
-    if (!meta[UNMERGED]) {
-      meta[UNMERGED] = { since: new Date(now).toISOString() };
-      writeJson(META_KEY, meta);
+  let readAt = 0;
+  let read = null;
+  for (let tries = 0; ; tries++) {
+    readAt = Date.now();
+    read = await readAllRows(supabase, "user_items", ["kind", "key"]);
+    if (!read.ok) {
+      // 雲を読めなかった: 合わせない・送らない（語は送る待ちに残る。次の送りは送る前に自分で読む）。
+      // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）
+      if (isMissingTable(read)) {
+        noteTable(true);
+        return { changed: null, missing: true };
+      }
+      return { changed: null };
     }
-    // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）。語は上の印で、表ができて読めるまで送らない
-    if (isMissingTable(read)) {
-      noteTable(true);
-      return { changed: null, missing: true };
-    }
-    return { changed: null };
+    noteTable(false);
+    // 読み始めから READ_FRESH_MS を過ぎた読みでは合わせない（ほかのタブが消した語を戻す。印 sentAt も外れている）。1 回読み直し、また古ければ読めなかった回と同じ
+    if (Date.now() - readAt <= READ_FRESH_MS) break;
+    if (tries > 0) return { changed: null };
   }
-  noteTable(false);
-  const { changed, toUpload, adopted } = mergeCloudItems(read.rows, userId);
+  const { changed, toUpload, adopted, absent, local } = mergeCloudItems(read.rows, userId, readAt);
   // 断られて待っている行は送らない（ページを開くたびに同じ行で断られ続けない）。鍵に送り先が受け付けない字がある行も送らない
   const meta = getItemMeta();
   const { send } = prepareRows(toUpload.filter((r) => r.kind === "day" || !waiting(meta[rowId(r)], now)));
   let sent = [];
   if (send.length > 0) {
-    // 送れなかった行は次回の pushSync で再送する（dirty に積む）。行の中身で断られた行は印を付けて待つ
-    const { failed, rejected } = await upsertRows(supabase, send);
-    const notSent = new Set([...failed, ...rejected].map(rowId));
+    // 送れなかった行は次回の pushSync で再送する（dirty に積む）。行の中身で断られた行は印を付けて待つ。
+    // 語の行は送りと同じく、要求のたびに読み始めから READ_FRESH_MS の内かを確かめ、雲に行の無かった鍵は「無いときだけ書く」
+    const { failed, rejected, skipped } = await upsertRows(supabase, send, { deadline: readAt + READ_FRESH_MS, absent });
+    const notSent = new Set([...failed, ...rejected, ...skipped].map(rowId));
     sent = send.filter((r) => !notSent.has(rowId(r)));
-    for (const r of failed) touchItem(r.kind, r.key, false, r.updated_at);
-    markRejected(rejected, now);
+    markUnsent([...failed, ...skipped], local);
+    markRejected(rejected, now, local);
   }
-  clearSettledDirty(sent, adopted);
+  settleRows(sent, adopted, null, local);
+  advanceMark(Date.now(), new Set([...sent.map((r) => localIdOf(r, local)), ...adopted.map(([id]) => id)]));
   if (changed.my_word) window.dispatchEvent(new CustomEvent("spelldash:mywords"));
   if (changed.note) window.dispatchEvent(new CustomEvent("spelldash:notes"));
   if (changed.pack && !options.deferPacksEvent) window.dispatchEvent(new CustomEvent("spelldash:packs", { detail: { synced: true } }));

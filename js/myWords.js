@@ -11,7 +11,7 @@
 // その英語の最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>。前からの語の鍵は変えない）。語は鍵で引く（同期の印・墓標・選んだ印・答えの書き手・消す・訳を直す）。
 // まとめて消す・移すは語の保存を 1 回で書く
 
-import { touchItem, touchItems, touchDeletedWords, getItemMeta, getDirtyItems } from "./userItemsSync.js";
+import { touchItem, touchItems, touchDeletedWords, getItemMeta, getDirtyItems, deletedCardInCloud, aliasTargets, noteAddedWords } from "./userItemsSync.js";
 import { isSpellAlt } from "./answers.js";
 import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
@@ -19,7 +19,7 @@ import { isAnswerKind } from "./learnState.js";
 import {
   checkEnText, checkJaText, wordCardOf, parseBulkLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT,
   parseBooks, bookIdOf, entriesOfBook, checkBookName, newBookId, entryRefOf, withWordBooks, MY_BOOKS_MAX,
-  myIdentityFor, findSamePair, answerKeyOf, displayOf, uniqueBookName, visibleText, cutText, isSafeText, UNSAFE_TEXT_ERROR
+  myIdentityFor, findSamePair, answerKeyOf, displayOf, uniqueBookName, visibleText, cutText, isSafeText, UNSAFE_TEXT_ERROR, jaHash
 } from "./myWordsCore.js";
 
 const KEY = "spelldash_my_words";
@@ -145,9 +145,11 @@ export function addMyConcept(fields) {
   const list = getMyWords();
   const v = validateConcept(fields, list);
   if (!v.ok) return v;
-  list.push({ ...v.entry, addedAt: new Date().toISOString() });
+  const added = { ...v.entry, addedAt: new Date().toISOString() };
+  list.push(added);
   save(list);
   touchItem("my_word", v.entry.en);
+  noteAddedWords([[added.en, added.addedAt]]);
   return { ok: true, en: v.entry.answer };
 }
 
@@ -175,16 +177,35 @@ export function validateEntry(en, ja, existing = getMyWords(), books = getMyBook
   const same = findSamePair(existing, e.key, j.ja);
   if (same) return { ok: false, error: samePairError(e.text, same, books), lineError: samePairNote(same, books) };
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError(), limit: true }; // limit: 上限で断った（Batch 84: 渡された語を足すとき、上限で足せなかった数を数える）
-  return { ok: true, en: myIdentityFor(existing, e.key, j.ja, reserved), ja: j.ja, text: e.text };
+  return { ok: true, en: myIdentityFor(existing, e.key, j.ja, reservedFor(reserved, e.key, j.ja)), ja: j.ja, text: e.text };
 }
 
-// 消した語の墓標をまだ送っていない鍵（送る待ちにあり、印が「消した」の my_word。Batch 94・A2b）。その間に同じ英語を足すと、英語の鍵を使い回して
-// 墓標が消え、ほかの端末の前の語が戻る。新しい語はこの鍵を使わない（<英語の鍵>~<訳の印>）。墓標を送った後は今どおり英語の鍵
+// 新しい語に使わない鍵（Batch 94・A2b）と、その鍵を足し直しに使ってよいカード（無ければ null）の Map。
+// 消した語の墓標をまだ送っていない鍵（送る待ちにあり、印が「消した」の my_word）: その間に同じ英語を足して英語の鍵を使い回すと、墓標が消えて
+// ほかの端末の前の語が戻る。新しい語はこの鍵を使わない（<英語の鍵>~<訳の印>）。墓標を送った後・雲に行が無くて外した後は今どおり英語の鍵。
+// 足し直しに使ってよいのは、消したカードが一度も雲に入っていないとき（deletedCardInCloud）だけ: 雲に入ったカードの鍵を使い回すと、
+// この端末で直した訳がまだ雲に無いとき、雲の前の版が「違うカード」に見えて戻ってしまう。
+// Batch 95: 送りが端末の鍵のまま雲の新しい鍵へ送っている語の、その雲の鍵（aliasTargets）も使わない
 function unsentDeletedKeys() {
   const meta = getItemMeta();
-  const keys = new Set();
-  for (const id of getDirtyItems()) if (id.startsWith("my_word:") && meta[id]?.deleted) keys.add(id.slice("my_word:".length));
+  const keys = new Map();
+  for (const id of getDirtyItems()) {
+    if (!id.startsWith("my_word:") || !meta[id]?.deleted) continue;
+    const card = meta[id].card ?? null;
+    keys.set(id.slice("my_word:".length), card && !deletedCardInCloud(card, meta) ? card : null);
+  }
+  for (const k of aliasTargets(meta)) if (!keys.has(k)) keys.set(k, null);
   return keys;
+}
+
+// myIdentityFor に渡す「使わない鍵」の Set。ただし墓標が消したのが一度も雲に入っていない同じ組（同じ答えの英語・同じ訳の印）なら、
+// その鍵は使ってよい（足し直しが消しに代わる: touchItem が墓標の印を生きた語の印に書き替えるので、墓標は送らない）。Set を渡されたら前のまま
+function reservedFor(reserved, key, ja) {
+  if (!(reserved instanceof Map)) return reserved;
+  const h = jaHash(ja);
+  const out = new Set();
+  for (const [k, card] of reserved) if (!(card && card.jaHash === h && answerKeyOf({ en: k }) === key)) out.add(k);
+  return out;
 }
 
 // 語の単語帳の欄（id と名前。名前は一覧を同期しないほかの端末でその単語帳を出すため）
@@ -203,9 +224,11 @@ export function addMyWord(en, ja, bookId) {
   const books = getMyBooks(list);
   const v = validateEntry(en, ja, list, books, unsentDeletedKeys());
   if (!v.ok) return v;
-  list.push(entryOf(v, targetBook(bookId, books)));
+  const entry = entryOf(v, targetBook(bookId, books));
+  list.push(entry);
   save(list);
   touchItem("my_word", v.en);
+  noteAddedWords([[entry.en, entry.addedAt]]); // 時計が雲と合わせた印より前に戻った端末でも「まだ雲に無い語」に数える（Batch 95）
   return { ok: true, en: v.text, ja: v.ja };
 }
 
@@ -296,6 +319,8 @@ export function addMyWordsBulk(text, bookId) {
   if (added.length > 0) {
     save(list);
     touchItems("my_word", keys); // 語を書いた後に（中身は touchItem を鍵の数だけ呼んだのと同じ）
+    const at = new Map(list.map((w) => [w.en, w.addedAt]));
+    noteAddedWords(keys.map((k) => [k, at.get(k)]));
   }
   return { added, skipped, limited, rest };
 }
@@ -355,6 +380,8 @@ export function addSharedWords(words, to = {}) {
     }
   }
   touchItems("my_word", keys);
+  const at = new Map(work.map((w) => [w.en, w.addedAt]));
+  noteAddedWords(keys.map((k) => [k, at.get(k)]));
   return { ok: true, added, skipped, limited, book, created: Boolean(saved) };
 }
 

@@ -56,12 +56,29 @@ function findChromium() {
 // maxRows（Batch 87: 1 回の select で返す行の上限。本物の API の Max Rows と同じく、並べて range で切り出した後に切る。既定は上限なし）、
 // failSelectAt { 表名: 行の番号 }（Batch 87: range がその行から始まる select だけを失敗させる。2 ページ目の読みだけの失敗）、
 // failWrite { 表名: エラーの文 }（Batch 94: その表の upsert・insert を失敗させる。failSelect と組で「表がまだ無い」間の読みと送り。外すと表ができた形）。
-// select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）
+// select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）。
+// 書き（Batch 95。本物の表の窓口と同じ形）: upsert(行, { ignoreDuplicates: true }) は同じ主キーの行があれば書かない。後に select(列) が続けば
+// 書いた行だけを data に返す（続かなければ null）。オプションの無い upsert は前のまま（上書き）。記録の ignore はその選択肢を渡したか、wrote は書いた行の数
+// gate（Batch 95: 要求ごとに呼ぶ関数。Promise を返せば、それが済むまでその要求を雲に通さない。読んだ後・書きが届く前にほかの端末が書く形を作る。既定は無し）。
+// user_items の読みの答えは本物の表の形（下の dbRow: 時刻の文字と payload の鍵の並び。表に入れた行はそのまま）
 const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
 const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
 // select の方針が無い表（Batch 86。docs/SQL_FUNNEL.md・docs/SQL_CLIENT_GATE.md の記録）: 衝突の先を名指す書き込み（upsert・on_conflict）は行の権限で断る（42501）。
 // ふつうの insert は入り、同じ鍵（CLOUD_PK）の 2 度目は一意の違反（23505）で断る（1 文ごと: 1 行でも重なれば全部入れない）
 const CLOUD_NO_SELECT = new Set(["funnel_events"]);
+// user_items の読みの答えは本物の表の形（Batch 95 の直し）: updated_at は表の時刻の文字（UTC「+00:00」・秒の端数の末尾の 0 を落とす。端末の送った「…Z」の文字と違う）、
+// payload（jsonb）の物の鍵は短い順・同じ長さはバイト順（端末の書いた並びと違う）
+const dbTime = (iso) => {
+  const ms = Date.parse(iso ?? "");
+  if (typeof iso !== "string" || !Number.isFinite(ms)) return iso;
+  const d = new Date(ms);
+  const frac = String(d.getUTCMilliseconds()).padStart(3, "0").replace(/0+$/, "");
+  return `${d.toISOString().slice(0, 19)}${frac ? `.${frac}` : ""}+00:00`;
+};
+const jsonbOrder = (v) => (Array.isArray(v) ? v.map(jsonbOrder) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort((x, y) => Buffer.byteLength(x) - Buffer.byteLength(y) || Buffer.compare(Buffer.from(x), Buffer.from(y))).map((k) => [k, jsonbOrder(v[k])]))
+  : v);
+const dbRow = (r) => ({ ...r, ...("updated_at" in r ? { updated_at: dbTime(r.updated_at) } : {}), ...("payload" in r ? { payload: jsonbOrder(r.payload) } : {}) });
 const clouds = new Map();
 let cloudSeq = 0;
 function createCloud(tables = {}, config = {}) {
@@ -80,12 +97,12 @@ function createCloud(tables = {}, config = {}) {
 function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
   const cloud = clouds.get(cloudKey);
   if (!cloud) return { data: null, error: { message: `unknown cloud ${cloudKey}` }, count: null };
-  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false, range = null;
+  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false, range = null, ignore = false, returning = false;
   const filters = [];
   const orders = []; // [列, 昇順か]（Batch 87）
   for (const [m, args] of ops) {
-    if (m === "select") { kind ??= "select"; cols = args[0] ?? "*"; if (args[1]?.count) countMode = args[1].count; if (args[1]?.head) head = true; }
-    else if (m === "upsert" || m === "insert" || m === "update") { kind = m; payload = args[0]; }
+    if (m === "select") { if (kind === "upsert" || kind === "insert") returning = true; kind ??= "select"; cols = args[0] ?? "*"; if (args[1]?.count) countMode = args[1].count; if (args[1]?.head) head = true; }
+    else if (m === "upsert" || m === "insert" || m === "update") { kind = m; payload = args[0]; ignore = m === "upsert" && !!args[1]?.ignoreDuplicates; }
     else if (m === "delete") kind = "delete";
     else if (m === "eq") filters.push((r) => r[args[0]] === args[1]);
     else if (m === "gte") filters.push((r) => r[args[0]] >= args[1]);
@@ -119,6 +136,7 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
     if (range) rows = rows.slice(Math.max(0, range[0]), Math.max(0, range[1] + 1));
     if (cloud.config.maxRows > 0) rows = rows.slice(0, cloud.config.maxRows);
     if (cols !== "*") { const names = cols.split(",").map((c) => c.trim()); rows = rows.map((r) => Object.fromEntries(names.map((k) => [k, r[k]]))); }
+    if (table === "user_items") rows = rows.map(dbRow);
     entry.n = rows.length;
     const data = head ? null : single ? (rows[0] ?? null) : rows;
     return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? total : null };
@@ -137,13 +155,19 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
       entry.error = "duplicate";
       return { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" }, count: null };
     }
+    const wrote = [];
     for (const r of rows) {
       const list = cloud.rows(table);
       const i = pk ? list.findIndex((x) => pk.every((k) => x[k] === r[k])) : -1;
+      if (i >= 0 && ignore) continue;
       if (i >= 0) list[i] = { ...list[i], ...r };
       else list.push({ ...r });
+      wrote.push(r);
     }
-    return { data: null, error: null, count: null };
+    if (ignore) { entry.ignore = true; entry.wrote = wrote.length; }
+    const names = cols === "*" ? null : cols.split(",").map((c) => c.trim());
+    const data = returning ? wrote.map((r) => (names ? Object.fromEntries(names.map((k) => [k, r[k]])) : { ...r })) : null;
+    return { data: JSON.parse(JSON.stringify(data)), error: null, count: null };
   }
   if (kind === "update") {
     for (const r of cloud.rows(table)) if (r.user_id === userId && filters.every((f) => f(r))) { Object.assign(r, payload); entry.n++; }
@@ -186,10 +210,13 @@ const server = http.createServer((req, res) => {
   if (urlPath === "/__cloud/query" && req.method === "POST") {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
-    req.on("end", () => {
+    req.on("end", async () => {
       const json = (body) => res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify(body));
       let q = null;
       try { q = JSON.parse(raw); } catch { return json({ data: null, error: { message: "bad json" } }); }
+      // gate（Batch 95）: 要求ごとに呼ぶ。Promise を返したら、それが済むまでその要求を雲に通さない（送りが遅れて雲に届く形を検査が作る）
+      const gate = clouds.get(q.cloud)?.config.gate?.(q);
+      if (gate) await gate;
       const result = runCloudQuery(q);
       const cloud = clouds.get(q.cloud);
       const slow = cloud && cloud.config.delayMs > 0 && q.ops.some(([m]) => m === "select") && cloud.config.delayTables.includes(q.table);
@@ -29932,6 +29959,7 @@ console.log("guard (88.1):");
 // ===== 94.1 2 台で同じ単語帳（Batch 94。js/userItemsSync.js mergeCloudItems・js/myWords.js の足す道・js/myWordsCore.js myIdentityFor。docs/SPEC_MY_WORDS.md §18）: (1) 表が後: 電話（390 の指の端末）で渡された単語帳を足して 2 語 覚えた、パソコン（1200）でも同じリンクを足す。表を作り パソコン → 電話 → パソコン の順に開き直す → どちらも単語帳は 1 冊（「 2」の付いた単語帳なし）・覚えた 2・(2) 表がある: 電話が単語帳 1 で覚えて送る。パソコンはゲストで単語帳 2（同じ英語・違う訳の語を含む）を足し、ログインして「はい」→ 両方の端末にその英語の 2 語（電話の語は 覚えた のまま）・(3) エラー 0・(4) パソコンがゲストで自分の違うカード（1 語・単語帳ごと）を消してから「はい」→ 電話の 覚えた は消えない・(5) 表を作ったときに開いていたパソコンのタブ（読めなかった）がセットの終わりに送っても、電話の 覚えた は消えない =====
 // 15f0d76 では (1)(2) とも落ちる（取り込みで新しい行が語ごと勝つ: 電話の 3 状態と、同じ鍵の別の語が消え、同じ名前の単語帳が 2 つになる）。(4)(5) は 7c6961a と 15f0d76 で落ちる
 // （(4) パソコンの墓標が電話の違うカードを消す・(5) 取り込まずに送ったパソコンの語が電話の語を上書きする）。
+// Batch 95: (5) の期待を直した（開いたままのタブも送る前に雲を読み、電話の違うカードと同じ鍵の語は雲の別の鍵〔~ の鍵〕へ送る）。e01d71f では (5) が落ちる（そのタブは語を 1 つも送らない）。
 // 表が無い間は偽のクラウドの failSelect と failWrite（読みも送りも「does not exist」で断る）。表を作るときは 2 つを外す。開き直しは同じ文脈の新しいタブ（端末の保存はそのまま）
 console.log("two devices (94.1):");
 {
@@ -30160,6 +30188,8 @@ console.log("two devices (94.1):");
     await pc.evaluate(async () => { const S = await import("/js/sync.js"); await S.pushSync(); }); // 開いたままのタブがセットを終えて送る
     await quiet(cloud);
     const pcSent = cloud.writes("user_items", before).reduce((n, e) => n + (e.kinds?.my_word ?? 0), 0); // そのタブが送った語の行の数
+    // Batch 95: 送る前にその鍵の雲の行を読む。雲に行の無い echo はそのまま送り、電話の違うカードと同じ鍵の alpha・bravo は雲の別の鍵（alpha~…・bravo~…）へ送る（雲の 甲・乙 は替わらない）
+    const skyJa = Object.fromEntries(cloud.rows("user_items").filter((r) => r.kind === "my_word" && !r.deleted).map((r) => [r.key, r.payload?.ja ?? null]));
     let page = await openMy(phone.context(), cloud);
     const pv = await view(page);
     await leave(page, cloud);
@@ -30167,13 +30197,162 @@ console.log("two devices (94.1):");
     const cv = await view(page);
     await leave(page, cloud);
     const both = (v) => ["alpha=試しの訳 甲=2", "bravo=試しの訳 乙=2", "alpha=試しの訳 丁=0", "bravo=試しの訳 戊=0"].every((w) => v.words.includes(w));
-    check("94.1 (5) 表を作ったときに開いていたパソコンのタブ（読めなかった）は、取り込むまで語を送らない → 電話の alpha=甲・bravo=乙 の 覚えた は残る・パソコンは新しいタブで取り込むと両方の語を持つ",
-      learned.length === 3 && pcSent === 0 && ["alpha=試しの訳 甲=2", "bravo=試しの訳 乙=2"].every((w) => pv.words.includes(w)) && both(cv),
-      JSON.stringify({ learned, pcSent, phone: pv.words, pc: cv.words }));
+    const aliasJa = (en) => Object.entries(skyJa).filter(([k]) => k.startsWith(`${en}~`)).map(([, v]) => v).join("|"); // 雲の別の鍵（~ の鍵）に入った訳
+    check("94.1 (5) 表を作ったときに開いていたパソコンのタブ（読めなかった）は、送る前に読み、電話の違うカードと同じ鍵の語は雲の別の鍵（~ の鍵）へ送る（雲の 甲・乙 は替わらない）→ 電話の alpha=甲・bravo=乙 の 覚えた は残る・電話もパソコンも両方の語を持つ",
+      learned.length === 3 && pcSent === 3 && skyJa.alpha === "試しの訳 甲" && skyJa.bravo === "試しの訳 乙" && aliasJa("alpha") === "試しの訳 丁" && aliasJa("bravo") === "試しの訳 戊" && both(pv) && both(cv),
+      JSON.stringify({ learned, pcSent, skyJa, phone: pv.words, pc: cv.words }));
     await phone.context().close();
     await pc.context().close();
   }
   check("94.1 (3) どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 95.1 2 台の送りの読みと書き（Batch 95。js/userItemsSync.js の送り: 送る前にその鍵の雲の行を読み、取り込みと同じ決まりで合わせる・読んだときに雲に行の無かった鍵は「無いときだけ書く」・雲の墓標の鍵や違うカードの鍵に送れない語は雲の新しい鍵〔<英語>~<訳の印>〕へ端末の鍵のまま送る。docs/SPEC_MY_WORDS.md §18.11）: (1) 電話のタブを開いたまま lead=甲 を足して送り、消して送り、lead=乙 を足して選択式で 覚えた にする（開き直さない）→ 雲の lead は墓標のまま・乙 は lead~<印> の行（覚えた）・パソコンを開くと 乙 が 覚えた・(2) 電話が雲を読んだ後、書きが雲に届く前に、パソコンが同じ鍵 lead に 乙 を書く → 電話の書き（無いときだけ書く）は 乙 を書き換えない・電話の 甲 は次の送りで lead~<印> へ・開き直すと電話もパソコンも lead の 2 語を持つ・(3) エラー 0 =====
+// e01d71f では (1)(2) とも落ちる（(1) 乙 が雲の lead の墓標を上書きする・(2) 電話の 甲 がパソコンの 乙 を上書きする）。
+// (2) の「読んだ後、書きが届く前」は偽のクラウドの gate で作る（電話の 甲 の書きの要求を、パソコンが書き終えるまで雲に通さない）
+console.log("two devices send (95.1):");
+{
+  const allErrors = [];
+  const SEED = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+  const KO = "試しの訳 甲";
+  const OTSU = "試しの訳 乙";
+  const watch = (page) => {
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    return page;
+  };
+  // 端末: 文脈を 1 つ作り、種（ログインと偽のクラウド）は最初のタブにだけ 1 回入れる
+  async function device(cloud, phone = false) {
+    const ctx = await browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: 1200, height: 900 }, serviceWorkers: "block", ...(phone ? { isMobile: true, hasTouch: true } : {}) });
+    await ctx.addInitScript(() => { window.__w = []; addEventListener("spelldash:word", (e) => window.__w.push(e.detail?.id ?? null)); });
+    const page = watch(await ctx.newPage());
+    await page.addInitScript((s) => { if (sessionStorage.getItem("spelldash_test_seeded")) return; sessionStorage.setItem("spelldash_test_seeded", "1"); for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, { ...SEED, spelldash_test_session: "1", spelldash_test_cloud: cloud.id });
+    return page;
+  }
+  const syncDone = (page, ms = 15000) => waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session")).catch(() => null)) === "test-user", ms, 100);
+  // 偽のクラウドへの要求が ms のあいだ増えなくなるまで待つ
+  const quiet = async (cloud, ms = 1000, max = 15000) => {
+    const t0 = Date.now();
+    let n = cloud.log.length;
+    let since = Date.now();
+    while (Date.now() - t0 < max) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (cloud.log.length !== n) { n = cloud.log.length; since = Date.now(); } else if (Date.now() - since >= ms) return true;
+    }
+    return false;
+  };
+  // マイ単語帳を開いて同期が済むまで待つ（page を渡せばそのタブで、ctx を渡せば同じ端末の新しいタブで）
+  async function openMy(target, cloud) {
+    const page = typeof target.newPage === "function" ? watch(await target.newPage()) : target;
+    await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+    await syncDone(page);
+    await quiet(cloud);
+    return page;
+  }
+  // 端末の語（答えの英語・訳・3 状態）・雲の語の行（鍵=訳=3 状態。墓標は「墓標」）
+  const view = (page) => page.evaluate(async () => {
+    const M = await import("/js/myWords.js");
+    const C = await import("/js/myWordsCore.js");
+    return M.getMyWords().filter(C.isWordEntry).map((w) => `${C.answerKeyOf(w)}=${w.ja}=${C.myStateOf(w)}`).sort();
+  });
+  const words = (cloud) => cloud.rows("user_items").filter((r) => r.kind === "my_word");
+  const sky = (cloud) => words(cloud).map((r) => `${r.key}=${r.deleted ? "墓標" : `${r.payload?.ja}=${r.payload?.ls ?? 0}`}`).sort();
+  const lead = (cloud) => words(cloud).find((r) => r.key === "lead") ?? null;
+  const moved = (cloud) => words(cloud).filter((r) => r.key.startsWith("lead~") && !r.deleted); // 雲の新しい鍵（lead~<印>）の生きた行
+  // そのタブで語を足す・消す・セットを終えたときの送り（js/game.js と同じ pushSync）
+  const act = (page, step) => page.evaluate(async ({ step, KO, OTSU }) => {
+    const M = await import("/js/myWords.js");
+    const S = await import("/js/sync.js");
+    if (step === "add-ko") M.addMyWord("lead", KO);
+    if (step === "add-otsu") M.addMyWord("lead", OTSU);
+    if (step === "remove") M.removeMyWord("lead", "word");
+    if (step !== "add-otsu") await S.pushSync();
+  }, { step, KO, OTSU });
+
+  // ----- (1) 電話のタブを開いたまま: lead=甲 を足して送る → 消して送る → lead=乙 を足して選択式で 覚えた（セットの終わりに送る） -----
+  {
+    const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+    const phone = await openMy(await device(cloud, true), cloud);
+    await act(phone, "add-ko");
+    await quiet(cloud);
+    const afterAdd = lead(cloud);
+    await act(phone, "remove");
+    await quiet(cloud);
+    const afterRemove = lead(cloud);
+    await act(phone, "add-otsu");
+    await phone.goto(`${BASE}/?learn=my&choice=en`, { waitUntil: "networkidle" }); // 同じタブ（このタブの同期は済んでいるので取り込み直さない）
+    let learned = false;
+    if (await waitUntil(() => phone.evaluate(() => window.__w.length >= 1 && document.querySelectorAll("#choiceOpts .choice__opt").length >= 2), 8000)) {
+      await phone.waitForTimeout(600); // 人が新しい問いを読む間（出てすぐの押しは答えにしない: 82.2）
+      const idx = await phone.evaluate(() => [...document.querySelectorAll("#choiceOpts .choice__opt .choice__text")].findIndex((t) => t.textContent === "lead"));
+      if (idx >= 0) { await phone.locator("#choiceOpts .choice__opt").nth(idx).click(); learned = true; }
+      await phone.waitForTimeout(80);
+      await phone.evaluate(() => { const b = document.getElementById("choiceNext"); if (b && !b.hidden) b.click(); });
+    }
+    await phone.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    await waitUntil(() => moved(cloud).some((r) => r.payload?.ls === 2) || lead(cloud)?.payload?.ls === 2, 10000); // セットの終わりの送り
+    await quiet(cloud);
+    const pv = await view(phone);
+    const pc = await openMy(await device(cloud), cloud);
+    const cv = await view(pc);
+    const m = moved(cloud);
+    check("95.1 (1) 電話のタブを開いたまま lead=甲 を足して送り、消して送り、lead=乙 を足して 覚えた: 雲の lead は墓標のまま・乙 は雲の新しい鍵 lead~<印> の行（覚えた）・電話とパソコンは lead=乙 の 覚えた の 1 語",
+      afterAdd?.payload?.ja === KO && afterRemove?.deleted === true && learned && lead(cloud)?.deleted === true && m.length === 1 && m[0].payload?.ja === OTSU && m[0].payload?.ls === 2 &&
+        [pv, cv].every((v) => JSON.stringify(v) === JSON.stringify([`lead=${OTSU}=2`])),
+      JSON.stringify({ afterAdd: afterAdd?.payload?.ja ?? null, afterRemove: afterRemove?.deleted ?? null, learned, sky: sky(cloud), phone: pv, pc: cv }));
+    await phone.context().close();
+    await pc.context().close();
+  }
+
+  // ----- (2) 電話が lead=甲 を足して送る。電話が雲を読んだ後、書きが届く前に、パソコンが同じ鍵 lead に 乙 を足して送る -----
+  {
+    const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+    let held = null;
+    let release = () => {};
+    // 電話の 甲 の書きの要求（upsert）だけを 1 回止める。止めた要求の選択肢（ignoreDuplicates）と行の鍵を覚える
+    cloud.config.gate = (q) => {
+      if (held || q.table !== "user_items") return null;
+      const up = q.ops.find(([m]) => m === "upsert");
+      const rows = up ? [up[1][0]].flat() : [];
+      if (!rows.some((r) => r?.kind === "my_word" && r.key === "lead" && r.payload?.ja === KO)) return null;
+      held = { ignore: !!up[1][1]?.ignoreDuplicates, keys: rows.map((r) => `${r.kind}:${r.key}`) };
+      return new Promise((r) => { release = r; setTimeout(r, 30000); });
+    };
+    const phone = await openMy(await device(cloud, true), cloud);
+    await phone.evaluate(async (KO) => {
+      const M = await import("/js/myWords.js");
+      const S = await import("/js/sync.js");
+      M.addMyWord("lead", KO);
+      window.__push = S.pushSync().then(() => "ok", (e) => String(e?.message ?? e));
+    }, KO);
+    const caught = await waitUntil(() => held !== null, 10000);
+    const pc = await openMy(await device(cloud), cloud);
+    await act(pc, "add-otsu");
+    await pc.evaluate(async () => { const S = await import("/js/sync.js"); await S.pushSync(); });
+    await quiet(cloud);
+    const before = lead(cloud)?.payload?.ja ?? null; // パソコンが書いた後（電話の書きはまだ届いていない）
+    release();
+    const pushed = await phone.evaluate(() => window.__push);
+    await quiet(cloud);
+    const afterRace = lead(cloud)?.payload?.ja ?? null;
+    await phone.evaluate(async () => { const S = await import("/js/sync.js"); await S.pushSync(); }); // 電話の次の送り（セットの終わりと同じ）
+    await quiet(cloud);
+    const m = moved(cloud);
+    const skyNow = sky(cloud);
+    const pv = await view(await openMy(phone.context(), cloud));
+    const cv = await view(await openMy(pc.context(), cloud));
+    const both = [`lead=${KO}=0`, `lead=${OTSU}=0`].sort();
+    check("95.1 (2) 電話が雲を読んだ後・書きが届く前にパソコンが lead=乙 を書く: 電話の書きは「無いときだけ書く」で 乙 を書き換えない・電話の 甲 は次の送りで雲の新しい鍵 lead~<印> へ・開き直すと電話もパソコンも lead の 2 語（甲・乙）",
+      caught && held?.ignore === true && before === OTSU && pushed === "ok" && afterRace === OTSU && lead(cloud)?.payload?.ja === OTSU && m.length === 1 && m[0].payload?.ja === KO &&
+        [pv, cv].every((v) => JSON.stringify(v) === JSON.stringify(both)),
+      JSON.stringify({ caught, held, before, pushed, afterRace, sky: skyNow, phone: pv, pc: cv }));
+    release();
+    await phone.context().close();
+    await pc.context().close();
+  }
+  check("95.1 (3) どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
 // ===== 92.1 ショートカットキー（Batch 92。shortcuts.html・js/shortcutsPage.js・js/shortcutsCore.js・js/shortcutsArt.js・js/shortcutsData.js・入口は index.html・stats.html・js/statsView.js。docs/SPEC_SHORTCUTS.md）: 入口（ホームの「スラング」の下のボタン・学習状況のスラングの行の下の 1 行と練習のページと同じ 覚えた の数・2,858 と学習状況の今の数は動かない）・ページ（ナビ 4 つ・フッター・noindex・sitemap に無い・CSP の違反 0・320／390／1200 × 昼夜で横スクロール 0）・キーボードを選ばずに練習 → 選ぶ所へ・押す組を全部本物のキーで（Ctrl は Control、⌘ は Meta）・止める・取り違えと近い組・ほかの項目の組・repeat・⌘ の keyup の欠け・Esc と Tab・届かなかった組（1 回目と 2 回目）・戻る・進む・再読み込みの守り・指の端末・絵（2 問目の前と後・字の大きさ・動き・光るキー・⌘ の日本語の並び）・キーボードだけで 10 問・日本語入力・保存と領域とバックアップ・アプリの状態 =====

@@ -82,6 +82,18 @@ const reset = (seed = {}) => {
 const words = () => JSON.parse(LS.getItem("spelldash_my_words") || "[]");
 const meta = () => JSON.parse(LS.getItem("spelldash_user_items_meta") || "{}");
 const dirty = () => JSON.parse(LS.getItem("spelldash_user_items_dirty") || "[]");
+// 偽の雲の読みの答えは本物の表の形（Batch 95 の直し）: updated_at は表の時刻の文字（UTC「+00:00」・秒の端数の末尾の 0 を落とす）、payload の物の鍵は jsonb の並び（短い順・同じ長さはバイト順）
+const dbTime = (iso) => {
+  const ms = Date.parse(iso ?? "");
+  if (!Number.isFinite(ms)) return iso;
+  const d = new Date(ms);
+  const frac = String(d.getUTCMilliseconds()).padStart(3, "0").replace(/0+$/, "");
+  return `${d.toISOString().slice(0, 19)}${frac ? `.${frac}` : ""}+00:00`;
+};
+const jsonbOrder = (v) => (Array.isArray(v) ? v.map(jsonbOrder) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort((x, y) => Buffer.byteLength(x) - Buffer.byteLength(y) || Buffer.compare(Buffer.from(x), Buffer.from(y))).map((k) => [k, jsonbOrder(v[k])]))
+  : v);
+const dbRow = (r) => (r && typeof r === "object" ? { ...r, ...("updated_at" in r ? { updated_at: dbTime(r.updated_at) } : {}), ...("payload" in r ? { payload: jsonbOrder(r.payload) } : {}) } : r);
 
 const C = await import("../js/myWordsCore.js");
 const M = await import("../js/myWords.js");
@@ -245,6 +257,8 @@ await t("ほかの端末から届いた行（mergeCloudItems）: 見えない字
 // key が 200 字より長い行も要求ごと断る（400・23514: 表の check）。断るときは 1 行も書かない（要求は 1 つの文）。respond で答えを差し替える。
 // 読み（Batch 87）: order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う。maxRows: 1 回の読みで返す行の上限（本物の Max Rows）。
 // noCount: count を返さない。readAt(from): その行から始まる読みの答えを差し替える（失敗・行が消えた形）。行はクラウドの表の並び（rows の入れた順）
+// 書き（Batch 95。本物の表の窓口と同じ形）: upsert(行, { ignoreDuplicates: true }) は同じ主キーの行があれば書かない。後に .select(列) が続けば
+// 書いた行だけを data に返す（続かなければ null）。オプションの無い upsert は前のまま（上書き）。要求の記録の ignore はその選択肢を渡したか
 function fakeCloud(opts = {}) {
   const rows = new Map();
   const calls = [];
@@ -270,7 +284,9 @@ function fakeCloud(opts = {}) {
     const up = ops.find((o) => o[0] === "upsert");
     if (up) {
       const list = Array.isArray(up[1]) ? up[1] : [up[1]];
-      const call = { op: "upsert", n: list.length, kinds: [...new Set(list.map((r) => r.kind))], keys: list.map((r) => r.key) };
+      const ignore = !!up[2]?.ignoreDuplicates;
+      const returning = ops.indexOf(up) < ops.findIndex((o) => o[0] === "select");
+      const call = { op: "upsert", n: list.length, kinds: [...new Set(list.map((r) => r.kind))], keys: list.map((r) => r.key), ...(ignore ? { ignore } : {}) };
       calls.push(call);
       if (opts.respond) {
         const r = opts.respond(list);
@@ -288,9 +304,14 @@ function fakeCloud(opts = {}) {
         call.ok = false;
         return { data: null, error: { code, message: "bad row" }, status: 400 };
       }
-      for (const r of list) rows.set(`${r.kind}:${r.key}`, JSON.parse(JSON.stringify(r)));
+      const wrote = [];
+      for (const r of list) {
+        if (ignore && rows.has(`${r.kind}:${r.key}`)) continue;
+        rows.set(`${r.kind}:${r.key}`, JSON.parse(JSON.stringify(r)));
+        wrote.push({ kind: r.kind, key: r.key });
+      }
       call.ok = true;
-      return { data: null, error: null, status: 201 };
+      return { data: returning ? wrote : null, error: null, status: 201 };
     }
     const range = ops.find((o) => o[0] === "range");
     const call = { op: "select", from: range ? range[1] : null, n: 0 };
@@ -317,7 +338,7 @@ function fakeCloud(opts = {}) {
     if (opts.maxRows > 0) data = data.slice(0, opts.maxRows);
     call.n = data.length;
     const counted = ops.some((o) => o[0] === "select" && o[2]?.count) && !opts.noCount;
-    return { data: JSON.parse(JSON.stringify(data)), error: null, status: 200, count: counted ? total : null };
+    return { data: JSON.parse(JSON.stringify(data)).map(dbRow), error: null, status: 200, count: counted ? total : null };
   }
   return {
     rows,
@@ -327,7 +348,7 @@ function fakeCloud(opts = {}) {
     from() {
       const ops = [];
       const b = {
-        upsert(x) { ops.push(["upsert", x]); return b; },
+        upsert(x, o) { ops.push(["upsert", x, o]); return b; },
         select(c, o) { ops.push(["select", c, o]); return b; },
         eq(k, v) { ops.push(["eq", k, v]); return b; },
         in(k, v) { ops.push(["in", k, v]); return b; },
@@ -397,7 +418,8 @@ await t("送る: ほかの端末から届いた行（見えない字・80 字で
   await S.pushUserItems(cloud, "u1", { now: T0 });
   const n = cloud.rows.get("note:my-go")?.payload.text ?? "";
   const go = cloud.rows.get("my_word:go")?.payload;
-  return (cloud.upserts().length === 1 && cloud.rows.size === 3 && n === `${"あ".repeat(79)}\uFFFD` && go?.ja === "行\u0001く" && go?.bookName === "仕\u0085事" && dirty().length === 0) || show({ calls: cloud.calls, n: n.length, go, dirty: dirty() });
+  // Batch 95: 雲に行の無い鍵の語は「無いときだけ書く」要求で別に送る（ほかの行と 2 つの要求）
+  return (cloud.upserts().length === 2 && cloud.rows.size === 3 && n === `${"あ".repeat(79)}\uFFFD` && go?.ja === "行\u0001く" && go?.bookName === "仕\u0085事" && dirty().length === 0) || show({ calls: cloud.calls, n: n.length, go, dirty: dirty() });
 });
 await t("送る: 鍵そのものに送れない字（NUL・組になっていないサロゲート）がある項目は送らない（端末に残り、送る待ちにも残る）・ほかの語は届く", async () => {
   seedWords(4, [], [{ en: "go\u0000x", ja: "行く", addedAt: "2026-11-01T00:00:00.000Z" }, { en: "sun\ud800", ja: "太陽", addedAt: "2026-11-01T00:00:00.000Z" }]);
@@ -545,7 +567,8 @@ await t("5.1 送る: 前からの訳・場面・メモが見えない字だけ�
   const sent = { tab: cloud.rows.get("my_word:tab")?.payload.ja, nul: cloud.rows.get("my_word:nul")?.payload.ja, q: cloud.rows.get("my_word:scene")?.payload.q, note: cloud.rows.get("note:my-tab")?.payload.text };
   const B = onOtherDevice(cloud);
   const byEn = Object.fromEntries(B.list.map((w) => [w.en, w]));
-  return (seenOnA === 3 && cloud.upserts().length === 1 && sent.tab === "\u0001\u0085" && sent.nul === "\uFFFD" && sent.q === "\u0002\u0003\u0004\u0005" && sent.note === "\u0001\u0002"
+  // Batch 95: 雲に行の無い鍵の語は「無いときだけ書く」要求で別に送る（ほかの行と 2 つの要求）
+  return (seenOnA === 3 && cloud.upserts().length === 2 && sent.tab === "\u0001\u0085" && sent.nul === "\uFFFD" && sent.q === "\u0002\u0003\u0004\u0005" && sent.note === "\u0001\u0002"
     && B.list.length === 3 && byEn.tab?.ja === "\u0001\u0085" && byEn.nul?.ja === "\uFFFD" && byEn.scene?.q === "\u0002\u0003\u0004\u0005" && B.notes["my-tab"] === "\u0001\u0002") ||
     show({ seenOnA, sent, onB: B.raw, notes: B.notes });
 });
@@ -564,12 +587,15 @@ await t("5.1 送る: 鍵に送り先が受け付ける見えない字（C1 の U
     { kind: "concept", en: "x\u202Ey", answer: "x\u202Ey", q: "場面の説明です", explain: "", accept: [], ja: "", addedAt: "2026-01-01T00:00:00.000Z" },
     { kind: "concept", en: "n\u0000g", answer: "ng", q: "場面の説明です", explain: "", accept: [], ja: "", addedAt: "2026-01-01T00:00:00.000Z" }
   ];
-  seedItems(A, {}, [["my_word:c\u0085d", { updatedAt: "2026-11-08T00:00:00.000Z", deleted: true }]]);
+  // 消した墓標は、消したカード（card）と同じ雲の生きた行に会ったときだけ送る（Batch 95 の設計。雲に行の無い墓標は送らずに外す）
+  seedItems(A, {}, [["my_word:c\u0085d", { updatedAt: "2026-11-08T00:00:00.000Z", deleted: true, card: { addedAt: "2026-01-01T00:00:00.000Z", jaHash: C.jaHash("") } }]]);
   const cloud = fakeCloud();
+  cloud.rows.set("my_word:c\u0085d", { user_id: "u1", kind: "my_word", key: "c\u0085d", payload: { kind: "concept", en: "c\u0085d", answer: "c\u0085d", q: "場面の説明です", explain: "", accept: [], ja: "", addedAt: "2026-01-01T00:00:00.000Z" }, deleted: false, updated_at: "2026-01-01T00:00:00.000Z" });
   await S.pushUserItems(cloud, "u1", { now: T0 });
   const live = cloud.rows.get("my_word:a\u0085b");
   const tomb = cloud.rows.get("my_word:c\u0085d");
-  return (cloud.upserts().length === 1 && live?.deleted === false && live?.payload.q === "場面の説明です" && cloud.rows.has("my_word:x\u202Ey") && tomb?.deleted === true && cloud.rows.size === 3
+  // Batch 95: 雲に行の無い鍵の語は「無いときだけ書く」要求で別に送る（ほかの行と 2 つの要求）
+  return (cloud.upserts().length === 2 && live?.deleted === false && live?.payload.q === "場面の説明です" && cloud.rows.has("my_word:x\u202Ey") && tomb?.deleted === true && cloud.rows.size === 3
     && JSON.stringify(dirty()) === JSON.stringify(["my_word:n\u0000g"])) || show({ keys: [...cloud.rows.keys()], dirty: dirty() });
 });
 
@@ -766,7 +792,20 @@ await t("6.10 取り込み: クラウドの方が新しくて取り込んだ語�
   const left = dirty();
   await S.pushUserItems(cloud, "u1", { now: T0 + 1 });
   const pushed = cloud.upserts().map((c) => c.keys.join());
-  return (JSON.stringify(left) === JSON.stringify([`my_word:${three[2].en}`]) && JSON.stringify(pushed) === JSON.stringify([three[2].en]) && cloud.rows.get(`my_word:${three[2].en}`)?.deleted === true && cloud.rows.get(`my_word:${three[0].en}`)?.payload?.ja === "新しい訳") || show({ left, pushed, del: cloud.rows.get(`my_word:${three[2].en}`)?.deleted });
+  // Batch 95 の設計: 消したカードの印（card）の無い墓標（前の版）は、雲の生きた行がどのカードか分からないので取り込む（消すより戻す）。送る物は無い
+  return (JSON.stringify(left) === "[]" && JSON.stringify(pushed) === "[]" && cloud.rows.get(`my_word:${three[2].en}`)?.deleted === false && M.getMyWords().some((w) => w.en === three[2].en) && cloud.rows.get(`my_word:${three[0].en}`)?.payload?.ja === "新しい訳") || show({ left, pushed, del: cloud.rows.get(`my_word:${three[2].en}`)?.deleted });
+});
+await t("6.10b 取り込み: 消したカードの印（card）のある墓標が、同じカードの雲の古い生きた行に会えば、取り込みのときに墓標を送る（送る待ちに残らない）", async () => {
+  const three = Array.from({ length: 3 }, (_, i) => wordN(i));
+  reset({
+    spelldash_my_words: three.slice(0, 2),
+    spelldash_user_items_meta: { [`my_word:${three[0].en}`]: { updatedAt: T_OLD, deleted: false }, [`my_word:${three[1].en}`]: { updatedAt: T_OLD, deleted: false }, [`my_word:${three[2].en}`]: { updatedAt: T_OLD, deleted: true, card: { addedAt: three[2].addedAt ?? null, jaHash: C.jaHash(three[2].ja) } } },
+    spelldash_user_items_dirty: [`my_word:${three[0].en}`, `my_word:${three[2].en}`]
+  });
+  const cloud = cloudWith([rowOfWord({ ...three[0], ja: "新しい訳" }, T_NEW), rowOfWord(three[1]), rowOfWord(three[2], "2026-10-01T00:00:00.000Z")]);
+  await S.pullUserItems(cloud, "u1", { now: T0 });
+  const left = dirty();
+  return (JSON.stringify(left) === "[]" && cloud.rows.get(`my_word:${three[2].en}`)?.deleted === true && !M.getMyWords().some((w) => w.en === three[2].en) && cloud.rows.get(`my_word:${three[0].en}`)?.payload?.ja === "新しい訳") || show({ left, del: cloud.rows.get(`my_word:${three[2].en}`)?.deleted });
 });
 
 // 6.11〜6.13（Batch 87 の反証の直し）: 読みの途中で、ほかの端末が前のページの範囲に並ぶ行を足すと（今日の日の行・新しい学習記録など）、
