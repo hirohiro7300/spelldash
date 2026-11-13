@@ -1341,26 +1341,32 @@ export async function readAllRows(client, table, orderCols) {
 // options.deferPacksEvent: true なら spelldash:packs を投げない（呼び出し側が語の読み直しを 1 回にまとめる）。options.now: 今の時刻（ms。検査が渡す）
 export async function pullUserItems(supabase, userId, options = {}) {
   const now = options.now ?? Date.now();
-  const readAt = Date.now();
-  const read = await readAllRows(supabase, "user_items", ["kind", "key"]);
-  const fresh = Date.now() - readAt <= READ_FRESH_MS;
-  if (!read.ok) {
-    // 雲を読めなかった: 合わせない・送らない（語は送る待ちに残る。次の送りは送る前に自分で読む）。
-    // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）
-    if (isMissingTable(read)) {
-      noteTable(true);
-      return { changed: null, missing: true };
+  let readAt = 0;
+  let read = null;
+  for (let tries = 0; ; tries++) {
+    readAt = Date.now();
+    read = await readAllRows(supabase, "user_items", ["kind", "key"]);
+    if (!read.ok) {
+      // 雲を読めなかった: 合わせない・送らない（語は送る待ちに残る。次の送りは送る前に自分で読む）。
+      // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）
+      if (isMissingTable(read)) {
+        noteTable(true);
+        return { changed: null, missing: true };
+      }
+      return { changed: null };
     }
-    return { changed: null };
+    noteTable(false);
+    // 読み始めから READ_FRESH_MS を過ぎて届いた読み（ページが止まっていた）では合わせない: その間にほかのタブ・端末が消した語を戻し、
+    // 古い答えを写す（送った墓標の印 sentAt も、それより古い読みを捨てるので外れる）。1 回だけ読み直し、また古ければ読めなかった回と同じ
+    if (Date.now() - readAt <= READ_FRESH_MS) break;
+    if (tries > 0) return { changed: null };
   }
-  noteTable(false);
   const { changed, toUpload, adopted, absent, local } = mergeCloudItems(read.rows, userId, readAt);
   // 断られて待っている行は送らない（ページを開くたびに同じ行で断られ続けない）。鍵に送り先が受け付けない字がある行も送らない
   const meta = getItemMeta();
   const { send } = prepareRows(toUpload.filter((r) => r.kind === "day" || !waiting(meta[rowId(r)], now)));
   let sent = [];
-  if (send.length > 0 && !fresh) markUnsent(send.filter((r) => r.kind !== "day"), local); // 古い読み: 語・メモ・パックは送る待ちに残す（次の送りが読み直す）
-  else if (send.length > 0) {
+  if (send.length > 0) {
     // 送れなかった行は次回の pushSync で再送する（dirty に積む）。行の中身で断られた行は印を付けて待つ。
     // 語の行は送りと同じく、要求のたびに読み始めから READ_FRESH_MS の内かを確かめ、雲に行の無かった鍵は「無いときだけ書く」
     const { failed, rejected, skipped } = await upsertRows(supabase, send, { deadline: readAt + READ_FRESH_MS, absent });
@@ -1370,7 +1376,7 @@ export async function pullUserItems(supabase, userId, options = {}) {
     markRejected(rejected, now, local);
   }
   settleRows(sent, adopted, null, local);
-  if (fresh) advanceMark(Date.now(), new Set([...sent.map((r) => localIdOf(r, local)), ...adopted.map(([id]) => id)]));
+  advanceMark(Date.now(), new Set([...sent.map((r) => localIdOf(r, local)), ...adopted.map(([id]) => id)]));
   if (changed.my_word) window.dispatchEvent(new CustomEvent("spelldash:mywords"));
   if (changed.note) window.dispatchEvent(new CustomEvent("spelldash:notes"));
   if (changed.pack && !options.deferPacksEvent) window.dispatchEvent(new CustomEvent("spelldash:packs", { detail: { synced: true } }));
