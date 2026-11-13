@@ -1809,10 +1809,12 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const devices = {};
   const use = (name) => { clock.cur = name; return (globalThis.localStorage = devices[name] ??= storeOf()); };
   const sky = new Map();
-  const st = { hold: [], held: [], lose: 0, noRows: 0, failReads: 0, cap: 0, reqs: { wordRead: 0, dayRead: 0, range: 0, upsert: 0 }, upserts: [] };
+  const st = { hold: [], held: [], lose: 0, noRows: 0, failReads: 0, cap: 0, missing: false, reqs: { wordRead: 0, dayRead: 0, range: 0, upsert: 0 }, upserts: [] };
   const copy = (v) => JSON.parse(JSON.stringify(v));
   // failReads（Batch 95 の直し）: 次の n 回の読み（どの種類も）は通信の失敗で答える（圏外の形）
-  const readFails = () => (st.failReads > 0 ? (st.failReads--, Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 })) : null);
+  const readFails = () => (st.failReads > 0 ? (st.failReads--, Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 })) : missingAns());
+  // missing（Batch 95 の直し）: 表がまだ無い（本番の今。読み・書きとも 404・42P01 で答える）
+  const missingAns = () => (st.missing ? Promise.resolve({ data: null, error: { code: "42P01", message: "relation does not exist" }, status: 404 }) : null);
   // 要求をあとで返す（読みは今の雲の答えを後で届ける。書きは後で書く）
   const defer = (kind, fn) => {
     const i = st.hold.indexOf(kind);
@@ -1848,7 +1850,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
         const sent = copy(rows);
         const ignore = !!opts?.ignoreDuplicates;
         let cols = null;
-        let p = null;
+        let p = st.missing ? missingAns() : null;
         const run = () => (p ??= defer("upsert", () => {
           st.upserts.push({ ignore, rows: sent });
           // cap（Batch 95 の直し）: 表の守りの「消していない語の上限」（docs/SQL_USER_ITEMS.md §4。本物は 1,000 語）。行を順に見て、語が増える行で上限に
@@ -1900,7 +1902,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const pullStart = async (name) => { use(name); const done = U.pullUserItems(client, "u1", { now: nowOf() }).catch((e) => e); await settleTicks(); return { done }; };
   const sync = async (name) => { await pull(name); await push(name); }; // 新しいタブ（取り込み → 送る）
   const settle = async (names, rounds = 2) => { for (let r = 0; r < rounds; r++) for (const n of names) { clock.now += MIN; await sync(n); } };
-  const reset = () => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); st.hold.length = 0; st.held.length = 0; st.lose = 0; st.noRows = 0; st.failReads = 0; st.cap = 0; st.upserts.length = 0; for (const k of Object.keys(st.reqs)) st.reqs[k] = 0; clock.skew = {}; };
+  const reset = () => { for (const k of Object.keys(devices)) delete devices[k]; sky.clear(); st.hold.length = 0; st.held.length = 0; st.lose = 0; st.noRows = 0; st.failReads = 0; st.cap = 0; st.missing = false; st.upserts.length = 0; for (const k of Object.keys(st.reqs)) st.reqs[k] = 0; clock.skew = {}; };
   const all = (name) => (use(name), JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
   const wordsOf = (name) => all(name).filter((w) => C.isWordEntry(w));
   const metaOf = (name) => (use(name), JSON.parse(localStorage.getItem("spelldash_user_items_meta") || "{}"));
@@ -2424,6 +2426,31 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
       cap55.live === "dog,elk,fox,gnu,hen" && cap55.waits === "" && cap55.dirty.length === 0, JSON.stringify(cap55));
     ok("T55b 1 語を消して 3 語を足すと、上限までの 1 語だけ雲に入り、残りの 2 語は断られて待つ（上限は越えない）",
       cap55b.live.split(",").length === 5 && cap55b.live.startsWith("bee,cat,dog,elk,") && cap55b.waits.split(",").length === 2 && cap55b.dirty.length === 2, JSON.stringify(cap55b));
+
+    // ---- T56（表がまだ無い・本番の今）: ページの取り込みで表が無いと分かったら、そのページの送りは語を読まない（読んでも表が無い）。日の行の読みだけ（e01d71f と同じ 1 つ）。
+    // 印 merged は作らない・語は送る待ちに残る。(b) 取り込みの無いページ（同じタブの 2 つ目のページ）でも、最初の送りで表が無いと分かれば次の送りから語を読まない。
+    // 表ができたら、次のページで全部送る ----
+    reset(); at(1, 9); st.missing = true;
+    use("P"); for (const [en, ja] of [["ant", "蟻"], ["bee", "蜂"], ["cat", "猫"]]) M.addMyWord(en, `試しの訳 ${ja}`);
+    await pull("P");
+    const r56 = { ...st.reqs };
+    answer("P", "ant", ANSWER_KINDS.exact, 1); setEnd("P"); await push("P"); // セットの終わり
+    setEnd("P"); await push("P"); // 10 語ごとの送り
+    await push("P"); // ページを離れる
+    const d56 = Object.fromEntries(Object.entries(st.reqs).map(([k, v]) => [k, v - r56[k]]));
+    const mark56 = metaOf("P").merged ?? null;
+    const U2 = await import("../js/userItemsSync.js?t56b"); // 取り込みの無いページ（表のことをまだ知らない）
+    const r56b = { ...st.reqs };
+    use("P"); setEnd("P"); await U2.pushUserItems(client, "u1", { now: nowOf() });
+    setEnd("P"); await U2.pushUserItems(client, "u1", { now: nowOf() });
+    const d56b = Object.fromEntries(Object.entries(st.reqs).map(([k, v]) => [k, v - r56b[k]]));
+    const dirty56 = dirtyOf("P").length;
+    st.missing = false; at(1, 10); await sync("P");
+    ok("T56 表がまだ無い: 取り込みで表が無いと分かったページの送りは語を読まない（3 回の送りで日の読み 3・語の読み 0・書き 0）・印 merged を作らない・語は送る待ちに残り、表ができたら送る",
+      d56.wordRead === 0 && d56.dayRead === 3 && d56.upsert === 0 && !mark56 && dirty56 === 3 && liveJa("ant") === "蟻" && liveJa("cat") === "猫" && dirtyOf("P").length === 0,
+      JSON.stringify({ d56, mark56, dirty56, cloud: cloudView(), dirty: dirtyOf("P") }));
+    ok("T56b 取り込みの無いページ: 最初の送りの日の読みで表が無いと分かれば、次の送りは語を読まない（語の読み 1・日の読み 2）",
+      d56b.wordRead === 1 && d56b.dayRead === 2 && d56b.upsert === 0, JSON.stringify(d56b));
   } finally {
     globalThis.Date = RealDate;
   }
