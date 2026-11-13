@@ -20,6 +20,20 @@ function ok(name, cond, detail = "") {
 }
 const eq = (name, a, b) => ok(name, JSON.stringify(a) === JSON.stringify(b), `${JSON.stringify(a)} ≠ ${JSON.stringify(b)}`);
 
+// 偽の雲の読みの答えを本物の表の形にする（Batch 95 の直し）: updated_at は表の時刻の文字（UTC「+00:00」・秒の端数の末尾の 0 を落とす。端末の送った「…Z」の文字と違う）、
+// payload（jsonb）の物の鍵は短い順・同じ長さはバイト順（端末の書いた並びと違う）
+const dbTime = (iso) => {
+  const ms = Date.parse(iso ?? "");
+  if (!Number.isFinite(ms)) return iso;
+  const d = new Date(ms);
+  const frac = String(d.getUTCMilliseconds()).padStart(3, "0").replace(/0+$/, "");
+  return `${d.toISOString().slice(0, 19)}${frac ? `.${frac}` : ""}+00:00`;
+};
+const jsonbOrder = (v) => (Array.isArray(v) ? v.map(jsonbOrder) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort((a, b) => Buffer.byteLength(a) - Buffer.byteLength(b) || Buffer.compare(Buffer.from(a), Buffer.from(b))).map((k) => [k, jsonbOrder(v[k])]))
+  : v);
+const dbRow = (r) => ({ ...r, updated_at: dbTime(r.updated_at), payload: jsonbOrder(r.payload) });
+
 // ===== 入れられる英語 =====
 for (const [raw, text, key] of [
   ["due diligence", "due diligence", "due diligence"],
@@ -1318,10 +1332,10 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   // 雲は本物の表と同じく、消した印（墓標）の中身を空にして入れる（docs/SQL_USER_ITEMS.md §4 の見張り）。
   // 本物の表の窓口と同じ形にも答える（Batch 95）: 鍵の並びの読み（.eq("kind", …).in("key", […])）は、その種類と鍵の行。
   // upsert(行, { ignoreDuplicates: true }) は同じ主キーの行があれば書かない。後に .select(列) が続けば書いた行だけを data に返す（続かなければ null）。
-  // オプションの無い upsert は前のまま（上書き）。sent は雲が受け取った行（書かなかった行も入る）
+  // オプションの無い upsert は前のまま（上書き）。sent は雲が受け取った行（書かなかった行も入る）。読みの答えは本物の表の形（dbRow: 時刻の文字と payload の鍵の並び）
   const client = { from() { const f = {}; const q = { select: () => q, order: () => q, eq: (c, v) => ((f[c] = v), q), in: (c, vs) => ((f[`in:${c}`] = vs), q),
-    then: (ok, bad) => (failed() ? Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 }) : answer(() => { const want = new Set(f["in:key"] ?? []); return { data: [...sky.values()].filter((r) => r.kind === f.kind && want.has(r.key)).map(copy), error: null, status: 200 }; })).then(ok, bad),
-    range: (a, b) => (failed() ? Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 }) : answer(() => { const all = [...sky.values()].map(copy); return { data: all.slice(a, b + 1), count: all.length, error: null, status: 200 }; })),
+    then: (ok, bad) => (failed() ? Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 }) : answer(() => { const want = new Set(f["in:key"] ?? []); return { data: [...sky.values()].filter((r) => r.kind === f.kind && want.has(r.key)).map((r) => dbRow(copy(r))), error: null, status: 200 }; })).then(ok, bad),
+    range: (a, b) => (failed() ? Promise.resolve({ data: null, error: { message: "fetch failed" }, status: 503 }) : answer(() => { const all = [...sky.values()].map((r) => dbRow(copy(r))); return { data: all.slice(a, b + 1), count: all.length, error: null, status: 200 }; })),
     upsert: (rows, opts) => { let cols = null; const w = { select: (c) => ((cols = c ?? "*"), w), then: (ok, bad) => answer(() => { const wrote = []; for (const r of rows) { const id = `${r.kind}:${r.key}`; sent.push(copy(r)); if (opts?.ignoreDuplicates && sky.has(id)) continue; sky.set(id, r.deleted ? { ...copy(r), payload: {} } : copy(r)); wrote.push({ kind: r.kind, key: r.key }); } return { data: cols ? wrote : null, error: null, status: 201 }; }).then(ok, bad) }; return w; } }; return q; } };
   const pull = (name) => (use(name), U.pullUserItems(client, "u1", { now: NOW }));
   const push = (name) => (use(name), U.pushUserItems(client, "u1", { now: NOW }));
@@ -1494,7 +1508,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     at(3, 11); const from15e2 = sent.length; await sync("c15e", "p15e", "c15e");
     const twice = sent.slice(from15e2).filter((r) => r.kind === "my_word").length;
     ok("T15e 鍵を移した語は 1 回だけ送る・2 回目からは 0・前の鍵の印は雲の行（PC の語）の時刻・送る待ちは空",
-      once === 1 && twice === 0 && meta15?.updatedAt === sky.get("my_word:lead")?.updated_at && meta15?.deleted === false && dirty15.length === 0, JSON.stringify({ once, twice, meta15, cloud: sky.get("my_word:lead")?.updated_at, dirty15 }));
+      once === 1 && twice === 0 && Date.parse(meta15?.updatedAt) === Date.parse(sky.get("my_word:lead")?.updated_at) && meta15?.deleted === false && dirty15.length === 0, JSON.stringify({ once, twice, meta15, cloud: sky.get("my_word:lead")?.updated_at, dirty15 }));
 
     // ---- T15f（守り）: 場面カードと同じ鍵の雲の英語の語は今のまま（鍵を移さない。新しい方が勝つ）・雲の墓標より新しい語は今のまま。
     // 雲の墓標より古い語（3 つ目）: この端末は一度も取り込んでいない（送ったことが無い）ので、ほかの端末が消したのは別のカード → 鍵を移して残す（Batch 94 の直し。§18.10・T21） ----
@@ -1775,7 +1789,8 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
 //   hold(種類): その種類の次の要求をあとで返す（読みは要求の時の雲の答えを後で届ける。書きは後で書く）。ページが止まった形
 //   lose(n): 次の n 回の書きは雲に書くが、答えを落とす（通信が切れた形）
 //   noRows(n): 次の n 回の「無いときだけ書く」書きは、書いても答えに行を返さない（答えの data が配列でない形。T44）
-// 種類: wordRead（語の鍵の並びの読み）・dayRead（日の行の読み）・range（全部の読み）・upsert（書き）。端末: P = 電話・C = パソコン・T = 3 台目。語と訳は試しの物だけ
+// 種類: wordRead（語の鍵の並びの読み）・dayRead（日の行の読み）・range（全部の読み）・upsert（書き）。端末: P = 電話・C = パソコン・T = 3 台目。語と訳は試しの物だけ。
+// 読みの答えは本物の表の形（dbRow: updated_at は表の時刻の文字・payload の鍵は jsonb の並び）
 {
   const U = await import("../js/userItemsSync.js");
   const M = await import("../js/myWords.js");
@@ -1816,11 +1831,11 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
       then: (ok, bad) => {
         const kind = f.kind === "day" ? "dayRead" : "wordRead";
         st.reqs[kind]++;
-        return defer(kind, () => { const want = new Set(f["in:key"] ?? []); return { data: [...sky.values()].filter((r) => r.kind === f.kind && want.has(r.key)).map(copy), error: null, status: 200 }; }).then(ok, bad);
+        return defer(kind, () => { const want = new Set(f["in:key"] ?? []); return { data: [...sky.values()].filter((r) => r.kind === f.kind && want.has(r.key)).map((r) => dbRow(copy(r))), error: null, status: 200 }; }).then(ok, bad);
       },
       range: (a, b) => {
         st.reqs.range++;
-        return defer("range", () => { const all = [...sky.values()].sort((x, y) => (`${x.kind}\u0000${x.key}` < `${y.kind}\u0000${y.key}` ? -1 : 1)).map(copy); return { data: all.slice(a, b + 1), count: all.length, error: null, status: 200 }; });
+        return defer("range", () => { const all = [...sky.values()].sort((x, y) => (`${x.kind}\u0000${x.key}` < `${y.kind}\u0000${y.key}` ? -1 : 1)).map((r) => dbRow(copy(r))); return { data: all.slice(a, b + 1), count: all.length, error: null, status: 200 }; });
       },
       upsert: (rows, opts) => {
         st.reqs.upsert++;
@@ -2251,6 +2266,20 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     at(1, 9, 30); await sync("P"); at(1, 9, 40); await sync("C"); await settle(["P", "C"]);
     ok("T46 印を進めたのと同じミリ秒に足した語: まだ雲に入っていない語と見て、PC の墓標で消えない（電話と PC に 凧 が 覚えた で残る）",
       edge46 >= 0 && edge46 <= 1 && stateOf("P", "kite", "凧") === "s2" && stateOf("C", "kite", "凧") === "s2", JSON.stringify({ edge46, P: view("P"), C: view("C"), cloud: cloudView() }));
+
+    // ===== Batch 95 の直し T47〜（反証で見つかった形。docs/SPEC_MY_WORDS.md §18.11） =====
+    // ---- T47（答えが届かなかった場面カード）: 電話が場面カードを作って送る（書けたが答えが落ちる）→ 次の送りで雲の行を 1 回読み、同じ版なので送る待ちから外す
+    // （雲は payload の鍵の並びを変え、時刻を表の形の文字で返す）→ その後の送りは読まない・印 merged の out に残らない。PC にも届く ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    use("P"); const made47 = M.addMyConcept({ q: "試しの場面 甲", answer: "Kite flying", explain: "試しの解説 甲", accept: "" });
+    setEnd("P"); st.lose = 1; await push("P").catch(() => {});
+    const left47 = dirtyOf("P");
+    const reads47 = [];
+    for (let i = 1; i <= 3; i++) { at(1, 9, 10 * i); setEnd("P"); const r0 = st.reqs.wordRead + st.reqs.range; await push("P"); reads47.push(st.reqs.wordRead + st.reqs.range - r0); }
+    at(1, 11); await sync("C");
+    ok("T47 答えが届かなかった場面カード: 次の送りで送る待ちから外れ（雲の読みは 1 回だけ）・印 merged の out に残らない・PC にも届く",
+      made47?.ok === true && left47.length === 1 && dirtyOf("P").length === 0 && JSON.stringify(reads47) === "[1,0,0]" && (metaOf("P").merged?.out ?? []).length === 0 && all("C").some((w) => w.kind === "concept"),
+      JSON.stringify({ made: made47?.ok, left47, dirty: dirtyOf("P"), reads47, out: metaOf("P").merged?.out ?? null }));
   } finally {
     globalThis.Date = RealDate;
   }

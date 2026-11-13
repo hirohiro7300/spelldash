@@ -59,12 +59,26 @@ function findChromium() {
 // select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）。
 // 書き（Batch 95。本物の表の窓口と同じ形）: upsert(行, { ignoreDuplicates: true }) は同じ主キーの行があれば書かない。後に select(列) が続けば
 // 書いた行だけを data に返す（続かなければ null）。オプションの無い upsert は前のまま（上書き）。記録の ignore はその選択肢を渡したか、wrote は書いた行の数
-// gate（Batch 95: 要求ごとに呼ぶ関数。Promise を返せば、それが済むまでその要求を雲に通さない。読んだ後・書きが届く前にほかの端末が書く形を作る。既定は無し）
+// gate（Batch 95: 要求ごとに呼ぶ関数。Promise を返せば、それが済むまでその要求を雲に通さない。読んだ後・書きが届く前にほかの端末が書く形を作る。既定は無し）。
+// user_items の読みの答えは本物の表の形（下の dbRow: 時刻の文字と payload の鍵の並び。表に入れた行はそのまま）
 const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
 const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
 // select の方針が無い表（Batch 86。docs/SQL_FUNNEL.md・docs/SQL_CLIENT_GATE.md の記録）: 衝突の先を名指す書き込み（upsert・on_conflict）は行の権限で断る（42501）。
 // ふつうの insert は入り、同じ鍵（CLOUD_PK）の 2 度目は一意の違反（23505）で断る（1 文ごと: 1 行でも重なれば全部入れない）
 const CLOUD_NO_SELECT = new Set(["funnel_events"]);
+// user_items の読みの答えは本物の表の形（Batch 95 の直し）: updated_at は表の時刻の文字（UTC「+00:00」・秒の端数の末尾の 0 を落とす。端末の送った「…Z」の文字と違う）、
+// payload（jsonb）の物の鍵は短い順・同じ長さはバイト順（端末の書いた並びと違う）
+const dbTime = (iso) => {
+  const ms = Date.parse(iso ?? "");
+  if (typeof iso !== "string" || !Number.isFinite(ms)) return iso;
+  const d = new Date(ms);
+  const frac = String(d.getUTCMilliseconds()).padStart(3, "0").replace(/0+$/, "");
+  return `${d.toISOString().slice(0, 19)}${frac ? `.${frac}` : ""}+00:00`;
+};
+const jsonbOrder = (v) => (Array.isArray(v) ? v.map(jsonbOrder) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort((x, y) => Buffer.byteLength(x) - Buffer.byteLength(y) || Buffer.compare(Buffer.from(x), Buffer.from(y))).map((k) => [k, jsonbOrder(v[k])]))
+  : v);
+const dbRow = (r) => ({ ...r, ...("updated_at" in r ? { updated_at: dbTime(r.updated_at) } : {}), ...("payload" in r ? { payload: jsonbOrder(r.payload) } : {}) });
 const clouds = new Map();
 let cloudSeq = 0;
 function createCloud(tables = {}, config = {}) {
@@ -122,6 +136,7 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
     if (range) rows = rows.slice(Math.max(0, range[0]), Math.max(0, range[1] + 1));
     if (cloud.config.maxRows > 0) rows = rows.slice(0, cloud.config.maxRows);
     if (cols !== "*") { const names = cols.split(",").map((c) => c.trim()); rows = rows.map((r) => Object.fromEntries(names.map((k) => [k, r[k]]))); }
+    if (table === "user_items") rows = rows.map(dbRow);
     entry.n = rows.length;
     const data = head ? null : single ? (rows[0] ?? null) : rows;
     return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? total : null };

@@ -82,6 +82,18 @@ const reset = (seed = {}) => {
 const words = () => JSON.parse(LS.getItem("spelldash_my_words") || "[]");
 const meta = () => JSON.parse(LS.getItem("spelldash_user_items_meta") || "{}");
 const dirty = () => JSON.parse(LS.getItem("spelldash_user_items_dirty") || "[]");
+// 偽の雲の読みの答えは本物の表の形（Batch 95 の直し）: updated_at は表の時刻の文字（UTC「+00:00」・秒の端数の末尾の 0 を落とす）、payload の物の鍵は jsonb の並び（短い順・同じ長さはバイト順）
+const dbTime = (iso) => {
+  const ms = Date.parse(iso ?? "");
+  if (!Number.isFinite(ms)) return iso;
+  const d = new Date(ms);
+  const frac = String(d.getUTCMilliseconds()).padStart(3, "0").replace(/0+$/, "");
+  return `${d.toISOString().slice(0, 19)}${frac ? `.${frac}` : ""}+00:00`;
+};
+const jsonbOrder = (v) => (Array.isArray(v) ? v.map(jsonbOrder) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort((x, y) => Buffer.byteLength(x) - Buffer.byteLength(y) || Buffer.compare(Buffer.from(x), Buffer.from(y))).map((k) => [k, jsonbOrder(v[k])]))
+  : v);
+const dbRow = (r) => (r && typeof r === "object" ? { ...r, ...("updated_at" in r ? { updated_at: dbTime(r.updated_at) } : {}), ...("payload" in r ? { payload: jsonbOrder(r.payload) } : {}) } : r);
 
 const C = await import("../js/myWordsCore.js");
 const M = await import("../js/myWords.js");
@@ -326,7 +338,7 @@ function fakeCloud(opts = {}) {
     if (opts.maxRows > 0) data = data.slice(0, opts.maxRows);
     call.n = data.length;
     const counted = ops.some((o) => o[0] === "select" && o[2]?.count) && !opts.noCount;
-    return { data: JSON.parse(JSON.stringify(data)), error: null, status: 200, count: counted ? total : null };
+    return { data: JSON.parse(JSON.stringify(data)).map(dbRow), error: null, status: 200, count: counted ? total : null };
   }
   return {
     rows,
