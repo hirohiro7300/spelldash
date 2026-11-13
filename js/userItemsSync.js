@@ -974,7 +974,7 @@ const ROW_ERRORS = new Set([400, 413, 422]); // 行の中身で断られた（�
 const SEND_REFUSED = /\u0000|[\uD800-\uDFFF]/gu;
 
 const rowId = (r) => `${r.kind}:${r.key}`;
-// 同じ時刻か（雲は時刻を表の形の文字で返す: 「+00:00」・末尾の 0 を落とした秒の端数。文字ではなく時刻で比べる）
+// 同じ時刻か（雲の時刻の文字は「+00:00」で秒の端数の末尾の 0 を落とす: 時刻で比べる）
 const sameTime = (a, b) => {
   const x = Date.parse(a ?? "");
   return Number.isFinite(x) && x === Date.parse(b ?? "");
@@ -1299,9 +1299,11 @@ export async function pushUserItems(supabase, userId, { now = Date.now() } = {})
   const keys = dirtyIds.filter((id) => id.startsWith("my_word:") && !waiting(metaAtStart[id], now)).map((id) => id.slice(8));
   const readKeys = [...new Set(keys.map((k) => (typeof aliases[k]?.to === "string" && aliases[k].to) || k))];
   const others = buildDirtyRows(userId).filter((r) => r.kind !== "my_word" && (r.kind === "day" || !waiting(metaAtStart[rowId(r)], now)));
+  const dayRows = others.filter((r) => r.kind === "day");
+  // 表が無いと分かったページは日を先に読み、表があれば同じ送りで語を読む（無い間の失敗は 1 つ。日を読まなければ語を読む）
+  const dayFirst = keys.length > 0 && tableMissing === true && dayRows.length > 0 && !dayRejected ? await mergeDayRowsWithCloud(supabase, dayRows) : null;
   const readAt = Date.now();
-  // 表がまだ無いと分かったページ（取り込み・確かめ・日の読み）は語を読まない（失敗する要求を増やさない）
-  const [read, days] = await Promise.all([keys.length > 0 && tableMissing !== true ? readWordRows(supabase, readKeys) : null, mergeDayRowsWithCloud(supabase, others.filter((r) => r.kind === "day"))]);
+  const [read, days] = await Promise.all([keys.length > 0 && !(dayFirst && tableMissing) ? readWordRows(supabase, readKeys) : null, dayFirst ?? mergeDayRowsWithCloud(supabase, dayRows)]);
   // 2. 合わせる（読み始めから READ_FRESH_MS の内だけ）。待たせた語は雲の新しい鍵の候補を読み、行の無い鍵へ送る（端末の鍵は動かさない）
   let words = null;
   if (read?.ok) {
