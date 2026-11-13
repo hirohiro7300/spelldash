@@ -693,7 +693,7 @@ function resolveMyWords({ cloud, myWords, meta, dirty, mapBook, userId, phase, s
         // 場面カードと語が同じ鍵: 前のとおり新しい方
         if (tL > tR) upload(k, w);
         else if (tL < tR) adopt(k, r, i);
-        else if (d && JSON.stringify(w) === JSON.stringify(r.payload)) out.adopted.push([id, r.updated_at]);
+        else if (d && sameJson(w, r.payload)) out.adopted.push([id, r.updated_at]);
       }
       continue;
     }
@@ -925,6 +925,14 @@ const ROW_ERRORS = new Set([400, 413, 422]); // 行の中身で断られた（�
 const SEND_REFUSED = /\u0000|[\uD800-\uDFFF]/gu;
 
 const rowId = (r) => `${r.kind}:${r.key}`;
+// 同じ時刻か（雲は時刻を表の形の文字で返す: 「+00:00」・末尾の 0 を落とした秒の端数。文字ではなく時刻で比べる）
+const sameTime = (a, b) => {
+  const x = Date.parse(a ?? "");
+  return Number.isFinite(x) && x === Date.parse(b ?? "");
+};
+// 中身が同じか（雲の payload〔jsonb〕は物の鍵の並びを変えて返す: 並びに依らずに比べる）
+const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v);
+const sameJson = (a, b) => JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
 
 // 送る文字を整える（送り先が受け付けない字だけを 1 字ずつ U+FFFD に。字を落とさない）
 export function cleanSendText(text) {
@@ -1179,7 +1187,7 @@ function settleRows(sent, adopted = [], metaAtStart = null, local = null) {
       metaChanged = true;
     }
   }
-  for (const [id, at] of adopted) if (meta[id]?.updatedAt === at) dirty.delete(id);
+  for (const [id, at] of adopted) if (sameTime(meta[id]?.updatedAt, at)) dirty.delete(id);
   if (dirty.size !== before) writeJson(DIRTY_KEY, [...dirty]);
   if (metaChanged) writeJson(META_KEY, meta);
 }
