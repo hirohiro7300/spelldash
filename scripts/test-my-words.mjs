@@ -2343,6 +2343,51 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ok("T51 古い読み（2 回とも 20 秒を過ぎた）の取り込み: 雲の凧を取り込まず・送らず・印 merged を進めない",
       !!mark51 && metaOf("P").merged?.at === mark51 && stateOf("P", "kite", "凧") === "-" && st.reqs.upsert === up51 && st.held.length === 0,
       JSON.stringify({ mark51, mark: metaOf("P").merged?.at ?? null, P: view("P"), upserts: st.reqs.upsert - up51, held: st.held.length }));
+
+    // ---- T52（2 つのタブ・墓標と読み）: タブ 1 が凧を足す → タブ 2 が開き、取り込みの読みは雲が答えたが処理は後（重いページ）→ タブ 1 のセットの終わりが凧を送り（雲に入る）、
+    // 凧を消す → タブ 2 が読みを処理する（読み始めから 20 秒の内・読みに凧の行は無い）: 送る待ちの凧の墓標を外さない。凧は電話・PC・雲とも無い・書きの印も残らない ----
+    const tried = (name) => metaOf(name).tried ?? null;
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    at(1, 10); use("P"); M.addMyWord("kite", "試しの訳 凧");
+    clock.now += 1000; st.hold.push("range"); const p52 = await pullStart("P"); // タブ 2
+    clock.now += 300; setEnd("P"); await push("P"); // タブ 1: 凧を送る（雲に入る）
+    clock.now += 500; use("P"); M.removeMyWord("kite", "word"); // タブ 1: 凧を消す
+    clock.now += 2000; await release("range"); await p52.done; // タブ 2 が読みを処理する
+    const kept52 = dirtyOf("P").includes("my_word:kite") && metaOf("P")["my_word:kite"]?.deleted === true;
+    clock.now += 5000; setEnd("P"); await push("P"); // タブ 1 の次のセットの終わり
+    await settle(["P", "C"], 2);
+    ok("T52 2 つのタブ: 自分の書きが雲に入る前に始めた読みに凧の行が無くても、送る待ちの凧の墓標を外さない（凧は電話・PC・雲とも無い）",
+      kept52 && stateOf("P", "kite", "凧") === "-" && stateOf("C", "kite", "凧") === "-" && liveJa("kite") === "" && !tried("P"),
+      JSON.stringify({ kept52, P: view("P"), C: view("C"), cloud: cloudView(), tried: tried("P") }));
+
+    // ---- T53（書きの答えを待つ間に消す）: タブ 1 のセットの終わりが凧を送る（雲の書きはまだ）→ 凧を消す → 新しいタブが取り込み・送り（読みに凧の行は無い）
+    // → タブ 1 の書きが後から雲で行われる: 墓標を外さず「無いときだけ書く」で送るので、後から届いた生きた凧は書かれない ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    at(1, 10); use("P"); M.addMyWord("kite", "試しの訳 凧"); setEnd("P");
+    st.hold.push("upsert"); const p53 = await pushStart("P"); // タブ 1
+    clock.now += 500; use("P"); M.removeMyWord("kite", "word");
+    clock.now += 500; await sync("P"); // タブ 2
+    clock.now += 500; await release("upsert"); await p53.done; // タブ 1 の書きが雲で行われる
+    await settle(["P", "C"], 2);
+    ok("T53 書きの答えを待つ間に消した凧: ほかのタブの読みに行が無くても墓標を送り、後から届いた書きで凧が戻らない（電話・PC・雲とも無い）",
+      stateOf("P", "kite", "凧") === "-" && stateOf("C", "kite", "凧") === "-" && liveJa("kite") === "" && !tried("P"),
+      JSON.stringify({ P: view("P"), C: view("C"), cloud: cloudView(), tried: tried("P") }));
+
+    // ---- T54（書きの答えが読みの始めより後）: タブ 1 のセットの終わりが凧を送る（雲の書きはまだ）→ 凧を消す → タブ 2 が開き、取り込みの読みは雲が答えた（凧の行は無い）が処理は後
+    // → タブ 1 の書きが雲で行われ答えも来る → タブ 2 が読みを処理する: 墓標を外さない。凧は電話・PC・雲とも無い ----
+    reset(); at(1, 9); await sync("P"); await sync("C");
+    at(1, 10); use("P"); M.addMyWord("kite", "試しの訳 凧"); setEnd("P");
+    st.hold.push("upsert"); const p54b = await pushStart("P"); // タブ 1
+    clock.now += 500; use("P"); M.removeMyWord("kite", "word");
+    clock.now += 500; st.hold.push("range"); const p54a = await pullStart("P"); // タブ 2
+    clock.now += 500; await release("upsert"); await p54b.done; // タブ 1 の書きが雲で行われ、答えが来る
+    clock.now += 1000; await release("range"); await p54a.done; // タブ 2 が読みを処理する
+    const kept54 = dirtyOf("P").includes("my_word:kite") && metaOf("P")["my_word:kite"]?.deleted === true;
+    clock.now += 5000; setEnd("P"); await push("P");
+    await settle(["P", "C"], 2);
+    ok("T54 書きの答えが読みの始めより後に来た凧: 読みに行が無くても墓標を外さない（凧は電話・PC・雲とも無い・書きの印も残らない）",
+      kept54 && stateOf("P", "kite", "凧") === "-" && stateOf("C", "kite", "凧") === "-" && liveJa("kite") === "" && !tried("P"),
+      JSON.stringify({ kept54, P: view("P"), C: view("C"), cloud: cloudView(), tried: tried("P") }));
   } finally {
     globalThis.Date = RealDate;
   }
