@@ -200,7 +200,9 @@ describe("3 年の影響の言葉", () => {
       const n = doc.nodes[id]!;
       expect(areaOf(n, doc)).not.toBeNull();
       const meta = altMetaLine(a, typeof n.meta.h === "number" ? n.meta.h : null);
-      expect(meta).toMatch(/^悪くなる \d+%(（悪くて −[^）]+）· | · )3年後 月[^ ]+ · 週[^ ]+h$/);
+      // 今のまま（基準）は自分と比べるので悪くなる見込みを出さない
+      if (a.isBase) expect(meta).toMatch(/^3年後 月[^ ]+ · 週[^ ]+h$/);
+      else expect(meta).toMatch(/^悪くなる \d+%(（悪くて −[^）]+）· | · )3年後 月[^ ]+ · 週[^ ]+h$/);
       if (a.delta !== null && a.deltaV) {
         const { step, values } = splitExact(a.delta, a.deltaV);
         const sum = values.map((v) => parse(formatManStep(v, step))).reduce((x, y) => x + y, 0);
