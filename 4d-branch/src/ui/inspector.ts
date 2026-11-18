@@ -6,9 +6,9 @@ import { onlyTimeCursor } from "../app/uiState";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
 import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from "../model/dates";
 import type { GEdge, GNode, ID } from "../model/types";
-import { MOD, autosize, clear, h, isImeKey, setValue } from "./dom";
+import { MOD, autosize, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
-import { buildImpactNodeBlock, buildImpactOverview, impactEdgeKind } from "./impactPanel";
+import { buildImpactNodeBlock, buildImpactOverview, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
 import { edgeProb, formatPercent } from "../model/forecast";
 
@@ -22,6 +22,8 @@ export function buildInspector(app: AppContext): HTMLElement {
   const root = h("aside", { class: "sidebar sidebar-right", ariaLabel: "詳細" }, h("div", { class: "insp-head" }, headTitle, headSub), body);
   let key = "";
   let updaters: Updater[] = [];
+  /** 見え方だけの変更（3 年の分かれ道の開閉など）で合わせる物。文書の変更でも updaters から合わせる */
+  let viewUpdaters: Updater[] = [];
 
   const selKey = () => {
     const s = ui.selection;
@@ -37,13 +39,16 @@ export function buildInspector(app: AppContext): HTMLElement {
       for (const u of updaters) u();
       return;
     }
+    // 同じ選択のまま作り直す（全部が入れ替わった・書き手が変わった）: フォーカスのあった部品（data-fk の鍵）へ戻す
+    const back = k === key ? holdFocus(body) : null;
     key = k;
     updaters = [];
+    viewUpdaters = [];
     clear(body);
     const doc = store.doc;
     if (k.startsWith("node:")) {
       const id = k.slice(5);
-      if (doc.nodes[id]) nodePanel(app, id, body, (u) => updaters.push(u));
+      if (doc.nodes[id]) nodePanel(app, id, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     } else if (k.startsWith("edge:")) {
       const id = k.slice(5);
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
@@ -52,6 +57,7 @@ export function buildInspector(app: AppContext): HTMLElement {
     headTitle.textContent = k === "none" ? "概要" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
     for (const u of updaters) u();
+    back?.();
   };
 
   ui.on("selection", () => render());
@@ -63,6 +69,10 @@ export function buildInspector(app: AppContext): HTMLElement {
   });
   ui.on("prefs", (p) => {
     if (!onlyTimeCursor(p)) render();
+  });
+  // 3 年の分かれ道の開閉は見え方だけ（文書の変更は届かない）: 折りたたみのボタンなどをキャンバスでの開閉に合わせる
+  ui.on("visual", () => {
+    for (const u of viewUpdaters) u();
   });
   app.persistence.on("writer", () => render(true));
   app.focusInspectorTitle = () => {
@@ -95,8 +105,57 @@ function fitHeight(ta: HTMLTextAreaElement, max?: number): void {
   });
 }
 
-/** 入力のたびに保存し、続けての入力は Undo 1 回にまとめる。欄を離れたらまとめを切る */
+/** 欄ごとの「まだ文書に入れていない入力があるか」 */
+const unsaved = new WeakMap<Element, () => boolean>();
+
+/**
+ * フォーカスのある入力欄に、まだ文書に入れていない入力があるか（同期の取り込みは入れ終わるまで待つ。入れ替えると欄が作り直されて消える）。
+ * 打つたびに入れる欄・選ぶとすぐ入れる欄は、変換中（IME）でなければ無い（取り込んで作り直した後も、フォーカスと文字の位置を戻す）。
+ * 分からない欄（年収の欄・検索など）は、フォーカスがある間はあるとみなす
+ */
+export function hasUnsavedInput(el: Element | null): boolean {
+  if (!el || !isTypingTarget(el)) return false;
+  const check = unsaved.get(el);
+  return check ? check() : true;
+}
+
+/**
+ * 作り直す前のフォーカス（data-fk の鍵・文字の選択・パネルの位置）を覚え、作り直した後に同じ鍵の部品へ戻す関数を返す。
+ * ボタンはキーボードで操作しているときだけ（マウスで押した後は今までどおり、続くキーは選んだカードへの操作）
+ */
+function holdFocus(body: HTMLElement): (() => void) | null {
+  const a = document.activeElement;
+  if (!(a instanceof HTMLElement) || !body.contains(a) || !a.dataset.fk) return null;
+  if (!isTypingTarget(a) && !keyboardFocus(a)) return null;
+  const fk = a.dataset.fk;
+  const top = body.scrollTop;
+  let sel: { start: number; end: number; dir: "forward" | "backward" | "none" } | null = null;
+  try {
+    if ((a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) && a.selectionStart !== null && a.selectionEnd !== null) sel = { start: a.selectionStart, end: a.selectionEnd, dir: a.selectionDirection ?? "none" };
+  } catch {
+    /* 文字の位置を持たない欄（日付・数） */
+  }
+  return () => {
+    const el = body.querySelector<HTMLElement>(`[data-fk="${CSS.escape(fk)}"]`);
+    if (!el) return;
+    body.scrollTop = top;
+    el.focus();
+    if (!sel || document.activeElement !== el || !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+    try {
+      const n = el.value.length;
+      el.setSelectionRange(Math.min(sel.start, n), Math.min(sel.end, n), sel.dir);
+    } catch {
+      /* 文字の位置を持たない欄 */
+    }
+  };
+}
+
+/** 入力のたびに保存し、続けての入力は Undo 1 回にまとめる。欄を離れたらまとめを切る。変換中（IME）だけは入れ終わっていない */
 function bindText(app: AppContext, el: HTMLInputElement | HTMLTextAreaElement, write: (v: string) => void): void {
+  let composing = false;
+  el.addEventListener("compositionstart", () => (composing = true));
+  el.addEventListener("compositionend", () => (composing = false));
+  unsaved.set(el, () => composing);
   el.addEventListener("input", () => {
     if (el instanceof HTMLTextAreaElement) autosize(el);
     write(el.value);
@@ -142,7 +201,9 @@ function typePicker(app: AppContext, current: () => GNode["type"] | null, onPick
 }
 
 function statusSelect(app: AppContext, current: () => GNode["status"] | null, onPick: (s: GNode["status"]) => void, push: (u: Updater) => void): HTMLSelectElement {
-  const sel = h("select", { class: "input select-status", attrs: { "aria-label": "状態" } });
+  const sel = h("select", { class: "input select-status", dataset: { fk: "status" }, attrs: { "aria-label": "状態" } });
+  // 選ぶとすぐ入れる（入れ終わっていない入力は持たない）
+  unsaved.set(sel, () => false);
   // 複数選択で状態がそろっていないとき用（どの状態を選んでも変更として届くように）
   const mixed = h("option", { value: "", disabled: true }, "混在");
   sel.append(mixed);
@@ -175,7 +236,7 @@ function chipToggle(label: string, color: string | null, on: boolean, onClick: (
 
 // ------------------------------------------------------------ ノード
 
-function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater) => void): void {
+function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater) => void, pushView: (u: Updater) => void): void {
   const { store, cmd, ui, vm } = app;
   const node = () => store.doc.nodes[id];
   const ro = () => store.readOnly;
@@ -187,7 +248,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const status = statusSelect(app, () => node()?.status ?? null, (s) => cmd.setStatus([id], s), push);
 
   // タイトル
-  const title = h("textarea", { class: "insp-title", placeholder: "タイトル", attrs: { rows: "1", "aria-label": "タイトル", spellcheck: "false" } });
+  const title = h("textarea", { class: "insp-title", placeholder: "タイトル", dataset: { fk: "title" }, attrs: { rows: "1", "aria-label": "タイトル", spellcheck: "false" } });
   bindText(app, title, (v) => cmd.updateNode(id, { title: v.replace(/\n/g, " ") }, { label: "タイトルを編集", coalesce: `title:${id}` }));
   title.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !isImeKey(ev)) {
@@ -208,7 +269,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   wrap.append(forecastLine);
 
   // 文章
-  const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", attrs: { rows: "3", "aria-label": "文章" } });
+  const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", dataset: { fk: "body" }, attrs: { rows: "3", "aria-label": "文章" } });
   bindText(app, bodyTa, (v) => cmd.updateNode(id, { body: v }, { label: "文章を編集", coalesce: `body:${id}` }));
   const bodySec = sectionEl("文章", bodyTa);
   wrap.append(bodySec);
@@ -217,6 +278,11 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const n0 = node()!;
   const due = dateInput(n0.time.due, (v) => cmd.updateNode(id, { time: { ...node()!.time, due: v } }, { label: v ? "期限を設定" : "期限を外す" }), "期限");
   const start = dateInput(n0.time.start, (v) => cmd.updateNode(id, { time: { ...node()!.time, start: v } }, { label: v ? "開始日を設定" : "開始日を外す" }), "開始日");
+  // 日付は決まると入れる。書きかけ（読めない・まだ入れていない日付）の間だけ、入れ終わっていない入力がある
+  for (const [el, k] of [[due, "due"], [start, "start"]] as const) {
+    el.dataset.fk = k;
+    unsaved.set(el, () => el.validity.badInput || el.value !== (node()?.time[k] ?? ""));
+  }
   const clearDue = h("button", { class: "icon-btn icon-btn-xs", type: "button", title: "期限を外す", ariaLabel: "期限を外す", onClick: () => cmd.updateNode(id, { time: { ...node()!.time, due: null } }, { label: "期限を外す" }) }, icon("x", 13));
   const rel = h("span", { class: "due-rel" });
   const dates = h(
@@ -232,7 +298,9 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const todo = !!impact?.isAlt;
   const condCount = h("span", { class: "insp-count" });
   const condList = h("div", { class: "cond-list" });
-  const condAdd = h("input", { class: "input input-sm", placeholder: todo ? "やることを追加（Enter）" : "条件を追加（Enter）", attrs: { "aria-label": todo ? "やることを追加" : "条件を追加" } });
+  const condAdd = h("input", { class: "input input-sm", placeholder: todo ? "やることを追加（Enter）" : "条件を追加（Enter）", dataset: { fk: "cond-add" }, attrs: { "aria-label": todo ? "やることを追加" : "条件を追加" } });
+  // Enter で入れるまでは、書いた文字が入れ終わっていない入力
+  unsaved.set(condAdd, () => !!condAdd.value.trim());
   condAdd.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !isImeKey(ev) && condAdd.value.trim()) {
       ev.preventDefault();
@@ -248,7 +316,8 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
   // タグ
   const tagWrap = h("div", { class: "tag-edit" });
-  const tagInput = h("input", { class: "tag-input", placeholder: "タグを追加", attrs: { "aria-label": "タグを追加", list: "tag-suggestions" } });
+  const tagInput = h("input", { class: "tag-input", placeholder: "タグを追加", dataset: { fk: "tag-add" }, attrs: { "aria-label": "タグを追加", list: "tag-suggestions" } });
+  unsaved.set(tagInput, () => !!tagInput.value.trim());
   const datalist = h("datalist", { attrs: { id: "tag-suggestions" } });
   tagInput.addEventListener("keydown", (ev) => {
     if ((ev.key === "Enter" || ev.key === ",") && !isImeKey(ev) && tagInput.value.trim()) {
@@ -281,10 +350,27 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
   // 操作
   const dupBtn = h("button", { class: "btn btn-sm", type: "button", title: `複製（${MOD}D）`, onClick: () => cmd.duplicate([id]) }, icon("copy", 14), "複製");
-  const colBtn = h("button", { class: "btn btn-sm", type: "button", title: "この先を折りたたむ（C）", onClick: () => cmd.toggleCollapse([id]) }, icon("collapse", 14), h("span", null, "折りたたむ"));
+  const colLabel = h("span", null, "折りたたむ");
+  const colBtn = h("button", { class: "btn btn-sm", type: "button", title: "この先を折りたたむ（C）", onClick: () => cmd.toggleCollapse([id]) }, icon("collapse", 14), colLabel);
   const delBtn = h("button", { class: "btn btn-sm btn-danger-ghost", type: "button", title: "削除（Delete）", onClick: () => cmd.deleteNodes([id]) }, icon("trash", 14), "削除");
   const foot = h("div", { class: "insp-foot" });
   wrap.append(h("div", { class: "insp-actions" }, dupBtn, colBtn, delBtn), foot);
+  /**
+   * 折りたたむ・展開する。3 年の分かれ道のノードは見え方で開閉する（文書の collapsed ではない。閲覧のみでも使える）。
+   * キャンバスで開閉したとき（見え方だけの変更）にも合わせる
+   */
+  let colShown: boolean | null = null;
+  const syncCol = () => {
+    if (!node()) return;
+    const collapsed = cmd.isCollapsed(id);
+    colBtn.disabled = (ro() && !vm.inImpact(id)) || !(vm.index.out.get(id)?.length ?? 0);
+    if (collapsed === colShown) return;
+    colShown = collapsed;
+    colLabel.textContent = collapsed ? "展開する" : "折りたたむ";
+    colBtn.title = collapsed ? "この先を展開する（C）" : "この先を折りたたむ（C）";
+    colBtn.replaceChild(icon(collapsed ? "expand" : "collapse", 14), colBtn.firstElementChild!);
+  };
+  pushView(syncCol);
 
   push(() => {
     const n = node();
@@ -344,7 +430,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
       if (!r2) {
         const box = h("input", { type: "checkbox", class: "cond-check", attrs: { "aria-label": "満たした" } });
         box.addEventListener("change", () => cmd.updateCondition(id, c.id, { met: box.checked }));
-        const text = h("input", { class: "cond-text", attrs: { "aria-label": "条件" } });
+        const text = h("input", { class: "cond-text", dataset: { fk: `cond:${c.id}` }, attrs: { "aria-label": "条件" } });
         bindText(app, text, (v) => cmd.updateCondition(id, c.id, { text: v }, `cond:${c.id}`));
         text.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter" && !isImeKey(ev)) text.blur();
@@ -423,9 +509,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     addTwo.disabled = ro();
     dupBtn.disabled = ro();
     delBtn.disabled = ro();
-    colBtn.disabled = ro() || outs.length === 0;
-    (colBtn.lastElementChild as HTMLElement).textContent = n.collapsed ? "展開する" : "折りたたむ";
-    colBtn.replaceChild(icon(n.collapsed ? "expand" : "collapse", 14), colBtn.firstElementChild!);
+    syncCol();
     foot.textContent = `作成 ${new Date(n.createdAt).toLocaleDateString("ja-JP")} · 更新 ${new Date(n.updatedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
   });
 }
@@ -452,12 +536,18 @@ function edgePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   });
   wrap.append(sectionEl("関係", relGrid));
 
-  const cond = h("textarea", { class: "input insp-text edge-condition", placeholder: "例: 副業の月収 30 万円が 3 か月続いたら", attrs: { rows: "2", "aria-label": "条件" } });
+  const cond = h("textarea", { class: "input insp-text edge-condition", placeholder: "例: 副業の月収 30 万円が 3 か月続いたら", dataset: { fk: "edge-cond" }, attrs: { rows: "2", "aria-label": "条件" } });
   bindText(app, cond, (v) => cmd.updateEdge(id, { condition: v }, { label: "条件を編集", coalesce: `econd:${id}` }));
   wrap.append(sectionEl("条件（この道に進む条件）", cond));
 
   // 見込み（%）: 分かれ道から出る線に付ける。未来の道筋の「ここに至る見込み」の計算に使う
-  const prob = h("input", { class: "input input-sm edge-prob", type: "number", attrs: { min: "0", max: "100", step: "1", inputmode: "numeric", "aria-label": "見込み（%）", placeholder: "例: 30" } });
+  const prob = h("input", { class: "input input-sm edge-prob", type: "number", dataset: { fk: "edge-prob" }, attrs: { min: "0", max: "100", step: "1", inputmode: "numeric", "aria-label": "見込み（%）", placeholder: "例: 30" } });
+  // 欄を離れる・Enter で入れる。それまでの書きかけ（今の見込みと違う・読めない数）は入れ終わっていない入力
+  unsaved.set(prob, () => {
+    const e = edge();
+    const p0 = e ? edgeProb(e) : null;
+    return prob.validity.badInput || prob.value.trim() !== (p0 === null ? "" : String(p0));
+  });
   const probSum = h("span", { class: "prob-sum" });
   prob.addEventListener("change", () => {
     const e = edge();
@@ -476,7 +566,7 @@ function edgePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const probTitle = probSec.querySelector(".insp-label")!;
   wrap.append(probSec);
 
-  const label = h("input", { class: "input", placeholder: "例: 実績が営業材料になる", attrs: { "aria-label": "説明" } });
+  const label = h("input", { class: "input", placeholder: "例: 実績が営業材料になる", dataset: { fk: "edge-label" }, attrs: { "aria-label": "説明" } });
   bindText(app, label, (v) => cmd.updateEdge(id, { label: v }, { label: "説明を編集", coalesce: `elabel:${id}` }));
   wrap.append(sectionEl("説明", label));
 
@@ -589,7 +679,8 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
   const projChips = h("div", { class: "chip-row" });
   wrap.append(sectionEl("プロジェクト", projChips));
 
-  const tagInput = h("input", { class: "input input-sm", placeholder: "まとめてタグを追加（Enter）", attrs: { "aria-label": "タグを追加" } });
+  const tagInput = h("input", { class: "input input-sm", placeholder: "まとめてタグを追加（Enter）", dataset: { fk: "tag-add" }, attrs: { "aria-label": "タグを追加" } });
+  unsaved.set(tagInput, () => !!tagInput.value.trim());
   tagInput.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !isImeKey(ev) && tagInput.value.trim()) {
       cmd.addTag(ids(), tagInput.value);

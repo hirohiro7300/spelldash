@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Commands } from "../../src/app/commands";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
+import { ImpactCards } from "../../src/canvas/impactCards";
 import { buildImpactDoc } from "../../src/demo/impact";
 import { futureData } from "../../src/demo/futureBundle";
 import { createEmptyDoc, makeEdge, makeNode, makeProject, makeScenario } from "../../src/model/schema";
@@ -271,6 +272,54 @@ describe("3 年の分かれ道: 開く・閉じるは見え方だけ（文書・
     const a5 = vm.impact;
     cmd.toggleCollapse([alts()[1]!]);
     expect(vm.impact).toBe(a5);
+  });
+
+  it("題名・本文・タグ・条件・線の説明と条件・位置だけの編集では計算し直さず（カードの文字は書き直す）、計算に使う物の編集では計算し直す", () => {
+    const { store, vm, cmd, alts } = openImpact(false);
+    const cards = new ImpactCards();
+    const alt = alts()[0]!;
+    const out = vm.index.out.get(alt)!.map((id) => store.doc.edges[id]!).find((x) => typeof x.meta.prob === "number")!;
+    const own = cmd.createNode("goal", { x: -3000, y: 0 }, { exact: true, title: "自分のメモ" })!;
+    const a0 = vm.impact;
+    expect(cards.card(a0, store.doc, alt)!.label).toContain(store.doc.nodes[alt]!.title.slice(0, 4));
+    // 文字だけ（元に戻す・やり直すも）・位置だけ: 同じ計算の結果のまま
+    cmd.updateNode(alt, { title: "新しい題名" }, { label: "タイトルを編集", coalesce: `title:${alt}` });
+    expect(vm.impact).toBe(a0);
+    const c1 = cards.card(vm.impact, store.doc, alt)!;
+    expect(c1.label).toBe(`${c1.pill}｜新しい題名`);
+    cmd.updateNode(alt, { body: "本文を書いた" }, { label: "文章を編集" });
+    cmd.addTag([alt], "タグ");
+    cmd.addCondition(alt, "やることを足した");
+    cmd.updateCondition(alt, store.doc.nodes[alt]!.conditions.at(-1)!.id, { met: true });
+    cmd.updateEdge(out.id, { label: "説明を書いた" });
+    cmd.updateEdge(out.id, { condition: "条件を書いた" });
+    expect(cards.edge(vm.impact, store.doc, out.id)!.long).toContain("条件を書いた");
+    cmd.updateNode(rootId, { title: "今日（書き直した）" });
+    cmd.moveNodes([own], 40, 0);
+    store.undo();
+    store.undo();
+    store.redo();
+    expect(vm.impact).toBe(a0);
+    // 計算に使う物: そのたびに計算し直す
+    const changes = (what: string, fn: () => void) => {
+      const before = vm.impact;
+      fn();
+      expect(vm.impact, what).not.toBe(before);
+    };
+    changes("状態", () => cmd.setStatus([alt], "active"));
+    changes("状態を戻す", () => store.undo());
+    changes("見込み（線の meta）", () => cmd.updateEdge(out.id, { meta: { ...store.doc.edges[out.id]!.meta, prob: 5 } }));
+    changes("ノードの meta", () => cmd.updateNode(alt, { meta: { ...store.doc.nodes[alt]!.meta, h: 9 } }));
+    changes("期限", () => cmd.updateNode(alt, { time: { ...store.doc.nodes[alt]!.time, due: "2027-03-31" } }));
+    changes("種類", () => cmd.setType([alt], "result"));
+    changes("入口の meta（年収）", () => cmd.updateNode(rootId, { meta: { ...store.doc.nodes[rootId]!.meta, impact: { v: 2, horizon: 36, annual: 480 } } }));
+    changes("線の関係", () => cmd.setRelation([out.id], "supports"));
+    changes("線のシナリオ", () => cmd.setScenarioOf({ edges: [vm.index.inc.get(alt)![0]!] }, "s_early"));
+    let kid: string | null = null;
+    changes("ノードを足す", () => void (kid = cmd.addChild(alt)));
+    changes("ノードを消す", () => cmd.deleteNodes([kid!]));
+    changes("シナリオを足す", () => void cmd.addScenario("別の方針"));
+    changes("全部を入れ替える", () => store.load(structuredClone(store.doc)));
   });
 
   it("カードは動かせない（動かす・そろえる）。範囲の外のノードは今までどおり動き、お知らせは一度だけ", () => {

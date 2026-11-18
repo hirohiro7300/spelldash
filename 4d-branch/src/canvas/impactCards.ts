@@ -1,4 +1,5 @@
-// 3 年の分かれ道のカード・線に書く物（3 年の影響の数・見込み % ・色の段）。計算の結果（ImpactResult）ごとに 1 度だけ作る。設計: docs/DESIGN.md §4.7
+// 3 年の分かれ道のカード・線に書く物（3 年の影響の数・見込み % ・色の段）。計算の結果（ImpactResult）ごとに 1 度だけ作る
+// （題名などの文字だけが変わったカード・線は、計算し直さずにその 1 枚だけ作り直す）。設計: docs/DESIGN.md §4.7
 // 描くたびに文字を作り直さない（全部開いて動かしても、作る物が増えないように）
 
 import type { ImpactResult } from "../model/impact";
@@ -98,12 +99,16 @@ function clip(s: string, n: number): string {
 const DECISION = { color: "#8A97B1", width: 1.4 };
 const DECISION_STAR = { color: "#C9D3E6", width: 2.6 };
 
-/** 計算の結果ごとの、カードと線に書く物（結果が変わったら作り直す） */
+/**
+ * 計算の結果ごとの、カードと線に書く物（結果が変わったら作り直す）。
+ * 題名・線の文だけの変更では結果は変わらないので、そのノード・線が変わった（文書の中の物が差し替わった）ときも、その 1 枚だけ作り直す
+ */
 export class ImpactCards {
   private imp: ImpactResult | null = null;
   private doc: DocData | null = null;
-  private readonly cards = new Map<ID, ImpactCard | null>();
-  private readonly edges = new Map<ID, ImpactEdge | null>();
+  /** 作ったときのノード・線（文書の物が差し替わったら作り直す）と、書く物 */
+  private readonly cards = new Map<ID, { src: unknown; card: ImpactCard | null }>();
+  private readonly edges = new Map<ID, { src: unknown; edge: ImpactEdge | null }>();
   private chanceStyles = new Map<string, { color: string; width: number }>();
   private ranks: Map<ID, number> | null = null;
 
@@ -119,17 +124,19 @@ export class ImpactCards {
   /** そのノードのカードに書く物（3 年の分かれ道の範囲の外は null） */
   card(imp: ImpactResult, doc: DocData, id: ID): ImpactCard | null {
     this.sync(imp, doc);
+    const src = doc.nodes[id];
     let c = this.cards.get(id);
-    if (c === undefined) this.cards.set(id, (c = buildCard(imp, doc, id)));
-    return c;
+    if (c === undefined || c.src !== src) this.cards.set(id, (c = { src, card: buildCard(imp, doc, id) }));
+    return c.card;
   }
 
   /** その線の描き方（3 年の分かれ道の判断・結果の線だけ。それ以外は null） */
   edge(imp: ImpactResult, doc: DocData, eid: ID): ImpactEdge | null {
     this.sync(imp, doc);
+    const src = doc.edges[eid];
     let x = this.edges.get(eid);
-    if (x === undefined) this.edges.set(eid, (x = this.buildEdge(imp, doc, eid)));
-    return x;
+    if (x === undefined || x.src !== src) this.edges.set(eid, (x = { src, edge: this.buildEdge(imp, doc, eid) }));
+    return x.edge;
   }
 
   /**

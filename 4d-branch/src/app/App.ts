@@ -20,7 +20,7 @@ import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, o
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { offerImpactSalary } from "../ui/impactPanel";
-import { buildInspector } from "../ui/inspector";
+import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
@@ -326,6 +326,15 @@ export class App implements AppContext {
     if (this.ephemeral) return;
     if (this.cameraSaveTimer) clearTimeout(this.cameraSaveTimer);
     this.cameraSaveTimer = setTimeout(() => this.ui.saveCamera(this.store.doc.id, this.view.camera), 600);
+  }
+
+  /**
+   * その場の入力（カードの題名）か、パネルの入力欄（年収・書きかけのタグなど）に、まだ入れていない入力がある途中か。同期の取り込みは終わるまで待つ
+   * （入れ替えると欄が作り直されて入力が消え、残りのキーがキャンバスの操作になる）。
+   * 打つたびに入れる欄（詳細の題名など）にフォーカスがあるだけなら待たない（作り直した後も、フォーカスと文字の位置が残る）
+   */
+  editingNow(): boolean {
+    return this.editor.active || hasUnsavedInput(document.activeElement);
   }
 
   private startEdit(id: ID): void {
@@ -1395,7 +1404,7 @@ export class App implements AppContext {
       bootDoc: async () => (pendingBase ? null : asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY))),
       isWriter: () => this.persistence.writer && !this.store.readOnly,
       isDisposable: (doc) => isDisposableDoc(doc),
-      isEditing: () => this.editor.active,
+      isEditing: () => this.editingNow(),
       // 開いてから手を付けていない未来の道筋（とそれを元に戻しただけの地図）は、重なったら別の端末の内容に譲る
       // （押せばまた開ける。書いた内容を押し流さない。戻した地図は、別の端末が開いたばかりの地図には譲らない）
       yieldsOnConflict: (local, remote) => yieldsToRemote(local, remote),

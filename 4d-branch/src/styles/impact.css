@@ -234,7 +234,8 @@
   border-color: var(--accent-line);
   background: var(--accent-soft);
 }
-.imp-alt-row.is-dropped .imp-alt-name {
+.imp-alt-row.is-dropped .imp-alt-name,
+.imp-alt-row.is-dropped .imp-alt-short {
   text-decoration: line-through;
   text-decoration-color: var(--text-3);
 }
@@ -266,6 +267,10 @@
   font-weight: 560;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+/* 短い名前（狭い画面の詰めた行だけで使う） */
+.imp-alt-short {
+  display: none;
 }
 .imp-alt-row > .imp-pill {
   grid-area: delta;
@@ -720,7 +725,11 @@
   color: var(--text-2);
 }
 
-/* 狭い画面（右のパネルは幅 300px の引き出し）: 行の 2 行目が 1 行に収まるよう少し詰める・内訳の名前の列を詰める */
+/*
+ * 狭い画面（右のパネルは幅 300px の引き出し）: 行の 2 行目が 1 行に収まるよう少し詰める・内訳の名前の列を詰める。
+ * 今決めること（概要・今日の詳細）は 10 行が引き出しに収まるよう、行をさらに詰める
+ * （タイトルは短い名前の 1 行で、入らなければ「…」。札はタイトルの行に、差の棒と 2 行目は 1 行に。全部の題名は行の title に）
+ */
 @media (max-width: 640px) {
   .imp-alt-row {
     padding-left: 5px;
@@ -728,6 +737,43 @@
   }
   .imp-alt-meta {
     letter-spacing: -0.02em;
+  }
+  .imp-decide .imp-alt-row {
+    grid-template-columns: 14px 40px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "mark title title delta"
+      "mark bar meta meta";
+    row-gap: 2px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+  .imp-decide .imp-alt-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 20px;
+  }
+  .imp-decide .imp-alt-name.has-short {
+    display: none;
+  }
+  .imp-decide .imp-alt-short {
+    display: inline;
+  }
+  .imp-decide .imp-alt-row > .imp-pill {
+    align-self: center;
+    min-width: 42px;
+    height: 20px;
+    padding: 0 7px;
+    font-size: 12px;
+  }
+  .imp-decide .imp-alt-row > .imp-bar {
+    align-self: center;
+  }
+  .imp-decide .imp-alt-meta {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 1.3;
   }
   .imp-split-row {
     grid-template-columns: 96px minmax(0, 1fr) 56px;

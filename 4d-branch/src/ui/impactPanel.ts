@@ -2,12 +2,14 @@
 //   概要（何も選んでいないとき）: 見出しと年収・今決めること・3 年後の分布・3 年後の行き先・前提・見方
 //   詳細（選んだノード）: 選択肢なら 3 年の影響・選ぶ／見送る・内訳・結果・同じ判断の手。結果・行き先なら見込み・その時の状態・目印
 // 数は vm.impact（src/model/impact.ts）を読むだけ。文は src/model/impactText.ts。
-// 中身は数が変わったとき（vm.impact が新しくなったとき）だけ作り直す。年収の欄は作り直さない（入力中に消さない）
+// 中身は数が変わったとき（vm.impact が新しくなったとき）と、書いた題名・線の文が変わったときだけ作り直す。年収の欄は作り直さない（入力中に消さない）。
+// キーボードで操作しているときは、作り直した後もフォーカスのあった部品（data-fk の鍵）か代わりの部品へ戻す
+// （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押したときは動かさない（続くキーは選んだカードへの操作のまま）
 
 import type { AppContext } from "../app/context";
 import { futureData } from "../demo/futureBundle";
 import { formatPercent } from "../model/forecast";
-import { computeImpact, IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, type AltInfo, type ImpactResult } from "../model/impact";
+import { computeImpact, IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, type AltInfo, type ImpactResult } from "../model/impact";
 import { formatMan, formatShare, IMPACT_FILL, IMPACT_INK, IMPACT_NEUTRAL_RING, impactBin } from "../model/impactFormat";
 import {
   altMetaParts,
@@ -33,7 +35,7 @@ import {
   ymText,
   type AreaInfo,
 } from "../model/impactText";
-import type { ID } from "../model/types";
+import type { DocData, GEdge, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
 import { clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
@@ -91,16 +93,134 @@ function recommendedValue(app: AppContext, imp: ImpactResult, scenario: boolean)
   return v;
 }
 
+// ------------------------------------------------------------ 書いた文の元・フォーカス
+
+const edgeText = (e: GEdge | undefined): string => (e ? `${e.label}\u0000${e.condition}` : "");
+
+/**
+ * 書いた題名・線の文の元。題名の入力など、数を計算し直さない文字だけの変更でも、書いた所が変わっていたら作り直す
+ * （書いていないノードの題名の入力では作り直さない）
+ */
+class Seen {
+  private readonly nodes = new Map<ID, string>();
+  private readonly edges = new Map<ID, string>();
+
+  /** ノードの題名（無ければ空）。書いた物として覚える */
+  title(doc: DocData, id: ID): string {
+    const t = doc.nodes[id]?.title ?? "";
+    this.nodes.set(id, t);
+    return t;
+  }
+
+  /** 線（説明と条件を書く物として覚える） */
+  edge(doc: DocData, id: ID): GEdge | undefined {
+    const e = doc.edges[id];
+    this.edges.set(id, edgeText(e));
+    return e;
+  }
+
+  /** 書いた後に、題名・線の文が変わったか */
+  changed(doc: DocData): boolean {
+    for (const [id, t] of this.nodes) if ((doc.nodes[id]?.title ?? "") !== t) return true;
+    for (const [id, t] of this.edges) if (edgeText(doc.edges[id]) !== t) return true;
+    return false;
+  }
+}
+
+/** 押せる・入れられる部品 */
+const FOCUSABLE = "button, input, select, textarea, summary, a[href]";
+
+const canFocus = (el: HTMLElement): boolean => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0;
+
+/** 最後にマウス・タッチで押した所。キーを押したら消す（その後のフォーカスはキーボードで動かした物） */
+let pointed: Node | null = null;
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", (ev) => (pointed = ev.target instanceof Node ? ev.target : null), true);
+  document.addEventListener("keydown", () => (pointed = null), true);
+}
+
+/** マウス・タッチで root の中を押した後で、まだキーを押していないか */
+const pointerIn = (root: Node): boolean => !!pointed && root.contains(pointed);
+
+/**
+ * キーボード（や読み上げ）で操作しているフォーカスか。マウス・タッチで押して移ったフォーカスは false
+ * （そのときはフォーカスを動かさない。押すと決まるボタンへ黙って移すと、続く Enter・Space で知らないうちに選んでしまう）
+ */
+export function keyboardFocus(el: Element | null): el is HTMLElement {
+  return el instanceof HTMLElement && !pointerIn(el);
+}
+
+/** 最初の押せる部品へフォーカスを移す。移せたら true */
+function focusFirst(root: ParentNode): boolean {
+  for (const el of root.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+    if (!canFocus(el)) continue;
+    el.focus();
+    if (document.activeElement === el) return true;
+  }
+  return false;
+}
+
+/** root の中の部品をキーボードで操作していれば、その部品の鍵（data-fk。鍵の無い部品は ""）。していなければ null */
+function focusKeyIn(root: HTMLElement): string | null {
+  const a = document.activeElement;
+  return keyboardFocus(a) && root.contains(a) ? (a.dataset.fk ?? "") : null;
+}
+
+/** 今押している「これにする」「見送る」の鍵（押した後の作り直しでだけ「選び直す」へ移す。ほかの変更で作り直しても同じ部品に残す） */
+let pressing: string | null = null;
+
+function press(key: string, run: () => void): void {
+  pressing = key;
+  try {
+    run();
+  } finally {
+    pressing = null;
+  }
+}
+
+/**
+ * 作り直した後に、前にフォーカスのあった部品（鍵が同じ物）へ戻す。押して用が済んだ・押せなくなった・無くなった部品は代わりへ
+ * （「これにする」「見送る」を押した後は「選び直す」、「選び直す」「これを基準にする」の後は「これにする」、それも無ければ最初の部品）
+ */
+function refocus(root: HTMLElement, key: string): void {
+  const at = (k: string) => (k ? root.querySelector<HTMLElement>(`[data-fk="${CSS.escape(k)}"]`) : null);
+  const i = key.indexOf(":");
+  const kind = i < 0 ? key : key.slice(0, i);
+  const id = key.slice(i + 1);
+  const keys = [key];
+  if ((kind === "pick" || kind === "drop") && key === pressing && at(key)?.getAttribute("aria-pressed") === "true") keys.unshift(`redo:${id}`);
+  if (kind === "redo" || kind === "base") keys.push(`pick:${id}`);
+  for (const k of keys) {
+    const el = at(k);
+    if (el && canFocus(el)) {
+      el.focus();
+      return;
+    }
+  }
+  focusFirst(root);
+}
+
 // ------------------------------------------------------------ 移動
 
-/** そのノードを出して選び、地図ならそこへ寄る（closeDrawer: 狭い画面では右のパネルを閉じてカードを見せる） */
+/**
+ * そのノードを出して選び、地図ならそこへ寄る（closeDrawer: 狭い画面では右のパネルを閉じてカードを見せる）。
+ * キーボードでパネルの行を押したときは、引き出しを開いたまま、選んだノードの詳細（3 年の影響）の最初の部品へフォーカスを移す
+ * （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押したときはフォーカスを動かさない
+ */
 function goTo(app: AppContext, id: ID, closeDrawer: boolean): void {
   if (!app.store.doc.nodes[id]) return;
+  const panel = document.querySelector<HTMLElement>(".sidebar-right");
+  const active = document.activeElement;
+  const from = panel && !pointerIn(panel) && active instanceof HTMLElement && panel.contains(active) ? active : null;
   app.cmd.revealNode(id);
   app.ui.select([id]);
-  if (closeDrawer && isNarrowScreen() && app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: false });
+  if (closeDrawer && !from && isNarrowScreen() && app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: false });
   if (app.ui.prefs.view === "map") app.view.centerOn(id);
   else app.revealInList(id);
+  // 同じノードを押してパネルが作り直されていなければ、そのまま
+  if (!panel || !from || from.isConnected) return;
+  const block = panel.querySelector<HTMLElement>(".imp-node:not([hidden])");
+  if (!(block && focusFirst(block))) focusFirst(panel);
 }
 
 /** 「最初の形に戻す」（開いている所を既定に戻す操作）。まだ無ければ null */
@@ -159,8 +279,11 @@ function byDelta(imp: ImpactResult, ids: ID[]): ID[] {
   });
 }
 
-/** 選択肢の行: ★・領域・タイトル・差の札 / 差の棒 / 悪くなる見込み・3 年後の月・週の時間 */
-function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, opts: { current?: boolean; onGo: (id: ID) => void }): HTMLElement | null {
+/**
+ * 選択肢の行: ★・領域・タイトル・差の札 / 差の棒 / 悪くなる見込み・3 年後の月・週の時間。
+ * 狭い画面では、タイトルを短い名前（meta.short）の 1 行にし、差の棒と 2 行目を 1 行に詰める（impact.css）
+ */
+function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, seen: Seen, opts: { current?: boolean; onGo: (id: ID) => void }): HTMLElement | null {
   const doc = app.store.doc;
   const n = doc.nodes[id];
   const info = imp.alt.get(id);
@@ -180,7 +303,8 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, opts: { c
     if (i > 0) meta.append(metaSep(parts[i - 1]!.text));
     meta.append(h("span", { class: p.keep ? "imp-meta-part" : "" }, p.text));
   });
-  const title = n.title || "（無題）";
+  const title = seen.title(doc, id) || "（無題）";
+  const short = typeof n.meta?.short === "string" ? (n.meta.short as string).trim() : "";
   const value = info.isBase ? "基準" : info.delta === null ? "数字なし" : formatMan(info.delta);
   return h(
     "button",
@@ -188,12 +312,18 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, opts: { c
       class: `imp-alt-row${opts.current ? " is-current" : ""}${info.dropped ? " is-dropped" : ""}${info.allowed ? "" : " is-off"}`,
       type: "button",
       title: `${title}（${value}）${mark.label ? `・${mark.label}` : ""}`,
-      dataset: { id },
+      dataset: { id, fk: `row:${id}` },
       attrs: { "aria-current": opts.current ? "true" : null },
       onClick: () => opts.onGo(id),
     },
     h("span", { class: `imp-mark${info.mark === "star" ? " is-star" : ""}${info.picked ? " is-picked" : ""}` }, mark.text),
-    h("span", { class: "imp-alt-title" }, area ? areaChip(area) : null, h("span", { class: "imp-alt-name" }, title)),
+    h(
+      "span",
+      { class: "imp-alt-title" },
+      area ? areaChip(area) : null,
+      h("span", { class: `imp-alt-name${short ? " has-short" : ""}` }, title),
+      short ? h("span", { class: "imp-alt-short" }, short) : null,
+    ),
     deltaPill(info.delta, { base: info.isBase, partial: info.partial }),
     diffBar(info.isBase ? 0 : info.delta, d),
     meta,
@@ -201,22 +331,22 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, opts: { c
 }
 
 /** 判断の選択肢の表（3 年の影響の順。差の棒は同じ範囲） */
-function decisionList(app: AppContext, imp: ImpactResult, decisionId: ID, opts: { current?: ID; closeDrawer: boolean }): HTMLElement {
+function decisionList(app: AppContext, imp: ImpactResult, decisionId: ID, seen: Seen, opts: { current?: ID; closeDrawer: boolean }): HTMLElement {
   const list = h("div", { class: "imp-alt-list" });
   const dec = imp.decision.get(decisionId);
   if (!dec) return list;
   const ids = byDelta(imp, dec.alts);
   const d = divergingDomain(ids.map((id) => imp.alt.get(id)?.delta ?? null));
   for (const id of ids) {
-    const row = altRow(app, imp, id, d, { current: id === opts.current, onGo: (x) => goTo(app, x, opts.closeDrawer) });
+    const row = altRow(app, imp, id, d, seen, { current: id === opts.current, onGo: (x) => goTo(app, x, opts.closeDrawer) });
     if (row) list.append(row);
   }
   return list;
 }
 
 /** 年収で今日の一番が入れ替わる所 */
-function flipNote(app: AppContext, imp: ImpactResult): HTMLElement {
-  const lines = flipTexts(imp.salaryFlips(), (id) => app.store.doc.nodes[id]?.title || "（無題）");
+function flipNote(app: AppContext, imp: ImpactResult, seen: Seen): HTMLElement {
+  const lines = flipTexts(imp.salaryFlips(), (id) => seen.title(app.store.doc, id) || "（無題）");
   if (!lines.length) lines.push("年収が 200〜1,000 万円のどこでも、いちばんの手は同じ");
   return h("div", { class: "imp-flip" }, icon("swap", 13), h("div", null, ...lines.map((l) => h("div", null, l))));
 }
@@ -244,12 +374,12 @@ function applyAnnual(app: AppContext, annual: number | null): void {
 function salaryWidget(app: AppContext): { el: HTMLElement; update(imp: ImpactResult): void } {
   const value = h("b", { class: "imp-salary-value" });
   const kari = h("span", { class: "imp-kari" }, "（仮）");
-  const change = h("button", { class: "imp-link imp-salary-change", type: "button", title: "年収（額面）を入れる・変える" }, "変える");
+  const change = h("button", { class: "imp-link imp-salary-change", type: "button", title: "年収（額面）を入れる・変える", dataset: { fk: "salary" } }, "変える");
   const view = h("div", { class: "imp-salary" }, h("span", null, "年収（額面）"), value, h("span", null, "で計算中"), kari, change);
-  const input = h("input", { class: "input input-sm imp-salary-input", type: "text", attrs: { inputmode: "numeric", "aria-label": "年収（額面・万円）", autocomplete: "off", maxlength: "12", placeholder: String(IMPACT_DEFAULT_ANNUAL) } });
-  const ok = h("button", { class: "btn btn-sm btn-primary", type: "button" }, "決める");
-  const cancel = h("button", { class: "btn btn-sm btn-ghost", type: "button" }, "やめる");
-  const reset = h("button", { class: "imp-link", type: "button", title: `仮の ${IMPACT_DEFAULT_ANNUAL} 万円で計算する` }, "仮に戻す");
+  const input = h("input", { class: "input input-sm imp-salary-input", type: "text", dataset: { fk: "salary-input" }, attrs: { inputmode: "numeric", "aria-label": "年収（額面・万円）", autocomplete: "off", maxlength: "12", placeholder: String(IMPACT_DEFAULT_ANNUAL) } });
+  const ok = h("button", { class: "btn btn-sm btn-primary", type: "button", dataset: { fk: "salary-ok" } }, "決める");
+  const cancel = h("button", { class: "btn btn-sm btn-ghost", type: "button", dataset: { fk: "salary-cancel" } }, "やめる");
+  const reset = h("button", { class: "imp-link", type: "button", title: `仮の ${IMPACT_DEFAULT_ANNUAL} 万円で計算する`, dataset: { fk: "salary-reset" } }, "仮に戻す");
   const err = h("div", { class: "imp-salary-err", role: "alert" });
   const edit = h(
     "div",
@@ -272,9 +402,13 @@ function salaryWidget(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
     input.select();
   };
   const close = () => {
+    const a = document.activeElement;
+    const had = keyboardFocus(a) && edit.contains(a);
     edit.hidden = true;
     view.hidden = false;
     err.textContent = "";
+    // 欄の中をキーボードで操作していたら「変える」へ戻す（隠した欄から体に落とさない。マウスで押したときは今までどおり）
+    if (had && !change.hidden) change.focus();
   };
   const submit = () => {
     const v = parseAnnual(input.value, IMPACT_ANNUAL_MIN, IMPACT_ANNUAL_MAX);
@@ -464,13 +598,13 @@ function legendSection(): HTMLElement {
       { class: "imp-legend-list" },
       li(sample(2, "+65万"), h("span", null, "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）")),
       li(sample(1, "35%", true), h("span", null, "% の札: その結果になる見込み。色はその結果の良し悪し（今のままと比べて）")),
-      li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "★"), h("span", null, "★ おすすめ（2 位より 3 万円以上良い）・≒ ほぼ同じ・✓ 選んだ手")),
+      li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "★"), h("span", null, `★ おすすめ（2 位より ${IMPACT_STAR_LEAD} 万円以上良い）・≒ 一番から ${IMPACT_STAR_LEAD} 万円以内・✓ 選んだ手`)),
       li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "月"), h("span", null, "月+2.1万: 3 年後の月の稼ぎの差")),
     ),
   );
 }
 
-function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
+function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
   sec.append(h("h3", { class: "insp-label" }, "今決めること", h("span", { class: "insp-count" }, `${horizonText(imp.horizon)}の影響の順`)));
   const root = imp.root;
@@ -478,7 +612,7 @@ function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement): void 
     sec.append(h("p", { class: "imp-note" }, "今日の選択肢がありません"));
     return;
   }
-  sec.append(decisionList(app, imp, root, { closeDrawer: true }), flipNote(app, imp));
+  sec.append(decisionList(app, imp, root, seen, { closeDrawer: true }), flipNote(app, imp, seen));
 }
 
 /** 9 つの段の積み上げ棒（左 = 減る・右 = 増える。段のあいだは 2px あける） */
@@ -523,7 +657,7 @@ function fillDist(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
   );
 }
 
-function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
+function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
   const doc = app.store.doc;
   const span = horizonText(imp.horizon);
@@ -535,11 +669,11 @@ function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
     const n = doc.nodes[e.id];
     if (!n) continue;
     const g = vSQ === null ? null : e.tot - vSQ;
-    const title = n.title || "（無題）";
+    const title = seen.title(doc, e.id) || "（無題）";
     list.append(
       h(
         "button",
-        { class: "imp-end-row", type: "button", title: `${title}（${formatPercent(e.p)}・${span} ${formatMan(e.tot, false)}）`, dataset: { id: e.id }, onClick: () => goTo(app, e.id, false) },
+        { class: "imp-end-row", type: "button", title: `${title}（${formatPercent(e.p)}・${span} ${formatMan(e.tot, false)}）`, dataset: { id: e.id, fk: `end:${e.id}` }, onClick: () => goTo(app, e.id, false) },
         deltaPill(g, { size: "sm" }),
         // 見出しが「3 年後の行き先」なので、タイトルの頭の「3 年後:」は省く
         h("span", { class: "imp-end-title" }, title.replace(/^\s*\d+\s*(年|か月)後\s*[:：]\s*/, "") || title),
@@ -561,11 +695,13 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
   const decide = h("section", { class: "imp-sec imp-decide" });
   const dist = h("section", { class: "imp-sec imp-dist" });
   const ends = h("section", { class: "imp-sec imp-ends" });
-  const expandBtn = h("button", { class: "btn btn-sm", type: "button", title: "3 年の分かれ道を全部ひらく", onClick: () => app.cmd.expandAll() }, icon("expand", 14), "全部ひらく");
-  const resetBtn = h("button", { class: "btn btn-sm", type: "button", title: "開いている所を最初の形に戻す", onClick: () => resetCommand(app)?.(app.vm.impact.root) }, icon("collapse", 14), "最初の形に戻す");
+  // 3 年の分かれ道だけを見え方で開く（文書・履歴・保存・同期は変えない。自分で折りたたんだ所はそのまま）
+  const expandBtn = h("button", { class: "btn btn-sm", type: "button", title: "3 年の分かれ道を全部ひらく", dataset: { fk: "expand" }, onClick: () => app.vm.setImpactOpen(app.vm.impactBranches()) }, icon("expand", 14), "全部ひらく");
+  const resetBtn = h("button", { class: "btn btn-sm", type: "button", title: "開いている所を最初の形に戻す", dataset: { fk: "reset-open" }, onClick: () => resetCommand(app)?.(app.vm.impact.root) }, icon("collapse", 14), "最初の形に戻す");
   const el = h("div", { class: "imp-overview" }, head.el, decide, dist, ends, premisesSection(), legendSection(), h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
   el.hidden = true;
   let last: ImpactResult | null = null;
+  let seen = new Seen();
   return {
     el,
     update() {
@@ -577,11 +713,17 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
       }
       head.update(imp);
       resetBtn.hidden = !resetCommand(app);
-      if (imp !== last) {
+      // 数が変わった・書いた題名が変わった（題名の入力）ときだけ作り直す
+      if (imp !== last || seen.changed(app.store.doc)) {
         last = imp;
-        fillDecide(app, imp, decide);
+        seen = new Seen();
+        const inDecide = focusKeyIn(decide);
+        const inEnds = focusKeyIn(ends);
+        fillDecide(app, imp, decide, seen);
         fillDist(app, imp, dist);
-        fillEnds(app, imp, ends);
+        fillEnds(app, imp, ends, seen);
+        if (inDecide !== null) refocus(decide, inDecide);
+        else if (inEnds !== null) refocus(ends, inEnds);
       }
       return true;
     },
@@ -590,27 +732,43 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
 
 // ------------------------------------------------------------ 詳細（選んだノード）
 
+/**
+ * 「これにする」: その手を進行中にし、同じ判断でほかに進行中の手があれば未着手に戻す（選べる手は 1 つ。完了した手はそのまま）。
+ * まとめて 1 回で元に戻せる
+ */
+function pickAlt(app: AppContext, id: ID): void {
+  const doc = app.store.doc;
+  const n = doc.nodes[id];
+  const info = app.vm.impact.alt.get(id);
+  if (!n || !info) return;
+  const others = (app.vm.impact.decision.get(info.decision)?.alts ?? []).filter((x) => x !== id && doc.nodes[x]?.status === "active");
+  app.store.transact(`「${n.title || "無題"}」にする`, (tx) => {
+    tx.updateNode(id, { status: "active" });
+    for (const x of others) tx.updateNode(x, { status: "open" });
+  });
+}
+
 /** 選ぶ・見送る・選び直す（状態を 進行中・見送り・未着手 に。すぐに計算し直す） */
 function picksRow(app: AppContext, id: ID, info: AltInfo): HTMLElement {
   const ro = app.store.readOnly;
   const status = app.store.doc.nodes[id]?.status;
   const pick = h(
     "button",
-    { class: `btn btn-sm imp-pick${info.picked ? " is-on" : " btn-primary"}`, type: "button", disabled: ro, attrs: { "aria-pressed": String(info.picked) }, onClick: () => !info.picked && app.cmd.setStatus([id], "active") },
+    { class: `btn btn-sm imp-pick${info.picked ? " is-on" : " btn-primary"}`, type: "button", disabled: ro, dataset: { fk: `pick:${id}` }, attrs: { "aria-pressed": String(info.picked) }, onClick: () => !info.picked && press(`pick:${id}`, () => pickAlt(app, id)) },
     icon("check", 14),
     info.picked ? (status === "done" ? "これにした（完了）" : "これにした") : "これにする",
   );
   const drop = h(
     "button",
-    { class: `btn btn-sm imp-drop${info.dropped ? " is-on" : ""}`, type: "button", disabled: ro, attrs: { "aria-pressed": String(info.dropped) }, onClick: () => !info.dropped && app.cmd.setStatus([id], "dropped") },
+    { class: `btn btn-sm imp-drop${info.dropped ? " is-on" : ""}`, type: "button", disabled: ro, dataset: { fk: `drop:${id}` }, attrs: { "aria-pressed": String(info.dropped) }, onClick: () => !info.dropped && press(`drop:${id}`, () => app.cmd.setStatus([id], "dropped")) },
     icon("x", 14),
     info.dropped ? "見送った" : "見送る",
   );
-  const redo = h("button", { class: "btn btn-sm btn-ghost imp-redo", type: "button", disabled: ro || (!info.picked && !info.dropped), title: "未着手に戻して選び直す", onClick: () => app.cmd.setStatus([id], "open") }, icon("undo", 14), "選び直す");
+  const redo = h("button", { class: "btn btn-sm btn-ghost imp-redo", type: "button", disabled: ro || (!info.picked && !info.dropped), title: "未着手に戻して選び直す", dataset: { fk: `redo:${id}` }, onClick: () => app.cmd.setStatus([id], "open") }, icon("undo", 14), "選び直す");
   return h("div", { class: "imp-picks" }, pick, drop, redo);
 }
 
-function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement): void {
+function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen): void {
   const doc = app.store.doc;
   const n = doc.nodes[id];
   const info = imp.alt.get(id);
@@ -623,7 +781,7 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement):
     wrap.append(h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ:`), deltaPill(0, { base: true, size: "lg" })), h("p", { class: "imp-note" }, "同じ判断のほかの手の数は、この手（この期間は何も足さない）と比べた差"));
   } else if (dec && dec.base === null) {
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "基準（今のまま）が無いので差を出せません")));
-    if (!ro) wrap.append(h("div", { class: "imp-picks" }, h("button", { class: "btn btn-sm", type: "button", onClick: () => app.cmd.updateNode(id, { meta: { ...n.meta, base: true } }, { label: "基準にする" }) }, "これを基準にする")));
+    if (!ro) wrap.append(h("div", { class: "imp-picks" }, h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `base:${id}` }, onClick: () => app.cmd.updateNode(id, { meta: { ...n.meta, base: true } }, { label: "基準にする" }) }, "これを基準にする")));
   } else if (info.delta === null) {
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "数字なし（結果と見込みを足すと計算します）")));
   } else {
@@ -656,7 +814,7 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement):
         "p",
         { class: "imp-note imp-kari-note" },
         h("span", null, `年収が仮（${IMPACT_DEFAULT_ANNUAL} 万円）なので本業の数字は目安です`),
-        ro ? null : h("button", { class: "imp-link", type: "button", onClick: () => openSalaryEditor(app) }, "年収を入れる"),
+        ro ? null : h("button", { class: "imp-link", type: "button", dataset: { fk: `salary-open:${id}` }, onClick: () => openSalaryEditor(app) }, "年収を入れる"),
       ),
     );
   }
@@ -680,15 +838,16 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement):
     const sec = h("div", { class: "imp-outs" }, h("h3", { class: "insp-label" }, "結果", h("span", { class: "insp-count" }, "この手を選んだ場合の見込み")));
     if (info.outcomes.length >= 2 && info.outcomes.every((o) => typeof doc.edges[o.edge]?.meta?.prob !== "number")) sec.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "見込み（%）が入っていません（等分で計算中）")));
     for (const o of info.outcomes) {
-      const e = doc.edges[o.edge];
+      const e = seen.edge(doc, o.edge);
       const t = doc.nodes[o.node];
+      const title = seen.title(doc, o.node);
       const short = typeof t?.meta?.short === "string" ? (t.meta.short as string) : "";
-      const label = e?.label?.trim() || short || t?.title || "（無題）";
+      const label = e?.label?.trim() || short || title || "（無題）";
       const line = e?.condition?.trim() ?? "";
       sec.append(
         h(
           "button",
-          { class: "imp-out-row", type: "button", title: t?.title ?? "", dataset: { id: o.node }, onClick: () => goTo(app, o.node, false) },
+          { class: "imp-out-row", type: "button", title, dataset: { id: o.node, fk: `out:${o.node}` }, onClick: () => goTo(app, o.node, false) },
           h("span", { class: "imp-out-pct" }, formatShare(o.w)),
           h("span", { class: "imp-out-text" }, h("span", { class: "imp-out-label" }, label), line && line !== NO_LINE && line !== label ? h("span", { class: "imp-out-line" }, line) : null),
           deltaPill(o.u, { size: "sm" }),
@@ -700,11 +859,11 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement):
 
   // 同じ判断の手（比べる）
   if (dec && dec.alts.length > 1) {
-    wrap.append(h("div", { class: "imp-sibs" }, h("h3", { class: "insp-label" }, "同じ判断の手", h("span", { class: "insp-count" }, `${dec.alts.length} 個・${span}の影響の順`)), decisionList(app, imp, info.decision, { current: id, closeDrawer: false })));
+    wrap.append(h("div", { class: "imp-sibs" }, h("h3", { class: "insp-label" }, "同じ判断の手", h("span", { class: "insp-count" }, `${dec.alts.length} 個・${span}の影響の順`)), decisionList(app, imp, info.decision, seen, { current: id, closeDrawer: false })));
   }
 }
 
-function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement): void {
+function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen): void {
   const doc = app.store.doc;
   const n = doc.nodes[id];
   if (!n) return;
@@ -713,8 +872,7 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
   const facts = h("ul", { class: "imp-facts" });
   if (o) {
     facts.append(li("この結果になる見込み ", h("b", null, formatShare(o.w)), "（この手を選んだ場合）"));
-    const alt = doc.nodes[o.alt];
-    if (alt) facts.append(li(h("span", null, "この手:"), h("button", { class: "imp-link imp-alt-link", type: "button", title: "この手を選ぶ", onClick: () => goTo(app, o.alt, false) }, alt.title || "（無題）")));
+    if (doc.nodes[o.alt]) facts.append(li(h("span", null, "この手:"), h("button", { class: "imp-link imp-alt-link", type: "button", title: "この手を選ぶ", dataset: { fk: `alt:${o.alt}` }, onClick: () => goTo(app, o.alt, false) }, seen.title(doc, o.alt) || "（無題）")));
   }
   const reach = app.vm.forecast.reach.get(id);
   const piP = imp.pPi.get(id) ?? 0;
@@ -737,15 +895,16 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
   if (steps.length) {
     const ol = h("ol", { class: "imp-trail" });
     for (const s of steps) {
+      seen.edge(doc, s.edge);
       ol.append(
         h(
           "li",
           null,
           h(
             "button",
-            { class: `imp-trail-step${s.node === id ? " is-current" : ""}`, type: "button", title: doc.nodes[s.node]?.title ?? "", dataset: { id: s.node }, onClick: () => goTo(app, s.node, false) },
+            { class: `imp-trail-step${s.node === id ? " is-current" : ""}`, type: "button", title: seen.title(doc, s.node), dataset: { id: s.node, fk: `trail:${s.node}` }, onClick: () => goTo(app, s.node, false) },
             h("span", { class: "imp-trail-when" }, s.when ?? "—"),
-            h("span", { class: "imp-trail-what" }, h("span", { class: "imp-trail-alt" }, doc.nodes[s.alt]?.title || "（無題）"), h("span", { class: "imp-trail-line" }, `→ ${s.line || s.label || "どの場合もこの道"}`)),
+            h("span", { class: "imp-trail-what" }, h("span", { class: "imp-trail-alt" }, seen.title(doc, s.alt) || "（無題）"), h("span", { class: "imp-trail-line" }, `→ ${s.line || s.label || "どの場合もこの道"}`)),
           ),
         ),
       );
@@ -761,16 +920,16 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
         "div",
         { class: "imp-sibs" },
         h("h3", { class: "insp-label" }, "ここで選べる手", h("span", { class: "insp-count" }, dec.stakes !== null ? `この判断で最大 ${formatMan(dec.stakes)}の差` : `${dec.alts.length} 個`)),
-        decisionList(app, imp, id, { closeDrawer: false }),
+        decisionList(app, imp, id, seen, { closeDrawer: false }),
       ),
     );
   }
 }
 
-function rootBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement): void {
+function rootBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen): void {
   const dec = imp.decision.get(id);
   if (!dec || !dec.alts.length) return;
-  wrap.append(h("div", { class: "imp-sibs imp-decide" }, h("h3", { class: "insp-label" }, "今決めること", h("span", { class: "insp-count" }, `${horizonText(imp.horizon)}の影響の順`)), decisionList(app, imp, id, { closeDrawer: true }), flipNote(app, imp)));
+  wrap.append(h("div", { class: "imp-sibs imp-decide" }, h("h3", { class: "insp-label" }, "今決めること", h("span", { class: "insp-count" }, `${horizonText(imp.horizon)}の影響の順`)), decisionList(app, imp, id, seen, { closeDrawer: true }), flipNote(app, imp, seen)));
 }
 
 /**
@@ -786,6 +945,7 @@ export function buildImpactNodeBlock(app: AppContext, id: ID): { el: HTMLElement
   const body = h("div", { class: "imp-node-body" });
   const el = h("div", { class: `imp-node${isRoot ? " is-root" : isAlt ? " is-alt" : " is-outcome"}` }, head ? head.el : null, body);
   let last: ImpactResult | null = null;
+  let seen = new Seen();
   return {
     el,
     isAlt,
@@ -798,12 +958,16 @@ export function buildImpactNodeBlock(app: AppContext, id: ID): { el: HTMLElement
       }
       el.hidden = false;
       head?.update(imp);
-      if (imp === last) return;
+      // 数が変わった・書いた題名や線の文が変わった（題名の入力）ときだけ作り直す
+      if (imp === last && !seen.changed(app.store.doc)) return;
       last = imp;
+      seen = new Seen();
+      const fk = focusKeyIn(body);
       clear(body);
-      if (imp.root === id) rootBody(app, imp, id, body);
-      else if (imp.alt.has(id)) altBody(app, imp, id, body);
-      else outcomeBody(app, imp, id, body);
+      if (imp.root === id) rootBody(app, imp, id, body, seen);
+      else if (imp.alt.has(id)) altBody(app, imp, id, body, seen);
+      else outcomeBody(app, imp, id, body, seen);
+      if (fk !== null) refocus(body, fk);
     },
   };
 }
