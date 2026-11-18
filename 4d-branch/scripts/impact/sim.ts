@@ -52,6 +52,10 @@ export interface Constants {
   schoolSeats: number;
   baseHours: number;
   perm: { a: number; s: number; n: number };
+  /** 転職した月に引く給与の月数（賞与の取り逃しなど。移る前の給与で数える） */
+  switchCost?: number;
+  /** 学校の席 1 席あたりの月の売上（万円。無ければ Pro と同じ） */
+  seatNet?: number;
 }
 
 export interface KindDef {
@@ -124,7 +128,12 @@ export function salEff(w: World, s: St): number {
 /** その時点の月の稼ぎ [給与の倍率, 広告運用 万円/月, SpellDash 万円/月]（特別な出費は入れない） */
 export function runRate(w: World, s: St): Vec3 {
   const c = w.constants;
-  return [round4(salEff(w, s)), round2(s.cl * s.fee - (s.j === "i" ? c.indOverhead : 0)), round2(s.pu * c.net - c.infra)];
+  return [round4(salEff(w, s)), round2(s.cl * s.fee - (s.j === "i" ? c.indOverhead : 0)), round2(sdNet(c, s) - c.infra)];
+}
+
+/** SpellDash の月の売上（学校の席は学校向けの値段） */
+function sdNet(c: Constants, s: St): number {
+  return (s.pu - s.seats) * c.net + s.seats * (c.seatNet ?? c.net);
 }
 
 export const round2 = (x: number) => Math.round(x * 100) / 100;
@@ -244,6 +253,8 @@ interface Branch {
   at: Array<[number, (x: St) => void]>;
   /** 期間の何か月目の終わりに起きること（その月の稼ぎの後） */
   end: Array<[number, (x: St) => void]>;
+  /** 期間の何か月目の初め（出来事の前）に引く給与の月数 */
+  cost?: Array<[number, (x: St) => number]>;
   /** 伸び（月）・幅 */
   g: number;
   gsd: number;
@@ -422,6 +433,11 @@ function branchesOfRaw(w: World, s: St, kind: string, m0: number, L: number): Br
     case "fc_switch":
     case "plan_switch": {
       const at = Math.min(p.moveAt!, L);
+      // 3 か月の期間は探せる時間が短いので、別の見込み（pHigh3・pMid3）を使う
+      const short = L <= 3 && p.pHigh3 !== undefined;
+      const pH = short ? p.pHigh3! : p.pHigh!;
+      const pM = short ? p.pMid3! : p.pMid!;
+      const cost: Array<[number, (x: St) => number]> = c.switchCost ? [[at, (x) => c.switchCost! * salEff(w, x)]] : [];
       const move = (mult: number) => (x: St) => {
         x.sal = x.sal * mult;
         if (x.pm !== "a" || x.cl < 0.5) x.pm = "?";
@@ -429,15 +445,17 @@ function branchesOfRaw(w: World, s: St, kind: string, m0: number, L: number): Br
         addFlag(x, "switched");
       };
       const hi = base();
-      hi.p = p.pHigh!;
+      hi.p = pH;
       hi.tag = "high";
       hi.at.push([at, move(p.high!)]);
+      hi.cost = cost;
       const mid = base();
-      mid.p = p.pMid!;
+      mid.p = pM;
       mid.tag = "mid";
       mid.at.push([at, move(p.mid!)]);
+      mid.cost = cost;
       const no = base();
-      no.p = 1 - p.pHigh! - p.pMid!;
+      no.p = 1 - pH - pM;
       no.tag = "none";
       return [hi, mid, no];
     }
@@ -491,10 +509,8 @@ function branchesOfRaw(w: World, s: St, kind: string, m0: number, L: number): Br
         const at = Math.min(p.at!, L);
         b.at.push([
           at,
-          (x) => {
-            x.j = "i";
-            x.fee = x.cl > 0 ? Math.max(x.fee, c.indFee) : x.fee;
-          },
+          // 副業からの顧客は同じ月額のまま続ける（独立してから増やす顧客だけ独立の月額）
+          (x) => void (x.j = "i"),
         ]);
         b.windows.push({ from: at, to: L, lam: () => p.lam!, fee: () => c.indFee });
       });
@@ -525,10 +541,8 @@ function branchesOfRaw(w: World, s: St, kind: string, m0: number, L: number): Br
         b.end.push([
           half,
           (x) => {
-            if (Math.round(x.cl) >= p.threshold!) {
-              x.j = "i";
-              x.fee = Math.max(x.fee, c.indFee);
-            }
+            // 副業からの顧客は同じ月額のまま（独立してから増やす顧客だけ独立の月額）
+            if (Math.round(x.cl) >= p.threshold!) x.j = "i";
           },
         ]);
         b.windows.push({ from: half + 1, to: L, lam: (x) => (x.j === "i" ? p.lamInd! : p.lamStay!), fee: (x) => (x.j === "i" ? c.indFee : c.sideFee) });
@@ -649,6 +663,7 @@ export function simulate(w: World, s0: St, kind: string, m0: number, L: number):
         const step = (x: St, a: number, b: number, _counts: number[], r: Vec3, arr?: { k: number; from: number; to: number; fee: number; onlyInd: boolean }) => {
           for (let i = a + 1; i <= b; i++) {
             const month = m0 + i;
+            for (const [at, f] of br.cost ?? []) if (at === i) r[0] -= f(x);
             for (const [at, fn] of br.at) if (at === i) fn(x);
             if (c.aprilMonths.includes(month) && (x.j === "e" || x.j === "p")) x.sal *= 1 + c.aprilRaise;
             const g = br.g + zg * br.gsd + (x.j === "p" ? c.partGrowth : 0);
@@ -669,7 +684,7 @@ export function simulate(w: World, s0: St, kind: string, m0: number, L: number):
             if (x.cl < 0.05) x.cl = 0;
             r[0] += salEff(w, x);
             r[1] += x.cl * x.fee - (x.j === "i" ? c.indOverhead : 0);
-            r[2] += x.pu * c.net - c.infra - br.spend;
+            r[2] += sdNet(c, x) - c.infra - br.spend;
             for (const [at, fn] of br.end) if (at === i) fn(x);
           }
         };
