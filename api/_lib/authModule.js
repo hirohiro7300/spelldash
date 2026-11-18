@@ -4,7 +4,8 @@
 // 使う所: api/auth-module.js（配信の関数）・tests/oldtab/lib/authLib.mjs（旧タブの証明と E2E が使う写し。同じ値・同じ作り方）・
 //   js/supabase.js の読み先（AUTH_MODULE_URL と同じ字。scripts/test-auth-module.mjs が確かめる）。
 // 作り方（ビルドの道具は使わない。リポジトリに配布物を入れない）:
-//   1. 登録所の決まった tarball の URL（https だけ）から取る（5 秒で打ち切り・2 MB まで）
+//   1. 登録所の決まった tarball の URL（https。転送されたら行き着いた先も https か見る）から取る（5 秒で打ち切り〔本文を読む間も〕・
+//      読みながら数え、2 MB を超えたらそこで読むのをやめる）
 //   2. sha512 が固定の integrity と同じか（違えば止める。開く前に確かめる）
 //   3. メモリの中で開く（ファイルに展開しない）。読むのは package/package.json（名前と版）・束（package/dist/umd/ の 1 ファイル）・LICENSE だけ
 //   4. 束の末尾に export の行を足す（旧タブの証明と同じ作り方）→ sha256 が固定の値と同じか
@@ -151,12 +152,24 @@ export async function buildAuthModule({ pin = AUTH_MODULE_PIN, fetchImpl = globa
   if (!response?.ok) throw fail(`status_${Number(response?.status) || 0}`);
   if (response.url && !String(response.url).startsWith("https://")) throw fail("not_https");
   if (Number(response.headers?.get?.("content-length")) > maxBytes) throw fail("too_large");
-  let tgz;
+  // 本文は読みながら数え、maxBytes を超えたらそこで読むのをやめる（長さの見出しが無い・偽りでも、全部をメモリーに読まない）
+  const reader = response.body?.getReader?.();
+  const chunks = [];
+  let size = 0;
   try {
-    tgz = Buffer.from(await response.arrayBuffer());
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) break;
+      chunks.push(value);
+    }
   } catch (e) {
     throw fail(timedOut(e) || signal.aborted ? "timeout" : "network");
   }
-  if (tgz.length > maxBytes) throw fail("too_large");
-  return buildFromTarball(tgz, pin);
+  if (size > maxBytes) {
+    reader.cancel().catch(() => {});
+    throw fail("too_large");
+  }
+  return buildFromTarball(Buffer.concat(chunks), pin);
 }
