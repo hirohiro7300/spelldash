@@ -264,7 +264,9 @@ describe("3 年の分かれ道: 複製", () => {
     expect(s.vm.impactRoots()).toEqual([rootId]);
     expect(copies.some((id) => s.vm.inImpact(id))).toBe(false);
     const ac = s.store.doc.nodes[copyOf.get(alt)!]!.meta;
-    for (const k of ["base", "key", "t0", "b0", "futureRelease"]) expect(k in ac, k).toBe(false);
+    // 入口のカードは作ったときからやることの指紋（k0）を持つ。写しは持たない
+    expect(Array.isArray(s.store.doc.nodes[alt]!.meta.k0)).toBe(true);
+    for (const k of ["base", "key", "t0", "b0", "k0", "futureRelease"]) expect(k in ac, k).toBe(false);
     const ce = Object.values(s.store.doc.edges).find((e) => e.source === copyOf.get(pe.source) && e.target === copyOf.get(pe.target))!;
     expect(ce.meta.prob).toBe(pe.meta.prob);
     expect("p0" in ce.meta || "c0" in ce.meta).toBe(false);

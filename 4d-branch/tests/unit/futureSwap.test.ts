@@ -301,16 +301,18 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     }
   });
 
-  it("今日を複製した 2 つ目の入口は消し、年収は数字を出す入口の物（複製の物ではない）", () => {
+  it("今日を複製したカードは入口にならない（印を外した自分のカード）。新しい版にしても自分のカードとして残り、年収は入口の物", () => {
     const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
     const root = rootOf(store.doc);
     cmd.updateNode(root.id, { meta: { ...root.meta, impact: { ...(root.meta.impact as object), annual: 540 } } });
     const [dup] = cmd.duplicate([root.id]);
     const d0 = store.doc.nodes[dup!]!;
-    cmd.updateNode(dup!, { meta: { ...d0.meta, impact: { ...(d0.meta.impact as object), annual: 300 } } });
+    for (const k of ["forecastRoot", "impact", "key", "futureVersion", "futureRelease", "t0", "b0", "k0"]) expect(d0.meta[k]).toBeUndefined();
     expect(primaryImpactRoot(store.doc)).toBe(root.id);
     const res = swapFutureDoc(store.doc, nextDoc());
-    expect(res.doc.nodes[dup!]).toBeUndefined();
+    expect(res.doc.nodes[dup!]?.title).toBe(d0.title);
+    expect(res.doc.nodes[dup!]!.meta.forecastRoot).toBeUndefined();
+    expect(Object.values(res.doc.nodes).filter((n) => n.meta.forecastRoot === true).map((n) => n.id)).toEqual([root.id]);
     expect(annualOf(res.doc.nodes[root.id]!)).toBe(540);
   });
 
