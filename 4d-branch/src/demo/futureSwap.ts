@@ -278,8 +278,10 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
  *   説明と条件は残す）。関係を相乗効果などに変えた同梱の線も、道の線に戻す（同じ 2 枚の間に線を 2 本にしない）
  * - 鍵の無いノード（利用者が足した物）と、それにつながる線・利用者が引いた線は消さない（同梱の線を消して同じ向きに道でない線を
  *   引き直していれば、その線を残して同梱の線は足さない）
- * - 同じ鍵のノードが 2 つ以上あれば（複製・別の地図を足した など）、先に作った 1 つだけをカードにし、ほかは鍵を外して利用者のノードとして残す
- *   （新しい版にした後、地図の中で同じ鍵は 1 つだけ）
+ * - 同じ鍵のノードが 2 つ以上あれば（複製・別の地図を足した・前の版のアプリで新しい版にした など）、1 つだけをカードにし、ほかは鍵を外して
+ *   利用者のノードとして残す（新しい版にした後、地図の中で同じ鍵は 1 つだけ）。カードにするのは、入口からたどれる物があればその中から
+ *   （地図から外れた物は、たどれる物が無い鍵だけ）。前の版のアプリは外れたカードをそのまま残し、同じ鍵のカードを後から足し直して地図に
+ *   つないだ: 先に作った外れた方を選ぶと、つないだ方も利用者の線で残り、同じカードが地図に 2 度出る
  * ほかの地図（v1 の地図・数字を出さない 2 つ目の入口）は、今までどおり消す（この地図からたどれるノードは残す）
  */
 function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootId: ID): FutureSwap {
@@ -305,8 +307,8 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
   const others = new Set<ID>();
   for (const m of maps) if (m.root !== rootId) for (const id of m.nodes) if (!depth.has(id)) others.add(id);
   // 同梱のカード（鍵ごとに 1 つ）: 入口からたどれるノードと、地図から外れたノード（ほかの地図の物は除く）から選ぶ。
-  // 複製などで同じ鍵が 2 つ以上あれば、先に作った物（複製は作った時刻が後になる。同じなら入口に近い物・外れた物は後・ID の順）。
-  // 入口の鍵は数字と概要を出す入口に決める。選ばれなかった物は利用者のノードとして残す（鍵は外す）
+  // 同じ鍵が 2 つ以上あれば、入口からたどれる物（外れた物は、たどれる物が無い鍵だけ）、その中で先に作った物（複製は作った時刻が後になる。
+  // 同じなら入口に近い物・ID の順）。入口の鍵は数字と概要を出す入口に決める。選ばれなかった物は利用者のノードとして残す（鍵は外す）
   const oldRoot = doc.nodes[rootId]!;
   const rootKey = keyOf(oldRoot);
   const oldByKey = new Map<string, GNode>();
@@ -424,13 +426,14 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
 const pairKey = (source: string, target: string): string => `${source}\u0000${target}`;
 
 /**
- * 同じ鍵のカードのうち、a を b より先の物（同梱のカード）とみるか: 先に作った物、同じ時刻なら入口に近い物（地図から外れた物は後）、
- * それも同じなら ID の順
+ * 同じ鍵のカードのうち、a を b より先の物（同梱のカード）とみるか: 入口からたどれる物（地図から外れた物は、たどれる物が無いときだけ。
+ * 作った時刻より先に見る）、その中で先に作った物、同じ時刻なら入口に近い物、それも同じなら ID の順
  */
 function madeFirst(a: GNode, b: GNode, depth: Map<ID, number>): boolean {
-  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt;
   const da = depth.get(a.id) ?? Infinity;
   const db = depth.get(b.id) ?? Infinity;
+  if ((da === Infinity) !== (db === Infinity)) return da !== Infinity;
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt;
   return da !== db ? da < db : a.id < b.id;
 }
 

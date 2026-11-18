@@ -397,6 +397,46 @@ const dupKeys = (d: DocData): string[] => {
 };
 /** 地図（入口から道の線でたどれるノード）に入っているか */
 const inMap = (d: DocData, id: ID) => futureMaps(d).some((m) => m.nodes.has(id));
+/** 数字と概要を出す入口の地図の大きさ（入口から道の線でたどれるノードの数） */
+const mapSize = (d: DocData) => futureMaps(d).find((m) => m.root === primaryImpactRoot(d))!.nodes.size;
+/** 選択肢（鍵）から道の線で出る先の鍵（鍵の無いノードは題名） */
+const flowKids = (d: DocData, key: string) => {
+  const id = byKey(d, key)!.id;
+  return Object.values(d.edges)
+    .filter((e) => e.source === id && (e.relation === "leads" || e.relation === "condition"))
+    .map((e) => (d.nodes[e.target]!.meta.key as string | undefined) ?? `（鍵なし）${d.nodes[e.target]!.title}`)
+    .sort();
+};
+
+/**
+ * 前の版のアプリ（入口からたどれるカードだけを鍵で合わせた）で新しい版にした地図をまねる（doc は変えない）: 地図から外れた鍵のノードは
+ * そのまま残り、入口からたどれるカードに無い鍵のカードは、新しい版（fresh）の物を新しい ID・後の作った時刻（at）で足し、同梱の線でつなぐ
+ */
+function oldAppUpgrade(doc: DocData, fresh: DocData, at: string): DocData {
+  const out = structuredClone(doc);
+  const reach = futureMaps(doc).find((m) => m.root === primaryImpactRoot(doc))!.nodes;
+  const card = new Map<string, ID>();
+  for (const id of reach) {
+    const k = doc.nodes[id]!.meta.key;
+    if (typeof k === "string") card.set(k, id);
+  }
+  const added = new Map<string, ID>();
+  for (const n of Object.values(fresh.nodes)) {
+    const k = n.meta.key as string;
+    if (card.has(k)) continue;
+    const id = `${n.id}_readded`;
+    out.nodes[id] = { ...structuredClone(n), id, createdAt: at, updatedAt: at };
+    added.set(k, id);
+  }
+  const idOf = (k: string) => added.get(k) ?? card.get(k)!;
+  for (const e of Object.values(fresh.edges)) {
+    const tk = fresh.nodes[e.target]!.meta.key as string;
+    if (!added.has(tk)) continue;
+    const id = `${e.id}_readded`;
+    out.edges[id] = { ...structuredClone(e), id, source: idOf(fresh.nodes[e.source]!.meta.key as string), target: idOf(tk), createdAt: at, updatedAt: at };
+  }
+  return out;
+}
 
 describe("地図から外れたカード・同じ鍵のノードも新しい版にする（新しい版にした後、同じ鍵は 1 つだけ）", () => {
   it("道の線を相乗効果に変えて地図から外れたカード: 足し直さずに、もとのカード（ID・決めたこと・書き換え）を新しい版にし、線は道の線に戻す（2 枚の間は 1 本）", () => {
@@ -489,6 +529,41 @@ describe("地図から外れたカード・同じ鍵のノードも新しい版�
     expect(Object.values(d.edges).some((x) => x.source === from.id && x.target === to.id)).toBe(true);
     expect(inMap(d, to.id)).toBe(true);
     expect(res.userKept).toBeGreaterThan(0);
+  });
+
+  // 前の版のアプリは、外れたカードをそのまま残して同じ鍵のカードを後から足し直し、地図につないだ（同じ鍵が 2 つ）。
+  // 先に作った外れた方をカードに選ぶと、つないだ方も利用者の線で地図に残り、同じカードが 2 度出る
+  const cutEdge = (store: Store, cmd: Commands) => cmd.deleteNodes([], [edgeBetween(store.doc, "r.sd_pilot", "r.sd_pilot.yes")!.id]);
+  const cutOption = (store: Store) => store.transact("削除", (tx) => tx.deleteNode(byKey(store.doc, "r.sd_pilot")!.id));
+  it.each([
+    ["同梱の線を 1 本消した（「接続を削除」）", "edge"],
+    ["前の版のアプリで選択肢だけを消した", "option"],
+  ] as const)("前の版のアプリで新しい版にした地図（%s → 外れたカードと、足し直してつないだカードで同じ鍵が 2 つ）: つないだ方をカードにし、外れた方は鍵を外して外れたまま残す（同じカードを地図に 2 度出さない）", (_, cut) => {
+    const T0 = "2026-11-01T00:00:00.000Z";
+    const first = buildFuture(TODAY).pv.doc;
+    for (const [id, n] of Object.entries(first.nodes)) first.nodes[id] = { ...n, createdAt: T0 };
+    const { store, cmd } = setup(first);
+    const yes0 = byKey(store.doc, "r.sd_pilot.yes")!;
+    if (cut === "edge") cutEdge(store, cmd);
+    else cutOption(store);
+    expect(inMap(store.doc, yes0.id)).toBe(false);
+    const old = oldAppUpgrade(store.doc, buildFuture(TODAY).pv.doc, "2026-12-01T00:00:00.000Z");
+    const copy = Object.values(old.nodes).find((n) => n.meta.key === "r.sd_pilot.yes" && n.id !== yes0.id)!;
+    expect(inMap(old, copy.id)).toBe(true);
+    expect(dupKeys(old).length).toBeGreaterThan(10);
+    const res = swapFutureDoc(old, nextDoc());
+    const d = res.doc;
+    expect(dupKeys(d)).toEqual([]);
+    expect(byKey(d, "r.sd_pilot.yes")!.id).toBe(copy.id);
+    expect(d.nodes[yes0.id]!.meta.key).toBeUndefined();
+    expect(inMap(d, yes0.id)).toBe(false);
+    // 地図は新しい版と同じ形（選択肢の先は 2 枚。鍵の無い写しはつながらない）。地図に残った利用者のノードは無い
+    expect(flowKids(d, "r.sd_pilot")).toEqual(flowKids(nextDoc(), "r.sd_pilot"));
+    expect(mapSize(d)).toBe(mapSize(nextDoc()));
+    expect(res.userKept).toBe(0);
+    // 同じ版を当て直しても変わらない
+    const again = swapFutureDoc(d, mapOf(next, "next-version", futureRelease() + 1));
+    expect([again.updated, again.added, again.removed, again.userKept]).toEqual([0, 0, 0, 0]);
   });
 });
 
