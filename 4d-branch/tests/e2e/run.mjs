@@ -1500,11 +1500,12 @@ async function main() {
     const imp = await impactOf();
     assert(imp.active && imp.alts.length === 10 && imp.ends >= 600, JSON.stringify({ ...imp, alts: imp.alts.length }));
     assert(Math.abs(imp.sumPi - 1) < 1e-6, `選び方の行き先の見込みの合計 ${imp.sumPi}`);
-    // 10 の選択肢それぞれに札（符号付きの数か「基準」）。★ はちょうど 1 つ、または ≒ が 2 つ
+    // 10 の選択肢それぞれに札（符号付きの数か「基準」）。★ はちょうど 1 つ、または一番の手から 10 万円以内の手がどれも ≒（2 つ以上）
     assert(imp.alts.filter((a) => a.base).length === 1 && imp.alts.every((a) => a.base || typeof a.delta === "number"), JSON.stringify(imp.alts));
     const stars = imp.alts.filter((a) => a.mark === "star").length;
-    const ties = imp.alts.filter((a) => a.mark === "tie").length;
-    assert((stars === 1 && ties === 0) || (stars === 0 && ties === 2), `★ ${stars}・≒ ${ties}`);
+    const ties = imp.alts.filter((a) => a.mark === "tie");
+    const top = Math.max(...imp.alts.map((a) => (a.base ? 0 : a.delta)));
+    assert((stars === 1 && ties.length === 0) || (stars === 0 && ties.length >= 2 && ties.every((a) => top - (a.base ? 0 : a.delta) < 10)), `★ ${stars}・≒ ${ties.length}`);
     const root = await fp.evaluate(() => {
       const f = window.__fourD;
       const n = Object.values(f.store.doc.nodes).find((x) => x.meta?.forecastRoot);

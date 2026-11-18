@@ -162,9 +162,10 @@ async function main() {
     assert(rows.length === 10, `行の数 ${rows.length}`);
     const ds = rows.map((r) => imp.alts.find((a) => a.id === r.id)?.delta ?? null);
     for (let i = 1; i < ds.length; i++) assert(ds[i - 1] >= ds[i] - 1e-9, `3 年の影響の順になっていない: ${ds.join(",")}`);
+    // ★ はちょうど 1 つ、または一番の手から 10 万円以内の手がどれも ≒（2 つ以上）
     const stars = rows.filter((r) => r.mark.includes("★")).length;
     const ties = rows.filter((r) => r.mark.includes("≒")).length;
-    assert((stars === 1 && ties === 0) || (stars === 0 && ties === 2), `★ ${stars}・≒ ${ties}`);
+    assert((stars === 1 && ties === 0) || (stars === 0 && ties >= 2), `★ ${stars}・≒ ${ties}`);
     assert(rows.filter((r) => r.pill === "基準").length === 1, "基準（今のまま）の行が 1 つでない");
     assert(rows.every((r) => r.bar && r.area), "差の棒か領域の札が無い行がある");
     for (const r of rows) {
@@ -303,7 +304,9 @@ async function main() {
     const main = (await page.locator(".imp-overview .imp-hl-main").textContent()) ?? "";
     assert(/^あなたの選び方で 3 年 [\d,]+ 万円（おすすめとの差 −[\d,.]+ 万円）$/.test(main), `見出し: ${main}`);
     const marks = await page.evaluate(() => [...document.querySelectorAll(".imp-overview .imp-decide .imp-alt-row")].map((r) => ({ id: r.dataset.id, mark: r.querySelector(".imp-mark").textContent })));
-    assert(marks.find((m) => m.id === before.best).mark.includes("★"), `★ が動いた ${JSON.stringify(marks)}`);
+    // おすすめの印（★ か ≒）は、自分で選んでも一番良い手から動かない
+    const bestMark = marks.find((m) => m.id === before.best).mark;
+    assert(bestMark.includes("★") || bestMark.includes("≒"), `★ が動いた ${JSON.stringify(marks)}`);
     assert(marks.find((m) => m.id === alt2).mark.includes("✓"), "選んだ手に ✓ が無い");
     assert((await page.locator(".imp-overview .imp-dist-label").first().textContent()) === "あなたの選び方", "分布の名前が変わらない");
     await page.evaluate((id) => window.__fourD.ui.select([id]), alt2);
