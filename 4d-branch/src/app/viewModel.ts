@@ -59,6 +59,23 @@ interface ImpactScopeInfo {
 
 type Pt = { x: number; y: number };
 
+/** 範囲（絞り込み・シナリオで隠す）と折りたたみ・シナリオの推定の結果。選択・検索・時点では変わらない */
+interface CollapseState {
+  scope: Set<ID>;
+  /** 絞り込み中の隣（ほかのプロジェクト） */
+  ghost: Set<ID>;
+  edgeOk: (e: GEdge) => boolean;
+  collapsedOf: (id: ID) => boolean;
+  /** 折りたたんだノードの線のうち止める線（3 年の分かれ道の閉じたカードは、同じ範囲の子への道の線だけ） */
+  stops: (e: GEdge) => boolean;
+  /** 必ず入口にするノード（3 年の分かれ道の入口） */
+  roots: ReadonlySet<ID>;
+  /** 3 年の分かれ道で、同じ範囲の子のあるノード（閉じると何かが隠れる物） */
+  branches: Set<ID>;
+  col: CollapseResult;
+  unreached: Set<ID>;
+}
+
 export class ViewModel {
   index!: GraphIndex;
   readonly nodes = new Map<ID, NodeVis>();
@@ -101,6 +118,8 @@ export class ViewModel {
   private last: {
     scope: Set<ID>;
     edgeOk: (e: GEdge) => boolean;
+    stops: (e: GEdge) => boolean;
+    roots: ReadonlySet<ID>;
     col: CollapseResult;
     unreached: Set<ID>;
     hideScen: boolean;
@@ -108,6 +127,8 @@ export class ViewModel {
     focus: boolean;
     inProj: (pids: ID[]) => boolean;
   } | null = null;
+  /** 範囲・折りたたみ・シナリオの推定の結果と、その材料（key: 索引の版・シナリオ・絞り込み。opens: 入口ごとの開いている所） */
+  private collapseCache: (CollapseState & { key: string; opens: Set<ID>[] }) | null = null;
 
   constructor(
     private readonly store: Store,
@@ -202,46 +223,17 @@ export class ViewModel {
     const inProj = (pids: ID[]) => !hasFilter || pids.some((p) => fset.has(p));
     const edgeInScen = (e: GEdge) => inScenario(e.scenarioIds, sid);
 
-    // 1) 範囲（シナリオで隠す・プロジェクトに絞る）
-    const scope = new Set<ID>();
-    for (const id in doc.nodes) {
-      const n = doc.nodes[id]!;
-      if (hideScen && !inScenario(n.scenarioIds, sid)) continue;
-      if (focus && !inProj(n.projectIds)) continue;
-      scope.add(id);
-    }
-    const ghost = new Set<ID>();
-    if (focus) {
-      for (const id of [...scope]) {
-        for (const list of [idx.out.get(id), idx.inc.get(id)]) {
-          for (const eid of list ?? []) {
-            const e = doc.edges[eid]!;
-            const other = e.source === id ? e.target : e.source;
-            if (scope.has(other) || ghost.has(other)) continue;
-            const on = doc.nodes[other];
-            if (!on) continue;
-            if (hideScen && (!inScenario(on.scenarioIds, sid) || !edgeInScen(e))) continue;
-            ghost.add(other);
-          }
-        }
-      }
-      for (const g of ghost) scope.add(g);
-    }
-    const edgeOk = (e: GEdge) => !hideScen || edgeInScen(e);
-
-    // 2) 折りたたみ・シナリオの推定（3 年の分かれ道の範囲は、文書の collapsed ではなく見え方の「開いているノード」で決める）
+    // 1)・2) 範囲・折りたたみ・シナリオの推定（3 年の分かれ道の範囲は、文書の collapsed ではなく見え方の「開いているノード」で決める）。
+    // 材料（索引・開いている所・絞り込み・シナリオ）が同じなら前の結果を使う（選択・検索・時点だけの変更では作り直さない）
     const info = this.scopeInfo();
     const opens = info.roots.map((r) => this.openSetOf(r, info));
-    const openOf = new Map(info.roots.map((r, i) => [r, opens[i]!]));
-    const collapsedOf = info.roots.length
-      ? (id: ID): boolean => {
-          const r = info.owner.get(id);
-          return r !== undefined ? !openOf.get(r)!.has(id) : !!doc.nodes[id]?.collapsed;
-        }
-      : (id: ID): boolean => !!doc.nodes[id]?.collapsed;
+    const key = `${this.indexVersion}|${sid ?? ""}|${hideScen ? "h" : ""}|${focus ? filter.join(",") : ""}`;
+    let cs = this.collapseCache;
+    if (!cs || cs.key !== key || cs.opens.length !== opens.length || cs.opens.some((s, i) => s !== opens[i])) {
+      cs = this.collapseCache = { key, opens, ...this.collapseState(info, opens, { focus, hideScen, sid, inProj, edgeInScen }) };
+    }
+    const { scope, ghost, edgeOk, collapsedOf, stops, roots, branches, col, unreached } = cs;
     this.collapsedPred = collapsedOf;
-    const col = computeCollapse(doc, idx, scope, edgeOk, collapsedOf);
-    const unreached = sid ? computeUnreached(doc, idx, scope, edgeInScen) : new Set<ID>();
 
     // 3) 検索
     const q = parseQuery(this.ui.search);
@@ -249,7 +241,7 @@ export class ViewModel {
     this.searchHits = this.searchActive ? searchNodes(doc, q) : [];
     const hitSet = new Set(this.searchHits.map((h) => h.id));
 
-    this.last = { scope, edgeOk, col, unreached, hideScen, sid, focus, inProj };
+    this.last = { scope, edgeOk, stops, roots, col, unreached, hideScen, sid, focus, inProj };
 
     // 4) 経路（隠れているノードからは強調しない。シナリオで隠した推定の先も同じ）
     const shown = (id: ID) => scope.has(id) && !col.hidden.has(id) && !(hideScen && unreached.has(id));
@@ -302,7 +294,8 @@ export class ViewModel {
       const inImpact = info.owner.has(id);
       const closed = inImpact ? collapsedOf(id) : n.collapsed;
       const collapsedCount = closed ? (col.counts.get(id) ?? 0) : 0;
-      const collapsed = inImpact ? closed && (idx.out.get(id)?.length ?? 0) > 0 : n.collapsed;
+      // 3 年の分かれ道は、閉じていて、同じ範囲の子（閉じると隠れる物）があるときだけ折りたたみの印を出す
+      const collapsed = inImpact ? closed && branches.has(id) : n.collapsed;
       this.nodes.set(id, { hidden, alpha, match, path, ghost: isGhost, future, offScenario, collapsedCount, collapsed, inProject });
       if (!hidden) {
         (sel.nodes.has(id) ? drawTop : draw).push(id);
@@ -324,7 +317,8 @@ export class ViewModel {
       const src = doc.nodes[e.source];
       const offScenario = sid !== null && !edgeInScen(e);
       const cross = idx.cross.has(id);
-      const srcClosed = !!src && collapsedOf(src.id);
+      // 元のノードの折りたたみで止まる線は描かない（3 年の分かれ道の閉じたカードは、同じ範囲の子への道の線だけ）
+      const srcClosed = !!src && collapsedOf(src.id) && stops(e);
       let hidden = !a || !b || a.hidden || b.hidden || (hideScen && offScenario) || srcClosed || e.collapsed;
       const incident = sel.nodes.has(e.source) || sel.nodes.has(e.target) || sel.edges.has(id);
       if (prefs.edgeMode === "selection" && !incident) hidden = true;
@@ -342,6 +336,69 @@ export class ViewModel {
 
     // 7) 3 年の分かれ道の重ねる位置（開いている所・見えている物・索引が変わったときだけ並べ直す）
     this.updateOverlay(info, opens, visibleScope);
+  }
+
+  /** 範囲（シナリオで隠す・プロジェクトに絞る）と折りたたみ・シナリオの推定を計算する（compute が材料ごとに覚えておく） */
+  private collapseState(info: ImpactScopeInfo, opens: Set<ID>[], o: { focus: boolean; hideScen: boolean; sid: ID | null; inProj: (pids: ID[]) => boolean; edgeInScen: (e: GEdge) => boolean }): CollapseState {
+    const doc = this.store.doc;
+    const idx = this.index;
+    const { focus, hideScen, sid, inProj, edgeInScen } = o;
+
+    // 1) 範囲（シナリオで隠す・プロジェクトに絞る）
+    const scope = new Set<ID>();
+    for (const id in doc.nodes) {
+      const n = doc.nodes[id]!;
+      if (hideScen && !inScenario(n.scenarioIds, sid)) continue;
+      if (focus && !inProj(n.projectIds)) continue;
+      scope.add(id);
+    }
+    const ghost = new Set<ID>();
+    if (focus) {
+      for (const id of [...scope]) {
+        for (const list of [idx.out.get(id), idx.inc.get(id)]) {
+          for (const eid of list ?? []) {
+            const e = doc.edges[eid]!;
+            const other = e.source === id ? e.target : e.source;
+            if (scope.has(other) || ghost.has(other)) continue;
+            const on = doc.nodes[other];
+            if (!on) continue;
+            if (hideScen && (!inScenario(on.scenarioIds, sid) || !edgeInScen(e))) continue;
+            ghost.add(other);
+          }
+        }
+      }
+      for (const g of ghost) scope.add(g);
+    }
+    const edgeOk = (e: GEdge) => !hideScen || edgeInScen(e);
+
+    // 2) 折りたたみ・シナリオの推定
+    const openOf = new Map(info.roots.map((r, i) => [r, opens[i]!]));
+    const collapsedOf = info.roots.length
+      ? (id: ID): boolean => {
+          const r = info.owner.get(id);
+          return r !== undefined ? !openOf.get(r)!.has(id) : !!doc.nodes[id]?.collapsed;
+        }
+      : (id: ID): boolean => !!doc.nodes[id]?.collapsed;
+    // 3 年の分かれ道の閉じたカードが止めるのは、同じ範囲の子への道の線だけ（ほかの関係の線・範囲の外へ出る線の先は隠さない）
+    const stops = (e: GEdge): boolean => {
+      const r = info.owner.get(e.source);
+      return r === undefined || (isFlowEdge(e) && info.owner.get(e.target) === r);
+    };
+    // 3 年の分かれ道の入口は必ず入口にする（カードから今日へ戻る線を引いても、地図ごと消えない）
+    const roots = new Set(info.roots.filter((r) => info.owner.get(r) === r));
+    const branches = new Set<ID>();
+    for (const id of info.owner.keys()) {
+      for (const eid of idx.out.get(id) ?? []) {
+        const e = doc.edges[eid];
+        if (e && e.source !== e.target && stops(e)) {
+          branches.add(id);
+          break;
+        }
+      }
+    }
+    const col = computeCollapse(doc, idx, scope, edgeOk, collapsedOf, { stops, roots });
+    const unreached = sid ? computeUnreached(doc, idx, scope, edgeInScen, roots) : new Set<ID>();
+    return { scope, ghost, edgeOk, collapsedOf, stops, roots, branches, col, unreached };
   }
 
   // ------------------------------------------------------------ 3 年の分かれ道（開く・閉じる・重ねる位置）
@@ -429,11 +486,12 @@ export class ViewModel {
 
   /**
    * 折りたたんでいるか（右クリックのメニューの「展開する／この先を折りたたむ」・C で決める向き）。
-   * 3 年の分かれ道は見え方で閉じていて先がある物、それ以外は文書の collapsed
+   * 3 年の分かれ道は見え方で閉じていて、同じ範囲の子（閉じると隠れる物）がある物、それ以外は文書の collapsed
    */
   isCollapsed(id: ID): boolean {
-    if (!this.inImpact(id)) return !!this.store.doc.nodes[id]?.collapsed;
-    return !this.isOpen(id) && (this.index.out.get(id)?.length ?? 0) > 0;
+    const info = this.scopeInfo();
+    if (!info.owner.has(id)) return !!this.store.doc.nodes[id]?.collapsed;
+    return !this.isOpen(id) && this.impactKids(id, info).length > 0;
   }
 
   /**
@@ -622,7 +680,8 @@ export class ViewModel {
         for (const eid of this.index.inc.get(v) ?? []) {
           const e = sim.edges[eid];
           if (!e || e.source === e.target || !l.scope.has(e.source) || !l.edgeOk(e)) continue;
-          if (closed(e.source)) (info.owner.has(e.source) ? openV : openN).add(e.source);
+          // 開くのは、この線を止めている折りたたみだけ（3 年の分かれ道の閉じたカードは、同じ範囲の子への道の線だけを止める）
+          if (closed(e.source) && l.stops(e)) (info.owner.has(e.source) ? openV : openN).add(e.source);
           if (e.collapsed) openE.add(eid);
           if (col.hidden.has(e.source) && !region.has(e.source)) {
             region.add(e.source);
@@ -634,7 +693,7 @@ export class ViewModel {
         sim = { ...sim, edges: { ...sim.edges } };
         for (const e of openE) sim.edges[e] = { ...sim.edges[e]!, collapsed: false };
       }
-      col = computeCollapse(sim, this.index, l.scope, l.edgeOk, closed);
+      col = computeCollapse(sim, this.index, l.scope, l.edgeOk, closed, { stops: l.stops, roots: l.roots });
     }
     return { nodes: [...openN], edges: [...openE], open: [...openV] };
   }

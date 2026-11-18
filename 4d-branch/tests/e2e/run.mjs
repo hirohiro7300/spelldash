@@ -1664,19 +1664,23 @@ async function main() {
     await fp.evaluate(() => (window.__fourD.ui.setSearch(""), window.__fourD.ui.clearSelection()));
   });
 
-  await check("未来の道筋: カードはドラッグしても動かず（キャンバスが動く）、お知らせが一度だけ出る", async () => {
+  await check("未来の道筋: カードはドラッグしても動かず（キャンバスが動く。選択・右の概要・薄さもそのまま）、お知らせが一度だけ出る。押して離すと選び、ダブルクリックで編集を始める", async () => {
     const r0 = await fp.evaluate(() => {
       const f = window.__fourD;
       const vm = f.app.vm;
       const v = f.app.view;
       const imp = vm.impact;
       const alt = imp.decision.get(imp.root).alts[0];
+      f.ui.clearSelection();
       v.centerOn(alt, { zoom: 0.8, animate: false });
       const p = vm.posOf(alt);
       const s = v.camera.toScreen(p.x, p.y);
       const r = v.canvas.getBoundingClientRect();
       return { alt, x: r.left + s.x, y: r.top + s.y, doc: { x: f.store.doc.nodes[alt].x, y: f.store.doc.nodes[alt].y }, cam: v.camera.x, rev: f.store.revision };
     });
+    await fp.waitForTimeout(100);
+    const overview = () => fp.evaluate(() => !!document.querySelector(".imp-overview"));
+    assert(await overview(), "選んでいないのに右に概要が出ていない（確かめの前提）");
     await fp.mouse.move(r0.x, r0.y);
     await fp.mouse.down();
     await fp.mouse.move(r0.x + 60, r0.y + 30, { steps: 6 });
@@ -1684,11 +1688,97 @@ async function main() {
     await fp.waitForTimeout(200);
     const r1 = await fp.evaluate((alt) => {
       const f = window.__fourD;
-      return { doc: { x: f.store.doc.nodes[alt].x, y: f.store.doc.nodes[alt].y }, cam: f.app.view.camera.x, rev: f.store.revision, toasts: [...document.querySelectorAll(".toast-text")].filter((t) => t.textContent.includes("カードは動かせません")).length };
+      return { doc: { x: f.store.doc.nodes[alt].x, y: f.store.doc.nodes[alt].y }, cam: f.app.view.camera.x, rev: f.store.revision, sel: f.ui.selection.nodes.size, path: f.app.vm.pathActive, toasts: [...document.querySelectorAll(".toast-text")].filter((t) => t.textContent.includes("カードは動かせません")).length };
     }, r0.alt);
     assert(r1.doc.x === r0.doc.x && r1.doc.y === r0.doc.y && r1.rev === r0.rev, `カードが動いた ${JSON.stringify(r1)}`);
     assert(Math.abs(r1.cam - r0.cam - 60) < 2, `キャンバスが動かない ${r0.cam} → ${r1.cam}`);
     assert(r1.toasts === 1, `お知らせ ${r1.toasts}`);
+    assert(r1.sel === 0 && !r1.path && (await overview()), `パンでカードが選ばれた・概要が消えた ${JSON.stringify(r1)}`);
+    // 動かさずに押して離すと選ぶ。ダブルクリックで題名の編集を始める
+    const at = { x: r0.x + 60, y: r0.y + 30 };
+    await fp.mouse.click(at.x, at.y);
+    await fp.waitForTimeout(150);
+    const sel = await fp.evaluate(() => [...window.__fourD.ui.selection.nodes]);
+    assert(sel.length === 1 && sel[0] === r0.alt, `押して離しても選ばれない ${JSON.stringify(sel)}`);
+    await fp.waitForTimeout(400);
+    await fp.mouse.dblclick(at.x, at.y);
+    try {
+      await fp.locator(".inline-editor").waitFor({ timeout: 2000 });
+    } finally {
+      await closeInlineEditor(fp);
+    }
+    await fp.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("未来の道筋: 閲覧のみのタブでも、右クリックの「展開する」「折りたたみをすべて開く」で 3 年の分かれ道を開ける（見え方だけ。自分のノードの折りたたみはそのまま・閲覧のみのお知らせは出ない）", async () => {
+    // 自分のノード（文書で折りたたんだ物）を足して保存しておく
+    const own = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const r = f.store.doc.nodes[f.app.vm.impact.root];
+      const a = f.app.cmd.createNode("goal", { x: r.x - 3000, y: r.y }, { exact: true, title: "閲覧のみの確かめ" });
+      const b = f.app.cmd.createNode("action", { x: r.x - 2700, y: r.y }, { exact: true, title: "閲覧のみの確かめの先", from: [a] });
+      f.app.cmd.toggleCollapse([a]);
+      f.ui.clearSelection();
+      return { a, b };
+    });
+    await waitSaved(fp);
+    const p2 = await fctx.newPage();
+    watch(p2);
+    try {
+      await p2.goto(BASE, { waitUntil: "networkidle" });
+      await p2.waitForFunction((o) => window.__fourD?.store.readOnly === true && !!window.__fourD.store.doc.nodes[o.a] && window.__fourD.app.vm.impactRoots().length === 1, own, { timeout: 10000 });
+      const blockedToasts = () => p2.evaluate(() => [...document.querySelectorAll(".toast-text")].filter((t) => t.textContent.includes("編集するには上の")).length);
+      // 閉じたカード（先のある物）を右クリック: 「展開する」を押せて、開く
+      const card = await p2.evaluate(() => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
+        const v = f.app.view;
+        vm.ensure();
+        const id = vm.drawNodes.find((x) => vm.inImpact(x) && vm.isCollapsed(x));
+        v.centerOn(id, { zoom: 0.8, animate: false });
+        const p = vm.posOf(id);
+        const s = v.camera.toScreen(p.x - 40, p.y);
+        const r = v.canvas.getBoundingClientRect();
+        return { id, x: r.left + s.x, y: r.top + s.y };
+      });
+      await p2.waitForTimeout(150);
+      await p2.mouse.click(card.x, card.y, { button: "right" });
+      const expand = p2.getByRole("menuitem", { name: /展開する/ });
+      await expand.waitFor();
+      assert(await expand.isEnabled(), "閲覧のみのタブで「展開する」を押せない");
+      await expand.click();
+      await p2.waitForTimeout(200);
+      assert(await p2.evaluate((id) => window.__fourD.app.vm.isOpen(id), card.id), "「展開する」で開かない");
+      // 何もない所を右クリック: 「折りたたみをすべて開く」を押せて、3 年の分かれ道を全部開く
+      const empty = await p2.evaluate(() => {
+        const v = window.__fourD.app.view;
+        const r = v.canvas.getBoundingClientRect();
+        for (let y = 120; y < v.height - 200; y += 37) for (let x = 120; x < v.width - 340; x += 41) if (v.hitTest(x, y).kind === "empty") return { x: r.left + x, y: r.top + y };
+        return null;
+      });
+      assert(empty, "空き所が見つからない");
+      await p2.mouse.click(empty.x, empty.y, { button: "right" });
+      const all = p2.getByRole("menuitem", { name: /折りたたみをすべて開く/ });
+      await all.waitFor();
+      assert(await all.isEnabled(), "閲覧のみのタブで「折りたたみをすべて開く」を押せない");
+      await all.click();
+      await p2.waitForTimeout(300);
+      const r = await p2.evaluate((o) => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
+        vm.ensure();
+        const scope = Object.keys(f.store.doc.nodes).filter((id) => vm.inImpact(id));
+        return { scope: scope.length, hidden: scope.filter((id) => vm.node(id).hidden).length, ownCollapsed: f.store.doc.nodes[o.a].collapsed, ownKidHidden: vm.node(o.b).hidden };
+      }, own);
+      assert(r.scope > 1000 && r.hidden === 0 && r.ownCollapsed && r.ownKidHidden, JSON.stringify(r));
+      assert((await blockedToasts()) === 0, "閲覧のみのお知らせが出た");
+      // 開いた所（この端末の表示の設定）は最初の形に戻しておく（元のタブの続きの確かめに残さない）
+      await p2.evaluate(() => (window.__fourD.app.cmd.resetImpactOpen(), window.__fourD.ui.flushPrefs()));
+    } finally {
+      await p2.close();
+    }
+    // 片付け: 足した自分のノードを消す（元のタブは編集できるまま）
+    await fp.evaluate((o) => window.__fourD.app.cmd.deleteNodes([o.a, o.b]), own);
     await fp.evaluate(() => window.__fourD.ui.clearSelection());
   });
 
@@ -1779,29 +1869,67 @@ async function main() {
     await shot("e2e-17-future-phone-first", p4);
     // 選んだ選択肢は compact でも「−」を押して閉じられる（押せる大きさは 44px 以上）: 指で「+N」を押して開き、選んで「−」で閉じる
     const alt = imp.alts[0].id;
-    const at = () =>
-      p4.evaluate((id) => {
-        const f = window.__fourD;
-        const v = f.app.view;
-        const p = f.app.vm.posOf(id);
-        const s = v.camera.toScreen(p.x + 106 - 34, p.y + 48);
-        const r = v.canvas.getBoundingClientRect();
-        return { x: r.left + s.x, y: r.top + s.y };
-      }, alt);
+    /** カードの真ん中から (dx, dy)（ワールドの px）の所の画面の位置 */
+    const at = (id, dx, dy) =>
+      p4.evaluate(
+        ({ id, dx, dy }) => {
+          const f = window.__fourD;
+          const v = f.app.view;
+          const p = f.app.vm.posOf(id);
+          const s = v.camera.toScreen(p.x + dx, p.y + dy);
+          const r = v.canvas.getBoundingClientRect();
+          return { x: r.left + s.x, y: r.top + s.y };
+        },
+        { id, dx, dy },
+      );
+    /** 印の真ん中（ノードの下の縁の右寄り） */
+    const badgeAt = (id) => at(id, 106 - 34, 48);
     const tapAt = async (pt) => p4.touchscreen.tap(pt.x, pt.y);
-    let pt = await at();
-    // 印の真ん中から 18px ずれた所（指の当たりの範囲）を押しても開く
-    await tapAt({ x: pt.x - 18, y: pt.y - 18 });
+    const stateOf = (id) => p4.evaluate((x) => ({ sel: [...window.__fourD.ui.selection.nodes], collapsed: window.__fourD.app.vm.isCollapsed(x), shown: window.__fourD.app.vm.drawNodes.length }), id);
+    // カードの真ん中から 30px 右（描いた印の上ではない所）を押すと、開かずにカードを選ぶ（印の押せる範囲はカードの中へ広げない）
+    await tapAt(await at(alt, 30, 0));
+    await p4.waitForTimeout(400);
+    let st = await stateOf(alt);
+    assert(st.sel.length === 1 && st.sel[0] === alt && st.collapsed, `カードの真ん中の右を押したら、選ばれずに開いた: ${JSON.stringify(st)}`);
+    await p4.evaluate(() => window.__fourD.ui.clearSelection());
+    await p4.waitForTimeout(200);
+    // 印の下（カードの外の行の間）で、描いた印から外れた所（指の当たりの範囲: 印の真ん中から左へ 30・カードの下の縁から 26）を押しても開く
+    const gap = await at(alt, 106 - 34 - 30, 48 + 26);
+    const gapHit = await p4.evaluate(({ x, y }) => {
+      const v = window.__fourD.app.view;
+      const r = v.canvas.getBoundingClientRect();
+      return v.hitTest(x - r.left, y - r.top).kind;
+    }, gap);
+    assert(gapHit === "badge", `印の下の行の間が印に当たらない: ${gapHit}`);
+    await tapAt(gap);
     await p4.waitForTimeout(500);
-    const openNow = await p4.evaluate((id) => !window.__fourD.app.vm.isCollapsed(id), alt);
-    assert(openNow, "「+N」を押しても開かない");
+    st = await stateOf(alt);
+    assert(!st.collapsed && st.sel.length === 0, `「+N」の下を押しても開かない: ${JSON.stringify(st)}`);
     await p4.evaluate((id) => window.__fourD.ui.select([id]), alt);
     await p4.waitForTimeout(200);
-    pt = await at();
-    await tapAt(pt);
+    await tapAt(await badgeAt(alt));
     await p4.waitForTimeout(400);
     const closedNow = await p4.evaluate((id) => window.__fourD.app.vm.isCollapsed(id), alt);
     assert(closedNow, "選んだ選択肢の「−」で閉じない");
+    // 一番小さい compact（30%）で今日を選んでいても、今日のカードの右寄りを押して地図ごと閉じない（選んだまま）
+    const root = imp.root;
+    await p4.evaluate((id) => {
+      const f = window.__fourD;
+      f.app.view.centerOn(id, { zoom: 0.3, animate: false });
+      f.ui.select([id]);
+    }, root);
+    await p4.waitForTimeout(300);
+    const before = await stateOf(root);
+    for (const [dx, dy] of [
+      [40, -20],
+      [0, 0],
+      [60, 10],
+    ]) {
+      await tapAt(await at(root, dx, dy));
+      await p4.waitForTimeout(400);
+      const now = await stateOf(root);
+      assert(!now.collapsed && now.shown === before.shown && now.sel.length === 1 && now.sel[0] === root, `今日のカード（${dx}, ${dy}）を押したら閉じた: ${JSON.stringify({ before, now })}`);
+    }
     await c4.close();
   });
 

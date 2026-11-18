@@ -121,6 +121,35 @@ describe("折りたたみ", () => {
     expect(hiddenOf(doc)).toEqual(["b", "c"]);
   });
 
+  it("必ず入口にするノード（3 年の分かれ道の入口）は、閉じたカードから戻る線があっても隠れない", () => {
+    // r → a（閉じている）→ b → r: 入口を決めると r は循環の中で、起点 a だけが入口になり、r も b も隠れていた
+    const doc = graph("r>a>b>r");
+    const index = buildIndex(doc);
+    const all = new Set(Object.keys(doc.nodes));
+    const closed = (id: string) => id === "a";
+    expect([...computeCollapse(doc, index, all, () => true, closed).hidden].sort()).toEqual(["b", "r"]);
+    const res = computeCollapse(doc, index, all, () => true, closed, { roots: new Set(["r"]) });
+    expect([...res.hidden]).toEqual(["b"]);
+    expect(res.counts.get("a")).toBe(1);
+    // シナリオの推定でも同じ（a → b がシナリオの外でも、r は外れない）
+    expect([...computeUnreached(doc, index, all, (e) => e.id !== "ab")].sort()).toEqual(["b", "r"]);
+    expect([...computeUnreached(doc, index, all, (e) => e.id !== "ab", new Set(["r"]))]).toEqual(["b"]);
+  });
+
+  it("止める線を絞れる（3 年の分かれ道の閉じたカードは同じ範囲の子への道の線だけ止め、ほかの線の先は隠さない）", () => {
+    // a は閉じている。a → b は子への道の線、a → w は別の関係の線（w は自分のノード）、w → w2
+    const doc = graph("r>a>b>c, a>w>w2");
+    const index = buildIndex(doc);
+    const all = new Set(Object.keys(doc.nodes));
+    const res = computeCollapse(doc, index, all, () => true, (id) => id === "a", { stops: (e) => e.id !== "aw" });
+    expect([...res.hidden].sort()).toEqual(["b", "c"]);
+    expect(res.counts.get("a")).toBe(2);
+    // 止める線が 1 本も無ければ起点にならない（何も隠さない・件数も出さない）
+    const none = computeCollapse(doc, index, all, () => true, (id) => id === "a", { stops: () => false });
+    expect(none.hidden.size).toBe(0);
+    expect(none.counts.has("a")).toBe(false);
+  });
+
   it("2,000 ノード・3,000 接続でも速い", () => {
     const doc = createEmptyDoc();
     const N = 2000;

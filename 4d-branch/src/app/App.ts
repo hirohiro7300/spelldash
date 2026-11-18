@@ -415,11 +415,13 @@ export class App implements AppContext {
   }
 
   private contextMenu(hit: Hit, x: number, y: number, world: { x: number; y: number }): void {
-    const { cmd, ui, store } = this;
+    const { cmd, ui, store, vm } = this;
     const ro = store.readOnly;
     let entries: MenuEntry[] = [];
     if (hit.kind === "node" || hit.kind === "badge" || hit.kind === "port") {
       const ids = [...ui.selection.nodes];
+      // 3 年の分かれ道のカードの開く・閉じるは見え方だけ（閲覧のみのタブでも使える）
+      const viewOnly = ids.every((id) => vm.inImpact(id));
       const single = ids.length === 1 ? store.doc.nodes[ids[0]!] : null;
       const typeSub = NODE_TYPE_ORDER.map((t) => ({ label: NODE_TYPES[t].label, icon: t, shortcut: NODE_TYPES[t].key, checked: !!single && single.type === t, run: () => cmd.setType(ids, t) }));
       const statusSub = STATUS_ORDER.map((s) => ({ label: STATUSES[s].label, swatch: STATUSES[s].color, checked: !!single && single.status === s, run: () => cmd.setStatus(ids, s) }));
@@ -441,7 +443,7 @@ export class App implements AppContext {
         { label: "種類", icon: single?.type ?? "layers", disabled: ro, submenu: typeSub },
         { label: "状態", icon: "check", disabled: ro, submenu: statusSub },
         { label: "プロジェクト", icon: "folder", disabled: ro || !projSub.length, submenu: projSub },
-        { label: collapsed ? "展開する" : "この先を折りたたむ", icon: collapsed ? "expand" : "collapse", shortcut: "C", disabled: ro, run: () => cmd.toggleCollapse(ids) },
+        { label: collapsed ? "展開する" : "この先を折りたたむ", icon: collapsed ? "expand" : "collapse", shortcut: "C", disabled: ro && !viewOnly, run: () => cmd.toggleCollapse(ids) },
         "sep",
         { label: "経路をたどって表示", icon: "fit", hint: "上流と下流をまとめて画面に収める", run: () => this.fitPaths(ids) },
         { label: "複製", icon: "copy", shortcut: `${MOD}D`, disabled: ro, run: () => cmd.duplicate(ids) },
@@ -469,7 +471,8 @@ export class App implements AppContext {
         "sep",
         { label: "全体を表示", icon: "fit", shortcut: "F", run: () => this.view.fit() },
         { label: "すべて選択", icon: "layers", shortcut: `${MOD}A`, run: () => (this.ui.prefs.view === "list" ? this.ui.select(this.listIds()) : cmd.selectAll()) },
-        { label: "折りたたみをすべて開く", icon: "expand", disabled: ro, run: () => cmd.expandAll() },
+        // 閲覧のみのタブでも、3 年の分かれ道があれば見え方だけ開ける（文書の折りたたみはそのまま）
+        { label: "折りたたみをすべて開く", icon: "expand", disabled: ro && !vm.impactRoots().length, run: () => cmd.expandAll() },
       ];
     }
     showMenu(x, y, entries, { minWidth: 230 });
