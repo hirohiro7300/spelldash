@@ -1,0 +1,276 @@
+{
+  "r.fc_switch.high.ad_permside.a0_a1": {
+    "title": "1 年後: 全部可でも副業は手探り",
+    "body": "3 月に全部可が出て、4 月には Pro も開いた。副業の 1 社目は決まらないことが多く、決まっても 1 社目どまり。次は営業を強めるか。"
+  },
+  "r.fc_switch.high.ad_permside.a0_a1.plan_side": {
+    "title": "副業を 2 社目まで取りにいく",
+    "body": "転職先の取引先と重ならない地元の店に絞り、顧客を 2 社目まで取る（週 {h} 時間）。本業と SpellDash 週 10 時間は続ける。紹介が回るかが鍵。"
+  },
+  "r.fc_switch.high.ad_permside.a0_a1.plan_side.cl2": {
+    "title": "3 年後: 副業 {cl} 社が給与に上乗せ",
+    "body": "紹介が回って 2 社目まで埋まり、給与 {sal} 倍に顧客 {cl} 社・月 {ads} 万円が乗る。SpellDash は有料 {pu} 人。会社員で持てる上限に届き、この先増やすなら週 4 日勤務の相談が要る。"
+  },
+  "r.fc_switch.high.ad_permside.a0_a1.plan_side.cl0": {
+    "title": "3 年後: 副業は {cl} 社ほどで頭打ち",
+    "body": "2 年営業しても 2 社目は長続きせず、顧客 {cl} 社ほど（月 {ads} 万円前後）。給与 {sal} 倍と、有料 {pu} 人の Pro は続く。夜と週末の営業が実らず、次の 1 年はその時間を Pro に戻すかを比べる。"
+  },
+  "r.fc_switch.high.ad_permside.a0_a1.keep": {
+    "title": "副業を広げず今の形で続ける",
+    "body": "営業は足さず、本業と SpellDash 週 10 時間（Pro）を 2 年続ける。1 社目がいれば運用は続ける。上積みは Pro の伸び次第。"
+  },
+  "r.fc_switch.high.ad_permside.a0_a1.keep.pu30": {
+    "title": "3 年後: Pro が有料 {pu} 人まで育った",
+    "body": "営業を足さないまま、週 10 時間の開発が口コミで広がり、遊ぶ人 月 {mau} 人・有料 {pu} 人。副業の顧客はほぼ無く、稼ぎは給与 {sal} 倍と Pro。保護者の問い合わせが増え、来年はその対応が開発の時間を食い始める。"
+  },
+  "r.fc_switch.high.ad_permside.a0_a1.keep.pu10": {
+    "title": "3 年後: 有料 {pu} 人・稼ぎは給与頼み",
+    "body": "副業の顧客は残らず、全部可の許可だけが手元にある。給与 {sal} 倍に、遊ぶ人 月 {mau} 人・有料 {pu} 人の Pro が小さく乗る。許可は生きているので、営業を再開すれば翌年にも 1 社目から探し直せる。"
+  },
+  "r.fc_switch.high.ad_permside.a0_a1.keep.pu0": {
+    "title": "3 年後: 有料 {pu} 人どまりで副業も無し",
+    "body": "副業は広げず、Pro も遊ぶ人 月 {mau} 人・有料 {pu} 人と伸びなかった。サーバー代を払うとほぼ残らず、稼ぎはほぼ給与 {sal} 倍だけ。英検の級ごとに絞って作り直すか、Pro を閉じるかを年明けに決める。"
+  },
+  "r.fc_switch.high.ad_permside.s": {
+    "title": "1 年後: 広告運用は不可で Pro だけ",
+    "body": "3 月の答えは『SpellDash だけ可』。広告運用は競業として断られ、4 月に Pro だけ開いた。次は本業で昇格を狙うか。"
+  },
+  "r.fc_switch.high.ad_permside.s.plan_fc": {
+    "title": "転職先で昇格を 2 回狙う",
+    "body": "副業が使えない分を本業に回し、2 回の 4 月の評価で昇格を狙う（週 {h} 時間）。Pro の週 10 時間は続ける。入社 1 年余りで評価されるか。"
+  },
+  "r.fc_switch.high.ad_permside.s.plan_fc.u1_u2": {
+    "title": "3 年後: 移った先で昇格し給与 {sal} 倍",
+    "short": "昇格あり",
+    "label": "昇格 1 回以上",
+    "body": "2028 年か 2029 年の 4 月に昇格し、給与は {sal} 倍。SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人で、広告運用は今も不可。役職が付いて責任が増え、次の 1 年は週 10 時間の開発を守れるかが課題。"
+  },
+  "r.fc_switch.high.ad_permside.s.plan_fc.u0": {
+    "title": "3 年後: 昇格なしでも転職分で {sal} 倍",
+    "body": "2 回の 4 月の評価はどちらも見送られ、給与は昇給分だけの {sal} 倍。SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人。在籍 3 年近い実績で、次は広告運用の副業も認める会社への転職を探せる。"
+  },
+  "r.fc_switch.high.ad_permside.s.keep": {
+    "title": "本業と Pro を続ける",
+    "body": "昇格狙いの時間は足さず、本業と SpellDash 週 10 時間（Pro）を 2 年続ける。広告運用は不可のまま。稼ぎの伸びは Pro 次第。"
+  },
+  "r.fc_switch.high.ad_permside.s.keep.pu30": {
+    "title": "3 年後: 週 10 時間で有料 {pu} 人まで",
+    "body": "広告運用は不可のまま、週 10 時間の開発が口コミで伸び、遊ぶ人 月 {mau} 人・有料 {pu} 人。給与 {sal} 倍に Pro の売上が乗る。Pro の所得が増え、来年の春は確定申告が要り、住民税も上がる。"
+  },
+  "r.fc_switch.high.ad_permside.s.keep.pu10": {
+    "title": "3 年後: 有料 {pu} 人・本業が稼ぎの柱",
+    "body": "広告運用は不可のまま、本業（給与 {sal} 倍）と週 10 時間の開発を続けた。SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人。解約した人に理由を聞く仕組みを入れれば、この先は有料の人数を積み増せる。"
+  },
+  "r.fc_switch.high.ad_permside.s.keep.pu0": {
+    "title": "3 年後: Pro は有料 {pu} 人で伸び悩む",
+    "body": "広告運用は不可、Pro も遊ぶ人 月 {mau} 人・有料 {pu} 人で止まった。稼ぎはほぼ給与 {sal} 倍だけ。本職の広告の腕を SpellDash の集客に使うのは許可の範囲内なので、まずは少額の広告で反応を試せる。"
+  },
+  "r.fc_switch.high.ad_permside.n": {
+    "title": "1 年後: どちらも不可・稼ぎは給与だけ",
+    "body": "3 月の答えは『どちらも不可』。1 社目探しは始める前に止まり、Pro も出せず遊ぶ人 月 {mau} 人は無料のまま。次は昇格を狙うか。"
+  },
+  "r.fc_switch.high.ad_permside.n.plan_fc": {
+    "title": "副業の代わりに昇格を狙う",
+    "body": "副業で稼げない分を給与で補う。2 回の 4 月の評価で昇格を狙う（週 {h} 時間）。SpellDash は無料で週 10 時間続ける。評価の基準を掴めるか。"
+  },
+  "r.fc_switch.high.ad_permside.n.plan_fc.u1_u2": {
+    "title": "3 年後: 昇格で給与 {sal} 倍に",
+    "short": "昇格あり",
+    "label": "昇格 1 回以上",
+    "body": "副業の代わりに本業へ時間を寄せ、4 月の評価で昇格して給与 {sal} 倍。SpellDash は無料のまま遊ぶ人 月 {mau} 人で、課金は今も不可。昇格した立場なら、次は副業の規定の見直しを人事に掛け合いやすい。"
+  },
+  "r.fc_switch.high.ad_permside.n.plan_fc.u0": {
+    "title": "3 年後: 副業も昇格も無く給与 {sal} 倍",
+    "body": "4 月の評価は 2 回とも昇格に届かず、給与は昇給分の {sal} 倍。副業は不可、SpellDash は無料で遊ぶ人 月 {mau} 人。この会社に残る限り上がり方はこの程度と見え、来年は副業可の会社への転職か独立かを比べる番。"
+  },
+  "r.fc_switch.high.ad_permside.n.keep": {
+    "title": "本業と無料の開発を続ける",
+    "body": "副業は不可のまま、本業と SpellDash 週 10 時間（無料）を 2 年続ける。稼ぎが増えるのは 4 月の昇給だけで、会社の規定が変わるのを待つ形。"
+  },
+  "r.fc_switch.high.ad_permside.n.keep.all": {
+    "title": "3 年後: 無料のまま遊ぶ人 {mau} 人",
+    "body": "副業は不可のまま 2 年。給与は昇給分の {sal} 倍、SpellDash は無料で遊ぶ人 月 {mau} 人まで増えた。課金できずサーバー代だけ出ていくが、独立すれば翌月にも、この遊ぶ人に Pro を出せる。"
+  },
+  "r.fc_switch.high.sd_permpro.a": {
+    "title": "1 年後: 全部可・まず Pro を開いた",
+    "body": "3 月に全部可が出て、4 月に Pro を開き有料 {pu} 人。広告運用の許可もあるが顧客探しは手つかず。次は副業の顧客も取りにいくか。"
+  },
+  "r.fc_switch.high.sd_permpro.a.plan_side": {
+    "title": "副業の顧客を 2 社目まで取る",
+    "body": "Pro は週 10 時間で回し、許可のある広告運用で地元の店から 2 社目まで取る（週 {h} 時間）。本業は続ける。転職先の取引先と重ならない相手を選べるか。"
+  },
+  "r.fc_switch.high.sd_permpro.a.plan_side.cl2": {
+    "title": "3 年後: Pro と副業 {cl} 社ほどの二本",
+    "body": "先に始めた Pro が有料 {pu} 人まで伸び、後から足した副業は顧客 {cl} 社ほど（月 {ads} 万円前後）。給与 {sal} 倍に二つが乗る。取引先にインボイス登録を求められれば、来年分から消費税の申告も加わる。"
+  },
+  "r.fc_switch.high.sd_permpro.a.plan_side.cl0": {
+    "title": "3 年後: 2 社目は来ず副業 {cl} 社",
+    "body": "2 社目は取れず、顧客 {cl} 社（月 {ads} 万円）の副業が給与 {sal} 倍に乗る。Pro は有料 {pu} 人・遊ぶ人 月 {mau} 人。この顧客が離れると副業は 0 円に戻るので、営業を続けるかは契約更新の時期に決め直す。"
+  },
+  "r.fc_switch.high.sd_permpro.a.keep": {
+    "title": "Pro と本業に絞って続ける",
+    "body": "副業の許可は使わずに置き、本業と SpellDash 週 10 時間（Pro）を 2 年続ける。上積みは Pro の有料会員がどこまで増えるか次第。"
+  },
+  "r.fc_switch.high.sd_permpro.a.keep.pu30": {
+    "title": "3 年後: 先行した Pro が有料 {pu} 人",
+    "body": "副業の許可は寝かせたまま Pro が口コミで広がり、遊ぶ人 月 {mau} 人・有料 {pu} 人。給与 {sal} 倍に Pro の売上が乗る。この規模なら、来年度に向けて塾へ 40 席の導入を持ちかけられる。"
+  },
+  "r.fc_switch.high.sd_permpro.a.keep.pu10": {
+    "title": "3 年後: Pro は有料 {pu} 人・許可は温存",
+    "body": "副業の許可は使わず、本業と週 10 時間の開発で 2 年。SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人で、給与 {sal} 倍に小さく乗る。この先稼ぎを足すなら、Pro より手つかずの広告運用の方が早い。"
+  },
+  "r.fc_switch.high.sd_permpro.a.keep.pu0": {
+    "title": "3 年後: Pro は有料 {pu} 人で頭打ち",
+    "body": "副業はせず、Pro も伸びが鈍く遊ぶ人 月 {mau} 人・有料 {pu} 人。サーバー代を引くとほぼ残らず、稼ぎは給与 {sal} 倍が中心。次は無料で遊べる範囲を絞り、有料に移る理由を作り直す。"
+  },
+  "r.fc_switch.high.sd_permpro.s": {
+    "title": "1 年後: Pro は通り広告運用は不可",
+    "body": "3 月の答えは『SpellDash だけ可』。狙いどおり 4 月に Pro を開き有料 {pu} 人。広告運用は不可。次は昇格を狙うか。"
+  },
+  "r.fc_switch.high.sd_permpro.s.plan_fc": {
+    "title": "2 回の 4 月で昇格を狙う",
+    "body": "広告運用の副業の代わりに本業を伸ばす。2028 年と 2029 年の 4 月に昇格を狙う（週 {h} 時間）。Pro の週 10 時間は続ける。成果を示せるか。"
+  },
+  "r.fc_switch.high.sd_permpro.s.plan_fc.u1_u2": {
+    "title": "3 年後: 昇格と Pro で稼ぎを足した",
+    "short": "昇格あり",
+    "label": "昇格 1 回以上",
+    "body": "4 月の評価で昇格し、給与は {sal} 倍。広告運用は不可のままでも、Pro が有料 {pu} 人・遊ぶ人 月 {mau} 人まで来た。役職が変わると届け出を出し直させる会社もあり、SpellDash の許可が続くかを年明けに確かめる。"
+  },
+  "r.fc_switch.high.sd_permpro.s.plan_fc.u0": {
+    "title": "3 年後: 昇格なし・Pro は有料 {pu} 人",
+    "body": "2 回の 4 月の評価では昇格を逃し、給与は昇給分の {sal} 倍。広告運用は不可のまま、Pro は有料 {pu} 人・遊ぶ人 月 {mau} 人と順調。昇格に足した時間は、来年から Pro の集客に戻す方が稼ぎに直結する。"
+  },
+  "r.fc_switch.high.sd_permpro.s.keep": {
+    "title": "Pro を育てつつ本業を続ける",
+    "body": "本業は今の力加減のまま、Pro の改良に SpellDash 週 10 時間を使い続ける。広告運用は不可のまま。伸びは口コミ次第。"
+  },
+  "r.fc_switch.high.sd_permpro.s.keep.pu30": {
+    "title": "3 年後: Pro が伸び有料 {pu} 人",
+    "body": "広告運用は不可でも SpellDash に週 10 時間を注ぎ続け、遊ぶ人 月 {mau} 人・有料 {pu} 人まで伸びた。給与 {sal} 倍に Pro の売上が乗る。年額プランを足して、毎月の解約に左右されにくくする段階に来た。"
+  },
+  "r.fc_switch.high.sd_permpro.s.keep.pu10": {
+    "title": "3 年後: 有料 {pu} 人・給与に小さく上乗せ",
+    "body": "広告運用は不可のまま 2 年。SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人で、給与 {sal} 倍に少し上乗せ。学年が上がった子から抜けていくので、来年は中学生向けの単語を足せるかが鍵。"
+  },
+  "r.fc_switch.high.sd_permpro.s.keep.pu0": {
+    "title": "3 年後: 有料 {pu} 人・Pro は小遣い程度",
+    "body": "Pro は開いたものの伸びが鈍く、遊ぶ人 月 {mau} 人・有料 {pu} 人。広告運用は不可で、稼ぎはほぼ給与 {sal} 倍。学校や塾に無料で試してもらい、先生の声から作り直す手が残る。"
+  },
+  "r.fc_switch.high.sd_permpro.n": {
+    "title": "1 年後: どちらも不可・Pro は開けず",
+    "body": "3 月の答えは『どちらも不可』。用意した Pro の受付は開けず、遊ぶ人 月 {mau} 人は無料のまま。次は昇格を狙うか。"
+  },
+  "r.fc_switch.high.sd_permpro.n.plan_fc": {
+    "title": "課金の代わりに昇格を狙う",
+    "body": "Pro を開けない分を給与で取り返す。2 回の 4 月の評価で昇格を狙う（週 {h} 時間）。開発は週 10 時間で続ける。成果を数字で示せるか。"
+  },
+  "r.fc_switch.high.sd_permpro.n.plan_fc.u1_u2": {
+    "title": "3 年後: 昇格し給与 {sal} 倍・課金は不可",
+    "short": "昇格あり",
+    "label": "昇格 1 回以上",
+    "body": "4 月の評価で昇格し、給与は {sal} 倍。副業も課金も不可で、SpellDash は無料のまま遊ぶ人 月 {mau} 人。上がった給与を手放して独立するのは割に合いにくくなり、Pro を開く道はさらに遠のく。"
+  },
+  "r.fc_switch.high.sd_permpro.n.plan_fc.u0": {
+    "title": "3 年後: 昇格も課金も無く給与 {sal} 倍",
+    "body": "昇格は 2 回とも届かず、給与は昇給分の {sal} 倍。副業は不可、SpellDash は無料で遊ぶ人 月 {mau} 人で Pro の受付は眠ったまま。来年また転職するなら、内定前に SpellDash の扱いを書面で確かめる。"
+  },
+  "r.fc_switch.high.sd_permpro.n.keep": {
+    "title": "Pro を眠らせたまま続ける",
+    "body": "Pro は開けないまま、本業と SpellDash 週 10 時間（無料）を 2 年続ける。稼ぎは 4 月の昇給頼み。遊ぶ人だけは積み上がる。"
+  },
+  "r.fc_switch.high.sd_permpro.n.keep.all": {
+    "title": "3 年後: Pro は開けず給与 {sal} 倍",
+    "body": "どちらも不可の会社で 2 年。給与は昇給分の {sal} 倍、SpellDash は無料のまま遊ぶ人 月 {mau} 人まで増えた。作った Pro の受付は使われないまま古くなり、開くなら決済まわりの手直しから始まる。"
+  },
+  "r.fc_switch.high.ind_quit.cl3": {
+    "title": "1 年後: 独立して顧客 {cl} 社ほど",
+    "body": "入って 2 か月の会社を辞め 4 月に開業。古巣の取引先は避け、顧客 {cl} 社ほど（月 {ads} 万円前後）。次は単価を上げるか。"
+  },
+  "r.fc_switch.high.ind_quit.cl3.plan_ind_grow": {
+    "title": "業種を絞って顧客を増やす",
+    "body": "得意な業種に絞った事例で、高めの月額の顧客を増やす（週 {h} 時間）。今の顧客と SpellDash 週 10 時間は続ける。運用の質を保てるか。"
+  },
+  "r.fc_switch.high.ind_quit.cl3.plan_ind_grow.cl5": {
+    "title": "3 年後: ひとりで回せる上限の {cl} 社ほど",
+    "body": "独立後に絞った業種の事例が紹介を呼び、顧客 {cl} 社ほど（月 {ads} 万円前後）とひとりで回せる上限に近い。SpellDash は有料 {pu} 人。来年は受けきれない相談を知り合いの運用者に回し、紹介料を受ける形も作れる。"
+  },
+  "r.fc_switch.high.ind_quit.cl3.plan_ind_grow.cl0": {
+    "title": "3 年後: 高単価の顧客 {cl} 社ほどで止まる",
+    "body": "独立 3 年目、月額の高い顧客は取れたが離れる先も出て、顧客 {cl} 社ほど（月 {ads} 万円前後）で止まった。SpellDash は有料 {pu} 人。売上が数社に偏り、大口が抜けるだけで翌月の稼ぎが大きく揺れる。"
+  },
+  "r.fc_switch.high.ind_quit.cl3.keep": {
+    "title": "独立のまま今の営業を続ける",
+    "body": "営業は強めず、今の顧客の運用とふだんの紹介、SpellDash 週 10 時間（Pro）を 2 年続ける。毎月少しずつ離れる顧客を、紹介で埋め続けられるか。"
+  },
+  "r.fc_switch.high.ind_quit.cl3.keep.cl5": {
+    "title": "3 年後: 独立のまま紹介で {cl} 社ほど",
+    "body": "営業を強めなくても紹介が途切れず、顧客 {cl} 社ほど（月 {ads} 万円前後）まで増えた。SpellDash は有料 {pu} 人。厚生年金が無い分、来年は小規模企業共済や iDeCo で老後の備えを積み始められる。"
+  },
+  "r.fc_switch.high.ind_quit.cl3.keep.cl0": {
+    "title": "3 年後: 1 年目の顧客が抜け {cl} 社ほど",
+    "body": "1 年目の顧客が少しずつ離れ、紹介で埋めきれずに {cl} 社ほど（月 {ads} 万円前後）へ減った。SpellDash は有料 {pu} 人。経費を引くと手元は薄く、次は発信で紹介以外の入口を作るか、会社員に戻るかを比べる。"
+  },
+  "r.fc_switch.high.ind_quit.cl0": {
+    "title": "1 年後: 独立したが顧客 {cl} 社だけ",
+    "body": "古巣の取引先を避けて回り、決まったのは {cl} 社（月 {ads} 万円）だけ。6 月からは住民税も自分で納付。次は会社員に戻るか粘るか。"
+  },
+  "r.fc_switch.high.ind_quit.cl0.plan_back": {
+    "title": "運用の経験で再就職する",
+    "body": "広告運用の経験と独立中の実績で職を探し、決まれば顧客は手放す。SpellDash 週 10 時間（Pro）は続ける。短い在籍と独立の理由を面接で語れるかが鍵。"
+  },
+  "r.fc_switch.high.ind_quit.cl0.plan_back.e": {
+    "title": "3 年後: 再就職したが給与は {sal} 倍",
+    "body": "2028 年 2 月ごろ広告運用の職に就き、顧客は手放した。給与は {sal} 倍で、転職で上げた水準には戻らない。Pro は有料 {pu} 人で動くが、今の会社への届け出はまだで、答え次第では来年止める恐れがある。"
+  },
+  "r.fc_switch.high.ind_quit.cl0.plan_back.i": {
+    "title": "3 年後: 採用より先に顧客が {cl} 社ほどに",
+    "body": "応募は通らず独立のまま。その間も紹介で顧客が増え、{cl} 社ほど（月 {ads} 万円前後）になった。SpellDash は有料 {pu} 人。面接のために整理した実績は、そのまま営業資料に使える。"
+  },
+  "r.fc_switch.high.ind_quit.cl0.keep": {
+    "title": "貯えで支え独立を続ける",
+    "body": "会社員には戻らず、今の {cl} 社の運用と紹介営業、SpellDash 週 10 時間（Pro）を続ける。足りない月を貯えで埋め、紹介が増えるまで待てるか。"
+  },
+  "r.fc_switch.high.ind_quit.cl0.keep.cl5": {
+    "title": "3 年後: 独立で粘り勝ち・顧客 {cl} 社ほど",
+    "body": "出だしの 1 年は顧客が少なかったが、紹介が重なって {cl} 社ほど（月 {ads} 万円前後）まで埋まった。SpellDash は有料 {pu} 人。受けられる上限が近く、来年は手間に見合わない顧客に値上げを切り出せる。"
+  },
+  "r.fc_switch.high.ind_quit.cl0.keep.cl3": {
+    "title": "3 年後: 2 年かけ顧客 {cl} 社ほどに",
+    "body": "独立の立ち上がりは遅れたが、紹介営業を 2 年続けて顧客 {cl} 社ほど（月 {ads} 万円前後）まで積み上げた。SpellDash は有料 {pu} 人。受けられる枠にはまだ余裕があり、次は紹介の多い業種に絞って発信できる。"
+  },
+  "r.fc_switch.high.ind_quit.cl0.keep.cl0": {
+    "title": "3 年後: 粘っても顧客 {cl} 社",
+    "body": "2 年粘っても紹介は広がらず、顧客 {cl} 社（月 {ads} 万円）。経費を引くと手元はわずかで、有料 {pu} 人の Pro で穴を埋める状態。貯えが尽きる前に、期限を決めて会社員に戻るかを決める時期。"
+  },
+  "r.fc_switch.high.keep.all": {
+    "title": "1 年後: 大幅増の職場で届け出はまだ",
+    "short": "届け出前",
+    "body": "2 月に移った会社に慣れるのを優先し、届け出は出さずに 9 か月。遊ぶ人 月 {mau} 人は無料のまま。次は届け出て副業を始めるか。"
+  },
+  "r.fc_switch.high.keep.all.plan_side": {
+    "title": "届け出て副業を始める",
+    "short": "届け出て副業",
+    "body": "まず届け出て、通れば副業の顧客を 2 社目まで取り Pro も開く（週 {h} 時間）。本業と SpellDash 週 10 時間は続ける。会社の答え次第。"
+  },
+  "r.fc_switch.high.keep.all.plan_side.a": {
+    "title": "3 年後: 全部可で副業 {cl} 社ほど",
+    "body": "12 月の答えは全部可。1 月に Pro を開き、副業は顧客 {cl} 社ほど（月 {ads} 万円前後）まで来た。給与 {sal} 倍、Pro は有料 {pu} 人。この顧客と実績があれば、独立しても初月から売上が立つ。"
+  },
+  "r.fc_switch.high.keep.all.plan_side.s": {
+    "title": "3 年後: 副業不可・Pro は有料 {pu} 人",
+    "body": "12 月の答えは『SpellDash だけ可』で、広告運用は断られた。1 月に開いた Pro は有料 {pu} 人まで伸び、給与 {sal} 倍に乗る。副業に充てるはずの時間は空き、来年は Pro の改良に回せる。"
+  },
+  "r.fc_switch.high.keep.all.plan_side.n": {
+    "title": "3 年後: 届け出たがどちらも不可",
+    "body": "12 月に届け出たが答えは『どちらも不可』。副業も Pro も始められず、給与 {sal} 倍の会社員で、SpellDash は無料で遊ぶ人 月 {mau} 人。答えが分かった分、次に動くなら転職か独立かに絞って考えられる。"
+  },
+  "r.fc_switch.high.keep.all.keep": {
+    "title": "届け出ずに本業を続ける",
+    "body": "届け出はこの先も出さず、本業と SpellDash 週 10 時間（無料）を 2 年続ける。稼ぎは 4 月の昇給頼みで、副業と Pro はずっと先送りになる。"
+  },
+  "r.fc_switch.high.keep.all.keep.all": {
+    "title": "3 年後: 届け出ないまま給与 {sal} 倍",
+    "body": "届け出ないまま 3 年近く。給与は昇給分の {sal} 倍、副業は無く、SpellDash は無料で遊ぶ人 月 {mau} 人。来年、副業か Pro を始めるにも、まず届け出て答えを待つ月が要る。"
+  }
+}
