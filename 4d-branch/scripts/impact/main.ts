@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { generate } from "./generate";
+import { impactMarkdown } from "./md";
 import type { WriterText } from "./bundle";
 import { runRate, type World } from "./sim";
 import { stateLine, textFor } from "./templates";
@@ -82,6 +83,9 @@ export function main(root: string, args: string[]): number {
   if (!args.includes("--no-write")) {
     fs.writeFileSync(path.join(root, "src/demo/impact-data.json"), JSON.stringify(res.bundle));
     console.log(`書き出し: src/demo/impact-data.json（${(JSON.stringify(res.bundle).length / 1e3).toFixed(0)} KB）`);
+    fs.mkdirSync(path.join(root, "docs/future"), { recursive: true });
+    fs.writeFileSync(path.join(root, "docs/future/README.md"), impactMarkdown(res.bundle));
+    console.log("書き出し: docs/future/README.md");
   }
   return 0;
 }
