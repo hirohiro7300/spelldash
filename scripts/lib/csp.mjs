@@ -1,5 +1,5 @@
 // 配る HTML の inline の script と、vercel.json の Content-Security-Policy（Batch 88。docs/SECURITY.md）。
-// script-src は 'self'・配る HTML の inline の script の本文の sha256 全部・https://esm.sh だけ（'unsafe-inline' なし）。
+// script-src は 'self' と配る HTML の inline の script の本文の sha256 全部だけ（'unsafe-inline' なし。外の配信元は Batch 97 で外した）。
 // 検査は scripts/test-site-map.mjs の 8。inline の script を 1 字でも直したら、次のコマンドが出す script-src を vercel.json に写す:
 //   node scripts/lib/csp.mjs           今の木の配る HTML から作った script-src の値（1 行）と、ハッシュごとのファイルの数
 import crypto from "crypto";
@@ -68,7 +68,7 @@ export function expectedScriptSrc(html) {
       where.get(hash).push(file);
     }
   }
-  return { value: ["script-src", "'self'", ...where.keys(), "https://esm.sh"].join(" "), where };
+  return { value: ["script-src", "'self'", ...where.keys()].join(" "), where };
 }
 
 if (isMain(import.meta.url)) {
