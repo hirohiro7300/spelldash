@@ -1,6 +1,7 @@
 // 生成の入口（Vite の SSR で読み込む。src の TypeScript をそのまま使う）
 import fs from "node:fs";
 import path from "node:path";
+import { nextImpactRelease, type ImpactRelease } from "../../src/demo/impact";
 import { generate } from "./generate";
 import { impactMarkdown } from "./md";
 import type { WriterText } from "./bundle";
@@ -81,8 +82,17 @@ export function main(root: string, args: string[]): number {
   for (const wn of res.warnings.slice(0, 30)) console.log("  !", wn);
   if (res.failures.length) return 1;
   if (!args.includes("--no-write")) {
-    fs.writeFileSync(path.join(root, "src/demo/impact-data.json"), JSON.stringify(res.bundle));
-    console.log(`書き出し: src/demo/impact-data.json（${(JSON.stringify(res.bundle).length / 1e3).toFixed(0)} KB）`);
+    const text = JSON.stringify(res.bundle);
+    fs.writeFileSync(path.join(root, "src/demo/impact-data.json"), text);
+    console.log(`書き出し: src/demo/impact-data.json（${(text.length / 1e3).toFixed(0)} KB）`);
+    // 版の順番: 書いた中身の版（アプリと同じ数え方）が記録と違えば、順番を 1 つ進めて記録する（古いページが新しい地図を古い版に戻さない）
+    const relFile = path.join(root, "src/demo/impact-release.json");
+    const rec: ImpactRelease = fs.existsSync(relFile) ? (JSON.parse(fs.readFileSync(relFile, "utf8")) as ImpactRelease) : { release: 0, version: "" };
+    const next = nextImpactRelease(rec, text);
+    if (next !== rec) {
+      fs.writeFileSync(relFile, `${JSON.stringify(next, null, 2)}\n`);
+      console.log(`書き出し: src/demo/impact-release.json（版の順番 ${next.release}・${next.version}）`);
+    }
     fs.mkdirSync(path.join(root, "docs/future"), { recursive: true });
     fs.writeFileSync(path.join(root, "docs/future/README.md"), impactMarkdown(res.bundle));
     console.log("書き出し: docs/future/README.md");

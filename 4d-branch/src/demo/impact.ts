@@ -94,14 +94,41 @@ const SCENARIOS = [
   { id: "s_focus", name: "SpellDash集中", color: "#4FD1E8", description: "広告に頼らずオーガニックで伸ばし、SpellDash に時間を寄せる。" },
 ];
 
-/** 鍵からノードの ID（FNV-1a の 36 進 7 桁） */
-export function impactNodeId(key: string): ID {
+/** 文字列の指紋（FNV-1a の 36 進） */
+export function fnv36(s: string): string {
   let h = 0x811c9dc5;
-  for (let i = 0; i < key.length; i++) {
-    h ^= key.charCodeAt(i);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
     h = Math.imul(h, 0x01000193) >>> 0;
   }
-  return `n_i_${h.toString(36).padStart(7, "0")}`;
+  return h.toString(36);
+}
+
+/** 鍵からノードの ID（FNV-1a の 36 進 7 桁） */
+export function impactNodeId(key: string): ID {
+  return `n_i_${fnv36(key).padStart(7, "0")}`;
+}
+
+/** 同梱データ（impact-data.json の文字列そのまま）の版: 長さと FNV-1a の 36 進。中身が変わると変わる */
+export function impactDataVersion(raw: string): string {
+  return `${raw.length.toString(36)}-${fnv36(raw)}`;
+}
+
+/** 同梱データの版の記録（src/demo/impact-release.json）。release は版の順番（新しい版ほど大きい） */
+export interface ImpactRelease {
+  release: number;
+  version: string;
+}
+
+/** 書き出す同梱データの版の記録: 中身の版が記録と違えば順番を 1 つ進める（同じなら記録のまま） */
+export function nextImpactRelease(rec: ImpactRelease, raw: string): ImpactRelease {
+  const version = impactDataVersion(raw);
+  return version === rec.version ? rec : { release: rec.release + 1, version };
+}
+
+/** 線の説明と条件の指紋（新しい版にしたとき、利用者が書き換えたかを見分ける） */
+export function edgeTextPrint(label: string, condition: string): string {
+  return fnv36(`${label}\u0000${condition}`);
 }
 
 /** 基準の月から off か月後の月の末日（YYYY-MM-DD）。off が 0 なら today の日付 */
@@ -147,8 +174,12 @@ export function countImpact(b: ImpactBundle): ImpactCounts {
   return { nodes: b.nodes.length, decisions, options, forks, ends };
 }
 
-/** 3 年の分かれ道の文書を組み立てる（期限は today の月から数える）。同じデータ・同じ today なら同じ文書（作った時刻を除く） */
-export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""): DocData {
+/**
+ * 3 年の分かれ道の文書を組み立てる（期限は today の月から数える）。同じデータ・同じ today なら同じ文書（作った時刻を除く）。
+ * 入口には同梱データの版（version）と版の順番（release）を残す。カードには文章の指紋（t0・b0）、線には元の見込み（p0）と
+ * 説明・条件の指紋（c0）を付ける（新しい版にしたとき、利用者が書き換えた所を見分けて残す）
+ */
+export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = "", release?: number): DocData {
   const doc = createEmptyDoc(b.title || IMPACT_TITLE);
   for (const a of Object.values(AREAS)) {
     const p = makeProject(a);
@@ -178,6 +209,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
     const p = pos.get(ids[i]!) ?? { x: impactColX(0), y: 0 };
     const tags = ["未来の道筋", "3年", ROLE_TAG[role](m)];
     const common: Partial<GNode> = { id: ids[i]!, title, body, tags, x: p.x, y: p.y, status: "open" };
+    const prints = { t0: fnv36(title), b0: fnv36(body) };
     let node: GNode;
     if (role === "r") {
       const rx = x as ImpactRootX;
@@ -186,7 +218,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
         type: "goal",
         time: { due: monthDate(today, 0), start: null },
         projectIds: all,
-        meta: { forecastRoot: true, futureVersion: version, impact: { v: 2, horizon: b.horizon }, fork: "decision", m: 0, short, st: rx.st, rr: rx.rr, key },
+        meta: { forecastRoot: true, futureVersion: version, ...(release !== undefined ? { futureRelease: release } : {}), impact: { v: 2, horizon: b.horizon }, fork: "decision", m: 0, short, st: rx.st, rr: rx.rr, key, ...prints },
       });
     } else if (role === "a") {
       const ax = x as ImpactAltX;
@@ -198,7 +230,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
         time: { due: monthDate(today, m + ax.len), start: monthDate(today, m) },
         projectIds: area === "base" ? all : [AREAS[area].id],
         conditions: (ax.todo ?? []).map((t, k) => ({ ...makeCondition(t, false), id: `c_${ids[i]!.slice(4)}_${k}` })),
-        meta: { fork: "chance", m, ak: ax.k, fam: kind?.[2] ?? ax.k, h: ax.h, ...(ax.base ? { base: true } : {}), ...(ax.cites?.length ? { cites: ax.cites } : {}), rank: rankOf.get(i) ?? 0, short, key },
+        meta: { fork: "chance", m, ak: ax.k, fam: kind?.[2] ?? ax.k, h: ax.h, ...(ax.base ? { base: true } : {}), ...(ax.cites?.length ? { cites: ax.cites } : {}), rank: rankOf.get(i) ?? 0, short, key, ...prints },
       });
     } else {
       const ox = x as ImpactOutX;
@@ -207,7 +239,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
         type: role === "e" ? "result" : "branch",
         time: { due: monthDate(today, m), start: null },
         projectIds: all,
-        meta: { ...(role === "e" ? { end: true } : { fork: "decision" }), m, short, st: ox.st, rr: ox.rr, rank: rankOf.get(i) ?? 0, key },
+        meta: { ...(role === "e" ? { end: true } : { fork: "decision" }), m, short, st: ox.st, rr: ox.rr, rank: rankOf.get(i) ?? 0, key, ...prints },
       });
     }
     doc.nodes[node.id] = node;
@@ -217,11 +249,12 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
     if (role === "a") {
       const kind = b.kinds[(x as ImpactAltX).k];
       e.scenarioIds = (x as ImpactAltX).base ? [] : [...(kind?.[3] ?? [])];
+      e.meta = { c0: edgeTextPrint("", "") };
     } else {
       const ox = x as ImpactOutX;
       e.label = ox.lab === "—" ? "" : ox.lab;
       e.condition = ox.line;
-      e.meta = { prob: ox.p, r: ox.r, ln: ox.ln, ...(ox.rv ? { rv: ox.rv } : {}) };
+      e.meta = { prob: ox.p, r: ox.r, ln: ox.ln, ...(ox.rv ? { rv: ox.rv } : {}), p0: ox.p, c0: edgeTextPrint(e.label, e.condition) };
     }
     doc.edges[e.id] = e;
   });
