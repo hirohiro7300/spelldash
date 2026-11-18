@@ -151,6 +151,7 @@ describe("3 年の影響", () => {
     expect(a.outcomes.reduce((s, o) => s + o.w * o.u!, 0)).toBeCloseTo(a.delta!);
     expect(r.alt.get("K")!.delta).toBe(0);
     expect(r.alt.get("K")!.isBase).toBe(true);
+    expect(r.alt.get("K")!.pBad).toBeNull();
     expect(r.alt.get("B")!.delta).toBeCloseTo(-60);
     expect(r.alt.get("B")!.dR).toBeCloseTo(0.8 * 30 + 3 - 30);
     const d = r.decision.get("R")!;

@@ -22,10 +22,10 @@ export const IMPACT_DEFAULT_ANNUAL = 360;
 /** 年収として受け付ける範囲（万円） */
 export const IMPACT_ANNUAL_MIN = 100;
 export const IMPACT_ANNUAL_MAX = 3000;
-/** ★（おすすめ）を付ける差（2 位より何万円良ければ） */
-export const IMPACT_STAR_LEAD = 3;
-/** 「悪くなる」と数える差（万円） */
-const BAD_EPS = 0.05;
+/** ★（おすすめ）を付ける差（2 位より何万円良ければ）。差がこれより小さい手は「≒ ほぼ同じ」（数はモデルの目安なので、小さな差で 1 つに決めない） */
+export const IMPACT_STAR_LEAD = 10;
+/** 「悪くなる」と数える差（万円）。色の「ほぼ同じ」（3 万円未満）より悪い結果だけを数える */
+const BAD_EPS = 3;
 
 export interface AltOutcome {
   edge: ID;
@@ -783,10 +783,17 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
         pBad = delta < -BAD_EPS ? 1 : 0;
         worst = delta;
       }
+      // ★: 2 位より 10 万円以上良い一番の手。差が小さければ、一番の手から 10 万円以内の手はどれも ≒
       let mark: AltInfo["mark"] = null;
       if (b1 >= 0 && b2 >= 0) {
+        const qs0 = Q(main, s);
         if (s === b1 && q1 - q2 >= IMPACT_STAR_LEAD) mark = "star";
-        else if ((s === b1 || s === b2) && q1 - q2 < IMPACT_STAR_LEAD) mark = "tie";
+        else if (q1 - q2 < IMPACT_STAR_LEAD && qs0 !== null && c.allowed[s] && c.stat[j] !== 2 && q1 - qs0 < IMPACT_STAR_LEAD) mark = "tie";
+      }
+      // 基準（今のまま）は自分と比べるので、悪くなる見込みは出さない
+      if (c.isBase[j]) {
+        pBad = null;
+        worst = null;
       }
       const info: AltInfo = {
         decision: c.ids[d]!,
