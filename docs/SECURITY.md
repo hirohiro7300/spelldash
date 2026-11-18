@@ -116,7 +116,7 @@ Batch 88 で残した「認証の部品の外の配信元」を外した（docs/
 | 項目 | 決まり | 検査 |
 |---|---|---|
 | 出す口 | `GET` の `/api/auth-module?v=2.118.0&h=c1a6b90c` だけ（api/auth-module.js。ログイン不要・鍵なし）。v は版、h は答えの sha256 の頭 8 字（答えのバイトが変われば URL も変わる）。ほかの版・印・余った問い・問い無しは 404、GET のほかは 405（HEAD も: 中身の無い答えに 1 年の保存の頭を付けない）。どちらも保存させない | 単体 test-auth-module の B・C5 |
-| 作り方 | 関数が登録所の決まった tarball の URL（https だけ）から固定の版を取る（5 秒で打ち切り・2 MB まで）→ 開く前に sha512 が固定の integrity と同じか → メモリの中で開く（ファイルに書かない）→ package.json の名前と版 → 束の形 → 束と export の行の sha256 → 頭に配布物の LICENSE の文（そのまま）→ 答えの sha256。どれかが違えば作らない。固定の値と作り方は api/_lib/authModule.js の 1 か所（tests/oldtab/lib/authLib.mjs も同じ物を読む） | 単体 A・C。CI の oldtab のジョブの `--live`（毎回本物の登録所から作って、固定の値と同じか・旧タブの証明の写しと束が 1 バイトも違わないか） |
+| 作り方 | 関数が登録所の決まった tarball の URL（https。転送されたら行き着いた先も https か見る）から固定の版を取る（5 秒で打ち切り・読みながら数えて 2 MB まで）→ 開く前に sha512 が固定の integrity と同じか → メモリの中で開く（ファイルに書かない）→ package.json の名前と版 → 束の形 → 束と export の行の sha256 → 頭に配布物の LICENSE の文（そのまま）→ 答えの sha256。どれかが違えば作らない。固定の値と作り方は api/_lib/authModule.js の 1 か所（tests/oldtab/lib/authLib.mjs も同じ物を読む） | 単体 A・C。CI の oldtab のジョブの `--live`（毎回本物の登録所から作って、固定の値と同じか・旧タブの証明の写しと束が 1 バイトも違わないか） |
 | 答え | 200 は `text/javascript; charset=utf-8`・`nosniff`・`public, max-age=31536000, s-maxage=31536000, immutable`（版ごとに URL が変わる）・`Cross-Origin-Resource-Policy: same-origin`。作れないときは 503・`no-store`・`Retry-After: 10`。インスタンスのメモリーに 1 回作った物を持つ。同時の呼び出しは同じ 1 回を待つ。作れなかった後 10 秒は作り直さない（登録所が止まっている間、呼ぶたびに待たせない） | 単体 B |
 | ログ | `auth-module: unavailable <理由の短い字>` だけ（URL・問いの字・中身を書かない） | 単体 B7 |
 | 読む側 | js/supabase.js は同じオリジンの `/api/auth-module?v=2.118.0&h=c1a6b90c`（api/_lib/authModule.js の `AUTH_MODULE_URL` と同じ字。単体 C1）を動的 import で読む（Service Worker は `/api/` を保存しないので sw.js は変えていない）。確認用の Preview は今までどおり読まない | E2E 97.1 (1)・78.8・86.1 |
