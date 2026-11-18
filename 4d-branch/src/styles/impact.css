@@ -364,6 +364,68 @@
   color: var(--accent-2);
 }
 
+/* ---- 手の種類・大事な判断の行（3 年でやる価値が大きい手・避けたい手・この先の大事な判断） */
+.imp-sec[hidden] {
+  display: none;
+}
+.imp-rank-list {
+  display: grid;
+  gap: 4px;
+}
+.imp-rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel-2);
+  color: var(--text-1);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.imp-rank-row:hover {
+  border-color: var(--line-3);
+  background: var(--bg-elev);
+}
+.imp-rank-row:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 1px;
+}
+.imp-rank-title {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 560;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.imp-rank-row.is-key .imp-rank-title {
+  grid-column: 1 / -1;
+}
+.imp-rank-row > .imp-pill {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+.imp-rank-meta {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.imp-rank-best {
+  color: var(--text-1);
+}
+
 /* ---- 3 年後の分布（9 つの段の積み上げ棒。段のあいだは 2px） */
 .imp-dist-row {
   display: grid;
@@ -774,6 +836,32 @@
     white-space: nowrap;
     text-overflow: ellipsis;
     line-height: 1.3;
+  }
+  /* 手の種類・大事な判断の行も詰める（どの行も 1 行ずつ。入らなければ「…」。全部の文は行の title に）。押す所は 44px 以上 */
+  .imp-rank-row {
+    min-height: 44px;
+    row-gap: 1px;
+    padding: 3px 6px 3px 7px;
+  }
+  .imp-rank-title,
+  .imp-rank-meta {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .imp-rank-title {
+    line-height: 20px;
+  }
+  .imp-rank-row > .imp-pill {
+    align-self: center;
+    min-width: 42px;
+    height: 20px;
+    padding: 0 7px;
+    font-size: 12px;
+  }
+  .imp-rank-meta {
+    line-height: 1.3;
+    letter-spacing: -0.02em;
   }
   .imp-split-row {
     grid-template-columns: 96px minmax(0, 1fr) 56px;

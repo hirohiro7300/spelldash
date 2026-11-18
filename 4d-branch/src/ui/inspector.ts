@@ -8,7 +8,7 @@ import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from ".
 import type { GEdge, GNode, ID } from "../model/types";
 import { MOD, autosize, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
-import { buildImpactNodeBlock, buildImpactOverview, impactEdgeKind, keyboardFocus } from "./impactPanel";
+import { buildImpactNodeBlock, buildImpactOverview, focusLost, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
 import { edgeProb, formatPercent } from "../model/forecast";
 
@@ -18,7 +18,8 @@ export function buildInspector(app: AppContext): HTMLElement {
   const { store, ui } = app;
   const headTitle = h("span", { class: "insp-head-title" }, "詳細");
   const headSub = h("span", { class: "insp-head-sub" });
-  const body = h("div", { class: "insp-body-scroll" });
+  // 中身は作り直すが、この入れ物は残る。押した部品・入力していた欄が作り直しで消えたときのフォーカスの置き場（tabindex=-1）
+  const body = h("div", { class: "insp-body-scroll", tabIndex: -1 });
   const root = h("aside", { class: "sidebar sidebar-right", ariaLabel: "詳細" }, h("div", { class: "insp-head" }, headTitle, headSub), body);
   let key = "";
   let updaters: Updater[] = [];
@@ -33,13 +34,46 @@ export function buildInspector(app: AppContext): HTMLElement {
     return `multi:${[...s.nodes].sort().join(",")}|${[...s.edges].sort().join(",")}`;
   };
 
+  /**
+   * 作り直しで消えると困る、パネルの中のフォーカス: 入力欄（マウスで入っても）か、キーボードで操作している部品。無ければ null
+   * （マウス・タッチで押しただけのボタンは数えない。作り直した後も今までどおり、そこへは戻さない）
+   */
+  const heldFocus = (): HTMLElement | null => {
+    const a = document.activeElement;
+    return a instanceof HTMLElement && a !== body && body.contains(a) && (isTypingTarget(a) || keyboardFocus(a)) ? a : null;
+  };
+  /**
+   * 作り直しで held（前にフォーカスのあった部品）が無くなり、フォーカスが体に落ちたとき（別の端末で、その欄・線・ノードが消えた など）:
+   * パネルの中の決まった所へ移す。入力していた欄なら題名の欄（あれば。文字の位置は終わり）、それ以外はこの入れ物（tabindex=-1）。
+   * 体に落とすと、次の Tab・Backspace・文字のキーがキャンバスの操作（分岐を足す・選んだカードを消す・作る）になる
+   */
+  const settleFocus = (held: HTMLElement | null): void => {
+    // ほとんどの変更（打っている欄が残っている）は、ここで済ませる（大きさを測らない）
+    if (!held || (held.isConnected && document.activeElement === held) || !focusLost()) return;
+    if (!root.isConnected || getComputedStyle(root).visibility === "hidden") return;
+    if (isTypingTarget(held)) {
+      const t = body.querySelector<HTMLTextAreaElement>(".insp-title");
+      if (t && !t.disabled && t.getClientRects().length) {
+        t.focus();
+        if (document.activeElement === t) {
+          const n = t.value.length;
+          t.setSelectionRange(n, n);
+          return;
+        }
+      }
+    }
+    body.focus({ preventScroll: true });
+  };
+
   const render = (force = false) => {
     const k = selKey();
     if (k === key && !force) {
       for (const u of updaters) u();
       return;
     }
-    // 同じ選択のまま作り直す（全部が入れ替わった・書き手が変わった）: フォーカスのあった部品（data-fk の鍵）へ戻す
+    // 同じ選択のまま作り直す（全部が入れ替わった・書き手が変わった）: フォーカスのあった部品（data-fk の鍵）へ戻す。
+    // その部品が無くなっていたら（別の端末でその欄が消えた など）、パネルの中の決まった所へ
+    const held = k === key ? heldFocus() : null;
     const back = k === key ? holdFocus(body) : null;
     key = k;
     updaters = [];
@@ -58,14 +92,18 @@ export function buildInspector(app: AppContext): HTMLElement {
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
     for (const u of updaters) u();
     back?.();
+    settleFocus(held);
   };
 
   ui.on("selection", () => render());
   store.on("change", (info) => {
-    // 消えた要素を選んでいたら外す
+    // 消えた要素を選んでいたら外す（別の端末の内容を取り込んで、選んでいたノード・線が無くなった など）。
+    // そのときパネルの中にあったフォーカス（入力していた欄・キーボードで操作していた部品）は、作り直した後にパネルの中の決まった所へ
+    const held = heldFocus();
     ui.pruneSelection((kind, id) => (kind === "node" ? !!store.doc.nodes[id] : !!store.doc.edges[id]));
     if (info.full) render(true);
     else render();
+    settleFocus(held);
   });
   ui.on("prefs", (p) => {
     if (!onlyTimeCursor(p)) render();

@@ -945,6 +945,38 @@ await check("同期が止まっている・機能の返事が遅れて使えな�
   }
 });
 
+await check("項目の欄にフォーカスを置いたまま（打っていない）、別の端末がその項目を消して取り込んでも、フォーカスは詳細の題名の欄へ移り、続く Backspace でノードを消さない", async () => {
+  const { X, Y } = await xyDemo("u_vanish_cond", { write: false });
+  const nid = await X.page.evaluate(() => {
+    const f = window.__fourD;
+    const n = Object.values(f.store.doc.nodes).find((x) => x.type === "goal");
+    f.app.cmd.addCondition(n.id, "確かめる条件");
+    f.ui.select([n.id]);
+    f.ui.setPrefs({ rightOpen: true });
+    return n.id;
+  });
+  await X.page.evaluate(() => window.__fourD.app.cloud.flush());
+  await X.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  const cid = await X.page.evaluate((id) => window.__fourD.store.doc.nodes[id].conditions.at(-1).id, nid);
+  await Y.page.waitForFunction(([id, c]) => !!window.__fourD?.store.doc.nodes[id]?.conditions.some((x) => x.id === c), [nid, cid], { timeout: 20000 });
+  await Y.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  await X.page.locator(`[data-fk="cond:${cid}"]`).focus();
+  // 打つたびに入れる欄にフォーカスがあるだけなら取り込みを待たない（待つと、その後の編集が重なりになる）
+  assert(!(await X.page.evaluate(() => window.__fourD.app.editingNow())), "項目の欄にフォーカスがあるだけで、入力の途中と見なした（確かめの前提）");
+  await Y.page.evaluate(([id, c]) => window.__fourD.app.cmd.removeCondition(id, c), [nid, cid]);
+  await Y.page.evaluate(() => window.__fourD.app.cloud.flush());
+  await X.page.waitForFunction(([id, c]) => !window.__fourD.store.doc.nodes[id]?.conditions.some((x) => x.id === c), [nid, cid], { timeout: 20000 });
+  await X.page.waitForTimeout(300);
+  const mid = await X.page.evaluate(() => ({ fk: document.activeElement?.dataset?.fk ?? document.activeElement?.tagName, nodes: Object.keys(window.__fourD.store.doc.nodes).length }));
+  assert(mid.fk === "title", `取り込んだ後のフォーカス ${JSON.stringify(mid)}`);
+  await X.page.keyboard.press("Backspace");
+  await X.page.waitForTimeout(300);
+  const fin = await X.page.evaluate((id) => ({ exists: !!window.__fourD.store.doc.nodes[id], nodes: Object.keys(window.__fourD.store.doc.nodes).length }), nid);
+  assert(fin.exists && fin.nodes === mid.nodes, `続く Backspace でノードを消した ${JSON.stringify({ mid, fin })}`);
+  await X.ctx.close();
+  await Y.ctx.close();
+});
+
 await check("ページのエラーが無い", async () => {
   assert(errors.length === 0, errors.join("\n"));
 });

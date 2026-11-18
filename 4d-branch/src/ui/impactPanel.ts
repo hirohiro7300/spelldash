@@ -1,16 +1,19 @@
 // 右のパネルの「3 年の影響」（未来の道筋 v2「3 年の分かれ道」）。設計: docs/DESIGN.md §4.7
-//   概要（何も選んでいないとき）: 見出しと年収・今決めること・3 年後の分布・3 年後の行き先・前提・見方
+//   概要（何も選んでいないとき）: 見出しと年収・今決めること・3 年でやる価値が大きい手・避けたい手・この先の大事な判断・
+//   3 年後の分布・3 年後の行き先・前提・見方
 //   詳細（選んだノード）: 選択肢なら 3 年の影響・選ぶ／見送る・内訳・結果・同じ判断の手。結果・行き先なら見込み・その時の状態・目印
-// 数は vm.impact（src/model/impact.ts）を読むだけ。文は src/model/impactText.ts。
+// 数は vm.impact（src/model/impact.ts）を読むだけ。順位は src/model/impactRank.ts。文は src/model/impactText.ts。
 // 中身は数が変わったとき（vm.impact が新しくなったとき）と、書いた題名・線の文が変わったときだけ作り直す。年収の欄は作り直さない（入力中に消さない）。
 // キーボードで操作しているときは、作り直した後もフォーカスのあった部品（data-fk の鍵）か代わりの部品へ戻す
-// （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押したときは動かさない（続くキーは選んだカードへの操作のまま）
+// （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押して作り直したときは、押した部品へは戻さず、
+// パネルの入れ物（tabindex=-1）に置く（続く Enter・Space で黙って選ばず、Tab・Backspace もキャンバスへ届かない）
 
 import type { AppContext } from "../app/context";
 import { futureData } from "../demo/futureBundle";
 import { formatPercent } from "../model/forecast";
 import { computeImpact, IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, type AltInfo, type ImpactResult } from "../model/impact";
 import { formatMan, formatShare, IMPACT_FILL, IMPACT_INK, IMPACT_NEUTRAL_RING, impactBin } from "../model/impactFormat";
+import { cachedWorthRanking, famLabel, hasFamLabel, keyDecisions } from "../model/impactRank";
 import {
   altMetaParts,
   areaOf,
@@ -26,6 +29,7 @@ import {
   metaSep,
   NO_LINE,
   parseAnnual,
+  projectArea,
   riskText,
   splitExact,
   stateLine,
@@ -166,13 +170,47 @@ function focusKeyIn(root: HTMLElement): string | null {
   return keyboardFocus(a) && root.contains(a) ? (a.dataset.fk ?? "") : null;
 }
 
+/** 右のパネルの入れ物（中身を作り直しても残る。tabindex=-1 のフォーカスの置き場。src/ui/inspector.ts） */
+const panelBox = (): HTMLElement | null => document.querySelector<HTMLElement>(".sidebar-right .insp-body-scroll");
+
+/**
+ * フォーカスが体に落ちているか（押した部品が作り直しで消えた・隠れた）。隠した部品は、ブラウザが体へ移すまで少しの間フォーカスを持ったままなので、
+ * 描かれていない部品にあるときも落ちたとみなす
+ */
+export function focusLost(): boolean {
+  const a = document.activeElement;
+  return !a || a === document.body || !a.isConnected || !a.getClientRects().length;
+}
+
+/**
+ * フォーカスが体に落ちていたら、右のパネルの入れ物に置く。続く Enter・Space は何も押さず、Tab はパネルの最初の部品へ進み、
+ * Tab・Backspace・Delete・文字のキーはキャンバス（選んだカード）へ届かない。閉じたパネル（見えない引き出し）には置かない
+ */
+function parkFocus(): void {
+  if (!focusLost()) return;
+  const box = panelBox();
+  if (box && box.getClientRects().length && getComputedStyle(box).visibility !== "hidden") box.focus({ preventScroll: true });
+}
+
+/**
+ * パネルの部品を押したときの操作（run）。マウス・タッチで押して、作り直しで押した部品が消えたら、フォーカスをパネルの入れ物に置く
+ * （押すと決まるボタンへは移さない。体に落とすと、次の Tab が分岐を足し、Backspace が選んだ手を消す）。
+ * キーボードで押したときは、今までどおり作り直しの中で同じ部品か代わりの部品へ戻す
+ */
+function pressed(run: () => void): void {
+  const box = panelBox();
+  const byPointer = !!box && pointerIn(box);
+  run();
+  if (byPointer) parkFocus();
+}
+
 /** 今押している「これにする」「見送る」の鍵（押した後の作り直しでだけ「選び直す」へ移す。ほかの変更で作り直しても同じ部品に残す） */
 let pressing: string | null = null;
 
 function press(key: string, run: () => void): void {
   pressing = key;
   try {
-    run();
+    pressed(run);
   } finally {
     pressing = null;
   }
@@ -180,9 +218,10 @@ function press(key: string, run: () => void): void {
 
 /**
  * 作り直した後に、前にフォーカスのあった部品（鍵が同じ物）へ戻す。押して用が済んだ・押せなくなった・無くなった部品は代わりへ
- * （「これにする」「見送る」を押した後は「選び直す」、「選び直す」「これを基準にする」の後は「これにする」、それも無ければ最初の部品）
+ * （「これにする」「見送る」を押した後は「選び直す」、「選び直す」「これを基準にする」の後は「これにする」、それも無ければ最初の部品）。
+ * 戻せたら true（root に押せる部品が 1 つも無いときは false）
  */
-function refocus(root: HTMLElement, key: string): void {
+function refocus(root: HTMLElement, key: string): boolean {
   const at = (k: string) => (k ? root.querySelector<HTMLElement>(`[data-fk="${CSS.escape(k)}"]`) : null);
   const i = key.indexOf(":");
   const kind = i < 0 ? key : key.slice(0, i);
@@ -194,10 +233,10 @@ function refocus(root: HTMLElement, key: string): void {
     const el = at(k);
     if (el && canFocus(el)) {
       el.focus();
-      return;
+      if (document.activeElement === el) return true;
     }
   }
-  focusFirst(root);
+  return focusFirst(root);
 }
 
 // ------------------------------------------------------------ 移動
@@ -205,18 +244,28 @@ function refocus(root: HTMLElement, key: string): void {
 /**
  * そのノードを出して選び、地図ならそこへ寄る（closeDrawer: 狭い画面では右のパネルを閉じてカードを見せる）。
  * キーボードでパネルの行を押したときは、引き出しを開いたまま、選んだノードの詳細（3 年の影響）の最初の部品へフォーカスを移す
- * （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押したときはフォーカスを動かさない
+ * （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押したときは、パネルの入れ物に置く
+ * （押すと決まる部品へは移さない。続く Enter・Space で黙って選ばず、Tab・Backspace もキャンバスへ届かない）。
+ * 狭い画面で引き出しを閉じたときは置かない（見えない引き出しに残さない。続くキーは、寄って見えている選んだカードへ）
  */
 function goTo(app: AppContext, id: ID, closeDrawer: boolean): void {
   if (!app.store.doc.nodes[id]) return;
   const panel = document.querySelector<HTMLElement>(".sidebar-right");
   const active = document.activeElement;
-  const from = panel && !pointerIn(panel) && active instanceof HTMLElement && panel.contains(active) ? active : null;
+  const byPointer = !!panel && pointerIn(panel);
+  const from = panel && !byPointer && active instanceof HTMLElement && panel.contains(active) ? active : null;
   app.cmd.revealNode(id);
   app.ui.select([id]);
-  if (closeDrawer && !from && isNarrowScreen() && app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: false });
+  const closing = closeDrawer && !from && isNarrowScreen() && app.ui.prefs.rightOpen;
+  if (closing) app.ui.setPrefs({ rightOpen: false });
   if (app.ui.prefs.view === "map") app.view.centerOn(id);
   else app.revealInList(id);
+  if (byPointer) {
+    const a = document.activeElement;
+    if (!closing) parkFocus();
+    else if (panel && a instanceof HTMLElement && panel.contains(a)) a.blur();
+    return;
+  }
   // 同じノードを押してパネルが作り直されていなければ、そのまま
   if (!panel || !from || from.isConnected) return;
   const block = panel.querySelector<HTMLElement>(".imp-node:not([hidden])");
@@ -421,12 +470,15 @@ function salaryWidget(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
     applyAnnual(app, v);
   };
   change.addEventListener("click", open);
-  ok.addEventListener("click", submit);
-  cancel.addEventListener("click", close);
-  reset.addEventListener("click", () => {
-    close();
-    applyAnnual(app, null);
-  });
+  // マウスで押したときは、閉じた欄から体に落としたフォーカスをパネルの入れ物へ（キーボードなら「変える」へ戻す）
+  ok.addEventListener("click", () => pressed(submit));
+  cancel.addEventListener("click", () => pressed(close));
+  reset.addEventListener("click", () =>
+    pressed(() => {
+      close();
+      applyAnnual(app, null);
+    }),
+  );
   input.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !isImeKey(ev)) {
       ev.preventDefault();
@@ -615,6 +667,141 @@ function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: 
   sec.append(decisionList(app, imp, root, seen, { closeDrawer: true }), flipNote(app, imp, seen));
 }
 
+// ------------------------------------------------------------ 順位（3 年でやる価値が大きい手・避けたい手・この先の大事な判断）
+
+/** 「3 年でやる価値が大きい手」に出す、ずっと使わない場合との差の下限（万円）と行の数 */
+const WORTH_MIN = 1;
+const WORTH_LIMIT = 5;
+/** 「避けたい手」「この先の大事な判断」の行の数 */
+const AVOID_LIMIT = 3;
+const KEY_LIMIT = 6;
+
+/**
+ * 手の種類の行を押したときに次に見せる、出てくる所の番号（行の鍵 "worth:種類"・"avoid:種類" ごと）。3 年の影響の結果（imp）ごとに持つ:
+ * 数が変わったら最初から。概要を作り直しても（カードを選んで概要へ戻ってきても）続きから
+ */
+const famCycle = new WeakMap<ImpactResult, Map<string, number>>();
+
+/** 次に見せる番号（0 から） */
+function cycleAt(imp: ImpactResult, key: string, n: number): number {
+  const i = famCycle.get(imp)?.get(key) ?? 0;
+  return n > 0 ? i % n : 0;
+}
+
+/** 次に見せる番号を返し、その次へ進める（最後の次は最初） */
+function cycleNext(imp: ImpactResult, key: string, n: number): number {
+  let m = famCycle.get(imp);
+  if (!m) famCycle.set(imp, (m = new Map()));
+  const i = cycleAt(imp, key, n);
+  m.set(key, n > 0 ? (i + 1) % n : 0);
+  return i;
+}
+
+/** 手の種類の行の中身（差は、やる価値ならずっと使わない場合との差、避けたい手なら出てくる所の差の平均） */
+interface FamRowData {
+  fam: string;
+  value: number;
+  instances: ID[];
+  project: ID | null;
+}
+
+/**
+ * 手の種類の行: 領域の札・種類の名前・差の札 / 「地図に 12 か所 · 次: 2 / 12」。
+ * 押すたびに、その種類の手が出てくる所（来る見込みの高い順）を 1 つずつ出して選び、寄る（狭い画面では今決めることの行と同じく引き出しを閉じる）
+ */
+function famRow(app: AppContext, imp: ImpactResult, r: FamRowData, kind: "worth" | "avoid", seen: Seen): HTMLElement {
+  const doc = app.store.doc;
+  const key = `${kind}:${r.fam}`;
+  // 名前を持たない種類（古い版の地図など）は、最初のカードの題名で書く（その題名を書き換えたら作り直す）
+  if (!hasFamLabel(doc, imp.root, r.fam) && r.instances[0]) seen.title(doc, r.instances[0]);
+  const label = famLabel(doc, imp.root, r.fam, r.instances);
+  const area = projectArea(r.project, doc);
+  const n = r.instances.length;
+  const value = formatMan(r.value);
+  const where = `地図に ${groupDigits(n)} か所`;
+  const next = h("span", { class: "imp-meta-part imp-rank-next" });
+  const showNext = () => {
+    next.textContent = `次: ${cycleAt(imp, key, n) + 1} / ${groupDigits(n)}`;
+  };
+  if (n >= 2) showNext();
+  return h(
+    "button",
+    {
+      class: `imp-rank-row is-${kind}`,
+      type: "button",
+      title: `${label}（${value}）・${where}`,
+      dataset: { fam: r.fam, fk: key },
+      onClick: () => {
+        if (!n) return;
+        goTo(app, r.instances[cycleNext(imp, key, n)]!, true);
+        if (n >= 2 && next.isConnected) showNext();
+      },
+    },
+    h("span", { class: "imp-rank-title" }, area ? areaChip(area) : null, h("span", { class: "imp-rank-name" }, label)),
+    deltaPill(r.value),
+    h("span", { class: "imp-rank-meta" }, h("span", { class: "imp-meta-part" }, where), n >= 2 ? metaSep(where) : null, n >= 2 ? next : null),
+  );
+}
+
+/** 「3 年でやる価値が大きい手」: 手の種類ごとに、ずっと使わない場合との差が 1 万円以上の物を、大きい順に 5 つまで */
+function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
+  clear(sec);
+  const span = horizonText(imp.horizon);
+  sec.append(h("h3", { class: "insp-label" }, `${span}でやる価値が大きい手`, h("span", { class: "insp-count" }, "ずっと使わない場合との差")));
+  const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast)
+    .worth.filter((w) => w.k >= WORTH_MIN)
+    .slice(0, WORTH_LIMIT);
+  if (!rows.length) {
+    sec.append(h("p", { class: "imp-note" }, `どの手の種類も、ずっと使わなくても ${span}の差は 1 万円未満`));
+    return;
+  }
+  const list = h("div", { class: "imp-rank-list" });
+  for (const w of rows) list.append(famRow(app, imp, { fam: w.fam, value: w.k, instances: w.instances, project: w.project }, "worth", seen));
+  sec.append(list, h("p", { class: "imp-note" }, "押すたびに、その手が出てくる所を来る見込みの高い順に地図で見せる"));
+}
+
+/** 「避けたい手」: 出てくる所の差の平均（来る見込みで重み付け）が −15 万円以下の種類を、悪い順に 3 つまで。無ければ欄ごと出さない */
+function fillAvoid(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
+  clear(sec);
+  const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast).avoid.slice(0, AVOID_LIMIT);
+  sec.hidden = !rows.length;
+  if (!rows.length) return;
+  sec.append(h("h3", { class: "insp-label" }, "避けたい手", h("span", { class: "insp-count" }, "出てくる所の差の平均")));
+  const list = h("div", { class: "imp-rank-list" });
+  for (const a of rows) list.append(famRow(app, imp, { fam: a.fam, value: a.mean, instances: a.instances, project: a.project }, "avoid", seen));
+  sec.append(list);
+}
+
+/**
+ * 「この先の大事な判断」: 今日より後の判断を、おすすめの選び方で来る見込み × その判断での差の大きい順に 6 つまで。無ければ欄ごと出さない。
+ * 行: 判断のカードの題名 / 「来る見込み 45%・この判断で最大 +12万の差」/「一番: 一番良い手」。押すとその判断を選び、詳細に選べる手が出る
+ */
+function fillKeys(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
+  clear(sec);
+  const doc = app.store.doc;
+  const rows = keyDecisions(imp, KEY_LIMIT).filter((k) => doc.nodes[k.id]);
+  sec.hidden = !rows.length;
+  if (!rows.length) return;
+  sec.append(h("h3", { class: "insp-label" }, "この先の大事な判断", h("span", { class: "insp-count" }, "来る見込み × 差の大きさの順")));
+  const list = h("div", { class: "imp-rank-list" });
+  for (const k of rows) {
+    const title = seen.title(doc, k.id) || "（無題）";
+    const p = `来る見込み ${formatShare(k.p)}`;
+    const stakes = `この判断で最大 ${formatMan(k.stakes)}の差`;
+    const best = k.best && doc.nodes[k.best] ? seen.title(doc, k.best) || "（無題）" : null;
+    list.append(
+      h(
+        "button",
+        { class: "imp-rank-row is-key", type: "button", title: `${title}（${p}・${stakes}${best ? `・一番: ${best}` : ""}）`, dataset: { id: k.id, fk: `key:${k.id}` }, onClick: () => goTo(app, k.id, false) },
+        h("span", { class: "imp-rank-title" }, h("span", { class: "imp-rank-name" }, title)),
+        h("span", { class: "imp-rank-meta" }, h("span", { class: "imp-meta-part" }, p), "・", h("span", { class: "imp-meta-part" }, stakes)),
+        best ? h("span", { class: "imp-rank-meta imp-rank-best" }, `一番: ${best}`) : null,
+      ),
+    );
+  }
+  sec.append(list);
+}
+
 /** 9 つの段の積み上げ棒（左 = 減る・右 = 増える。段のあいだは 2px あける） */
 function distRow(label: string, bins: number[]): HTMLElement {
   const parts: string[] = [];
@@ -693,12 +880,15 @@ function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Se
 export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(): boolean } {
   const head = impactHeader(app);
   const decide = h("section", { class: "imp-sec imp-decide" });
+  const worth = h("section", { class: "imp-sec imp-worth" });
+  const avoid = h("section", { class: "imp-sec imp-avoid" });
+  const keys = h("section", { class: "imp-sec imp-keys" });
   const dist = h("section", { class: "imp-sec imp-dist" });
   const ends = h("section", { class: "imp-sec imp-ends" });
   // 3 年の分かれ道だけを見え方で開く（文書・履歴・保存・同期は変えない。自分で折りたたんだ所はそのまま）
   const expandBtn = h("button", { class: "btn btn-sm", type: "button", title: "3 年の分かれ道を全部ひらく", dataset: { fk: "expand" }, onClick: () => app.vm.setImpactOpen(app.vm.impactBranches()) }, icon("expand", 14), "全部ひらく");
   const resetBtn = h("button", { class: "btn btn-sm", type: "button", title: "開いている所を最初の形に戻す", dataset: { fk: "reset-open" }, onClick: () => resetCommand(app)?.(app.vm.impact.root) }, icon("collapse", 14), "最初の形に戻す");
-  const el = h("div", { class: "imp-overview" }, head.el, decide, dist, ends, premisesSection(), legendSection(), h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
+  const el = h("div", { class: "imp-overview" }, head.el, decide, worth, avoid, keys, dist, ends, premisesSection(), legendSection(), h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
   el.hidden = true;
   let last: ImpactResult | null = null;
   let seen = new Seen();
@@ -717,13 +907,22 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
       if (imp !== last || seen.changed(app.store.doc)) {
         last = imp;
         seen = new Seen();
-        const inDecide = focusKeyIn(decide);
-        const inEnds = focusKeyIn(ends);
+        // キーボードで操作していた行（data-fk の鍵）は、作り直した後も同じ行へ。無くなったら同じ欄の最初の行、欄ごと無くなったら概要の最初の部品へ
+        let at: { sec: HTMLElement; key: string } | null = null;
+        for (const sec of [decide, worth, avoid, keys, ends]) {
+          const key = focusKeyIn(sec);
+          if (key !== null) {
+            at = { sec, key };
+            break;
+          }
+        }
         fillDecide(app, imp, decide, seen);
+        fillWorth(app, imp, worth, seen);
+        fillAvoid(app, imp, avoid, seen);
+        fillKeys(app, imp, keys, seen);
         fillDist(app, imp, dist);
         fillEnds(app, imp, ends, seen);
-        if (inDecide !== null) refocus(decide, inDecide);
-        else if (inEnds !== null) refocus(ends, inEnds);
+        if (at && !refocus(at.sec, at.key)) focusFirst(el);
       }
       return true;
     },
@@ -764,7 +963,7 @@ function picksRow(app: AppContext, id: ID, info: AltInfo): HTMLElement {
     icon("x", 14),
     info.dropped ? "見送った" : "見送る",
   );
-  const redo = h("button", { class: "btn btn-sm btn-ghost imp-redo", type: "button", disabled: ro || (!info.picked && !info.dropped), title: "未着手に戻して選び直す", dataset: { fk: `redo:${id}` }, onClick: () => app.cmd.setStatus([id], "open") }, icon("undo", 14), "選び直す");
+  const redo = h("button", { class: "btn btn-sm btn-ghost imp-redo", type: "button", disabled: ro || (!info.picked && !info.dropped), title: "未着手に戻して選び直す", dataset: { fk: `redo:${id}` }, onClick: () => pressed(() => app.cmd.setStatus([id], "open")) }, icon("undo", 14), "選び直す");
   return h("div", { class: "imp-picks" }, pick, drop, redo);
 }
 
@@ -781,7 +980,7 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
     wrap.append(h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ:`), deltaPill(0, { base: true, size: "lg" })), h("p", { class: "imp-note" }, "同じ判断のほかの手の数は、この手（この期間は何も足さない）と比べた差"));
   } else if (dec && dec.base === null) {
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "基準（今のまま）が無いので差を出せません")));
-    if (!ro) wrap.append(h("div", { class: "imp-picks" }, h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `base:${id}` }, onClick: () => app.cmd.updateNode(id, { meta: { ...n.meta, base: true } }, { label: "基準にする" }) }, "これを基準にする")));
+    if (!ro) wrap.append(h("div", { class: "imp-picks" }, h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `base:${id}` }, onClick: () => pressed(() => app.cmd.updateNode(id, { meta: { ...n.meta, base: true } }, { label: "基準にする" })) }, "これを基準にする")));
   } else if (info.delta === null) {
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "数字なし（結果と見込みを足すと計算します）")));
   } else {
@@ -814,7 +1013,7 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
         "p",
         { class: "imp-note imp-kari-note" },
         h("span", null, `年収が仮（${IMPACT_DEFAULT_ANNUAL} 万円）なので本業の数字は目安です`),
-        ro ? null : h("button", { class: "imp-link", type: "button", dataset: { fk: `salary-open:${id}` }, onClick: () => openSalaryEditor(app) }, "年収を入れる"),
+        ro ? null : h("button", { class: "imp-link", type: "button", dataset: { fk: `salary-open:${id}` }, onClick: () => pressed(() => openSalaryEditor(app)) }, "年収を入れる"),
       ),
     );
   }
