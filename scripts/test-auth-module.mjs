@@ -192,6 +192,9 @@ const codeOf = async (p) => {
     {
       const other = tarOf([[M.AUTH_MODULE_BUNDLE, UMD.replace("lemon:true", "lemon:false")], ["package/package.json", pkgJson()], ["package/LICENSE", LICENSE]]);
       ok("A2 配る側の tarball が替わった（固定の integrity と合わない）→ 作らない", (await codeOf(M.buildAuthModule({ pin, fetchImpl: fakeFetch(other).fetchImpl }))) === "tarball_hash");
+      // sha512 は開く前に見る（確かめる前のバイトを gzip や tar として読まない）: gzip でないバイトでも tarball_hash で止まる
+      // （開いてから見る作りでは、gzip を開く所の例外になる）
+      ok("A2 sha512 は開く前に見る（gzip でないバイト → 開かずに tarball_hash）", (await codeOf(M.buildAuthModule({ pin, fetchImpl: fakeFetch(Buffer.from("not gzip lemon")).fetchImpl }))) === "tarball_hash");
     }
     ok("A3 束の sha256 が固定の値と違う → 作らない（body_hash）", (await tryPin({ body: sha256("lemon") })) === "body_hash");
     ok("A4 答えの sha256 が固定の値と違う → 作らない（served_hash）", (await tryPin({ served: sha256("lemon") })) === "served_hash");
