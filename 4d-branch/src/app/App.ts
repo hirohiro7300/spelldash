@@ -31,7 +31,7 @@ import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
 import { buildFuture, futureRelease, futureVersion } from "../demo/futureBundle";
-import { FRESH_FUTURE, FUTURE_MIN_ZOOM, NO_AUTO_FUTURE, futureAge, futureMaps, hasFutureRoot, hasStaleFuture, inPlaceRoot, isFreshFuture, nearFutureRoot, swapFutureDoc, withNoAutoFuture, yieldsToRemote, type FutureMap } from "../demo/futureSwap";
+import { FRESH_FUTURE, FUTURE_MIN_ZOOM, NO_AUTO_FUTURE, futureAge, futureMaps, hasEditPrints, hasFutureRoot, hasStaleFuture, inPlaceRoot, isFreshFuture, nearFutureRoot, swapFutureDoc, withNoAutoFuture, yieldsToRemote, type FutureMap } from "../demo/futureSwap";
 
 export interface AppOptions {
   store: Store;
@@ -1107,17 +1107,22 @@ export class App implements AppContext {
     // 3 年の分かれ道どうし: 同じ地図を新しい版にする（鍵で合わせる）。それより前の地図: 入れ替える
     const upRoot = inPlaceRoot(this.store.doc, built.pv.doc);
     const inPlace = upRoot !== null;
+    // 前の版のアプリで読み込んだ地図（書き換えを見分ける指紋が無い）は、書き換えた見込み・文章・やることも新しい版の物になる: 確認とお知らせでそう言う
+    const printed = upRoot !== null && hasEditPrints(this.store.doc, upRoot);
     const old = pre.maps.reduce((k, m) => k + m.nodes.size, 0);
     // 同じ地図を新しくするときも、ほかの未来の道筋（10 年の道筋・2 つ目の今日）は今までどおり消える: その数を確認に出す
     const mine = pre.maps.find((m) => m.root === upRoot)?.nodes;
     const others = new Set<ID>();
     for (const m of pre.maps) if (m.root !== upRoot) for (const id of m.nodes) if (!mine?.has(id)) others.add(id);
     const { stats } = built;
+    const kept = printed
+      ? "あなたが足したカード・選んだ手・見送った手・やることのチェック・年収・自分で書き換えた見込み（%）や文章はそのまま残ります。"
+      : "あなたが足したカード・選んだ手・見送った手・やることのチェック・年収はそのまま残ります。この地図は前の版のアプリで開いたため、自分で書き換えた見込み（%）・文章・やることは見分けられず、新しい版の物になります。";
     const ok = await confirmDialog(
       inPlace
         ? {
             title: "未来の道筋を新しい版にしますか？",
-            body: `3 年の分かれ道の文章と数字を新しい版にします。あなたが足したカード・選んだ手・見送った手・やることのチェック・年収・自分で書き換えた見込み（%）や文章はそのまま残ります。${others.size ? `ほかの古い未来の道筋（ノード ${n(others.size)} 件）は消えます。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+            body: `3 年の分かれ道の文章と数字を新しい版にします。${kept}${others.size ? `ほかの古い未来の道筋（ノード ${n(others.size)} 件）は消えます。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
             ok: "新しい版にする",
           }
         : {
@@ -1139,8 +1144,9 @@ export class App implements AppContext {
       return;
     }
     if (!this.futureSwapNeeded(now)) return;
-    if ((inPlaceRoot(this.store.doc, built.pv.doc) !== null) !== inPlace) {
-      // 確かめた物と違うやり方になる（同じ地図を新しくすると聞いたのに入れ替える など）: しない
+    const upNow = inPlaceRoot(this.store.doc, built.pv.doc);
+    if ((upNow !== null) !== inPlace || (upNow !== null && hasEditPrints(this.store.doc, upNow) !== printed)) {
+      // 確かめた物と違うやり方になる（同じ地図を新しくすると聞いたのに入れ替える・書き換えが残ると言ったのに残せない など）: しない
       toast("確かめている間に地図が変わったため、新しい版にしませんでした。もう一度試してください", { tone: "warn", ms: 6000 });
       return;
     }
@@ -1154,7 +1160,7 @@ export class App implements AppContext {
     if (inPlace) {
       const changes = [res.updated ? `カードの更新 ${n(res.updated)}` : "", res.added ? `追加 ${n(res.added)}` : "", res.removed ? `削除 ${n(res.removed)}` : ""].filter(Boolean).join("・");
       const mine = res.userKept ? `あなたが足したカード ${n(res.userKept)} 件と、` : "";
-      toast(`未来の道筋を新しい版にしました（${changes || "変わったカードはありません"}）。${mine}選んだ手・チェック・年収・書き換えた文章や見込みはそのままです`, { tone: "ok", action: this.cmd.undoAction(), ms: 9000 });
+      toast(`未来の道筋を新しい版にしました（${changes || "変わったカードはありません"}）。${mine}選んだ手・チェック・年収${printed ? "・書き換えた文章や見込み" : ""}はそのままです`, { tone: "ok", action: this.cmd.undoAction(), ms: 9000 });
     } else {
       toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件${res.kept ? `・選んだ手や年収など ${n(res.kept)} 件を引き継ぎ` : ""}）`, { tone: "ok", action: this.cmd.undoAction() });
     }

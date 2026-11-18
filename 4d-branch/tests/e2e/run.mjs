@@ -1868,7 +1868,12 @@ async function main() {
       const mine = f.app.cmd.createNode("action", { x: root.x, y: root.y + 3000 }, { from: [root.id], title: "自分で足した手", exact: true });
       const card = Object.values(f.store.doc.nodes).find((n) => n.meta?.key === "r.sd_grow");
       f.app.cmd.updateNode(card.id, { title: "遊ぶ人を増やす（自分の言葉）" });
-      return { own, mine, card: card.id, root: root.id, nodes: Object.keys(f.store.doc.nodes).length, rootPos: [root.x, root.y], newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new") };
+      // 選択肢のやることに自分の項目を足してチェック
+      const sw = Object.values(f.store.doc.nodes).find((n) => n.meta?.key === "r.fc_switch");
+      f.app.cmd.addCondition(sw.id, "自分で足したやること");
+      const item = f.store.doc.nodes[sw.id].conditions.find((c) => c.text === "自分で足したやること");
+      f.app.cmd.updateCondition(sw.id, item.id, { met: true });
+      return { own, mine, card: card.id, todoCard: sw.id, todoItem: item.id, todoCount: f.store.doc.nodes[sw.id].conditions.length, root: root.id, nodes: Object.keys(f.store.doc.nodes).length, rootPos: [root.x, root.y], newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new") };
     });
     assert(prep.newMark === true, "古い版の地図があるのに「未来の道筋」に「新」の印が無い");
     await fp.waitForTimeout(800);
@@ -1898,6 +1903,8 @@ async function main() {
         mine: d.nodes[prep.mine]?.title,
         mineLinked: Object.values(d.edges).some((e) => e.source === prep.root && e.target === prep.mine),
         card: d.nodes[prep.card]?.title,
+        todo: d.nodes[prep.todoCard]?.conditions.find((c) => c.id === prep.todoItem),
+        todoCount: d.nodes[prep.todoCard]?.conditions.length,
         roots: roots.map((r) => r.id),
         ver: [roots[0].meta.futureVersion, roots[0].meta.futureRelease],
         pos: [roots[0].x, roots[0].y],
@@ -1911,6 +1918,7 @@ async function main() {
     assert(after.own === "自分で足したメモ", `自分のノードが消えた: ${after.own}`);
     assert(after.mine === "自分で足した手" && after.mineLinked, `今日の下に足した手が消えた・外れた: ${JSON.stringify(after)}`);
     assert(after.card === "遊ぶ人を増やす（自分の言葉）", `書き換えた題が戻った: ${after.card}`);
+    assert(after.todo?.text === "自分で足したやること" && after.todo.met === true && after.todoCount === prep.todoCount, `足したやること・チェックが消えた: ${JSON.stringify(after.todo)} ${after.todoCount}/${prep.todoCount}`);
     assert(after.roots.length === 1 && after.roots[0] === prep.root && after.pos[0] === prep.rootPos[0] && after.pos[1] === prep.rootPos[1], `入口: ${JSON.stringify(after)}`);
     assert(after.ver[0] === appVer.version && after.ver[1] === appVer.release, `版の印: ${JSON.stringify(after.ver)}`);
     assert(after.nodes === prep.nodes, `ノードの数 ${after.nodes} / ${prep.nodes}`);
@@ -2047,6 +2055,57 @@ async function main() {
     await fp.reload({ waitUntil: "networkidle" });
     await fp.locator(".toast", { hasText: NEWER_FUTURE }).waitFor({ timeout: 8000 });
     assert((await fp.locator(".toast", { hasText: /未来の道筋(が新しくなりました|の新しい版があります)/ }).count()) === 0, "新しい版の地図に差し替えを勧めた");
+  });
+
+  await check("未来の道筋: 前の版のアプリで開いた地図（書き換えを見分ける指紋が無い）は、書き換えた見込み・文章が新しい版の物になると確認で言い、残ったとは言わない", async () => {
+    await fp.evaluate(() => document.querySelectorAll(".toast .toast-close").forEach((b) => b.click()));
+    // 指紋と版の順番を外し、前の版の印にした地図で、% と題を書き換える
+    const prep = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const d = JSON.parse(JSON.stringify(f.store.doc));
+      const card = Object.values(d.nodes).find((n) => n.meta?.key === "r.fc_switch");
+      const edge = Object.values(d.edges).find((x) => x.source === card.id && typeof x.meta?.prob === "number");
+      // 同梱の見込み（元の見込み）と題: 新しい版にすると、これに戻る
+      const was = { prob: edge.meta.p0, title: card.title };
+      for (const n of Object.values(d.nodes)) {
+        delete n.meta.t0;
+        delete n.meta.b0;
+        delete n.meta.k0;
+        if (n.meta.forecastRoot) {
+          delete n.meta.futureRelease;
+          n.meta.futureVersion = "bdyw-18fku5";
+        }
+      }
+      for (const e of Object.values(d.edges)) {
+        delete e.meta.p0;
+        delete e.meta.c0;
+      }
+      edge.meta.prob = 77;
+      card.title = "転職活動（自分の言葉）";
+      d.updatedAt = new Date(Date.now() + 1000).toISOString();
+      f.store.replaceDoc(d, "前の版の地図");
+      return { card: card.id, edge: edge.id, was };
+    });
+    assert(typeof prep.was.prob === "number" && prep.was.prob !== 77, `元の見込みが無い: ${JSON.stringify(prep.was)}`);
+    await fp.getByRole("button", { name: "メニュー", exact: true }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋だけを新しい版に差し替える/ }).click();
+    const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版にしますか？" });
+    await confirm.waitFor();
+    const body = await confirm.innerText();
+    assert(body.includes("見分けられず、新しい版の物になります") && !body.includes("自分で書き換えた見込み（%）や文章はそのまま残ります"), body);
+    assert(body.includes("あなたが足したカード") && body.includes("年収はそのまま残ります"), body);
+    await confirm.getByRole("button", { name: "新しい版にする" }).click();
+    await fp.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true && typeof n.meta.futureRelease === "number"));
+    await fp.waitForTimeout(400);
+    const after = await fp.evaluate((prep) => {
+      const d = window.__fourD.store.doc;
+      const root = Object.values(d.nodes).find((n) => n.meta?.forecastRoot === true);
+      return { prob: d.edges[prep.edge]?.meta.prob, title: d.nodes[prep.card]?.title, printed: typeof root.meta.t0 === "string", toast: [...document.querySelectorAll(".toast:not(.closing) .toast-text")].map((t) => t.textContent).filter((t) => t.includes("新しい版にしました")) };
+    }, prep);
+    // 確認で言ったとおり、書き換えは新しい版の物になり、お知らせも残ったとは言わない。新しい版の指紋が付く（この次からは見分けられる）
+    assert(after.prob === prep.was.prob && after.title === prep.was.title, `確認と違う: ${JSON.stringify({ after, was: prep.was })}`);
+    assert(after.toast.length === 1 && !after.toast[0].includes("書き換えた文章や見込み") && after.toast[0].includes("年収はそのままです"), JSON.stringify(after.toast));
+    assert(after.printed, "新しい版にしたのに指紋が付いていない");
   });
   await fctx.close();
 

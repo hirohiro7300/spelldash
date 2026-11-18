@@ -8,7 +8,7 @@ import { isFlowEdge, isImpactRoot, primaryImpactRoot } from "../model/forks";
 import { newId } from "../model/ids";
 import { isDisposableDoc } from "./demo";
 import { edgeTextPrint, fnv36 } from "./impact";
-import type { DocData, GEdge, GNode, ID, Project, Scenario } from "../model/types";
+import type { Condition, DocData, GEdge, GNode, ID, Project, Scenario } from "../model/types";
 import { mergeDocs, nameKey } from "../persist/io";
 
 export interface FutureMap {
@@ -186,6 +186,14 @@ export function inPlaceRoot(doc: DocData, incoming?: DocData): ID | null {
 }
 
 /**
+ * 入口（root）の地図に、書き換えを見分ける指紋（t0 など）が付いているか。このアプリで読み込んだ地図には付く。
+ * 前の版のアプリで読み込んだ地図には無く、新しい版にすると、自分で書き換えた見込み（%）・文章・やることも新しい版の物になる
+ */
+export function hasEditPrints(doc: DocData, root: ID): boolean {
+  return typeof doc.nodes[root]?.meta.t0 === "string";
+}
+
+/**
  * 未来の道筋を新しい版にした文書を作る（doc は変えない）。数字と概要を出す v2 の入口と新しい版の入口が同じ鍵を持てば、
  * 同じ地図を新しい版にする（upgradeFuture）。そうでなければ（v1 の地図など）古い地図を消して入れ替える。
  * 未来の道筋が無ければ、ふつうの追加と同じく右側に足す
@@ -261,7 +269,7 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
 /**
  * 同じ地図を新しい版にする（rootId: 数字と概要を出す v2 の入口）。入口から道の線でたどれる、鍵のあるノード（同梱のカード）だけを新しい版と鍵で合わせる:
  * - 合うカードは ID と作った時刻をそのままに、新しい版の文章と数字にする。利用者の物は残す（選んだ手・見送り・やることのチェック・年収・
- *   書き換えたタイトルと本文・付けたタグ）
+ *   書き換えたタイトルと本文・付けたタグ・足した・書き換えたやること）
  * - 新しい版に無くなったカードは線ごと消す（その下に利用者が足したノードは、つながりの無いノードとして残る）。新しい版で増えたカードは足す
  * - カードどうしの道の線は（元の鍵・先の鍵）で合わせ、線の ID をそのままに新しい版の説明・条件・見込みにする（直した見込み・書き換えた説明と条件は残す）
  * - 鍵の無いノード（利用者が足した物）と、それにつながる線・道でない線は消さない
@@ -286,14 +294,18 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       order.push(e.target);
     }
   }
-  // 同梱のカード（鍵ごとに 1 つ）。複製などで同じ鍵が 2 つ以上あれば、入口に近い物（同じなら早く作った物）。ほかは利用者のノードとして残す
+  // 同梱のカード（鍵ごとに 1 つ）。複製などで同じ鍵が 2 つ以上あれば、先に作った物（複製は作った時刻が後になる。同じなら入口に近い物・ID の順）。
+  // 入口の鍵は数字と概要を出す入口に決める。ほかは利用者のノードとして残す
+  const oldRoot = doc.nodes[rootId]!;
+  const rootKey = keyOf(oldRoot);
   const oldByKey = new Map<string, GNode>();
+  if (rootKey !== null) oldByKey.set(rootKey, oldRoot);
   for (const id of order) {
     const n = doc.nodes[id]!;
     const k = keyOf(n);
-    if (k === null) continue;
+    if (k === null || k === rootKey) continue;
     const cur = oldByKey.get(k);
-    if (!cur || (depth.get(cur.id) === depth.get(id) && (n.createdAt < cur.createdAt || (n.createdAt === cur.createdAt && id < cur.id)))) oldByKey.set(k, n);
+    if (!cur || madeFirst(n, cur, depth)) oldByKey.set(k, n);
   }
   const cards = new Set<ID>();
   for (const n of oldByKey.values()) cards.add(n.id);
@@ -308,7 +320,7 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
   for (const m of maps) if (m.root !== rootId) for (const id of m.nodes) if (!depth.has(id)) gone.add(id);
 
   // 同梱の線: カードどうしの道の線。指紋の付いた地図（t0 のある入口）では、指紋（c0）の無い線は利用者が引いた線として残す
-  const marked = typeof doc.nodes[rootId]!.meta.t0 === "string";
+  const marked = hasEditPrints(doc, rootId);
   const ownLine = (e: GEdge): boolean => marked && typeof e.meta?.c0 !== "string";
   const oldEdge = new Map<string, GEdge>();
   const bundleEdges = new Set<ID>();
@@ -329,7 +341,6 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
   // カードは、合う物はもとの ID、増えた物は同梱の決まった ID（文書に同じ ID があれば振り直す）
   const pMap = adoptByName(out, incoming, "projects");
   const sMap = adoptByName(out, incoming, "scenarios");
-  const oldRoot = doc.nodes[rootId]!;
   const newRoot = Object.values(incoming.nodes).find(isForecastRoot)!;
   const dx = oldRoot.x - newRoot.x;
   const dy = oldRoot.y - newRoot.y;
@@ -393,6 +404,14 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
 /** 線の（元の鍵・先の鍵） */
 const pairKey = (source: string, target: string): string => `${source}\u0000${target}`;
 
+/** 同じ鍵のカードのうち、a を b より先の物（同梱のカード）とみるか: 先に作った物、同じ時刻なら入口に近い物、それも同じなら ID の順 */
+function madeFirst(a: GNode, b: GNode, depth: Map<ID, number>): boolean {
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt;
+  const da = depth.get(a.id)!;
+  const db = depth.get(b.id)!;
+  return da !== db ? da < db : a.id < b.id;
+}
+
 /** 取り込む側の ID を文書の ID に（合わない物は外す） */
 const mapIds = (ids: ID[], map: Map<ID, ID>): ID[] => ids.map((id) => map.get(id)).filter((id): id is ID => !!id);
 
@@ -423,35 +442,20 @@ const edited = (text: string, print: unknown): boolean => typeof print === "stri
 
 /**
  * 合ったカードを新しい版にする（next: 新しい版のカード。ID はもとの物）。利用者の物は old から残す:
- * 選んだ手・見送り・完了、やることのチェック（同じ文の項目）、書き換えたタイトル・本文、付けたタグ（新しい版で使っていない物）、
- * カードのシナリオ・折りたたみ、入口なら年収（salary）。指紋（t0・b0）は新しい版の物のまま（書き換えた文は、次の版でも書き換えたと分かる）
+ * 選んだ手・見送り・完了、やることのチェック・足した項目・書き換えた項目（upgradeTodo）、書き換えたタイトル・本文、付けたタグ（新しい版で使っていない物）、
+ * カードのシナリオ・折りたたみ、入口なら年収（salary）。指紋（t0・b0・k0）は新しい版の物のまま（書き換えた文は、次の版でも書き換えたと分かる）
  */
 function upgradeNode(next: GNode, old: GNode, bundleTags: Set<string>, salary: Salary | null): { node: GNode; kept: boolean; updated: boolean } {
   const title = edited(old.title, old.meta.t0) ? old.title : next.title;
   const body = edited(old.body, old.meta.b0) ? old.body : next.body;
   const status = old.status !== "open" ? old.status : next.status;
-  // やることは新しい版の物。同じ文の項目は、チェックともとの ID を残す
-  const met = new Set<string>();
-  const idByText = new Map<string, ID>();
-  for (const c of old.conditions) {
-    if (c.met) met.add(c.text);
-    if (!idByText.has(c.text)) idByText.set(c.text, c.id);
-  }
-  const seen = new Set<ID>();
-  let ticked = false;
-  const conditions = next.conditions.map((c) => {
-    const want = idByText.get(c.text);
-    const id = want !== undefined && !seen.has(want) ? want : c.id;
-    seen.add(id);
-    const on = c.met || met.has(c.text);
-    if (on && !c.met) ticked = true;
-    return id === c.id && on === c.met ? c : { ...c, id, met: on };
-  });
+  const todo = upgradeTodo(next.conditions, old.conditions, todoPrints(old));
+  const conditions = todo.list;
   const own = old.tags.filter((t) => !bundleTags.has(t));
   const tags = own.length ? [...next.tags, ...own] : next.tags;
   const meta = withSalary(next.meta, salary);
   const node: GNode = { ...next, title, body, status, conditions, tags, meta, scenarioIds: old.scenarioIds, collapsed: old.collapsed, createdAt: old.createdAt };
-  const kept = title !== next.title || body !== next.body || status !== next.status || ticked || own.length > 0 || meta !== next.meta;
+  const kept = title !== next.title || body !== next.body || status !== next.status || todo.kept || own.length > 0 || meta !== next.meta;
   // 文章か数字が変わった（期限・位置・版の印・指紋は数えない）
   const updated =
     title !== old.title ||
@@ -463,6 +467,93 @@ function upgradeNode(next: GNode, old: GNode, bundleTags: Set<string>, salary: S
     !sameMeta(meta, old.meta);
   if (!updated) node.updatedAt = old.updatedAt;
   return { node, kept, updated };
+}
+
+/**
+ * カードのやることの、同梱の項目の指紋（k0: 今の版の項目ごと）。指紋の付いたカードで k0 が無ければ、同梱の項目は無い。
+ * 指紋の無いカード（前の版のアプリで読み込んだ地図）は null（利用者が足した項目と見分けられない）
+ */
+function todoPrints(n: GNode): Set<string> | null {
+  const k0 = n.meta.k0;
+  if (Array.isArray(k0)) return new Set(k0.filter((p): p is string => typeof p === "string"));
+  return typeof n.meta.t0 === "string" ? new Set() : null;
+}
+
+/**
+ * 合ったカードのやることを新しい版にする（next: 新しい版の項目・old: 今の項目・base: 今の版の同梱の項目の指紋）:
+ * - 項目は新しい版の物。同じ文の項目は、チェックともとの ID を残す
+ * - 利用者が足した・書き換えた項目（同梱の項目の指紋に無い文）は、前にあった項目の後ろに、チェックごと残す
+ * - 利用者が消した・書き換えた同梱の項目（指紋はあるのに今のカードに無い文）は、新しい版でも戻さない
+ * - 指紋の無いカードは、項目は新しい版の物だけにして、同じ文の項目のチェックを残す
+ * ID はカードの中で重ならないようにする（残す項目のもとの ID を先に押さえ、新しい版の ID がそれと重なれば振り直す）
+ */
+function upgradeTodo(next: Condition[], old: Condition[], base: Set<string> | null): { list: Condition[]; kept: boolean } {
+  // 今の項目が無く、利用者が消した同梱の項目も無い（ほとんどのカード）: 新しい版の項目のまま
+  if (!old.length && !base?.size) return { list: next, kept: false };
+  const own = (c: Condition): boolean => base !== null && !base.has(fnv36(c.text));
+  let items = next;
+  if (base !== null) {
+    const have = new Set(old.map((c) => fnv36(c.text)));
+    items = next.filter((c) => {
+      const p = fnv36(c.text);
+      return !base.has(p) || have.has(p);
+    });
+  }
+  // 今の項目を文ごとに（新しい版の同じ文の項目が、前から順に 1 つずつ受け継ぐ）。同じ文の項目のどれかに付いたチェックは残す
+  const byText = new Map<string, Condition[]>();
+  const met = new Set<string>();
+  for (const c of old) {
+    const q = byText.get(c.text);
+    if (q) q.push(c);
+    else byText.set(c.text, [c]);
+    if (c.met) met.add(c.text);
+  }
+  // 新しい版に無い、利用者の項目: すぐ前にあった項目（新しい版にもある物）の後ろに置く。先頭にあった物は先頭、
+  // すぐ前の同梱の項目が新しい版で無くなった物は最後
+  const texts = new Set(items.map((c) => c.text));
+  const head: Condition[] = [];
+  const tail: Condition[] = [];
+  const after = new Map<string, Condition[]>();
+  let anchor: string | null = null;
+  let top = true;
+  for (const c of old) {
+    if (texts.has(c.text)) {
+      anchor = c.text;
+      top = false;
+    } else if (!own(c)) {
+      anchor = null;
+      top = false;
+    } else if (anchor !== null) after.set(anchor, [...(after.get(anchor) ?? []), c]);
+    else (top ? head : tail).push(c);
+  }
+  const slots: Array<{ c: Condition; from: Condition | undefined }> = head.map((c) => ({ c, from: c }));
+  for (const c of items) {
+    slots.push({ c, from: byText.get(c.text)?.shift() });
+    const follow = after.get(c.text);
+    if (follow) {
+      for (const t of follow) slots.push({ c: t, from: t });
+      after.delete(c.text);
+    }
+  }
+  for (const c of tail) slots.push({ c, from: c });
+  const reserved = new Set<ID>();
+  for (const s of slots) if (s.from) reserved.add(s.from.id);
+  const used = new Set<ID>();
+  let kept = false;
+  const list = slots.map(({ c, from }) => {
+    let id = from ? from.id : reserved.has(c.id) ? "" : c.id;
+    if (!id || used.has(id)) id = newId("c");
+    used.add(id);
+    if (from === c) {
+      // 利用者の項目（そのまま）
+      kept = true;
+      return id === c.id ? c : { ...c, id };
+    }
+    const on = c.met || met.has(c.text);
+    if (on && !c.met) kept = true;
+    return id === c.id && on === c.met ? c : { ...c, id, met: on };
+  });
+  return { list, kept };
 }
 
 /**
@@ -493,7 +584,7 @@ function upgradeEdge(next: GEdge, old: GEdge): { edge: GEdge; kept: boolean; upd
 }
 
 /** 比べるときに外す meta: 版の印と指紋 */
-const PRINT_KEYS = new Set(["t0", "b0", "p0", "c0", "futureVersion", "futureRelease"]);
+const PRINT_KEYS = new Set(["t0", "b0", "k0", "p0", "c0", "futureVersion", "futureRelease"]);
 
 /** meta の中身が同じか（版の印と指紋は比べない。鍵の順は問わない） */
 function sameMeta(a: GNode["meta"], b: GNode["meta"]): boolean {

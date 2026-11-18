@@ -4,7 +4,7 @@ import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
 import { buildDemoDoc } from "../../src/demo/demo";
 import { buildFuture, futureData, futureRelease, futureVersion } from "../../src/demo/futureBundle";
-import { futureAge, futureMaps, hasStaleFuture, inPlaceRoot, newerFutureMaps, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
+import { futureAge, futureMaps, hasEditPrints, hasStaleFuture, inPlaceRoot, newerFutureMaps, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
 import { buildImpactDoc, edgeTextPrint, fnv36, impactDataVersion, nextImpactRelease, type ImpactBundle, type ImpactOutX } from "../../src/demo/impact";
 import raw from "../../src/demo/impact-data.json?raw";
 import releaseFile from "../../src/demo/impact-release.json";
@@ -256,7 +256,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     // 指紋と版の順番を外す（前の版のアプリで読み込んだ地図と同じ形）
     const legacy: DocData = { ...u.doc, nodes: { ...u.doc.nodes }, edges: { ...u.doc.edges } };
     for (const [id, n] of Object.entries(legacy.nodes)) {
-      const { t0: _t, b0: _b, futureRelease: _r, ...meta } = n.meta;
+      const { t0: _t, b0: _b, k0: _k, futureRelease: _r, ...meta } = n.meta;
       legacy.nodes[id] = { ...n, meta: n.meta.forecastRoot ? { ...meta, futureVersion: "bdyw-18fku5" } : meta };
     }
     for (const [id, e] of Object.entries(legacy.edges)) {
@@ -360,6 +360,200 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     const [own] = cmd.connect([a.id], b.id);
     const res = swapFutureDoc(store.doc, nextDoc());
     expect(res.doc.edges[own!]).toEqual(store.doc.edges[own!]);
+  });
+
+  it("同じ鍵のカードが 2 つ（複製を今日の下につないだ）: 先に作った方を同梱のカードとして新しくし、複製は利用者のノードのまま残す", () => {
+    // 地図を作った時刻を前にずらす（複製は押した時刻で作られ、必ず後になる）
+    const base = buildFuture(TODAY).pv.doc;
+    for (const [id, n] of Object.entries(base.nodes)) base.nodes[id] = { ...n, createdAt: "2026-01-01T00:00:00.000Z" };
+    const { store, cmd } = setup(base);
+    const root = rootOf(store.doc);
+    const orig = byKey(store.doc, "r.fc_scope.all")!;
+    const kids = Object.values(store.doc.edges).filter((e) => e.source === orig.id).map((e) => e.id);
+    expect(kids.length).toBeGreaterThan(0);
+    const [dup] = cmd.duplicate([orig.id]);
+    const [link] = cmd.connect([root.id], dup!);
+    const res = swapFutureDoc(store.doc, nextDoc());
+    const d = res.doc;
+    const parents = (id: ID) => Object.values(d.edges).filter((e) => e.target === id).map((e) => d.nodes[e.source]!.meta.key);
+    expect(parents(orig.id)).toEqual(["r.fc_scope"]);
+    for (const id of kids) expect(d.edges[id]?.source, id).toBe(orig.id);
+    // 複製は今日からの自分の線だけを持ったまま（同梱の線は付け替えない）
+    expect(parents(dup!)).toEqual(["r"]);
+    expect(d.edges[link!]).toEqual(store.doc.edges[link!]);
+    expect(Object.values(d.edges).some((e) => e.source === dup)).toBe(false);
+    expect(d.nodes[dup!]).toEqual(store.doc.nodes[dup!]);
+    expect(Object.keys(d.nodes).length).toBe(Object.keys(store.doc.nodes).length);
+  });
+});
+
+describe("やること（チェックリスト）を新しい版にする", () => {
+  const CARD = "r.fc_switch";
+  const todoOf = (b: ImpactBundle) => at(b, CARD).n[7] as { todo: string[] };
+  const items = (d: DocData) => byKey(d, CARD)!.conditions;
+  const uniqueIds = (d: DocData) => {
+    for (const n of Object.values(d.nodes)) expect(new Set(n.conditions.map((c) => c.id)).size, n.title).toBe(n.conditions.length);
+  };
+  /** 書き換えを見分ける指紋を外した地図（前の版のアプリで読み込んだ物と同じ形） */
+  const withoutPrints = (doc: DocData): DocData => {
+    const out: DocData = { ...doc, nodes: { ...doc.nodes }, edges: { ...doc.edges } };
+    for (const [id, n] of Object.entries(out.nodes)) {
+      const { t0: _t, b0: _b, k0: _k, futureRelease: _r, ...meta } = n.meta;
+      out.nodes[id] = { ...n, meta: n.meta.forecastRoot ? { ...meta, futureVersion: "bdyw-18fku5" } : meta };
+    }
+    for (const [id, e] of Object.entries(out.edges)) {
+      const { p0: _p, c0: _c, ...meta } = e.meta;
+      out.edges[id] = { ...e, meta };
+    }
+    return out;
+  };
+
+  it("同梱のカードには、やることの項目ごとの指紋（k0）が付く", () => {
+    const doc = buildFuture(TODAY).pv.doc;
+    let withTodo = 0;
+    for (const n of Object.values(doc.nodes)) {
+      if (n.conditions.length) {
+        withTodo++;
+        expect(n.meta.k0, n.title).toEqual(n.conditions.map((c) => fnv36(c.text)));
+      } else expect(n.meta.k0, n.title).toBeUndefined();
+    }
+    expect(withTodo).toBeGreaterThan(50);
+    expect(hasEditPrints(doc, rootOf(doc).id)).toBe(true);
+    expect(hasEditPrints(withoutPrints(doc), rootOf(doc).id)).toBe(false);
+  });
+
+  it("足した・書き換えた項目はチェックごと残り、消した項目は戻らない。新しい版で足された・書き換えられた項目は入る", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const card = () => byKey(store.doc, CARD)!;
+    const [t0, t1, t2, t3, t4] = card().conditions.map((c) => c.text) as [string, string, string, string, string];
+    cmd.updateCondition(card().id, card().conditions[0]!.id, { met: true });
+    const second = card().conditions[1]!;
+    cmd.updateCondition(card().id, second.id, { text: `${t1}（自分の言葉）` });
+    cmd.updateCondition(card().id, second.id, { met: true });
+    cmd.removeCondition(card().id, card().conditions[3]!.id);
+    cmd.addCondition(card().id, "自分で足したやること");
+    const mine = card().conditions.find((c) => c.text === "自分で足したやること")!;
+    cmd.updateCondition(card().id, mine.id, { met: true });
+    const before = card().conditions;
+    // 次の版: 最後の項目を書き換え、1 つ足す（ほかの項目はそのまま）
+    const nb = nextBundle((b) => {
+      todoOf(b).todo = [t0, t1, t2, t3, `${t4}（次の版）`, "次の版で足したやること"];
+    });
+    const res = swapFutureDoc(store.doc, mapOf(nb, "todo-next", futureRelease() + 1));
+    const after = items(res.doc);
+    expect(after.map((c) => [c.text, c.met])).toEqual([
+      [t0, true],
+      [`${t1}（自分の言葉）`, true],
+      [t2, false],
+      [`${t4}（次の版）`, false],
+      ["次の版で足したやること", false],
+      ["自分で足したやること", true],
+    ]);
+    // 残した項目は ID もそのまま。ID はカードの中で重ならない
+    expect(after[0]!.id).toBe(before[0]!.id);
+    expect(after[1]!.id).toBe(second.id);
+    expect(after[5]!.id).toBe(mine.id);
+    uniqueIds(res.doc);
+    // 指紋は新しい版の物（次の版でも、足した・書き換えた項目と分かる）
+    expect(byKey(res.doc, CARD)!.meta.k0).toEqual(todoOf(nb).todo.map((t) => fnv36(t)));
+    expect(res.kept).toBeGreaterThan(0);
+    // 同じ版を当て直しても変わらない
+    const again = swapFutureDoc(res.doc, mapOf(nb, "todo-next", futureRelease() + 1));
+    expect(items(again.doc)).toEqual(after);
+    expect(again.updated).toBe(0);
+  });
+
+  it("このカードを変えない版では、足した・書き換えた項目のあるカードを更新と数えず、項目も順番もそのまま", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const card = () => byKey(store.doc, CARD)!;
+    cmd.addCondition(card().id, "自分で足したやること");
+    const second = card().conditions[1]!;
+    cmd.updateCondition(card().id, second.id, { text: `${second.text}（自分の言葉）`, met: true });
+    const before = card().conditions;
+    const nb = nextBundle((b) => {
+      at(b, "r.keep").n[4] = "今のままにする（次の版）";
+    });
+    const res = swapFutureDoc(store.doc, mapOf(nb, "todo-same", futureRelease() + 1));
+    expect(items(res.doc)).toEqual(before);
+    expect(res.updated).toBe(1);
+  });
+
+  it("やることを全部消したカードは、新しい版でも消したまま（新しい版で足された項目だけが入る）", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const card = () => byKey(store.doc, CARD)!;
+    const t = card().conditions.map((c) => c.text);
+    for (const c of card().conditions) cmd.removeCondition(card().id, c.id);
+    expect(card().conditions.length).toBe(0);
+    expect(items(swapFutureDoc(store.doc, nextDoc()).doc)).toEqual([]);
+    const nb = nextBundle((b) => {
+      todoOf(b).todo = [...t, "次の版で足したやること"];
+    });
+    expect(items(swapFutureDoc(store.doc, mapOf(nb, "todo-add", futureRelease() + 1)).doc).map((c) => c.text)).toEqual(["次の版で足したやること"]);
+  });
+
+  it("項目の ID は、新しい版で項目が減った・並びが変わっても重ならない（新しい項目だけを消す・チェックできる）", () => {
+    for (const legacy of [false, true]) {
+      // 1) 2 つ目を消して最後に 1 つ足した版。利用者は最後の項目にチェック
+      {
+        const { store, cmd } = setup(legacy ? withoutPrints(buildFuture(TODAY).pv.doc) : buildFuture(TODAY).pv.doc);
+        const card = () => byKey(store.doc, CARD)!;
+        const t = card().conditions.map((c) => c.text);
+        const ticked = card().conditions[4]!;
+        cmd.updateCondition(card().id, ticked.id, { met: true });
+        const nb = nextBundle((b) => {
+          todoOf(b).todo = [t[0]!, t[2]!, t[3]!, t[4]!, "次の版で足したやること"];
+        });
+        const res = swapFutureDoc(store.doc, mapOf(nb, "drop-append", futureRelease() + 1));
+        uniqueIds(res.doc);
+        const s2 = setup(res.doc);
+        const c2 = byKey(s2.store.doc, CARD)!;
+        expect(c2.conditions.find((c) => c.text === t[4])!.id).toBe(ticked.id);
+        s2.cmd.removeCondition(c2.id, c2.conditions.find((c) => c.text === "次の版で足したやること")!.id);
+        expect(items(s2.store.doc).map((c) => [c.text, c.met]), String(legacy)).toEqual([
+          [t[0], false],
+          [t[2], false],
+          [t[3], false],
+          [t[4], true],
+        ]);
+      }
+      // 2) 2 つ目を先頭に移し、その後ろに 1 つ足した版。利用者は 2 つ目にチェック
+      {
+        const { store, cmd } = setup(legacy ? withoutPrints(buildFuture(TODAY).pv.doc) : buildFuture(TODAY).pv.doc);
+        const card = () => byKey(store.doc, CARD)!;
+        const t = card().conditions.map((c) => c.text);
+        cmd.updateCondition(card().id, card().conditions[1]!.id, { met: true });
+        const nb = nextBundle((b) => {
+          todoOf(b).todo = [t[1]!, "次の版で増えたやること", t[2]!, t[3]!, t[4]!];
+        });
+        const res = swapFutureDoc(store.doc, mapOf(nb, "move-insert", futureRelease() + 1));
+        uniqueIds(res.doc);
+        const s2 = setup(res.doc);
+        const c2 = byKey(s2.store.doc, CARD)!;
+        s2.cmd.updateCondition(c2.id, c2.conditions.find((c) => c.text === "次の版で増えたやること")!.id, { met: true });
+        expect(items(s2.store.doc).map((c) => [c.text, c.met]), String(legacy)).toEqual([
+          [t[1], true],
+          ["次の版で増えたやること", true],
+          [t[2], false],
+          [t[3], false],
+          [t[4], false],
+        ]);
+      }
+    }
+  });
+
+  it("指紋の無い地図（前の版のアプリで読み込んだ物）: やることは新しい版の項目になり、同じ文の項目のチェックだけが残る", () => {
+    const { store, cmd } = setup(withoutPrints(buildFuture(TODAY).pv.doc));
+    const card = () => byKey(store.doc, CARD)!;
+    const t = card().conditions.map((c) => c.text);
+    cmd.updateCondition(card().id, card().conditions[0]!.id, { met: true });
+    cmd.addCondition(card().id, "自分で足したやること");
+    expect(hasEditPrints(store.doc, rootOf(store.doc).id)).toBe(false);
+    const res = swapFutureDoc(store.doc, nextDoc());
+    expect(items(res.doc).map((c) => [c.text, c.met])).toEqual(t.map((x, i) => [x, i === 0]));
+    uniqueIds(res.doc);
+    // 新しい版の指紋が付く（この次からは、足した項目を見分けられる）
+    expect(byKey(res.doc, CARD)!.meta.k0).toEqual(t.map((x) => fnv36(x)));
+    expect(hasEditPrints(res.doc, rootOf(res.doc).id)).toBe(true);
   });
 });
 

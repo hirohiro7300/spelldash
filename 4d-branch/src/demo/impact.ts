@@ -176,8 +176,8 @@ export function countImpact(b: ImpactBundle): ImpactCounts {
 
 /**
  * 3 年の分かれ道の文書を組み立てる（期限は today の月から数える）。同じデータ・同じ today なら同じ文書（作った時刻を除く）。
- * 入口には同梱データの版（version）と版の順番（release）を残す。カードには文章の指紋（t0・b0）、線には元の見込み（p0）と
- * 説明・条件の指紋（c0）を付ける（新しい版にしたとき、利用者が書き換えた所を見分けて残す）
+ * 入口には同梱データの版（version）と版の順番（release）を残す。カードには文章の指紋（t0・b0）とやることの項目ごとの指紋（k0）、
+ * 線には元の見込み（p0）と説明・条件の指紋（c0）を付ける（新しい版にしたとき、利用者が書き換えた・足した所を見分けて残す）
  */
 export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = "", release?: number): DocData {
   const doc = createEmptyDoc(b.title || IMPACT_TITLE);
@@ -230,7 +230,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
         time: { due: monthDate(today, m + ax.len), start: monthDate(today, m) },
         projectIds: area === "base" ? all : [AREAS[area].id],
         conditions: (ax.todo ?? []).map((t, k) => ({ ...makeCondition(t, false), id: `c_${ids[i]!.slice(4)}_${k}` })),
-        meta: { fork: "chance", m, ak: ax.k, fam: kind?.[2] ?? ax.k, h: ax.h, ...(ax.base ? { base: true } : {}), ...(ax.cites?.length ? { cites: ax.cites } : {}), rank: rankOf.get(i) ?? 0, short, key, ...prints },
+        meta: { fork: "chance", m, ak: ax.k, fam: kind?.[2] ?? ax.k, h: ax.h, ...(ax.base ? { base: true } : {}), ...(ax.cites?.length ? { cites: ax.cites } : {}), rank: rankOf.get(i) ?? 0, short, key, ...prints, ...(ax.todo?.length ? { k0: ax.todo.map((t) => fnv36(t)) } : {}) },
       });
     } else {
       const ox = x as ImpactOutX;
