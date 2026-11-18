@@ -2,6 +2,7 @@
 // 新しい版を同じ場所（入口の位置をそろえる）に入れる。ほかのノード・プロジェクト・シナリオはそのまま（同じ名前はまとめる）
 
 import { isForecastRoot } from "../model/forecast";
+import { isFlowEdge, isImpactRoot } from "../model/forks";
 import { isDisposableDoc } from "./demo";
 import type { DocData, ID } from "../model/types";
 import { mergeDocs } from "../persist/io";
@@ -83,11 +84,18 @@ export const FUTURE_MIN_ZOOM = 0.3;
 
 /**
  * 未来の道筋の入口（今日）から右へ 5 列・上下 600 までのノード（ids の中から）。全体は横に長すぎて読めないので、
- * 読み込んだ・開いたときはここに寄る（カードの文字が読める大きさで始める）。入口が無ければ ids をそのまま返す
+ * 読み込んだ・開いたときはここに寄る（カードの文字が読める大きさで始める）。入口が無ければ ids をそのまま返す。
+ * 3 年の分かれ道（v2）は、入口とその選択肢（ids の中から）。見えている物だけで寄せ、左上にそろえて 45% より引かない（CanvasView.fit）
  */
 export function nearFutureRoot(doc: DocData, ids: ID[] = Object.keys(doc.nodes)): ID[] {
   const root = ids.map((id) => doc.nodes[id]).find((n) => n !== undefined && isForecastRoot(n));
   if (!root) return ids;
+  if (isImpactRoot(root)) {
+    const set = new Set(ids);
+    const kids: ID[] = [];
+    for (const e of Object.values(doc.edges)) if (e.source === root.id && e.target !== root.id && isFlowEdge(e) && set.has(e.target) && doc.nodes[e.target] && !kids.includes(e.target)) kids.push(e.target);
+    return [root.id, ...kids];
+  }
   const near = ids.filter((id) => {
     const n = doc.nodes[id];
     return !!n && n.x >= root.x && n.x <= root.x + 5 * 300 && Math.abs(n.y - root.y) <= 600;

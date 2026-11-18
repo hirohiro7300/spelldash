@@ -45,6 +45,11 @@ export interface Prefs {
   futureAutoOpened: boolean;
   persistAsked: boolean;
   lastType: "goal" | "action" | "branch" | "result";
+  /**
+   * 3 年の分かれ道で開いているノード（入口の ID ごと）。見え方だけで、文書・履歴・同期には入れない（端末ごと）。
+   * 入口が無ければ最初の形（狭い画面は今日だけ・広い画面は今日と 10 の選択肢）
+   */
+  impactOpen: Record<ID, ID[]>;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -72,6 +77,7 @@ export const DEFAULT_PREFS: Prefs = {
   futureAutoOpened: false,
   persistAsked: false,
   lastType: "action",
+  impactOpen: {},
 };
 
 export interface CameraState {
@@ -87,12 +93,29 @@ export interface UiEvents {
   search: string;
   /** 見え方に関わる何か（再描画の合図） */
   visual: void;
+  /** 3 年の分かれ道でノードを開いた（キャンバスが、開いた子が見える所へ寄る） */
+  expand: ID[];
 }
 
 /** 時点（再生中は毎フレーム変わる）だけの変更か。パネルの作り直しはしない（押したボタンが差し替わってクリックが消えるため） */
 export function onlyTimeCursor(p: Partial<Prefs>): boolean {
   const keys = Object.keys(p);
   return keys.length > 0 && keys.every((k) => k === "timeCursor");
+}
+
+/** 覚えておく入口の数（別の地図を読み込み直すたびに増え続けないように） */
+const IMPACT_OPEN_ROOTS = 12;
+
+/** 保存してあった「3 年の分かれ道で開いているノード」を確かめる（壊れた値・ID でない物は捨てる） */
+export function cleanImpactOpen(v: unknown): Record<ID, ID[]> {
+  const out: Record<ID, ID[]> = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  // 後ろほど新しく触った入口（覚える数を超えていれば新しい物を残す）
+  const entries = Object.entries(v as Record<string, unknown>).filter(([root, list]) => !!root && root.length <= 200 && Array.isArray(list));
+  for (const [root, list] of entries.slice(-IMPACT_OPEN_ROOTS)) {
+    out[root] = [...new Set((list as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 200))];
+  }
+  return out;
 }
 
 const PREFS_KEY = "4d-branch:prefs";
@@ -120,6 +143,7 @@ function loadPrefs(): Prefs {
     // 壊れた時点（前の版で保存された NaN など）は外す
     if (p.timeCursor != null && !isDateStr(p.timeCursor)) p.timeCursor = null;
     const prefs: Prefs = { ...structuredClone(DEFAULT_PREFS), ...p, sections: { ...DEFAULT_PREFS.sections, ...(p.sections ?? {}) }, listSort: { ...DEFAULT_PREFS.listSort, ...(p.listSort ?? {}) } };
+    prefs.impactOpen = cleanImpactOpen(p.impactOpen);
     if (mark) prefs.futureAutoOpened = true;
     return prefs;
   } catch {
@@ -149,6 +173,26 @@ export class UiState {
     this.prefs = { ...this.prefs, ...patch };
     this.emitter.emit("prefs", patch);
     this.emitter.emit("visual", undefined);
+    this.savePrefsSoon();
+  }
+
+  /**
+   * 3 年の分かれ道で開いているノードを変える（見え方だけ。文書・履歴・保存・同期は変えない）。ids が null なら最初の形に戻す。
+   * opened: 新しく開いたノード（キャンバスが、その子が見える所へ寄る）
+   */
+  setImpactOpen(root: ID, ids: ID[] | null, opened: ID[] = []): void {
+    const next = { ...this.prefs.impactOpen };
+    if (ids === null) delete next[root];
+    else {
+      // いちばん新しく触った入口を最後に（覚える数を超えたら古い物から捨てる）
+      delete next[root];
+      next[root] = ids;
+      const keys = Object.keys(next);
+      for (let i = 0; i < keys.length - IMPACT_OPEN_ROOTS; i++) delete next[keys[i]!];
+    }
+    this.prefs = { ...this.prefs, impactOpen: next };
+    this.emitter.emit("visual", undefined);
+    if (opened.length) this.emitter.emit("expand", opened);
     this.savePrefsSoon();
   }
 

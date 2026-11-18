@@ -159,14 +159,15 @@ function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, blocked: Set<ID>,
 /**
  * scope の中で、折りたたみで隠れるノードを求める。
  * edgeOk で数に入れる接続を絞れる（シナリオで「隠す」ときなど）。
+ * collapsedOf でノードが折りたたまれているかを決める（既定は文書の collapsed。3 年の分かれ道は見え方の「開いているノード」で決める）
  */
-export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>, edgeOk: (e: GEdge) => boolean = () => true): CollapseResult {
+export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>, edgeOk: (e: GEdge) => boolean = () => true, collapsedOf: (id: ID) => boolean = (id) => !!doc.nodes[id]?.collapsed): CollapseResult {
   const outE = adjacency(doc, index, scope, edgeOk);
   const blocked = new Set<ID>();
   const blocks: Array<Block & { starts: ID[] }> = [];
   for (const id of scope) {
     const list = outE.get(id)!;
-    if (doc.nodes[id]?.collapsed && list.length) {
+    if (list.length && collapsedOf(id)) {
       for (const e of list) blocked.add(e.id);
       blocks.push({ key: id, node: id, starts: list.map((e) => e.target) });
     }

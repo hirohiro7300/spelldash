@@ -144,10 +144,12 @@ export function startTour(app: AppContext): void {
     if (s.node) {
       const id = s.node();
       const n = id ? store.doc.nodes[id] : null;
-      if (!n) return null;
+      if (!id || !n) return null;
       const cr = view.canvas.getBoundingClientRect();
       const z = view.camera.zoom;
-      const p = view.camera.toScreen(n.x, n.y);
+      // 描いている位置（3 年の分かれ道は重ねる位置）
+      const at = view.pos(id);
+      const p = view.camera.toScreen(at.x, at.y);
       return new DOMRect(cr.left + p.x - 120 * z - 14, cr.top + p.y - 52 * z - 14, 240 * z + 28, 104 * z + 28);
     }
     const el = s.target ? document.querySelector<HTMLElement>(s.target) : null;

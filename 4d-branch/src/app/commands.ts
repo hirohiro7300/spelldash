@@ -48,18 +48,22 @@ export class Commands {
 
   createNode(type: NodeType, at?: { x: number; y: number }, opts: { from?: ID[]; to?: ID[]; title?: string; edit?: boolean; exact?: boolean; projectIds?: ID[] } = {}): ID | null {
     const base = at ?? this.hooks.viewCenter();
-    const spot = opts.exact ? base : findFreeSpot(this.doc, Math.round(base.x), Math.round(base.y));
+    // 空いている所は、3 年の分かれ道の重ねる位置（見えているカード）も避けて探す
+    const spot = opts.exact ? base : findFreeSpot(this.doc, Math.round(base.x), Math.round(base.y), { extra: this.vm.overlayPoints() });
     const parents = (opts.from ?? []).map((id) => this.doc.nodes[id]).filter((n): n is GNode => !!n);
     const node = makeNode({ type, title: opts.title ?? "", x: Math.round(spot.x), y: Math.round(spot.y), projectIds: opts.projectIds ?? this.defaultProjects(parents) });
+    // 3 年の分かれ道の親は、見え方で開く（文書の collapsed は使わない）
+    const viewParents = parents.filter((p) => this.vm.inImpact(p.id)).map((p) => p.id);
     const ok = this.store.transact(`${NODE_TYPES[type].label}を作成`, (tx) => {
       tx.addNode(node);
       for (const p of parents) {
-        if (p.collapsed) tx.updateNode(p.id, { collapsed: false });
+        if (p.collapsed && !viewParents.includes(p.id)) tx.updateNode(p.id, { collapsed: false });
         tx.addEdge(makeEdge({ source: p.id, target: node.id, relation: this.relationFrom(p) }));
       }
       for (const t of opts.to ?? []) if (tx.doc.nodes[t]) tx.addEdge(makeEdge({ source: node.id, target: t, relation: "leads" }));
     });
     if (!ok) return null;
+    if (viewParents.length) this.vm.setImpactOpen(viewParents);
     this.ui.select([node.id]);
     if (this.ui.prefs.lastType !== type) this.ui.setPrefs({ lastType: type });
     this.hooks.reveal(node.id);
@@ -88,14 +92,16 @@ export class Commands {
       extra.push(spot);
       created.push(makeNode({ type: "action", title: "", x: Math.round(spot.x), y: Math.round(spot.y), projectIds: this.defaultProjects([p]) }));
     }
+    const viewParent = this.vm.inImpact(p.id);
     const ok = this.store.transact("分岐を作成", (tx) => {
-      if (p.collapsed) tx.updateNode(p.id, { collapsed: false });
+      if (p.collapsed && !viewParent) tx.updateNode(p.id, { collapsed: false });
       created.forEach((n, i) => {
         tx.addNode(n);
         tx.addEdge(makeEdge({ source: p.id, target: n.id, relation: "condition", condition: i === 0 ? "条件を満たしたら" : "満たさなければ" }));
       });
     });
     if (!ok) return [];
+    if (viewParent) this.vm.setImpactOpen([p.id]);
     this.ui.select(created.map((n) => n.id));
     this.hooks.reveal(created[0]!.id);
     return created.map((n) => n.id);
@@ -115,10 +121,20 @@ export class Commands {
     this.store.transact(opts.label ?? "ノードを編集", (tx) => tx.updateNode(id, patch), { coalesce: opts.coalesce });
   }
 
+  /** 3 年の分かれ道のカードを除く（自動で並ぶので動かさない）。除いた物があれば一度だけ知らせる */
+  private movable(ids: Iterable<ID>): ID[] {
+    const all = [...ids];
+    const ok = all.filter((id) => !this.vm.inImpact(id));
+    if (ok.length < all.length) this.noticeFixedLayout();
+    return ok;
+  }
+
   moveNodes(ids: Iterable<ID>, dx: number, dy: number, label = "移動"): void {
     if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    const list = this.movable(ids);
+    if (!list.length) return;
     this.store.transact(label, (tx) => {
-      for (const id of ids) {
+      for (const id of list) {
         const n = tx.doc.nodes[id];
         if (n) tx.updateNode(id, { x: Math.round(n.x + dx), y: Math.round(n.y + dy) });
       }
@@ -135,17 +151,36 @@ export class Commands {
     this.store.transact(`状態を「${STATUSES[status].label}」に`, (tx) => ids.forEach((id) => tx.updateNode(id, { status })));
   }
 
+  /**
+   * 折りたたむ・展開する。3 年の分かれ道のノードは見え方だけを変える（文書・履歴・保存・同期は変えない。端末ごと）。
+   * それ以外は今までどおり文書の collapsed（元に戻せる）
+   */
   toggleCollapse(ids: ID[]): void {
     const nodes = ids.map((id) => this.doc.nodes[id]).filter((n): n is GNode => !!n);
     if (!nodes.length) return;
-    const collapse = nodes.some((n) => !n.collapsed);
-    this.store.transact(collapse ? "折りたたむ" : "展開する", (tx) => nodes.forEach((n) => tx.updateNode(n.id, { collapsed: collapse })));
+    // 3 年の分かれ道の先の無いノード（行き先）は開く・閉じる物が無い
+    const view = nodes.filter((n) => this.vm.inImpact(n.id) && (this.vm.index.out.get(n.id)?.length ?? 0) > 0);
+    const docNodes = nodes.filter((n) => !this.vm.inImpact(n.id));
+    if (!view.length && !docNodes.length) return;
+    const collapse = [...view, ...docNodes].some((n) => !this.vm.isCollapsed(n.id));
+    if (view.length) {
+      const list = view.map((n) => n.id);
+      if (collapse) this.vm.setImpactOpen([], list);
+      else this.vm.setImpactOpen(list, [], { reveal: true });
+    }
+    if (docNodes.length) this.store.transact(collapse ? "折りたたむ" : "展開する", (tx) => docNodes.forEach((n) => tx.updateNode(n.id, { collapsed: collapse })));
     if (collapse) this.ui.select(nodes.map((n) => n.id));
+  }
+
+  /** 折りたたんでいるか（メニューの「展開する／この先を折りたたむ」。3 年の分かれ道は見え方の開閉） */
+  isCollapsed(id: ID): boolean {
+    return this.vm.isCollapsed(id);
   }
 
   /**
    * 隠れているノードを出す（検索で選んだときなど）。
-   * プロジェクトに絞る・シナリオで隠すで隠れていれば「薄くする」表示に切り替え、折りたたみの中なら上流を開く（元に戻せる）
+   * プロジェクトに絞る・シナリオで隠すで隠れていれば「薄くする」表示に切り替え、折りたたみの中なら上流を開く
+   * （3 年の分かれ道の中は見え方だけを開く。それ以外の折りたたみは文書を変える・元に戻せる）
    */
   revealNode(id: ID): void {
     if (!this.doc.nodes[id] || !this.vm.node(id).hidden) return;
@@ -160,6 +195,7 @@ export class Commands {
     }
     if (!this.vm.node(id).hidden) return;
     const open = this.vm.collapseBlockers(id);
+    if (open.open.length) this.vm.setImpactOpen(open.open);
     if (!open.nodes.length && !open.edges.length) return;
     this.store.transact("隠れていたノードを表示", (tx) => {
       for (const n of open.nodes) tx.updateNode(n, { collapsed: false });
@@ -188,9 +224,13 @@ export class Commands {
     };
   }
 
-  /** すべての折りたたみを開く */
+  /**
+   * すべての折りたたみを開く。3 年の分かれ道は見え方だけを開く（先のあるノードをすべて）。
+   * それ以外の折りたたんだノード・接続は文書を変える（元に戻せる）
+   */
   expandAll(): void {
-    const ns = Object.values(this.doc.nodes).filter((n) => n.collapsed);
+    this.vm.setImpactOpen(this.vm.impactBranches());
+    const ns = Object.values(this.doc.nodes).filter((n) => n.collapsed && !this.vm.inImpact(n.id));
     const es = Object.values(this.doc.edges).filter((e) => e.collapsed);
     if (!ns.length && !es.length) return;
     this.store.transact("すべて展開", (tx) => {
@@ -198,6 +238,20 @@ export class Commands {
       es.forEach((e) => tx.updateEdge(e.id, { collapsed: false }));
     });
   }
+
+  /** 3 年の分かれ道の開いている所を最初の形に戻す（見え方だけ。概要の「最初の形に戻す」） */
+  resetImpactOpen(): void {
+    this.vm.resetImpactOpen();
+  }
+
+  /** 3 年の分かれ道のカードを動かそうとしたときのお知らせ（この表示の間に 1 度だけ） */
+  noticeFixedLayout(): void {
+    if (this.fixedNoticeShown) return;
+    this.fixedNoticeShown = true;
+    this.hooks.toast("3 年の分かれ道は自動で並ぶので、カードは動かせません", { tone: "info" });
+  }
+
+  private fixedNoticeShown = false;
 
   deleteNodes(ids: ID[], edges: ID[] = []): void {
     const ns = ids.filter((id) => this.doc.nodes[id]);
@@ -225,7 +279,9 @@ export class Commands {
     const copies = nodes.map((n) => {
       const id = newId("n");
       map.set(n.id, id);
-      return makeNode({ ...n, id, x: n.x + 40, y: n.y + 40, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: { ...n.meta } });
+      // 写しは見えている位置の近くに（3 年の分かれ道のカードは重ねる位置。文書の位置は全部開いた形の所で遠い）
+      const at = this.vm.hasOverlay(n.id) ? this.vm.posOf(n.id)! : n;
+      return makeNode({ ...n, id, x: at.x + 40, y: at.y + 40, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: { ...n.meta } });
     });
     const inner = Object.values(this.doc.edges).filter((e) => map.has(e.source) && map.has(e.target));
     const ok = this.store.transact(nodes.length === 1 ? "複製" : `${nodes.length} 件を複製`, (tx) => {
@@ -239,7 +295,9 @@ export class Commands {
 
   /** 横（同じ高さ）・縦（同じ横位置）にそろえる */
   align(ids: ID[], axis: "h" | "v"): void {
-    const nodes = ids.map((id) => this.doc.nodes[id]).filter((n): n is GNode => !!n);
+    const nodes = this.movable(ids)
+      .map((id) => this.doc.nodes[id])
+      .filter((n): n is GNode => !!n);
     if (nodes.length < 2) return;
     if (axis === "h") {
       const y = Math.round(nodes.reduce((s, n) => s + n.y, 0) / nodes.length);

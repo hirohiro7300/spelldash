@@ -140,6 +140,8 @@ export interface NodeDrawOpts {
   editing: boolean;
   projectColors: string[];
   collapsedCount: number;
+  /** 折りたたんでいる（印を「+N」にする。3 年の分かれ道は見え方の開閉、それ以外は文書の collapsed） */
+  collapsed: boolean;
   /** 折りたたみの印を描くか（当たり判定と同じ答え。CanvasView.badgeVisible） */
   showBadge: boolean;
   today: string;
@@ -152,7 +154,7 @@ const FONT_SMALL = `650 11px ${CANVAS_FONT}`;
 const FONT_META = `500 11px ${CANVAS_FONT}`;
 
 /** 所属プロジェクトの色の帯（カードの下の縁）。縮小しても所属と共有が見える */
-function drawProjectStripe(ctx: CanvasRenderingContext2D, type: NodeType, left: number, top: number, colors: string[], a: number, zoom: number): void {
+export function drawProjectStripe(ctx: CanvasRenderingContext2D, type: NodeType, left: number, top: number, colors: string[], a: number, zoom: number): void {
   if (!colors.length) return;
   const hgt = Math.max(4, 2.6 / zoom);
   ctx.save();
@@ -337,14 +339,14 @@ export function drawNode(ctx: CanvasRenderingContext2D, n: GNode, x: number, y: 
     if (n.tags.length) parts.push(n.tags.slice(0, 3).map((t) => `#${t}`).join(" "));
     if (parts.length) {
       ctx.fillStyle = `rgba(128,138,156,${a.toFixed(3)})`;
-      const maxW = left + NODE_W - inset - fx - (o.showBadge || o.collapsedCount || n.collapsed ? 52 : n.status === "done" ? 20 : 0);
+      const maxW = left + NODE_W - inset - fx - (o.showBadge || o.collapsedCount || o.collapsed ? 52 : n.status === "done" ? 20 : 0);
       if (maxW > 20) ctx.fillText(ellipsize(ctx, parts.join("  ·  "), maxW), fx, fy);
     }
-    if (n.status === "done" && !(o.showBadge || n.collapsed)) drawDoneMark(ctx, left + NODE_W - inset - 4, fy - 4, a, 1);
+    if (n.status === "done" && !(o.showBadge || o.collapsed)) drawDoneMark(ctx, left + NODE_W - inset - 4, fy - 4, a, 1);
   }
 
   // 折りたたみの印（描くかどうかは呼ぶ側が当たり判定と同じ決まりで渡す）
-  if (o.showBadge) drawBadge(ctx, x, y, n.collapsed, o.collapsedCount, color, a, o.lod, o.zoom);
+  if (o.showBadge) drawBadge(ctx, x, y, o.collapsed, o.collapsedCount, color, a, o.lod, o.zoom);
   ctx.restore();
 }
 
@@ -362,7 +364,7 @@ function drawDoneMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, a: 
   ctx.stroke();
 }
 
-function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, collapsed: boolean, count: number, color: string, a: number, lod: Lod, zoom: number): void {
+export function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, collapsed: boolean, count: number, color: string, a: number, lod: Lod, zoom: number): void {
   const c = badgeCenter(x, y);
   const k = badgeScale(zoom);
   const bw = BADGE_W * k;
@@ -420,6 +422,10 @@ export interface EdgeDrawOpts {
   offScenario: boolean;
   /** 流れの動き（ミリ秒）。null なら動かさない */
   flowT: number | null;
+  /** 3 年の分かれ道の線: 色・太さ（関係の色・破線の代わり。実線） */
+  style?: { color: string; width: number } | null;
+  /** style のときの濃さ（拡大率ごとの選び方の道の濃さを含む） */
+  styleAlpha?: number;
 }
 
 function strokeCurve(ctx: CanvasRenderingContext2D, g: EdgeGeom, lod: Lod): void {
@@ -434,24 +440,26 @@ export function drawEdge(ctx: CanvasRenderingContext2D, g: EdgeGeom, o: EdgeDraw
   const rel = RELATIONS[o.relation];
   const px = 1 / o.zoom;
   const emphasized = o.path || o.selected || o.hovered;
-  const a = o.alpha * (emphasized ? 1 : o.lod === "dot" ? 0.3 : o.lod === "low" ? 0.6 : 1);
-  const color = rel.color;
-  const base = rel.width + (o.cross ? 0.9 : 0) + (o.selected ? 1.4 : o.hovered ? 0.8 : 0);
+  const st = o.style ?? null;
+  // 3 年の分かれ道の線は、呼ぶ側が決めた濃さ（選び方の道は濃く、ほかは薄く）
+  const a = st ? o.alpha * (emphasized ? Math.max(o.styleAlpha ?? 1, 0.95) : (o.styleAlpha ?? 1)) : o.alpha * (emphasized ? 1 : o.lod === "dot" ? 0.3 : o.lod === "low" ? 0.6 : 1);
+  const color = st ? st.color : rel.color;
+  const base = (st ? st.width : rel.width + (o.cross ? 0.9 : 0)) + (o.selected ? 1.4 : o.hovered ? 0.8 : 0);
   const lw = Math.max(base, (o.lod === "low" || o.lod === "dot" ? 1 : 0.9) * px);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
   // プロジェクト間の線は外側に光
-  if ((o.cross || o.selected) && (o.lod === "full" || o.lod === "compact")) {
+  if (((o.cross && !st) || o.selected) && (o.lod === "full" || o.lod === "compact")) {
     ctx.strokeStyle = rgba(color, (o.selected ? 0.22 : 0.13) * a);
     ctx.lineWidth = lw + (o.selected ? 9 : 7);
     ctx.setLineDash([]);
     strokeCurve(ctx, g, o.lod);
   }
-  ctx.strokeStyle = rgba(color, (o.path || o.selected ? 0.98 : 0.78) * a);
+  ctx.strokeStyle = rgba(color, st ? a : (o.path || o.selected ? 0.98 : 0.78) * a);
   ctx.lineWidth = lw;
   const dashOk = o.lod === "full" || o.lod === "compact";
-  ctx.setLineDash(dashOk ? (o.offScenario ? [3, 7] : rel.dash) : []);
+  ctx.setLineDash(dashOk ? (o.offScenario ? [3, 7] : st ? [] : rel.dash) : []);
   strokeCurve(ctx, g, o.lod);
   ctx.setLineDash([]);
 
@@ -480,7 +488,7 @@ export function drawEdge(ctx: CanvasRenderingContext2D, g: EdgeGeom, o: EdgeDraw
   ctx.lineTo(g.x3 - ux * s * 0.68, g.y3 - uy * s * 0.68);
   ctx.lineTo(g.x3 - ux * s + uy * s * 0.55, g.y3 - uy * s - ux * s * 0.55);
   ctx.closePath();
-  ctx.fillStyle = rgba(color, (o.path || o.selected ? 1 : 0.85) * a);
+  ctx.fillStyle = rgba(color, st ? a : (o.path || o.selected ? 1 : 0.85) * a);
   ctx.fill();
   if (o.relation === "blocks") {
     // 阻害は止め線
@@ -495,14 +503,18 @@ export function drawEdge(ctx: CanvasRenderingContext2D, g: EdgeGeom, o: EdgeDraw
   }
 }
 
-/** 線の中ほどのラベル（条件・説明）。描いた枠を返す（当たり判定用） */
-export function drawEdgeLabel(ctx: CanvasRenderingContext2D, g: EdgeGeom, text: string, relation: Relation, alpha: number, emphasized: boolean, zoom: number): { x: number; y: number; w: number; h: number } {
+/**
+ * 線の中ほどのラベル（条件・説明）。描いた枠を返す（当たり判定用）。
+ * opt.color: 枠と点の色（3 年の分かれ道の結果の線は、その結果の色）・opt.maxW: 省略する幅（画面の px）・opt.bold: 太字（「35%」だけの短い札）
+ */
+export function drawEdgeLabel(ctx: CanvasRenderingContext2D, g: EdgeGeom, text: string, relation: Relation, alpha: number, emphasized: boolean, zoom: number, opt: { color?: string; maxW?: number; bold?: boolean } = {}): { x: number; y: number; w: number; h: number } {
   const rel = RELATIONS[relation];
+  const tone = opt.color ?? rel.color;
   const p = bezierPoint(g, 0.5);
   const k = Math.max(1, Math.min(2, 0.9 / zoom));
   const fs = Math.round(11.5 * k * 2) / 2;
-  ctx.font = `500 ${fs}px ${CANVAS_FONT}`;
-  const t = ellipsize(ctx, text, 190 * k);
+  ctx.font = `${opt.bold ? 700 : 500} ${fs}px ${CANVAS_FONT}`;
+  const t = ellipsize(ctx, text, (opt.maxW ?? 190) * k);
   const w = ctx.measureText(t).width + 26 * k;
   const h = 22 * k;
   const x = p.x - w / 2;
@@ -512,11 +524,11 @@ export function drawEdgeLabel(ctx: CanvasRenderingContext2D, g: EdgeGeom, text: 
   ctx.fillStyle = `rgba(13,17,25,${(0.94 * Math.max(alpha, 0.4)).toFixed(3)})`;
   ctx.fill();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = rgba(rel.color, (emphasized ? 0.85 : 0.42) * alpha);
+  ctx.strokeStyle = rgba(tone, (emphasized ? 0.85 : 0.42) * alpha);
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(x + 11 * k, p.y, 3.2 * k, 0, Math.PI * 2);
-  ctx.fillStyle = rgba(rel.color, alpha);
+  ctx.fillStyle = rgba(tone, alpha);
   ctx.fill();
   ctx.fillStyle = `rgba(214,220,231,${alpha.toFixed(3)})`;
   ctx.textBaseline = "middle";

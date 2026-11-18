@@ -118,10 +118,12 @@ export class Minimap {
     const nh = Math.max(1.5, HALF_H * 2 * scale);
     for (const id of this.vm.drawNodes) {
       const n = doc.nodes[id]!;
+      // 位置は描くときと同じ（3 年の分かれ道は重ねる位置）
+      const p = this.vm.posOf(id) ?? n;
       const v = this.vm.nodes.get(id)!;
       ctx.globalAlpha = Math.max(0.25, v.alpha);
       ctx.fillStyle = NODE_TYPES[n.type].color;
-      ctx.fillRect(ox + (n.x - HALF_W) * scale, oy + (n.y - HALF_H) * scale, nw, nh);
+      ctx.fillRect(ox + (p.x - HALF_W) * scale, oy + (p.y - HALF_H) * scale, nw, nh);
     }
     ctx.globalAlpha = 1;
     // 見ている範囲

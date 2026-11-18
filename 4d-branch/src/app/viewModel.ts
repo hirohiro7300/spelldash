@@ -1,13 +1,19 @@
 // 見え方の計算: プロジェクトの絞り込み・シナリオ・時点・検索・折りたたみ・経路の強調 → ノードと接続ごとの「隠す・薄さ」
 // 変更のたびに作り直す（O(ノード + 接続)）。位置だけの変更では作り直さない
+//
+// 3 年の分かれ道（未来の道筋 v2）の範囲は、開く・閉じるを文書ではなく見え方（UiState.prefs.impactOpen・端末ごと）で持ち、
+// 位置も文書の x・y ではなく、見えているノードだけを目次の形に並べ直した「重ねる位置」を使う（posOf）。設計: docs/DESIGN.md §4.7
 
 import { computeForecast, type ForecastResult } from "../model/forecast";
+import { flowOuts, forkKindOf, isFlowEdge, isImpactRoot } from "../model/forks";
 import { computeImpact, emptyImpact, type ImpactResult } from "../model/impact";
+import { compareImpactKids, outlineLayout } from "../model/impactLayout";
 import { buildIndex, inScenario, type GraphIndex } from "../model/graph";
 import { isEmptyQuery, parseQuery, searchNodes } from "../model/search";
 import type { DocData, GEdge, ID } from "../model/types";
 import { computeCollapse, computePaths, computeUnreached, type CollapseResult } from "../model/visibility";
 import type { Store } from "../store/store";
+import { isNarrowScreen } from "../ui/breakpoints";
 import type { UiState } from "./uiState";
 
 export interface NodeVis {
@@ -25,6 +31,8 @@ export interface NodeVis {
   offScenario: boolean;
   /** 折りたたみで隠れた件数（折りたたんだノードだけ） */
   collapsedCount: number;
+  /** 折りたたんでいる（3 年の分かれ道は見え方で閉じていて、先があるもの。それ以外は文書の collapsed） */
+  collapsed: boolean;
   inProject: boolean;
 }
 
@@ -36,7 +44,20 @@ export interface EdgeVis {
   offScenario: boolean;
 }
 
-const HIDDEN_NODE: NodeVis = { hidden: true, alpha: 0, match: false, path: false, ghost: false, future: false, offScenario: false, collapsedCount: 0, inProject: false };
+const HIDDEN_NODE: NodeVis = { hidden: true, alpha: 0, match: false, path: false, ghost: false, future: false, offScenario: false, collapsedCount: 0, collapsed: false, inProject: false };
+
+/** 3 年の分かれ道の範囲（索引ごとに作り直す） */
+interface ImpactScopeInfo {
+  index: number;
+  /** 入口（ID の順） */
+  roots: ID[];
+  /** 範囲のノード → それをたどった入口 */
+  owner: Map<ID, ID>;
+  /** 入口から何歩目か（入口からたどれないノードを並べるときの列） */
+  depth: Map<ID, number>;
+}
+
+type Pt = { x: number; y: number };
 
 export class ViewModel {
   index!: GraphIndex;
@@ -60,6 +81,22 @@ export class ViewModel {
   private impactCache: ImpactResult = emptyImpact();
   private dirtyIndex = true;
   private dirtyVis = true;
+  /** 位置だけが変わった（重ねる位置を入口の位置に合わせ直す） */
+  private dirtyPos = false;
+  /** 狭い画面か（3 年の分かれ道の最初の形を決める。確かめで差し替えられる） */
+  narrow: () => boolean = isNarrowScreen;
+  private scopeCache: ImpactScopeInfo | null = null;
+  /** 入口ごとの「開いているノード」（保存してある配列か、最初の形） */
+  private openCache = new Map<ID, { src: ID[] | undefined; index: number; set: Set<ID> }>();
+  /** 入口ごとに、最初の形を狭い画面の形にしたか（この表示の間は変えない。幅が変わっても開いている所を動かさない） */
+  private narrowDefault = new Map<ID, boolean>();
+  /** 折りたたんでいるか（直前の計算で使った決まり） */
+  private collapsedPred: (id: ID) => boolean = (id) => !!this.store.doc.nodes[id]?.collapsed;
+  /** 重ねる位置（入口からの相対と、入口の位置を足した物） */
+  private overlayRel = new Map<ID, { root: ID; x: number; y: number }>();
+  private overlayAbs = new Map<ID, Pt>();
+  /** 重ねる位置を作ったときの材料（同じなら作り直さない） */
+  private overlayKey: { index: number; opens: Set<ID>[]; visible: ID[] } | null = null;
   /** 直前の計算の中身（隠れた理由を答える・折りたたみを開く計画に使う） */
   private last: {
     scope: Set<ID>;
@@ -80,7 +117,7 @@ export class ViewModel {
       if (!info.positionsOnly) {
         this.dirtyIndex = true;
         this.dirtyVis = true;
-      }
+      } else this.dirtyPos = true;
     });
     ui.on("visual", () => {
       this.dirtyVis = true;
@@ -92,17 +129,25 @@ export class ViewModel {
     this.dirtyVis = true;
   }
 
-  ensure(): void {
+  private ensureIndex(): void {
     if (this.dirtyIndex) {
       this.index = buildIndex(this.store.doc);
       this.indexVersion++;
       this.dirtyIndex = false;
       this.dirtyVis = true;
     }
+  }
+
+  ensure(): void {
+    this.ensureIndex();
     if (this.dirtyVis) {
       this.compute();
       this.dirtyVis = false;
       this.version++;
+    }
+    if (this.dirtyPos) {
+      this.dirtyPos = false;
+      this.placeOverlay();
     }
   }
 
@@ -184,8 +229,18 @@ export class ViewModel {
     }
     const edgeOk = (e: GEdge) => !hideScen || edgeInScen(e);
 
-    // 2) 折りたたみ・シナリオの推定
-    const col = computeCollapse(doc, idx, scope, edgeOk);
+    // 2) 折りたたみ・シナリオの推定（3 年の分かれ道の範囲は、文書の collapsed ではなく見え方の「開いているノード」で決める）
+    const info = this.scopeInfo();
+    const opens = info.roots.map((r) => this.openSetOf(r, info));
+    const openOf = new Map(info.roots.map((r, i) => [r, opens[i]!]));
+    const collapsedOf = info.roots.length
+      ? (id: ID): boolean => {
+          const r = info.owner.get(id);
+          return r !== undefined ? !openOf.get(r)!.has(id) : !!doc.nodes[id]?.collapsed;
+        }
+      : (id: ID): boolean => !!doc.nodes[id]?.collapsed;
+    this.collapsedPred = collapsedOf;
+    const col = computeCollapse(doc, idx, scope, edgeOk, collapsedOf);
     const unreached = sid ? computeUnreached(doc, idx, scope, edgeInScen) : new Set<ID>();
 
     // 3) 検索
@@ -201,12 +256,33 @@ export class ViewModel {
     const selected = [...sel.nodes].filter(shown);
     this.pathActive = prefs.pathHighlight && selected.length > 0;
     const paths = this.pathActive ? computePaths(doc, idx, selected, (e) => edgeOk(e) && (!sid || edgeInScen(e)) && shown(e.source) && shown(e.target)) : null;
+    // 3 年の分かれ道の選択肢を選んだときは、同じ判断のほかの選択肢（兄弟）とそこへの線も薄くしない（並べて比べられるように）
+    const siblings = new Set<ID>();
+    if (paths && info.roots.length) {
+      for (const id of selected) {
+        if (!info.owner.has(id)) continue;
+        for (const eid of idx.inc.get(id) ?? []) {
+          const e = doc.edges[eid];
+          const d = e && doc.nodes[e.source];
+          if (!e || !d || !isFlowEdge(e) || !info.owner.has(d.id)) continue;
+          const outs = flowOuts(doc, idx.out, d.id);
+          if (forkKindOf(d, outs) !== "decision") continue;
+          for (const o of outs) {
+            if (!shown(o.target)) continue;
+            siblings.add(o.target);
+            siblings.add(o.id);
+          }
+        }
+      }
+    }
 
     // 5) ノード
     this.nodes.clear();
     const draw: ID[] = [];
     const drawTop: ID[] = [];
     let hiddenCount = 0;
+    /** 見えている 3 年の分かれ道のノード（重ねる位置を作る材料） */
+    const visibleScope: ID[] = [];
     for (const id in doc.nodes) {
       const n = doc.nodes[id]!;
       const offScenario = sid !== null && (!inScenario(n.scenarioIds, sid) || unreached.has(id));
@@ -221,11 +297,17 @@ export class ViewModel {
       const match = hitSet.has(id);
       if (this.searchActive && !match) alpha = Math.min(alpha, 0.14);
       const path = !!paths?.nodes.has(id);
-      if (this.pathActive && !path) alpha = Math.min(alpha, 0.3);
+      if (this.pathActive && !path && !siblings.has(id)) alpha = Math.min(alpha, 0.3);
       if (hidden) hiddenCount++;
-      const collapsedCount = n.collapsed ? (col.counts.get(id) ?? 0) : 0;
-      this.nodes.set(id, { hidden, alpha, match, path, ghost: isGhost, future, offScenario, collapsedCount, inProject });
-      if (!hidden) (sel.nodes.has(id) ? drawTop : draw).push(id);
+      const inImpact = info.owner.has(id);
+      const closed = inImpact ? collapsedOf(id) : n.collapsed;
+      const collapsedCount = closed ? (col.counts.get(id) ?? 0) : 0;
+      const collapsed = inImpact ? closed && (idx.out.get(id)?.length ?? 0) > 0 : n.collapsed;
+      this.nodes.set(id, { hidden, alpha, match, path, ghost: isGhost, future, offScenario, collapsedCount, collapsed, inProject });
+      if (!hidden) {
+        (sel.nodes.has(id) ? drawTop : draw).push(id);
+        if (inImpact) visibleScope.push(id);
+      }
     }
     this.drawNodes = draw.concat(drawTop);
     this.hiddenCount = hiddenCount;
@@ -242,20 +324,266 @@ export class ViewModel {
       const src = doc.nodes[e.source];
       const offScenario = sid !== null && !edgeInScen(e);
       const cross = idx.cross.has(id);
-      let hidden = !a || !b || a.hidden || b.hidden || (hideScen && offScenario) || !!src?.collapsed || e.collapsed;
+      const srcClosed = !!src && collapsedOf(src.id);
+      let hidden = !a || !b || a.hidden || b.hidden || (hideScen && offScenario) || srcClosed || e.collapsed;
       const incident = sel.nodes.has(e.source) || sel.nodes.has(e.target) || sel.edges.has(id);
       if (prefs.edgeMode === "selection" && !incident) hidden = true;
       if (prefs.edgeMode === "cross" && !cross && !incident) hidden = true;
       let alpha = Math.min(a?.alpha ?? 0, b?.alpha ?? 0);
       if (offScenario) alpha = Math.min(alpha, 0.16);
       const path = !!paths?.edges.has(id);
-      if (this.pathActive && !path) alpha = Math.min(alpha, 0.2);
+      if (this.pathActive && !path && !siblings.has(id)) alpha = Math.min(alpha, 0.2);
       this.edges.set(id, { hidden, alpha, path, cross, offScenario });
       if (!hidden) (path || sel.edges.has(id) ? edgesTop : edgesNormal).push(id);
-      if (e.collapsed && a && !a.hidden && !src?.collapsed && !(hideScen && offScenario)) stubs.push({ id, count: col.counts.get(id) ?? 0 });
+      if (e.collapsed && a && !a.hidden && !srcClosed && !(hideScen && offScenario)) stubs.push({ id, count: col.counts.get(id) ?? 0 });
     }
     this.drawEdges = edgesNormal.concat(edgesTop);
     this.stubEdges = stubs;
+
+    // 7) 3 年の分かれ道の重ねる位置（開いている所・見えている物・索引が変わったときだけ並べ直す）
+    this.updateOverlay(info, opens, visibleScope);
+  }
+
+  // ------------------------------------------------------------ 3 年の分かれ道（開く・閉じる・重ねる位置）
+
+  /** 3 年の分かれ道の範囲と入口（索引が変わったときだけ作り直す） */
+  private scopeInfo(): ImpactScopeInfo {
+    this.ensureIndex();
+    const c = this.scopeCache;
+    if (c && c.index === this.indexVersion) return c;
+    const doc = this.store.doc;
+    const out = this.index.out;
+    const roots = Object.keys(doc.nodes)
+      .filter((id) => isImpactRoot(doc.nodes[id]))
+      .sort();
+    const owner = new Map<ID, ID>();
+    const depth = new Map<ID, number>();
+    for (const r of roots) {
+      if (owner.has(r)) continue;
+      owner.set(r, r);
+      depth.set(r, 0);
+      // 幅優先（いちばん短い歩数を列の深さに）
+      const queue = [r];
+      for (let i = 0; i < queue.length; i++) {
+        const id = queue[i]!;
+        for (const e of flowOuts(doc, out, id)) {
+          if (owner.has(e.target)) continue;
+          owner.set(e.target, r);
+          depth.set(e.target, depth.get(id)! + 1);
+          queue.push(e.target);
+        }
+      }
+    }
+    const info = { index: this.indexVersion, roots, owner, depth };
+    this.scopeCache = info;
+    return info;
+  }
+
+  /** そのノードの先（道の線でつながる子。範囲の中で同じ入口の物。線の順） */
+  private impactKids(id: ID, info: ImpactScopeInfo): ID[] {
+    const doc = this.store.doc;
+    const r = info.owner.get(id);
+    const list: ID[] = [];
+    for (const eid of this.index.out.get(id) ?? []) {
+      const e = doc.edges[eid];
+      if (!e || e.source === e.target || !isFlowEdge(e) || info.owner.get(e.target) !== r || list.includes(e.target)) continue;
+      list.push(e.target);
+    }
+    return list;
+  }
+
+  /** 入口の「開いているノード」。保存してあればそれ、無ければ最初の形（狭い画面は今日だけ・広い画面は今日と選択肢） */
+  private openSetOf(root: ID, info: ImpactScopeInfo): Set<ID> {
+    const src = this.ui.prefs.impactOpen[root];
+    const c = this.openCache.get(root);
+    if (c && c.src === src && (src !== undefined || c.index === info.index)) return c.set;
+    let set: Set<ID>;
+    if (src) set = new Set(src);
+    else {
+      let narrow = this.narrowDefault.get(root);
+      if (narrow === undefined) this.narrowDefault.set(root, (narrow = this.narrow()));
+      set = new Set([root]);
+      if (!narrow) for (const k of this.impactKids(root, info)) set.add(k);
+    }
+    this.openCache.set(root, { src, index: info.index, set });
+    return set;
+  }
+
+  /** 3 年の分かれ道の範囲のノードか */
+  inImpact(id: ID): boolean {
+    return this.scopeInfo().owner.has(id);
+  }
+
+  /** 3 年の分かれ道の入口（ID の順） */
+  impactRoots(): ID[] {
+    return this.scopeInfo().roots;
+  }
+
+  /** 3 年の分かれ道で開いているか（範囲の外は文書の collapsed の逆） */
+  isOpen(id: ID): boolean {
+    const info = this.scopeInfo();
+    const r = info.owner.get(id);
+    if (r === undefined) return !this.store.doc.nodes[id]?.collapsed;
+    return this.openSetOf(r, info).has(id);
+  }
+
+  /**
+   * 折りたたんでいるか（右クリックのメニューの「展開する／この先を折りたたむ」・C で決める向き）。
+   * 3 年の分かれ道は見え方で閉じていて先がある物、それ以外は文書の collapsed
+   */
+  isCollapsed(id: ID): boolean {
+    if (!this.inImpact(id)) return !!this.store.doc.nodes[id]?.collapsed;
+    return !this.isOpen(id) && (this.index.out.get(id)?.length ?? 0) > 0;
+  }
+
+  /**
+   * 3 年の分かれ道のノードを開く・閉じる（見え方だけ。文書・履歴・保存・同期は変えない）。範囲の外の ID は無視する。
+   * reveal: 開いた子が見える所へキャンバスを寄せる。変えたら true
+   */
+  setImpactOpen(open: Iterable<ID>, close: Iterable<ID> = [], opts: { reveal?: boolean } = {}): boolean {
+    const info = this.scopeInfo();
+    const next = new Map<ID, Set<ID>>();
+    const opened = new Map<ID, ID[]>();
+    const get = (r: ID) => {
+      let s = next.get(r);
+      if (!s) next.set(r, (s = new Set(this.openSetOf(r, info))));
+      return s;
+    };
+    let changed = false;
+    for (const id of open) {
+      const r = info.owner.get(id);
+      if (r === undefined) continue;
+      const s = get(r);
+      if (s.has(id)) continue;
+      s.add(id);
+      changed = true;
+      let list = opened.get(r);
+      if (!list) opened.set(r, (list = []));
+      list.push(id);
+    }
+    for (const id of close) {
+      const r = info.owner.get(id);
+      if (r === undefined) continue;
+      if (get(r).delete(id)) changed = true;
+    }
+    if (!changed) return false;
+    for (const [r, s] of next) this.ui.setImpactOpen(r, [...s], opts.reveal ? (opened.get(r) ?? []) : []);
+    return true;
+  }
+
+  /** 3 年の分かれ道の開いている所を最初の形（今の画面の幅の形）に戻す（見え方だけ） */
+  resetImpactOpen(): void {
+    const info = this.scopeInfo();
+    for (const r of info.roots) {
+      this.narrowDefault.delete(r);
+      this.openCache.delete(r);
+      this.ui.setImpactOpen(r, null);
+    }
+  }
+
+  /** 3 年の分かれ道の、先のあるノード（すべて開くとき） */
+  impactBranches(): ID[] {
+    const info = this.scopeInfo();
+    const out: ID[] = [];
+    for (const id of info.owner.keys()) if ((this.index.out.get(id)?.length ?? 0) > 0) out.push(id);
+    return out;
+  }
+
+  /**
+   * 3 年の分かれ道で、閉じた所の中に隠れているノードを出すために上流を開く（見え方だけ）。開いたら true。
+   * 絞り込み・シナリオ・文書の折りたたみで隠れている分はそのまま（それは revealNode が決める）
+   */
+  openPathTo(id: ID): boolean {
+    if (!this.inImpact(id) || !this.node(id).hidden) return false;
+    const open = this.collapseBlockers(id).open;
+    return open.length > 0 && this.setImpactOpen(open);
+  }
+
+  /** 開いた・閉じた・見え方が変わったときに、重ねる位置を並べ直す（材料が同じなら並べ直さない） */
+  private updateOverlay(info: ImpactScopeInfo, opens: Set<ID>[], visible: ID[]): void {
+    if (!info.roots.length) {
+      if (this.overlayRel.size) (this.overlayRel.clear(), this.overlayAbs.clear());
+      this.overlayKey = null;
+      return;
+    }
+    const k = this.overlayKey;
+    if (k && k.index === this.indexVersion && k.opens.length === opens.length && k.opens.every((s, i) => s === opens[i]) && k.visible.length === visible.length && k.visible.every((id, i) => id === visible[i])) return;
+    this.overlayKey = { index: this.indexVersion, opens, visible };
+    const doc = this.store.doc;
+    const rel = new Map<ID, { root: ID; x: number; y: number }>();
+    const shown = new Set(visible);
+    info.roots.forEach((r, i) => {
+      const open = opens[i]!;
+      const kids = (id: ID): ID[] => {
+        if (!open.has(id)) return [];
+        const list = this.impactKids(id, info).filter((c) => shown.has(c));
+        if (list.length > 1) list.sort((a, b) => compareImpactKids(doc.nodes[a]!, doc.nodes[b]!));
+        return list;
+      };
+      const mine = visible.filter((id) => info.owner.get(id) === r);
+      if (!mine.length) return;
+      // 入口が隠れている（絞り込みなど）ときは、入口の行だけ空けて、見えている物を下に並べる
+      const rootKids = shown.has(r) ? kids : () => [];
+      let pos = outlineLayout(r, rootKids);
+      // 入口からたどれないが見えているノード（別の線でだけ見えている物など）は、入口の木の下に、その深さの列で並べる
+      const rest = mine.filter((id) => !pos.has(id));
+      if (rest.length) {
+        rest.sort((a, b) => info.depth.get(a)! - info.depth.get(b)! || compareImpactKids(doc.nodes[a]!, doc.nodes[b]!));
+        pos = outlineLayout(
+          r,
+          rootKids,
+          rest.map((id) => [id, info.depth.get(id)!] as const),
+        );
+      }
+      for (const [id, p] of pos) if (shown.has(id)) rel.set(id, { root: r, x: p.x, y: p.y });
+    });
+    this.overlayRel = rel;
+    this.placeOverlay();
+  }
+
+  /** 重ねる位置 = 入口の文書の位置 + 相対の位置（入口が動いたときは、ここだけ作り直す） */
+  private placeOverlay(): void {
+    const doc = this.store.doc;
+    const abs = new Map<ID, Pt>();
+    for (const [id, p] of this.overlayRel) {
+      const r = doc.nodes[p.root];
+      if (r) abs.set(id, { x: r.x + p.x, y: r.y + p.y });
+    }
+    this.overlayAbs = abs;
+  }
+
+  /**
+   * ノードの位置。3 年の分かれ道の見えているノードは重ねる位置、それ以外は文書の位置（隠れている範囲のノードも文書の位置。出してから使う）。
+   * 返す物は書き換えない（描くたびに作らないよう、同じ物を返す）
+   */
+  posOf(id: ID): Pt | null {
+    this.ensure();
+    return this.overlayAbs.get(id) ?? this.store.doc.nodes[id] ?? null;
+  }
+
+  /** 重ねる位置で並べているノードか（3 年の分かれ道の見えているノード） */
+  hasOverlay(id: ID): boolean {
+    this.ensure();
+    return this.overlayAbs.has(id);
+  }
+
+  /** 重ねる位置で並べているカードの位置（新しいノードの空いている所を探すときに避ける。3 年の分かれ道が無ければ空） */
+  overlayPoints(): Pt[] {
+    this.ensure();
+    return [...this.overlayAbs.values()];
+  }
+
+  /**
+   * ids が 3 年の分かれ道の入口とその子（選択肢）だけか（開いた・読み込んだ・寄ったときの最初の見え方）。
+   * 入口 1 つだけのときは違う（F で今日だけに寄るのは、ふつうの寄り方）
+   */
+  isImpactEntry(ids: readonly ID[]): boolean {
+    if (ids.length < 2) return false;
+    const info = this.scopeInfo();
+    const root = ids.find((id) => info.roots.includes(id));
+    if (!root) return false;
+    const kids = new Set(this.impactKids(root, info));
+    return ids.every((id) => id === root || kids.has(id));
   }
 
   /** そのノードが表示の設定（プロジェクトに絞る・シナリオで隠す）で隠れているか */
@@ -271,14 +599,19 @@ export class ViewModel {
 
   /**
    * 折りたたみで隠れたノードを出すために開く物（上流の折りたたんだノードと接続）。
-   * 隠れた上流を逆にたどり、そこへ入る線を止めている折りたたみを開く。開くと入口が変わることがあるので、見えるまで確かめ直す
+   * 隠れた上流を逆にたどり、そこへ入る線を止めている折りたたみを開く。開くと入口が変わることがあるので、見えるまで確かめ直す。
+   * nodes・edges は文書の折りたたみ（開くのは文書の変更）、open は 3 年の分かれ道の閉じたノード（開くのは見え方だけ）
    */
-  collapseBlockers(id: ID): { nodes: ID[]; edges: ID[] } {
+  collapseBlockers(id: ID): { nodes: ID[]; edges: ID[]; open: ID[] } {
     this.ensure();
     const l = this.last;
     const openN = new Set<ID>();
     const openE = new Set<ID>();
-    if (!l || !l.scope.has(id) || !l.col.hidden.has(id)) return { nodes: [], edges: [] };
+    const openV = new Set<ID>();
+    if (!l || !l.scope.has(id) || !l.col.hidden.has(id)) return { nodes: [], edges: [], open: [] };
+    const info = this.scopeInfo();
+    const base = this.collapsedPred;
+    const closed = (u: ID): boolean => base(u) && !(info.owner.has(u) ? openV : openN).has(u);
     let sim: DocData = this.store.doc;
     let col = l.col;
     for (let round = 0; round < 8 && col.hidden.has(id); round++) {
@@ -289,7 +622,7 @@ export class ViewModel {
         for (const eid of this.index.inc.get(v) ?? []) {
           const e = sim.edges[eid];
           if (!e || e.source === e.target || !l.scope.has(e.source) || !l.edgeOk(e)) continue;
-          if (sim.nodes[e.source]?.collapsed) openN.add(e.source);
+          if (closed(e.source)) (info.owner.has(e.source) ? openV : openN).add(e.source);
           if (e.collapsed) openE.add(eid);
           if (col.hidden.has(e.source) && !region.has(e.source)) {
             region.add(e.source);
@@ -297,24 +630,29 @@ export class ViewModel {
           }
         }
       }
-      sim = { ...sim, nodes: { ...sim.nodes }, edges: { ...sim.edges } };
-      for (const u of openN) sim.nodes[u] = { ...sim.nodes[u]!, collapsed: false };
-      for (const e of openE) sim.edges[e] = { ...sim.edges[e]!, collapsed: false };
-      col = computeCollapse(sim, this.index, l.scope, l.edgeOk);
+      if (openE.size) {
+        sim = { ...sim, edges: { ...sim.edges } };
+        for (const e of openE) sim.edges[e] = { ...sim.edges[e]!, collapsed: false };
+      }
+      col = computeCollapse(sim, this.index, l.scope, l.edgeOk, closed);
     }
-    return { nodes: [...openN], edges: [...openE] };
+    return { nodes: [...openN], edges: [...openE], open: [...openV] };
   }
 
-  /** 表示中のノードを囲む範囲（全体を表示に使う） */
+  /**
+   * 表示中のノードを囲む範囲（全体を表示に使う）。位置は posOf（3 年の分かれ道は重ねる位置）。
+   * 3 年の分かれ道の隠れているノードは数えない（重ねる位置が無い）
+   */
   bounds(ids?: Iterable<ID>): { minX: number; minY: number; maxX: number; maxY: number } | null {
     this.ensure();
     const doc = this.store.doc;
+    const info = this.scopeInfo();
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
     for (const id of ids ?? this.drawNodes) {
-      const n = doc.nodes[id];
+      const n = this.overlayAbs.get(id) ?? (info.owner.has(id) ? undefined : doc.nodes[id]);
       if (!n) continue;
       if (n.x < minX) minX = n.x;
       if (n.y < minY) minY = n.y;

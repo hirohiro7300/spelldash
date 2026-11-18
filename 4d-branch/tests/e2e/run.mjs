@@ -36,6 +36,9 @@ async function startServer() {
   throw new Error("preview サーバーが起動しません");
 }
 
+/** 未来の道筋を開いたお知らせ（「未来の道筋（仕事・3 年の分かれ道）を開きました: …」） */
+const OPENED_FUTURE = /未来の道筋（仕事・3 年[^）]*）を開きました/;
+
 const results = [];
 /** 開発用: E2E_ONLY に名前の一部を渡すと、その確かめだけ動かす（前の確かめの状態を使う物は単独では動かない） */
 const ONLY = process.env.E2E_ONLY || "";
@@ -1449,121 +1452,356 @@ async function main() {
   });
   await lctx.close();
 
-  // ---- 未来の道筋（別のコンテキスト = 初めて開いた端末）
+  // ---- 未来の道筋「3 年の分かれ道」（別のコンテキスト = 初めて開いた端末）
   const fctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await skipAutoFuture(fctx);
   const fp = await fctx.newPage();
   watch(fp);
   await fp.goto(BASE, { waitUntil: "networkidle" });
   await fp.getByRole("button", { name: "すぐに使う" }).click();
-  const forecastOf = () =>
-    fp.evaluate(() => {
-      const fc = window.__fourD.app.vm.forecast;
-      return { active: fc.active, ends: fc.ends.length, sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0), longest: fc.longest };
+  /** 3 年の分かれ道の計算（今日の選択肢・印・選び方の行き先の見込みの合計） */
+  const impactOf = (p = fp) =>
+    p.evaluate(() => {
+      const f = window.__fourD;
+      const imp = f.app.vm.impact;
+      const d = imp.decision.get(imp.root);
+      return {
+        active: imp.active,
+        root: imp.root,
+        alts: d ? d.alts.map((id) => ({ id, delta: imp.alt.get(id).delta, base: imp.alt.get(id).isBase, mark: imp.alt.get(id).mark })) : [],
+        ends: imp.counts.ends,
+        sumPi: imp.ends.reduce((s, e) => s + e.p, 0),
+      };
     });
+  /** 次の描画で描いた選択肢の札（画面座標）。確かめ用の debugPills を使う */
+  const pillsOf = (p = fp) =>
+    p.evaluate(async () => {
+      const v = window.__fourD.app.view;
+      v.debugPills = [];
+      v.requestRender();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const out = v.debugPills ?? [];
+      v.debugPills = null;
+      return { pills: out, w: v.width, h: v.height, zoom: v.camera.zoom };
+    });
+  const PILL_TEXT = /^(基準|—|≈?(±0|[+−][\d.,]+(万|億)))$/;
 
-  await check("未来の道筋: メニューから確かめて読み込み（置き換え）、今日の近くに寄り、行き先の見込みが合計 100% で並ぶ", async () => {
+  await check("未来の道筋: メニューから確かめて読み込み（置き換え）、今日と選択肢に左上をそろえて 45% 以上で寄り、選択肢に 3 年の影響の札が出る", async () => {
     const before = await state(fp);
     await fp.getByRole("button", { name: "メニュー", exact: true }).click();
-    await fp.getByRole("menuitem", { name: /未来の道筋（仕事・10 年）を読み込む/ }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋（仕事・3 年）を読み込む/ }).click();
     const dlg = fp.getByRole("dialog", { name: "未来の道筋を読み込む" });
     await dlg.waitFor();
     await shot("e2e-14-future-dialog", fp);
     await dlg.locator(".radio-card", { hasText: "置き換える" }).click();
     await dlg.getByRole("button", { name: "読み込む" }).click();
-    await fp.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
-    await fp.waitForTimeout(500);
-    const fc = await forecastOf();
-    assert(fc.active && fc.ends >= 3, JSON.stringify(fc));
-    assert(Math.abs(fc.sum - 1) < 1e-6, `行き先の見込みの合計 ${fc.sum}`);
-    const ov = await fp.evaluate(() => [...document.querySelectorAll(".forecast-ends .end-row .end-pct")].map((x) => x.textContent));
-    assert(ov.length === Math.min(14, fc.ends) && ov.every((t) => /%/.test(t)), `概要: ${JSON.stringify(ov)}`);
+    await fp.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.impact?.v === 2));
+    await fp.waitForTimeout(700);
+    const imp = await impactOf();
+    assert(imp.active && imp.alts.length === 10 && imp.ends >= 600, JSON.stringify({ ...imp, alts: imp.alts.length }));
+    assert(Math.abs(imp.sumPi - 1) < 1e-6, `選び方の行き先の見込みの合計 ${imp.sumPi}`);
+    // 10 の選択肢それぞれに札（符号付きの数か「基準」）。★ はちょうど 1 つ、または ≒ が 2 つ
+    assert(imp.alts.filter((a) => a.base).length === 1 && imp.alts.every((a) => a.base || typeof a.delta === "number"), JSON.stringify(imp.alts));
+    const stars = imp.alts.filter((a) => a.mark === "star").length;
+    const ties = imp.alts.filter((a) => a.mark === "tie").length;
+    assert((stars === 1 && ties === 0) || (stars === 0 && ties === 2), `★ ${stars}・≒ ${ties}`);
     const root = await fp.evaluate(() => {
       const f = window.__fourD;
       const n = Object.values(f.store.doc.nodes).find((x) => x.meta?.forecastRoot);
       const v = f.app.view;
       const p = v.camera.toScreen(n.x, n.y);
-      return { x: p.x, y: p.y, w: v.width, h: v.height, sel: f.ui.selection.nodes.size };
+      return { x: p.x, y: p.y, w: v.width, h: v.height, sel: f.ui.selection.nodes.size, zoom: v.camera.zoom, half: 106 * v.camera.zoom };
     });
-    assert(root.x > -50 && root.x < root.w + 50 && root.y > -50 && root.y < root.h + 50, `今日が画面の外: ${JSON.stringify(root)}`);
+    assert(root.zoom >= 0.45 - 1e-9, `寄った大きさ ${root.zoom}`);
+    assert(root.x - root.half >= 0 && root.x - root.half <= 60 && root.y > 0 && root.y < root.h / 2, `今日が左上に来ない: ${JSON.stringify(root)}`);
     assert(root.sel === 0, `読み込んだ後に選択が残っている: ${root.sel}`);
     assert((await state(fp)).nodes !== before.nodes, "入れ替わっていない");
+    // 画面に入っている選択肢の札（広い画面は選択肢も開いて結果まで出るので、上から数枚）
+    const { pills, w, h } = await pillsOf();
+    const ids = new Set(imp.alts.map((a) => a.id));
+    const inView = pills.filter((p) => ids.has(p.id) && p.x >= 0 && p.y >= 0 && p.x + p.w <= w && p.y + p.h <= h);
+    assert(inView.length >= 3 && inView.every((p) => PILL_TEXT.test(p.text) && p.font >= 12 - 1e-6), `札: ${JSON.stringify(inView)}`);
+    // 結果の線の見込み（%）の札が出ている（広い画面では今日の選択肢が開いていて、その結果の線に）
+    const labels = await fp.evaluate(() => window.__fourD.app.view.labelCount);
+    assert(labels >= 3, `結果の線の見込みが出ていない（${labels}）`);
     await shot("e2e-15-future-start", fp);
   });
 
-  await check("未来の道筋: 行き先を押すと寄って、ここに至る見込みと今日から何歩目かが出る", async () => {
-    await fp.locator(".forecast-ends .end-row").first().click();
-    await fp.waitForTimeout(400);
-    const t = (await fp.locator(".insp-forecast").textContent()) ?? "";
-    assert(/ここに至る見込み/.test(t) && /%/.test(t) && /歩目/.test(t), t);
-    await shot("e2e-16-future-end", fp);
-  });
-
-  await check("未来の道筋: 分かれ道の線の % を直すと、見込みを計算し直し、元に戻せる", async () => {
+  await check("未来の道筋: 「+N」を押すと結果が出る（そのカードと上のカードは動かず、文書の版・元に戻す・保存はそのまま）。もう一度押すと閉じる", async () => {
+    // 広い画面の最初の形: 今日の選択肢は開いていて、その結果（3 か月後の判断）が「+N」で閉じている
     const pick = await fp.evaluate(() => {
       const f = window.__fourD;
-      const d = f.store.doc;
-      const e = Object.values(d.edges).find((x) => typeof x.meta?.prob === "number" && x.meta.prob >= 10 && x.meta.prob <= 80 && d.nodes[x.source]?.type === "branch");
-      return { id: e.id, prob: e.meta.prob, target: e.target, p: f.app.vm.forecast.reach.get(e.target).p };
+      const vm = f.app.vm;
+      const v = f.app.view;
+      const imp = vm.impact;
+      const alt = imp.decision.get(imp.root).alts[0];
+      const state = vm.index.out.get(alt).map((e) => f.store.doc.edges[e].target)[0];
+      return { state, count: vm.node(state).collapsedCount, hidden: vm.node(state).hidden, z: v.camera.zoom };
     });
-    await fp.evaluate((id) => window.__fourD.ui.select([], [id]), pick.id);
+    assert(!pick.hidden && pick.count > 0, `閉じた結果が無い ${JSON.stringify(pick)}`);
+    const before = await fp.evaluate((id) => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const pos = {};
+      for (const n of vm.drawNodes) pos[n] = { ...vm.posOf(n) };
+      // 印（カードの下の縁の右寄り）の画面の位置
+      const v = f.app.view;
+      const p = vm.posOf(id);
+      const k = Math.max(1, Math.min(2.4, 0.85 / v.camera.zoom));
+      const s = v.camera.toScreen(p.x + 106 - 34, p.y + 48);
+      const r = v.canvas.getBoundingClientRect();
+      return { pos, rev: f.store.revision, undo: f.store.history.undoStack.length, status: f.persistence.status, x: r.left + s.x, y: r.top + s.y, k, shown: vm.drawNodes.length };
+    }, pick.state);
+    await fp.mouse.click(before.x, before.y);
+    await fp.waitForTimeout(500);
+    const after = await fp.evaluate((id) => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      vm.ensure();
+      const pos = {};
+      for (const n of vm.drawNodes) pos[n] = { ...vm.posOf(n) };
+      const kids = vm.index.out.get(id).map((e) => f.store.doc.edges[e].target);
+      return { pos, rev: f.store.revision, undo: f.store.history.undoStack.length, status: f.persistence.status, kids: kids.filter((k) => !vm.node(k).hidden).length, all: kids.length, shown: vm.drawNodes.length };
+    }, pick.state);
+    assert(after.kids === after.all && after.all > 0 && after.shown > before.shown, `結果が出ない ${JSON.stringify({ kids: after.kids, all: after.all, shown: [before.shown, after.shown] })}`);
+    const y0 = before.pos[pick.state].y;
+    const moved = Object.entries(before.pos).filter(([id, p]) => p.y <= y0 && (after.pos[id]?.x !== p.x || after.pos[id]?.y !== p.y));
+    assert(moved.length === 0, `開いたカード・上のカードが動いた ${JSON.stringify(moved.slice(0, 3))}`);
+    assert(after.rev === before.rev && after.undo === before.undo, `文書・履歴が変わった ${JSON.stringify([before.rev, after.rev, before.undo, after.undo])}`);
+    await fp.waitForTimeout(700);
+    assert((await fp.evaluate(() => window.__fourD.persistence.status)) === before.status, "開いただけで保存が動いた");
+    await shot("e2e-16-future-open", fp);
+    // 選んで C で閉じる（見え方だけ）
+    await fp.evaluate((id) => window.__fourD.ui.select([id]), pick.state);
+    await fp.locator(".graph-canvas").focus();
+    await fp.keyboard.press("c");
+    const closed = await fp.evaluate((id) => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      vm.ensure();
+      return { hidden: vm.index.out.get(id).every((e) => vm.node(f.store.doc.edges[e].target).hidden), rev: f.store.revision, undo: f.store.history.undoStack.length };
+    }, pick.state);
+    assert(closed.hidden && closed.rev === before.rev && closed.undo === before.undo, `C で閉じない・文書が変わった ${JSON.stringify(closed)}`);
+    await fp.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("未来の道筋: 結果の線の % を詳細で直すと、その選択肢の 3 年の影響（札）が変わり、元に戻せる", async () => {
+    const pick = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const imp = vm.impact;
+      const alt = imp.decision.get(imp.root).alts.find((id) => imp.alt.get(id).outcomes.length >= 2 && !imp.alt.get(id).isBase);
+      const o = imp.alt.get(alt).outcomes.slice().sort((a, b) => a.u - b.u)[0];
+      const e = f.store.doc.edges[o.edge];
+      f.app.view.centerOn(alt, { zoom: 0.6, animate: false });
+      return { alt, edge: e.id, prob: e.meta.prob, delta: imp.alt.get(alt).delta };
+    });
+    const pill0 = (await pillsOf()).pills.find((p) => p.id === pick.alt);
+    assert(pill0, "選択肢の札が描かれていない");
+    await fp.evaluate((id) => window.__fourD.ui.select([], [id]), pick.edge);
     const input = fp.locator(".edge-prob");
     await input.waitFor();
     assert((await input.inputValue()) === String(pick.prob), `入力欄 ${await input.inputValue()} / ${pick.prob}`);
-    await input.fill(String(pick.prob + 15));
+    // いちばん悪い結果の見込みを上げる: 3 年の影響は下がる
+    await input.fill(String(Math.min(95, pick.prob + 25)));
     await input.press("Tab");
-    const after = await fp.evaluate((id) => {
+    const after = await fp.evaluate((p) => {
       const f = window.__fourD;
-      const e = f.store.doc.edges[id];
-      return { prob: e.meta.prob, p: f.app.vm.forecast.reach.get(e.target).p };
-    }, pick.id);
-    assert(after.prob === pick.prob + 15, `見込み ${after.prob}`);
-    assert(after.p > pick.p, `計算し直していない: ${pick.p} → ${after.p}`);
-    const sum = (await fp.locator(".prob-sum").textContent()) ?? "";
-    assert(/合計 \d+%/.test(sum), sum);
-    const fc = await forecastOf();
-    assert(Math.abs(fc.sum - 1) < 1e-6, `合計が 100% から外れた: ${fc.sum}`);
+      return { prob: f.store.doc.edges[p.edge].meta.prob, delta: f.app.vm.impact.alt.get(p.alt).delta };
+    }, pick);
+    assert(after.prob === Math.min(95, pick.prob + 25), `見込み ${after.prob}`);
+    assert(after.delta < pick.delta - 0.05, `3 年の影響が変わらない: ${pick.delta} → ${after.delta}`);
+    const pill1 = (await pillsOf()).pills.find((p) => p.id === pick.alt);
+    assert(pill1 && pill1.text !== pill0.text, `札が変わらない: ${pill0.text} → ${pill1?.text}`);
     await fp.locator(".graph-canvas").focus();
     await fp.keyboard.press("Control+z");
-    const undone = await fp.evaluate((id) => window.__fourD.store.doc.edges[id].meta.prob, pick.id);
-    assert(undone === pick.prob, `元に戻らない: ${undone}`);
+    const undone = await fp.evaluate((p) => {
+      const f = window.__fourD;
+      return { prob: f.store.doc.edges[p.edge].meta.prob, delta: f.app.vm.impact.alt.get(p.alt).delta };
+    }, pick);
+    assert(undone.prob === pick.prob && Math.abs(undone.delta - pick.delta) < 1e-6, `元に戻らない: ${JSON.stringify(undone)}`);
+    const pill2 = (await pillsOf()).pills.find((p) => p.id === pick.alt);
+    assert(pill2 && pill2.text === pill0.text, `札が戻らない: ${pill0.text} → ${pill2?.text}`);
+    await fp.evaluate(() => window.__fourD.ui.clearSelection());
   });
 
-  await check("未来の道筋: シナリオを選ぶと、その道を選んだ場合の見込み（合計 100%）に変わる", async () => {
+  await check("未来の道筋: 3 年後の行き先を検索で選ぶと、上流を見え方だけで開いて寄る（文書は変えない）", async () => {
+    const pick = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      vm.ensure();
+      // 題名が地図に 1 つだけの、隠れている行き先（検索の最初の候補がそれになる）
+      const count = new Map();
+      for (const n of Object.values(f.store.doc.nodes)) count.set(n.title, (count.get(n.title) ?? 0) + 1);
+      const end = vm.impact.ends.map((e) => e.id).find((id) => vm.node(id).hidden && count.get(f.store.doc.nodes[id].title) === 1);
+      return { end, title: end ? f.store.doc.nodes[end].title : "", rev: f.store.revision, undo: f.store.history.undoStack.length };
+    });
+    assert(pick.end, "題名が 1 つだけの隠れた行き先が無い（確かめの前提）");
+    await fp.locator(".graph-canvas").focus();
+    await fp.keyboard.press("Control+k");
+    await fp.locator(".search-input").fill(pick.title);
+    await fp.locator(".search-row").first().waitFor();
+    // 似た題名の行き先も当たるので、題名がちょうど同じ候補を押す（隠れている印が付いている）
+    const row = await fp.evaluate((t) => [...document.querySelectorAll(".search-row")].findIndex((r) => r.querySelector(".search-title")?.textContent === t), pick.title);
+    assert(row >= 0, "候補に出ない");
+    assert((await fp.locator(".search-row").nth(row).locator(".search-hidden").count()) === 1, "隠れている印が無い");
+    await fp.locator(".search-row").nth(row).click();
+    await fp.waitForTimeout(600);
+    const r = await fp.evaluate((id) => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const v = f.app.view;
+      const p = vm.posOf(id);
+      const s = v.camera.toScreen(p.x, p.y);
+      return { sel: f.ui.singleNode, hidden: vm.node(id).hidden, x: s.x, y: s.y, w: v.width, h: v.height, rev: f.store.revision, undo: f.store.history.undoStack.length };
+    }, pick.end);
+    assert(r.sel === pick.end, `選ばれない ${JSON.stringify(r)}`);
+    assert(!r.hidden && r.x > 0 && r.x < r.w && r.y > 0 && r.y < r.h, `寄らない ${JSON.stringify(r)}`);
+    assert(r.rev === pick.rev && r.undo === pick.undo, `文書・履歴が変わった ${JSON.stringify(r)}`);
+    await fp.keyboard.press("Escape");
+    await fp.keyboard.press("Escape");
+    await fp.evaluate(() => (window.__fourD.ui.setSearch(""), window.__fourD.ui.clearSelection()));
+  });
+
+  await check("未来の道筋: カードはドラッグしても動かず（キャンバスが動く）、お知らせが一度だけ出る", async () => {
+    const r0 = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const v = f.app.view;
+      const imp = vm.impact;
+      const alt = imp.decision.get(imp.root).alts[0];
+      v.centerOn(alt, { zoom: 0.8, animate: false });
+      const p = vm.posOf(alt);
+      const s = v.camera.toScreen(p.x, p.y);
+      const r = v.canvas.getBoundingClientRect();
+      return { alt, x: r.left + s.x, y: r.top + s.y, doc: { x: f.store.doc.nodes[alt].x, y: f.store.doc.nodes[alt].y }, cam: v.camera.x, rev: f.store.revision };
+    });
+    await fp.mouse.move(r0.x, r0.y);
+    await fp.mouse.down();
+    await fp.mouse.move(r0.x + 60, r0.y + 30, { steps: 6 });
+    await fp.mouse.up();
+    await fp.waitForTimeout(200);
+    const r1 = await fp.evaluate((alt) => {
+      const f = window.__fourD;
+      return { doc: { x: f.store.doc.nodes[alt].x, y: f.store.doc.nodes[alt].y }, cam: f.app.view.camera.x, rev: f.store.revision, toasts: [...document.querySelectorAll(".toast-text")].filter((t) => t.textContent.includes("カードは動かせません")).length };
+    }, r0.alt);
+    assert(r1.doc.x === r0.doc.x && r1.doc.y === r0.doc.y && r1.rev === r0.rev, `カードが動いた ${JSON.stringify(r1)}`);
+    assert(Math.abs(r1.cam - r0.cam - 60) < 2, `キャンバスが動かない ${r0.cam} → ${r1.cam}`);
+    assert(r1.toasts === 1, `お知らせ ${r1.toasts}`);
     await fp.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("未来の道筋: シナリオ（方針）を選ぶと、その方針に入らない選択肢が薄くなり、3 年の影響を計算し直す", async () => {
+    const before = await impactOf();
     await fp.locator(".scen-chip", { hasText: "早期独立" }).click();
     await fp.waitForTimeout(300);
-    const head = (await fp.locator(".forecast-ends .insp-label").textContent()) ?? "";
-    assert(head.includes("早期独立を選んだ場合"), head);
-    const fc = await forecastOf();
-    assert(fc.active && Math.abs(fc.sum - 1) < 1e-6, `合計 ${fc.sum}`);
+    const r = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const imp = vm.impact;
+      const alts = imp.decision.get(imp.root).alts;
+      const off = alts.filter((id) => !imp.alt.get(id).allowed);
+      return { off: off.length, dim: off.filter((id) => vm.node(id).offScenario && vm.node(id).alpha < 0.3).length, base: alts.filter((id) => imp.alt.get(id).isBase && imp.alt.get(id).allowed).length, vRoot: imp.vRoot };
+    });
+    assert(r.off > 0 && r.dim === r.off && r.base === 1, JSON.stringify(r));
     await fp.locator(".scen-chip", { hasText: "すべて" }).click();
+    await fp.waitForTimeout(200);
+    const back = await impactOf();
+    assert(back.alts.every((a, i) => a.delta === before.alts[i].delta), "方針を外しても元の数に戻らない");
   });
 
-  await check("未来の道筋: 地図を動かしても滑らか", async () => {
-    const stats = await fp.evaluate(async () => {
-      const v = window.__fourD.app.view;
-      const measure = async (zoom, frames) => {
-        v.camera.zoom = zoom;
-        const times = [];
-        for (let i = 0; i < frames; i++) {
-          v.camera.x -= 25;
-          v.camera.y += i % 2 ? 10 : -10;
-          v.cameraChanged();
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          times.push(v.lastFrameMs);
+  await check("未来の道筋: 地図を動かしても滑らか（最初の形・全部開いた形、50% / 15% / 5%。塗り終えるまで測る）", async () => {
+    const measure = () =>
+      fp.evaluate(async () => {
+        const v = window.__fourD.app.view;
+        v.rasterFlush = true;
+        const run = async (zoom, frames) => {
+          v.camera.zoom = zoom;
+          const times = [];
+          for (let i = 0; i < frames; i++) {
+            v.camera.x -= 25;
+            v.camera.y += i % 2 ? 10 : -10;
+            v.cameraChanged();
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            times.push(v.lastFrameMs);
+          }
+          times.sort((a, b) => a - b);
+          return { avg: times.reduce((s2, t) => s2 + t, 0) / times.length, p95: times[Math.floor(times.length * 0.95)] };
+        };
+        const root = window.__fourD.app.vm.impact.root;
+        const at = (zoom) => {
+          const p = window.__fourD.app.vm.posOf(root);
+          v.camera.zoom = zoom;
+          v.camera.x = 300 - p.x * zoom;
+          v.camera.y = 200 - p.y * zoom;
+        };
+        const out = {};
+        for (const z of [0.5, 0.15, 0.05]) {
+          at(z);
+          out[z] = await run(z, 24);
         }
-        times.sort((a, b) => a - b);
-        return { avg: times.reduce((s2, t) => s2 + t, 0) / times.length, p95: times[Math.floor(times.length * 0.95)] };
-      };
-      v.fit(undefined, { animate: false });
-      return { all: await measure(v.camera.zoom, 30), mid: await measure(0.3, 30), near: await measure(0.9, 30) };
-    });
-    console.log(`      描画時間 ms（平均 / 95%）: 全体 ${stats.all.avg.toFixed(1)}/${stats.all.p95.toFixed(1)}・中 ${stats.mid.avg.toFixed(1)}/${stats.mid.p95.toFixed(1)}・寄り ${stats.near.avg.toFixed(1)}/${stats.near.p95.toFixed(1)}`);
-    for (const [k, v] of Object.entries(stats)) {
+        v.rasterFlush = false;
+        return out;
+      });
+    const first = await measure();
+    await fp.evaluate(() => window.__fourD.app.cmd.expandAll());
+    await fp.waitForTimeout(200);
+    const all = await measure();
+    const shown = await fp.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length));
+    const fmt = (s) => Object.entries(s).map(([z, v]) => `${Math.round(Number(z) * 100)}% ${v.avg.toFixed(1)}/${v.p95.toFixed(1)}`).join("・");
+    console.log(`      描画時間 ms（平均 / 95%）: 最初の形 ${fmt(first)} | 全部開いた形（${shown} 枚）${fmt(all)}`);
+    for (const [k, v] of [...Object.entries(first), ...Object.entries(all)]) {
       assert(v.avg > 0, `${k}: 描画されていない（${v.avg}ms）`);
       assert(v.p95 < 33, `${k}: 95% が 33ms 以上 (${v.p95.toFixed(1)})`);
     }
+    await fp.evaluate(() => window.__fourD.app.cmd.resetImpactOpen());
+  });
+
+  await check("未来の道筋: スマホ（390×844）で開くと 45% 以上で、選択肢の札が 8 枚以上画面に収まり、文字は 12px 以上", async () => {
+    const c4 = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    await skipAutoFuture(c4);
+    const p4 = await c4.newPage();
+    watch(p4);
+    await p4.goto(BASE, { waitUntil: "networkidle" });
+    await p4.getByRole("button", { name: "すぐに使う" }).click();
+    await p4.waitForFunction(() => !!window.__fourD?.app);
+    await p4.locator(".zoom-ctl .future-btn").click();
+    await p4.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.impact?.v === 2), null, { timeout: 15000 });
+    await p4.waitForTimeout(900);
+    const imp = await impactOf(p4);
+    const { pills, w, h, zoom } = await pillsOf(p4);
+    const ids = new Set(imp.alts.map((a) => a.id));
+    const inside = pills.filter((p) => ids.has(p.id) && p.x >= 0 && p.y >= 0 && p.x + p.w <= w && p.y + p.h <= h);
+    assert(zoom >= 0.45 - 1e-9, `大きさ ${zoom}`);
+    assert(inside.length >= 8, `画面に収まる札 ${inside.length}: ${JSON.stringify(pills.map((p) => [p.text, Math.round(p.x), Math.round(p.y)]))}`);
+    assert(inside.every((p) => p.font >= 12 - 1e-6 && PILL_TEXT.test(p.text)), `札の文字 ${JSON.stringify(inside.map((p) => [p.text, p.font]))}`);
+    await shot("e2e-17-future-phone-first", p4);
+    // 選んだ選択肢は compact でも「−」を押して閉じられる（押せる大きさは 44px 以上）: 指で「+N」を押して開き、選んで「−」で閉じる
+    const alt = imp.alts[0].id;
+    const at = () =>
+      p4.evaluate((id) => {
+        const f = window.__fourD;
+        const v = f.app.view;
+        const p = f.app.vm.posOf(id);
+        const s = v.camera.toScreen(p.x + 106 - 34, p.y + 48);
+        const r = v.canvas.getBoundingClientRect();
+        return { x: r.left + s.x, y: r.top + s.y };
+      }, alt);
+    const tapAt = async (pt) => p4.touchscreen.tap(pt.x, pt.y);
+    let pt = await at();
+    // 印の真ん中から 18px ずれた所（指の当たりの範囲）を押しても開く
+    await tapAt({ x: pt.x - 18, y: pt.y - 18 });
+    await p4.waitForTimeout(500);
+    const openNow = await p4.evaluate((id) => !window.__fourD.app.vm.isCollapsed(id), alt);
+    assert(openNow, "「+N」を押しても開かない");
+    await p4.evaluate((id) => window.__fourD.ui.select([id]), alt);
+    await p4.waitForTimeout(200);
+    pt = await at();
+    await tapAt(pt);
+    await p4.waitForTimeout(400);
+    const closedNow = await p4.evaluate((id) => window.__fourD.app.vm.isCollapsed(id), alt);
+    assert(closedNow, "選んだ選択肢の「−」で閉じない");
+    await c4.close();
   });
 
   await check("未来の道筋: 前から使っている人には一度だけお知らせが出て、「見る」で地図の未来の道筋の今日へ寄る", async () => {
@@ -1575,7 +1813,7 @@ async function main() {
       localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
     });
     await fp.reload({ waitUntil: "networkidle" });
-    const offer = fp.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を用意しました" });
+    const offer = fp.locator(".toast", { hasText: /未来の道筋.*を用意しました/ });
     await offer.waitFor({ timeout: 6000 });
     // 遠くへ動かしておき、「見る」で今日（入口）が選ばれて画面に入る（地図に無ければ読み込みの確認が開く: 別の確かめ）
     await fp.evaluate(() => {
@@ -1591,13 +1829,13 @@ async function main() {
       const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
       const rect = f.app.view.canvas.getBoundingClientRect();
       const s = f.app.view.camera.toScreen(root.x, root.y);
-      return { sel: [...f.ui.selection.nodes], root: root.id, onScreen: s.x > 0 && s.x < rect.width && s.y > 0 && s.y < rect.height, dialog: !!document.querySelector(".modal") };
+      return { sel: [...f.ui.selection.nodes], root: root.id, onScreen: s.x > 0 && s.x < rect.width && s.y > 0 && s.y < rect.height, zoom: f.app.view.camera.zoom, dialog: !!document.querySelector(".modal") };
     });
-    assert(r.sel.length === 1 && r.sel[0] === r.root && r.onScreen && !r.dialog, JSON.stringify(r));
+    assert(r.sel.length === 1 && r.sel[0] === r.root && r.onScreen && r.zoom >= 0.45 - 1e-9 && !r.dialog, JSON.stringify(r));
     await fp.waitForTimeout(500);
     await fp.reload({ waitUntil: "networkidle" });
     await fp.waitForTimeout(1200 + 1000);
-    assert((await fp.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を用意しました" }).count()) === 0, "二度目のお知らせが出た");
+    assert((await fp.locator(".toast", { hasText: /未来の道筋.*を用意しました/ }).count()) === 0, "二度目のお知らせが出た");
   });
 
   await check("未来の道筋: 古い版が入っていれば一度だけ知らせ、「差し替える」で未来の道筋だけを新しい版に入れ替える（自分のノードは残る）", async () => {
@@ -1616,29 +1854,31 @@ async function main() {
       localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
     });
     await fp.reload({ waitUntil: "networkidle" });
-    const notice = fp.locator(".toast", { hasText: "未来の道筋の新しい版があります" });
+    const notice = fp.locator(".toast", { hasText: /未来の道筋(が新しくなりました|の新しい版があります)/ });
     await notice.waitFor({ timeout: 8000 });
     await notice.getByRole("button", { name: "差し替える" }).click();
     const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版に差し替えますか？" });
     await confirm.waitFor();
     await confirm.getByRole("button", { name: "差し替える" }).click();
     await fp.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true && n.meta.futureVersion !== "old"));
+    await fp.waitForTimeout(500);
     const after = await fp.evaluate((own) => {
       const f = window.__fourD;
       const roots = Object.values(f.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true);
-      const fc = f.app.vm.forecast;
-      return { own: f.store.doc.nodes[own]?.title, roots: roots.length, pos: [roots[0].x, roots[0].y], nodes: Object.keys(f.store.doc.nodes).length, sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0), toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / ") };
+      const imp = f.app.vm.impact;
+      return { own: f.store.doc.nodes[own]?.title, roots: roots.length, pos: [roots[0].x, roots[0].y], nodes: Object.keys(f.store.doc.nodes).length, sum: imp.ends.reduce((n, e) => n + e.p, 0), zoom: f.app.view.camera.zoom, toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / ") };
     }, prep.own);
     assert(after.own === "自分で足したメモ", `自分のノードが消えた: ${after.own}`);
     assert(after.roots === 1 && after.pos[0] === prep.rootPos[0] && after.pos[1] === prep.rootPos[1], `入口: ${JSON.stringify(after)}`);
     assert(after.nodes === prep.nodes, `ノードの数 ${after.nodes} / ${prep.nodes}`);
-    assert(Math.abs(after.sum - 1) < 1e-6, `行き先の見込みの合計 ${after.sum}`);
+    assert(Math.abs(after.sum - 1) < 1e-6, `選び方の行き先の見込みの合計 ${after.sum}`);
+    assert(after.zoom >= 0.45 - 1e-9, `差し替えた後の大きさ ${after.zoom}`);
     assert(after.toast.includes("差し替えました"), after.toast);
     // 同じ版ではもう知らせない
     await fp.waitForTimeout(600);
     await fp.reload({ waitUntil: "networkidle" });
     await fp.waitForTimeout(2600 + 1200);
-    assert((await fp.locator(".toast", { hasText: "未来の道筋の新しい版があります" }).count()) === 0, "差し替えた後も知らせた");
+    assert((await fp.locator(".toast", { hasText: /未来の道筋(が新しくなりました|の新しい版があります)/ }).count()) === 0, "差し替えた後も知らせた");
   });
   await fctx.close();
 
@@ -1658,19 +1898,19 @@ async function main() {
     await waitSaved(ap);
     await ap.reload({ waitUntil: "networkidle" });
     await ap.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 10000 });
-    const done = ap.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+    const done = ap.locator(".toast", { hasText: OPENED_FUTURE });
     await done.waitFor();
     await ap.waitForTimeout(600);
     const s = await ap.evaluate(() => {
       const f = window.__fourD;
-      const fc = f.app.vm.forecast;
+      const imp = f.app.vm.impact;
       return {
         nodes: Object.keys(f.store.doc.nodes).length,
-        ends: fc.ends.length,
-        sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0),
+        ends: imp.counts.ends,
+        sum: imp.ends.reduce((n, e) => n + e.p, 0),
+        alts: imp.root ? imp.decision.get(imp.root).alts.length : 0,
         zoom: f.app.view.camera.zoom,
         auto: f.ui.prefs.futureAutoOpened,
-        overview: document.querySelectorAll(".forecast-ends .end-row").length,
         text: document.querySelector(".toast-text")?.textContent ?? "",
         root: (() => {
           const n = Object.values(f.store.doc.nodes).find((x) => x.meta?.forecastRoot === true);
@@ -1685,12 +1925,11 @@ async function main() {
         }).length,
       };
     });
-    assert(s.nodes > 1500 && s.ends === 14 && Math.abs(s.sum - 1) < 1e-6, JSON.stringify(s));
-    // 全体（横 8 万）はいちばん引いても収まらないので、今日（入口）が読める大きさで画面に入る
-    assert(s.root.x > 0 && s.root.x < s.root.w && s.root.y > 0 && s.root.y < s.root.h && s.zoom >= 0.3, `今日が読める大きさで画面に入らない ${JSON.stringify(s)}`);
+    assert(s.nodes > 1500 && s.ends >= 600 && s.alts === 10 && Math.abs(s.sum - 1) < 1e-6, JSON.stringify(s));
+    // 全体（縦 9 万）はいちばん引いても読めないので、今日と選択肢に左上をそろえ、札の読める大きさ（45% 以上）で画面に入る
+    assert(s.root.x > 0 && s.root.x < s.root.w && s.root.y > 0 && s.root.y < s.root.h && s.zoom >= 0.45 - 1e-9, `今日が読める大きさで画面に入らない ${JSON.stringify(s)}`);
     assert(s.auto === true, "印が立たない");
-    assert(s.overview >= 3, "右の概要に行き先が出ない");
-    assert(/歩み 1,\d{3}/.test(s.text) && s.text.includes("行き先 14") && s.text.includes("今日"), s.text);
+    assert(/判断 \d+/.test(s.text) && /行き先 [\d,]+/.test(s.text), s.text);
     assert(s.covered === 0, `お知らせが地図の右下の操作 ${s.covered} 個を隠している`);
     await shot("e2e-16-future-auto", ap);
     // 元に戻すとデモに戻り、戻したデモには入れ替えない印が付く
@@ -1749,7 +1988,7 @@ async function main() {
     assert(r.x > 0 && r.x < r.w && r.y > 0 && r.y < r.h && r.zoom >= 0.3, `今日が読める大きさで画面に入らない ${JSON.stringify(r)}`);
     // メニューの「読み込む…」でも 2 つ目は足さず、今日へ寄る
     await ap.getByRole("button", { name: "メニュー", exact: true }).click();
-    await ap.getByRole("menuitem", { name: /未来の道筋（仕事・10 年）を読み込む/ }).click();
+    await ap.getByRole("menuitem", { name: /未来の道筋（仕事・3 年）を読み込む/ }).click();
     await ap.locator(".toast", { hasText: "未来の道筋はもう地図にあります" }).waitFor();
     const again = await ap.evaluate(() => ({ roots: Object.values(window.__fourD.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length, modal: document.querySelectorAll(".modal").length }));
     assert(again.roots === 1 && again.modal === 0, `メニューから 2 つ目を読み込めた ${JSON.stringify(again)}`);
@@ -1905,7 +2144,7 @@ async function main() {
     assert(tried === 0, `操作ガイドの最中に開こうとして、安全用のバックアップを ${tried} 件書いた`);
     await p.locator(".tour-skip").click();
     await opened(p);
-    const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+    const done = p.locator(".toast", { hasText: OPENED_FUTURE });
     await done.waitFor();
     const hit = await done.evaluate((t) => {
       const b = t.querySelector(".toast-action").getBoundingClientRect();
@@ -1991,7 +2230,7 @@ async function main() {
         await p.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").rightOpen === false);
       }
       await p.reload({ waitUntil: "networkidle" });
-      const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+      const done = p.locator(".toast", { hasText: OPENED_FUTURE });
       await done.waitFor({ timeout: 10000 });
       await p.waitForTimeout(700);
       const r = await p.evaluate(() => {
@@ -2022,10 +2261,11 @@ async function main() {
           const el = document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2);
           return !(el && btn.contains(el));
         }).length;
-        return { visible, hits, undoOver, rootCovered: !!rootHit?.closest(".toast"), ctl, rightOpen: f.ui.prefs.rightOpen };
+        return { visible, idle: !!mm?.classList.contains("idle"), hits, undoOver, rootCovered: !!rootHit?.closest(".toast"), ctl, rightOpen: f.ui.prefs.rightOpen };
       });
       const where = `${vp.width}（右のパネル ${right ? "開" : "閉"}）`;
-      assert(r.visible && r.rightOpen === right, `${where}: 小さな地図・右のパネルが思った形でない（確かめの前提）${JSON.stringify(r)}`);
+      // 860px 以下は今日と 10 の選択肢だけを開いた形で始まり、全部が画面に収まるので小さな地図は引っ込む（隠される物が無い）
+      assert((r.visible || (vp.width <= 860 && r.idle)) && r.rightOpen === right, `${where}: 小さな地図・右のパネルが思った形でない（確かめの前提）${JSON.stringify(r)}`);
       assert(r.hits === 0 && !r.undoOver && !r.rootCovered && r.ctl === 0, `${where}: お知らせが隠している ${JSON.stringify(r)}`);
       await ctx.close();
     }
@@ -2035,7 +2275,7 @@ async function main() {
     for (const vp of [{ width: 844, height: 390 }, { width: 740, height: 360 }, { width: 667, height: 375 }]) {
       const { ctx, page: p } = await returningDemo(vp);
       await p.reload({ waitUntil: "networkidle" });
-      const done = p.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+      const done = p.locator(".toast", { hasText: OPENED_FUTURE });
       await done.waitFor({ timeout: 10000 });
       await p.waitForTimeout(700);
       const r = await p.evaluate(() => {
@@ -2114,7 +2354,7 @@ async function main() {
     for (const mode of ["追加する", "置き換える"]) {
       const { ctx, page: p } = await returningDemo();
       await p.getByRole("button", { name: "メニュー", exact: true }).click();
-      await p.getByRole("menuitem", { name: /未来の道筋（仕事・10 年）を読み込む/ }).click();
+      await p.getByRole("menuitem", { name: /未来の道筋（仕事・3 年）を読み込む/ }).click();
       const dlg = p.getByRole("dialog", { name: "未来の道筋を読み込む" });
       await dlg.waitFor();
       await dlg.locator(".radio-card", { hasText: mode }).click();

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { Commands } from "../../src/app/commands";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
+import { buildImpactDoc } from "../../src/demo/impact";
+import { futureData } from "../../src/demo/futureBundle";
 import { createEmptyDoc, makeEdge, makeNode, makeProject, makeScenario } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
 import { Store } from "../../src/store/store";
@@ -183,6 +185,143 @@ describe("お知らせの「元に戻す」", () => {
     store.load(graph("x>y"));
     del.run();
     expect(toasts[toasts.length - 1]).toContain("別の内容を読み込んだ");
+  });
+});
+
+describe("3 年の分かれ道: 開く・閉じるは見え方だけ（文書・履歴・保存は変えない）", () => {
+  const TODAY = new Date(2026, 10, 18);
+  const base = buildImpactDoc(futureData(), TODAY, "t");
+  const rootId = Object.values(base.nodes).find((n) => n.meta.forecastRoot === true)!.id;
+
+  function openImpact(narrow = true) {
+    const s = setup(structuredClone(base));
+    s.vm.narrow = () => narrow;
+    let changes = 0;
+    s.store.on("change", () => void changes++);
+    const alts = () => s.vm.impact.decision.get(rootId)!.alts;
+    return { ...s, alts, changes: () => changes };
+  }
+
+  it("印・C・メニューの開閉、すべて開く、最初の形に戻す、検索で隠れたノードを出す: 文書の版・元に戻す・変更の知らせはそのまま", () => {
+    const { store, ui, vm, cmd, alts, changes } = openImpact();
+    vm.ensure();
+    const rev = store.revision;
+    const undo = store.history.undoStack.length;
+    const alt = alts()[2]!;
+    const kid = vm.index.out.get(alt)!.map((e) => store.doc.edges[e]!.target)[0]!;
+    expect(vm.node(kid).hidden).toBe(true);
+    expect(vm.node(alt).collapsedCount).toBeGreaterThan(0);
+    expect(vm.isCollapsed(alt)).toBe(true);
+    cmd.toggleCollapse([alt]);
+    expect(vm.node(kid).hidden).toBe(false);
+    expect(vm.isCollapsed(alt)).toBe(false);
+    expect(ui.prefs.impactOpen[rootId]).toContain(alt);
+    cmd.toggleCollapse([alt]);
+    expect(vm.node(kid).hidden).toBe(true);
+    // 深い行き先を検索で選ぶ: 上流を見え方だけで開く
+    const end = vm.impact.ends[vm.impact.ends.length - 1]!.id;
+    expect(vm.node(end).hidden).toBe(true);
+    cmd.revealNode(end);
+    expect(vm.node(end).hidden).toBe(false);
+    cmd.expandAll();
+    vm.ensure();
+    expect(vm.drawNodes.length).toBe(Object.keys(store.doc.nodes).length);
+    cmd.resetImpactOpen();
+    expect(ui.prefs.impactOpen[rootId]).toBeUndefined();
+    vm.ensure();
+    expect(vm.drawNodes.length).toBe(11);
+    expect(store.revision).toBe(rev);
+    expect(store.history.undoStack.length).toBe(undo);
+    expect(changes()).toBe(0);
+    expect(Object.values(store.doc.nodes).some((n) => n.collapsed)).toBe(false);
+  });
+
+  it("3 年の影響の計算は、開閉・選択では作り直さず、% ・状態・年収（入口の meta）・シナリオで作り直す", () => {
+    const { store, ui, vm, cmd, alts } = openImpact(false);
+    const a0 = vm.impact;
+    const alt = alts()[0]!;
+    cmd.toggleCollapse([alt]);
+    ui.select([alt]);
+    cmd.expandAll();
+    expect(vm.impact).toBe(a0);
+    // 結果の % を直す: その選択肢の 3 年の影響が変わり、元に戻すと戻る
+    const e = vm.index.out.get(alt)!.map((id) => store.doc.edges[id]!).find((x) => typeof x.meta.prob === "number")!;
+    const d0 = a0.alt.get(alt)!.delta!;
+    cmd.updateEdge(e.id, { meta: { ...e.meta, prob: (e.meta.prob as number) + 20 } });
+    const a1 = vm.impact;
+    expect(a1).not.toBe(a0);
+    expect(Math.abs(a1.alt.get(alt)!.delta! - d0)).toBeGreaterThan(0.01);
+    store.undo();
+    expect(vm.impact.alt.get(alt)!.delta).toBeCloseTo(d0, 6);
+    // 状態（これにする）
+    const a2 = vm.impact;
+    cmd.setStatus([alts()[3]!], "active");
+    expect(vm.impact).not.toBe(a2);
+    expect(vm.impact.alt.get(alts()[3]!)!.picked).toBe(true);
+    // 年収（入口の meta.impact.annual）
+    const a3 = vm.impact;
+    const r = store.doc.nodes[rootId]!;
+    cmd.updateNode(rootId, { meta: { ...r.meta, impact: { v: 2, horizon: 36, annual: 540 } } });
+    expect(vm.impact).not.toBe(a3);
+    expect(vm.impact.annual).toBe(540);
+    // シナリオ
+    const a4 = vm.impact;
+    ui.setPrefs({ scenarioId: "s_early" });
+    expect(vm.impact).not.toBe(a4);
+    const a5 = vm.impact;
+    cmd.toggleCollapse([alts()[1]!]);
+    expect(vm.impact).toBe(a5);
+  });
+
+  it("カードは動かせない（動かす・そろえる）。範囲の外のノードは今までどおり動き、お知らせは一度だけ", () => {
+    const { store, vm, cmd, toasts, alts } = openImpact();
+    vm.ensure();
+    const rev = store.revision;
+    const alt = alts()[0]!;
+    const at = { x: store.doc.nodes[alt]!.x, y: store.doc.nodes[alt]!.y };
+    cmd.moveNodes([alt], 40, 40);
+    cmd.align([alt, alts()[1]!], "h");
+    expect(store.revision).toBe(rev);
+    expect(store.doc.nodes[alt]).toMatchObject(at);
+    expect(toasts.filter((t) => t.includes("カードは動かせません")).length).toBe(1);
+    const own = cmd.createNode("goal", { x: -2000, y: 0 }, { exact: true, title: "自分のメモ" })!;
+    cmd.moveNodes([own, alt], 10, 0);
+    expect(store.doc.nodes[own]!.x).toBe(-1990);
+    expect(store.doc.nodes[alt]).toMatchObject(at);
+  });
+
+  it("右クリックの「展開する／この先を折りたたむ」の向きは見え方の開閉で決まる（行き先には開く物が無い）", () => {
+    const { vm, alts, store } = openImpact(false);
+    vm.ensure();
+    expect(vm.isCollapsed(rootId)).toBe(false);
+    expect(vm.isCollapsed(alts()[0]!)).toBe(false);
+    const state = vm.index.out.get(alts()[0]!)!.map((e) => store.doc.edges[e]!.target)[0]!;
+    expect(vm.isCollapsed(state)).toBe(true);
+    const end = vm.impact.ends[0]!.id;
+    expect(vm.isCollapsed(end)).toBe(false);
+  });
+});
+
+describe("表示の設定: 3 年の分かれ道で開いているノード", () => {
+  it("入口ごとに覚え、壊れた値（配列でない・文字でない ID）は捨てて読み込む", () => {
+    const saved = (globalThis as { localStorage?: unknown }).localStorage;
+    const mem = new Map<string, string>();
+    mem.set("4d-branch:prefs", JSON.stringify({ impactOpen: { r1: ["a", 3, null, "b", "a"], r2: "壊れた", r3: { x: 1 }, "": ["z"] } }));
+    (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+    try {
+      const ui = new UiState();
+      expect(ui.prefs.impactOpen).toEqual({ r1: ["a", "b"] });
+      ui.setImpactOpen("r2", ["c"]);
+      ui.flushPrefs();
+      expect(JSON.parse(mem.get("4d-branch:prefs")!).impactOpen).toEqual({ r1: ["a", "b"], r2: ["c"] });
+      expect(new UiState().prefs.impactOpen).toEqual({ r1: ["a", "b"], r2: ["c"] });
+      mem.set("4d-branch:prefs", JSON.stringify({ impactOpen: ["x"] }));
+      expect(new UiState().prefs.impactOpen).toEqual({});
+      mem.set("4d-branch:prefs", "{壊れた");
+      expect(new UiState().prefs.impactOpen).toEqual({});
+    } finally {
+      (globalThis as { localStorage?: unknown }).localStorage = saved;
+    }
   });
 });
 
