@@ -400,3 +400,113 @@ describe("入口が 2 つ以上あるとき", () => {
     expect(primaryImpactRoot(createEmptyDoc())).toBeNull();
   });
 });
+
+describe("見直しで直した所", () => {
+  it("今日を複製しても（入口が 2 つ）、数字・行き先・分布は元の入口から", () => {
+    for (const copyId of ["0copy", "zcopy"]) {
+      const { doc } = tree();
+      const before = run(doc);
+      doc.nodes[copyId] = { ...doc.nodes.R!, id: copyId, meta: { ...doc.nodes.R!.meta } };
+      const r = run(doc);
+      expect(r.root).toBe("R");
+      expect(r.vRoot).toBeCloseTo(before.vRoot!);
+      expect(r.vSQ).toBeCloseTo(before.vSQ!);
+      expect(r.ends.reduce((s, e) => s + e.p, 0)).toBeCloseTo(1);
+      expect(r.ends.some((e) => e.id === copyId)).toBe(false);
+      expect(r.dist!.mean).toBeCloseTo(before.dist!.mean);
+      expect(r.dist!.pWorse).toBeCloseTo(before.dist!.pWorse);
+      expect(r.decision.get("R")!.alts).toEqual(before.decision.get("R")!.alts);
+      expect(r.salaryFlips()).toEqual(before.salaryFlips());
+    }
+  });
+
+  it("子の日付が親より前でも、同じ月を 2 度数えない（月は親の月より前にしない）", () => {
+    const { doc, node, edge } = tree();
+    doc.nodes.R!.time = { due: "2026-11-18", start: null };
+    node("U", "action", {}, { time: { due: "2027-11-18", start: null } });
+    node("X", "result", {}, { time: { due: "2027-05-18", start: null } });
+    edge("R", "U");
+    edge("U", "X");
+    const r = run(doc);
+    // U は 12 か月で X へ。X の日付（6 か月後）は U より前だが、X は 12 か月から 36 か月まで数える（合わせて 36 か月 = 今のままと同じ）
+    expect(r.alt.get("U")!.delta).toBeCloseTo(0, 6);
+  });
+
+  it("起こらない結果（0%）は「悪くて」に入れない", () => {
+    const { doc, node, edge } = tree();
+    node("A3", "result", { m: 36, rr: [1, -5, 0] });
+    // A1 60%・A2 40% で 100% なので、見込みの無い線は 0%
+    edge("A", "A3", { r: [36, -500, 0] });
+    doc.edges["A-A3"]!.relation = "condition";
+    const a = run(doc).alt.get("A")!;
+    expect(a.outcomes.find((o) => o.node === "A3")!.w).toBe(0);
+    expect(a.worst).toBeCloseTo(-30);
+    expect(a.pBad).toBeCloseTo(0.4);
+  });
+
+  it("数字の無い選択肢には 3 年後の月の差も出さない", () => {
+    const { doc, node, edge } = tree();
+    node("N", "action");
+    edge("R", "N");
+    const a = run(doc).alt.get("N")!;
+    expect(a.delta).toBeNull();
+    expect(a.dR).toBeNull();
+  });
+
+  it("同じ答えの世界で、その答えの線がどれも 0% なら、ふつうの割合で比べる（結果の差が平均と合う）", () => {
+    const doc = createEmptyDoc();
+    const node = (id: string, type: NodeType, meta: Record<string, unknown> = {}) => (doc.nodes[id] = makeNode({ id, title: id, type, meta }));
+    const edge = (a: string, b: string, opt: { prob?: number; r?: R3; rv?: [string, string] } = {}) => {
+      const e = makeEdge({ id: `${a}-${b}`, source: a, target: b, relation: opt.prob !== undefined ? "condition" : "leads" });
+      e.meta = { ...(opt.prob !== undefined ? { prob: opt.prob } : {}), ...(opt.r ? { r: opt.r } : {}), ...(opt.rv ? { rv: opt.rv } : {}) };
+      doc.edges[e.id] = e;
+    };
+    node("R", "goal", { forecastRoot: true, impact: { v: 2, horizon: 36, annual: 360 }, fork: "decision", m: 0, rr: [0, 0, 0] });
+    node("K", "action", { fork: "chance", m: 0, base: true });
+    node("K1", "branch", { fork: "decision", m: 3, rr: [0, 0, 0] });
+    edge("R", "K");
+    edge("K", "K1", { prob: 100, r: [0, 0, 0] });
+    node("K1k", "action", { fork: "chance", m: 3, base: true });
+    node("K1kE", "result", { m: 36, rr: [0, 0, 0] });
+    edge("K1", "K1k");
+    edge("K1k", "K1kE", { prob: 100, r: [0, -10, 0] });
+    // 今のままの道で後で聞く: 全部可は 0%（この道では出ない）、不可 100% で +20
+    node("K1a", "action", { fork: "chance", m: 3 });
+    node("K1aY", "result", { m: 36, rr: [0, 0, 0] });
+    node("K1aN", "result", { m: 36, rr: [0, 0, 0] });
+    edge("K1", "K1a");
+    edge("K1a", "K1aY", { prob: 0, r: [0, 70, 0], rv: ["pm:0", "a"] });
+    edge("K1a", "K1aN", { prob: 100, r: [0, 20, 0], rv: ["pm:0", "n"] });
+    node("A", "action", { fork: "chance", m: 0 });
+    node("AY", "result", { m: 36, rr: [0, 0, 0] });
+    node("AN", "result", { m: 36, rr: [0, 0, 0] });
+    edge("R", "A");
+    edge("A", "AY", { prob: 50, r: [0, 100, 0], rv: ["pm:0", "a"] });
+    edge("A", "AN", { prob: 50, r: [0, 0, 0], rv: ["pm:0", "n"] });
+    const a = run(doc).alt.get("A")!;
+    expect(a.delta).toBeCloseTo(30);
+    // 全部可の世界は今のままの道では起こらないので、今のままの平均（+20）と比べる: +80 と −20
+    expect(a.outcomes.map((o) => o.u)).toEqual([80, -20]);
+    expect(a.outcomes.reduce((s, o) => s + o.w * o.u!, 0)).toBeCloseTo(a.delta!);
+  });
+
+  it("年収の境目は今の年収から遠い側に丸める（境目のすぐ上・すぐ下でも食い違わない）", () => {
+    // 副業 A は 36S + 18、週 4 日 B は 30S + 307.2。入れ替わるのは S = 48.2（年収 578.4）
+    const at = (annual: number) => {
+      const { doc } = tree({ annual });
+      doc.edges["B-B1"]!.meta = { prob: 100, r: [30, 307.2, 0] };
+      return run(doc);
+    };
+    const hi = at(579);
+    expect(hi.decision.get("R")!.best).toBe("A");
+    expect(hi.salaryFlips().below!.alt).toBe("B");
+    expect(hi.salaryFlips().below!.annual).toBeLessThanOrEqual(578.4);
+    const lo = at(575);
+    expect(lo.decision.get("R")!.best).toBe("B");
+    expect(lo.salaryFlips().above!.alt).toBe("A");
+    expect(lo.salaryFlips().above!.annual).toBeGreaterThanOrEqual(578.4);
+    // 1,000 万円より上から下へ見ても（100 万円ごと）、同じ境目に行き着く
+    const top = at(3000);
+    expect(top.salaryFlips().below).toEqual(hi.salaryFlips().below);
+  });
+});

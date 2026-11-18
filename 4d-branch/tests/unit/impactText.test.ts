@@ -55,13 +55,17 @@ describe("3 年の影響の言葉", () => {
 
   it("状態の 1 行（仕事・届け出・顧客・SpellDash・学校）", () => {
     const st = { j: "e", pm: "a", pro: 1, mau: 946.15, pu: 12.4, seats: 0, cl: 0.7214, fee: 5, sal: 1.0512, cv: 1, fl: [] };
-    expect(stateLine(st)).toBe("会社員（給与 1.05 倍）・副業 OK・顧客 1 社（月 3.6 万円）・SpellDash 有料 12 人（遊ぶ人 月 946 人）");
+    expect(stateLine(st)).toBe("会社員（給与 1.05 倍）・副業 OK・顧客 平均 0.7 社（月 3.6 万円）・SpellDash 有料 12 人（遊ぶ人 月 946 人）");
     // 週 4 日は今の稼ぎ（rr）の倍率を使う
     expect(stateLine({ ...st, j: "p", pm: "s", cl: 0, pro: 0, mau: 1520 }, [0.84, 0, 0])).toBe("週 4 日勤務（給与 0.84 倍）・SpellDash だけ可・SpellDash 無料（遊ぶ人 月 1,520 人）");
     expect(stateLine({ ...st, j: "p", pm: "s", cl: 0, pro: 0 })).toContain("週 4 日勤務（給与 0.84 倍）");
     // 独立なら届け出は出さず、顧客が無ければ「顧客なし」
     expect(stateLine({ ...st, j: "i", cl: 0, fee: 7, seats: 40 })).toBe("独立・顧客なし・SpellDash 有料 12 人（遊ぶ人 月 946 人）・学校 40 席");
-    expect(stateLine({ ...st, j: "i", cl: 3.2, fee: 7 })).toContain("独立・顧客 3 社（月 22.4 万円）");
+    // 顧客の数が見込みの平均（端数あり）なら「平均」で書き、月の額と食い違わない
+    expect(stateLine({ ...st, j: "i", cl: 3.2, fee: 7 })).toContain("独立・顧客 平均 3.2 社（月 22.4 万円）");
+    expect(stateLine({ ...st, cl: 2.4429, fee: 5 })).toContain("顧客 平均 2.4 社（月 12.2 万円）");
+    expect(stateLine({ ...st, cl: 0.3667, fee: 5 })).toContain("顧客 平均 0.4 社（月 1.8 万円）");
+    expect(stateLine({ ...st, cl: 2, fee: 5 })).toContain("顧客 2 社（月 10 万円）");
     expect(stateLine({ ...st, pm: "?" })).toContain("副業は届け出前");
     expect(stateLine({ ...st, pm: "n" })).toContain("副業は不可");
     expect(stateLine(null)).toBeNull();
@@ -118,6 +122,10 @@ describe("3 年の影響の言葉", () => {
     expect(riskShort(0, -0.01)).toBe("悪くなる 0%");
     expect(riskText(0.25, -20)).toBe("悪くなる見込み 25%（悪くて −20 万円）");
     expect(riskText(0, -0.01)).toBe("悪くなる見込み 0%（最悪でも ±0）");
+    // 「悪くなる」に数えない小さな差（3 万円未満）は「悪くて」と書かない（「0%（悪くて −0.4万）」と食い違わない）
+    expect(riskShort(0, -0.4)).toBe("悪くなる 0%");
+    expect(riskText(0, -0.4)).toBe("悪くなる見込み 0%（最悪でも −0.4 万円）");
+    expect(riskShort(0.4, -30)).toBe("悪くなる 40%（悪くて −30万）");
     expect(hoursShort(-2)).toBe("週−2h");
     expect(hoursShort(0)).toBe("週±0h");
     expect(hoursText(3)).toBe("週の時間 +3 時間（今は 52 時間）");

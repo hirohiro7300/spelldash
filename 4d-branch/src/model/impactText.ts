@@ -2,6 +2,7 @@
 // 設計: docs/DESIGN.md §4.7
 // 万円の数の書き方は impactFormat.ts（「+65万」「1,423万」）。文の中では「+65 万円」「1,423 万円」の形にする。
 
+import { BAD_EPS } from "./impact";
 import { formatMan, formatMonthlyDelta, formatShare, IMPACT_T, MINUS } from "./impactFormat";
 import { isDateStr } from "./dates";
 import type { DocData, GNode, ID } from "./types";
@@ -76,9 +77,12 @@ export function stateLine(st: unknown, rr?: unknown): string | null {
     const pm = typeof s.pm === "string" ? PERM_TEXT[s.pm] : undefined;
     if (pm) parts.push(pm);
   }
-  const cl = num(s.cl, 0);
-  if (cl >= 0.5) parts.push(`顧客 ${n0(cl)} 社（月 ${f1(cl * num(s.fee, 0))} 万円）`);
-  else if (j === "i") parts.push("顧客なし");
+  // 顧客の数は見込みの平均のことがある（2.4 社など）。丸めた数と月の額が食い違わないように、端数があれば「平均」で書く
+  const cl = Math.max(0, num(s.cl, 0));
+  if (cl >= 0.05) {
+    const whole = Math.abs(cl - Math.round(cl)) < 0.05;
+    parts.push(`顧客 ${whole ? n0(cl) : `平均 ${f1(cl)}`} 社（月 ${f1(cl * num(s.fee, 0))} 万円）`);
+  } else if (j === "i") parts.push("顧客なし");
   const mau = Math.max(0, num(s.mau, 0));
   const pro = s.pro === 1 || s.pro === true;
   parts.push(pro ? `SpellDash 有料 ${n0(Math.max(0, num(s.pu, 0)))} 人（遊ぶ人 月 ${n0(mau)} 人）` : `SpellDash 無料（遊ぶ人 月 ${n0(mau)} 人）`);
@@ -169,11 +173,14 @@ export function hoursText(h: number): string {
   return `週の時間 ${d} 時間（今は ${IMPACT_BASE_HOURS} 時間）`;
 }
 
-/** 悪くなる見込み（「悪くなる 25%（悪くて −20万）」。いちばん悪くても今のまま以上なら「悪くなる 0%」だけ） */
+/**
+ * 悪くなる見込み（「悪くなる 25%（悪くて −20万）」）。「悪くなる」に数えるのは今のままより 3 万円（BAD_EPS）以上悪い結果だけなので、
+ * いちばん悪くてもそれより小さい差なら「悪くなる 0%」だけ（「0%（悪くて −0.4万）」のように食い違わない）
+ */
 export function riskShort(pBad: number | null, worst: number | null): string | null {
   if (pBad === null) return null;
   const head = `悪くなる ${formatShare(pBad)}`;
-  return worst !== null && worst < -0.05 ? `${head}（悪くて ${formatMan(worst)}）` : head;
+  return worst !== null && worst < -BAD_EPS ? `${head}（悪くて ${formatMan(worst)}）` : head;
 }
 
 /** 悪くなる見込みの文（「悪くなる見込み 25%（悪くて −20 万円）」） */
@@ -181,7 +188,7 @@ export function riskText(pBad: number | null, worst: number | null): string | nu
   if (pBad === null) return null;
   const head = `悪くなる見込み ${formatShare(pBad)}`;
   if (worst === null) return head;
-  return worst < -0.05 ? `${head}（悪くて ${yen(worst)}）` : `${head}（最悪でも ${yen(worst)}）`;
+  return worst < -BAD_EPS ? `${head}（悪くて ${yen(worst)}）` : `${head}（最悪でも ${yen(worst)}）`;
 }
 
 /** 選択肢の 2 行目の部品（悪くなる見込み・3 年後の月の稼ぎの差・週の時間） */

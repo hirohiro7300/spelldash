@@ -10,7 +10,7 @@
 // 計算は O(ノード + 線)。1,800 ノードで数 ms。
 
 import type { ForecastResult } from "./forecast";
-import { chanceWeights, flowOuts, forkKindOf, impactConfigOf, impactScope, isImpactRoot, type ForkKind } from "./forks";
+import { chanceWeights, flowOuts, forkKindOf, impactConfigOf, impactScope, isImpactRoot, primaryImpactRoot, type ForkKind } from "./forks";
 import { impactBin } from "./impactFormat";
 import { dayNumber, isDateStr } from "./dates";
 import type { DocData, GNode, ID } from "./types";
@@ -25,7 +25,7 @@ export const IMPACT_ANNUAL_MAX = 3000;
 /** ★（おすすめ）を付ける差（2 位より何万円良ければ）。差がこれより小さい手は「≒ ほぼ同じ」（数はモデルの目安なので、小さな差で 1 つに決めない） */
 export const IMPACT_STAR_LEAD = 10;
 /** 「悪くなる」と数える差（万円）。色の「ほぼ同じ」（3 万円未満）より悪い結果だけを数える */
-const BAD_EPS = 3;
+export const BAD_EPS = 3;
 
 export interface AltOutcome {
   edge: ID;
@@ -299,6 +299,8 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
   const rvKey: Array<string | null> = new Array<string | null>(slots).fill(null);
   const rvCat: Array<string | null> = new Array<string | null>(slots).fill(null);
   const firstParent = new Int32Array(n).fill(-1);
+  // 親の月のいちばん遅い所（子の月はこれより前にしない。日付を逆に入れても、同じ月を 2 度数えない）
+  const tFloor = new Float64Array(n);
 
   const rootNode = doc.nodes[rootIds[0]!];
   const rootDay = rootNode && isDateStr(rootNode.time.due) ? dayNumber(rootNode.time.due) : null;
@@ -320,7 +322,7 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
     if (typeof m === "number" && Number.isFinite(m)) ti = m;
     else if (rootDay !== null && isDateStr(node.time.due)) ti = (dayNumber(node.time.due) - rootDay) / 30.44;
     else ti = fp >= 0 ? t[fp]! : 0;
-    t[i] = Math.max(0, Math.min(H, ti));
+    t[i] = Math.min(H, Math.max(0, tFloor[i]!, ti));
     const r = vec3(node.meta?.rr) ?? (fp >= 0 ? ([rr[fp * 3]!, rr[fp * 3 + 1]!, rr[fp * 3 + 2]!] as Vec3) : rootRR);
     rr[i * 3] = r[0];
     rr[i * 3 + 1] = r[1];
@@ -340,6 +342,7 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
         rvCat[s] = rv[1];
       }
       if (ti2 !== undefined && firstParent[ti2] === -1) firstParent[ti2] = i;
+      if (ti2 !== undefined) tFloor[ti2] = Math.max(tFloor[ti2]!, t[i]!);
     });
   }
   // 線の稼ぎ（先のノードの月が要るので、全部の月が決まってから）
@@ -498,7 +501,9 @@ function backward(c: Compiled, S: number, tail: number, H: number, mode: 0 | 1 |
 function forward(c: Compiled, p: Pass): Float64Array {
   const n = c.ids.length;
   const P = new Float64Array(n);
-  for (const r of c.roots) P[r] = 1;
+  // 入口が 2 つ以上でも、流すのは数字を出す入口（先頭）からだけ
+  const r0 = c.roots[0];
+  if (r0 !== undefined) P[r0] = 1;
   for (let i = 0; i < n; i++) {
     const m = P[i]!;
     if (!(m > 0) || !p.def[i]) continue;
@@ -552,6 +557,10 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   if (!scope.size) return emptyResult();
   const rootIds = [...scope].filter((id) => isImpactRoot(doc.nodes[id])).sort();
   if (!rootIds.length) return emptyResult();
+  // 入口が 2 つ以上（今日の複製・別の地図の追加の読み込み）: 年収・選び方の道・行き先・分布は 1 つの入口から（primaryImpactRoot）。
+  // ほかの入口の先も、カードごとの差は同じ年収で出す
+  const primary = primaryImpactRoot(doc, out);
+  if (primary !== null && rootIds.includes(primary)) rootIds.splice(0, rootIds.length, primary, ...rootIds.filter((r) => r !== primary));
   const rootNode = doc.nodes[rootIds[0]!] as GNode;
   const cfg = impactConfigOf(rootNode)!;
   const annualSet = validAnnual(cfg.annual);
@@ -678,20 +687,26 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
       const b = c.off[i + 1]!;
       let forced = false;
       for (let s = a; s < b; s++) if (c.rvKey[s] === R && c.rvCat[s] === cat) forced = true;
-      let sw = 0;
-      let sv = 0;
+      // 答えを決めた世界: その答えの線だけを、それぞれの見込みの割合で（全部可・1 社目と全部可・まだ など）。
+      // その答えの線がどれも 0% なら（この先ではその答えが出ない）、ふつうの割合で。割合が無ければ等分（逆にたどるときと同じ）
+      let swF = 0;
+      let svF = 0;
+      let swA = 0;
+      let svA = 0;
+      let svE = 0;
       let cnt = 0;
       for (let s = a; s < b; s++) {
         const j = c.tgt[s]!;
         const v = j >= 0 ? val.get(j) : undefined;
         if (v === undefined) continue;
-        // 答えを決めた世界: その答えの線だけを、それぞれの見込みの割合で（全部可・1 社目と全部可・まだ など）
-        const ww = forced ? (c.rvKey[s] === R && c.rvCat[s] === cat ? c.w[s]! : 0) : c.w[s]!;
-        sw += ww;
-        sv += ww * (Wsum(s) + v);
+        const x = Wsum(s) + v;
+        if (forced && c.rvKey[s] === R && c.rvCat[s] === cat) (swF += c.w[s]!), (svF += c.w[s]! * x);
+        swA += c.w[s]!;
+        svA += c.w[s]! * x;
+        svE += x;
         cnt++;
       }
-      if (cnt) val.set(i, sw > 0 ? sv / sw : 0);
+      if (cnt) val.set(i, forced && swF > 0 ? svF / swF : swA > 0 ? svA / swA : svE / cnt);
     }
     return val.get(start) ?? null;
   };
@@ -742,7 +757,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
         const wb = W(bs);
         deltaV = [ws[0] + main.V[j * 3]! - wb[0] - main.V[jBase * 3]!, ws[1] + main.V[j * 3 + 1]! - wb[1] - main.V[jBase * 3 + 1]!, ws[2] + main.V[j * 3 + 2]! - wb[2] - main.V[jBase * 3 + 2]!];
       }
-      const dR = main.def[j] && jBase >= 0 && main.def[jBase] ? main.R[j]! - main.R[jBase]! : null;
+      const dR = main.def[j] && !c.noData[j] && jBase >= 0 && main.def[jBase] ? main.R[j]! - main.R[jBase]! : null;
       // 結果ごとの差
       const outcomes: AltOutcome[] = [];
       let pBad: number | null = null;
@@ -780,8 +795,9 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
           const ref = matched ? (matched.get(c.rvCat[o]!) ?? qBase) : qBase;
           const u = defined && ref !== null ? Wsum(s) + Wsum(o) + sumV(main.V, t2) - ref : null;
           outcomes.push({ edge: c.eid[o]!, node: t2 >= 0 ? c.ids[t2]! : (doc.edges[c.eid[o]!]?.target ?? ""), w: ww, u, bin: impactBin(u) });
-          if (u !== null) {
+          if (u !== null && ww > 0) {
             if (u < -BAD_EPS) bad += ww;
+            // 起こらない結果（0%）は「悪くて」に入れない
             worst = worst === null ? u : Math.min(worst, u);
           }
         }
@@ -917,14 +933,16 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
           if (am === cur) lo = m;
           else (hi = m), (altHi = am);
         }
-        if (altHi >= 0) flips.above = { annual: Math.round(hi / 10) * 10, alt: c.ids[altHi]! };
+        // 境目は今の年収から遠い側の 10 万円に丸める（「X より上なら」がいつも正しい）
+        if (altHi >= 0) flips.above = { annual: Math.ceil(hi / 10) * 10, alt: c.ids[altHi]! };
         break;
       }
       prev = a;
     }
-    // 下
+    // 下（1,000 万円より上は 100 万円ごと）
+    const gridBelow = (x: number): number => (x > 1000 ? Math.ceil(x / 100) * 100 - 100 : Math.ceil(x / 20) * 20 - 20);
     prev = annual;
-    for (let a = Math.ceil(annual / 20) * 20 - 20; a >= 200; a -= 20) {
+    for (let a = gridBelow(annual); a >= 200; a = gridBelow(a)) {
       const alt = bestAt(a);
       if (alt !== cur) {
         let lo = a;
@@ -936,7 +954,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
           if (am === cur) hi = m;
           else (lo = m), (altLo = am);
         }
-        if (altLo >= 0) flips.below = { annual: Math.round(lo / 10) * 10, alt: c.ids[altLo]! };
+        if (altLo >= 0) flips.below = { annual: Math.floor(lo / 10) * 10, alt: c.ids[altLo]! };
         break;
       }
       prev = a;
