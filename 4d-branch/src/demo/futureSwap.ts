@@ -267,12 +267,19 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
 }
 
 /**
- * 同じ地図を新しい版にする（rootId: 数字と概要を出す v2 の入口）。入口から道の線でたどれる、鍵のあるノード（同梱のカード）だけを新しい版と鍵で合わせる:
+ * 同じ地図を新しい版にする（rootId: 数字と概要を出す v2 の入口）。鍵のあるノード（同梱のカード）を新しい版と鍵で合わせる。
+ * 入口から道の線でたどれるカードのほか、地図から外れたカード（前の版のアプリで親を消した・道の線を相乗効果などに変えた）も合わせる
+ * （外れたカードの鍵で新しい版のカードを足し直すと、同じ鍵のカードが 2 つになる）:
  * - 合うカードは ID と作った時刻をそのままに、新しい版の文章と数字にする。利用者の物は残す（選んだ手・見送り・やることのチェック・年収・
  *   書き換えたタイトルと本文・付けたタグ・足した・書き換えたやること）
  * - 新しい版に無くなったカードは線ごと消す（その下に利用者が足したノードは、つながりの無いノードとして残る）。新しい版で増えたカードは足す
- * - カードどうしの道の線は（元の鍵・先の鍵）で合わせ、線の ID をそのままに新しい版の説明・条件・見込みにする（直した見込み・書き換えた説明と条件は残す）
- * - 鍵の無いノード（利用者が足した物）と、それにつながる線・道でない線は消さない
+ *   （利用者が消したカードも、鍵のノードが残っていなければ足し直す）
+ * - カードどうしの同梱の線は（元の鍵・先の鍵）で合わせ、線の ID をそのままに新しい版の関係・説明・条件・見込みにする（直した見込み・書き換えた
+ *   説明と条件は残す）。関係を相乗効果などに変えた同梱の線も、道の線に戻す（同じ 2 枚の間に線を 2 本にしない）
+ * - 鍵の無いノード（利用者が足した物）と、それにつながる線・利用者が引いた線は消さない（同梱の線を消して同じ向きに道でない線を
+ *   引き直していれば、その線を残して同梱の線は足さない）
+ * - 同じ鍵のノードが 2 つ以上あれば（複製・別の地図を足した など）、先に作った 1 つだけをカードにし、ほかは鍵を外して利用者のノードとして残す
+ *   （新しい版にした後、地図の中で同じ鍵は 1 つだけ）
  * ほかの地図（v1 の地図・数字を出さない 2 つ目の入口）は、今までどおり消す（この地図からたどれるノードは残す）
  */
 function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootId: ID): FutureSwap {
@@ -294,16 +301,19 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       order.push(e.target);
     }
   }
-  // 同梱のカード（鍵ごとに 1 つ）。複製などで同じ鍵が 2 つ以上あれば、先に作った物（複製は作った時刻が後になる。同じなら入口に近い物・ID の順）。
-  // 入口の鍵は数字と概要を出す入口に決める。ほかは利用者のノードとして残す
+  // ほかの地図（この地図からたどれる物は除く）: 消す
+  const others = new Set<ID>();
+  for (const m of maps) if (m.root !== rootId) for (const id of m.nodes) if (!depth.has(id)) others.add(id);
+  // 同梱のカード（鍵ごとに 1 つ）: 入口からたどれるノードと、地図から外れたノード（ほかの地図の物は除く）から選ぶ。
+  // 複製などで同じ鍵が 2 つ以上あれば、先に作った物（複製は作った時刻が後になる。同じなら入口に近い物・外れた物は後・ID の順）。
+  // 入口の鍵は数字と概要を出す入口に決める。選ばれなかった物は利用者のノードとして残す（鍵は外す）
   const oldRoot = doc.nodes[rootId]!;
   const rootKey = keyOf(oldRoot);
   const oldByKey = new Map<string, GNode>();
   if (rootKey !== null) oldByKey.set(rootKey, oldRoot);
-  for (const id of order) {
-    const n = doc.nodes[id]!;
+  for (const n of Object.values(doc.nodes)) {
     const k = keyOf(n);
-    if (k === null || k === rootKey) continue;
+    if (k === null || k === rootKey || others.has(n.id)) continue;
     const cur = oldByKey.get(k);
     if (!cur || madeFirst(n, cur, depth)) oldByKey.set(k, n);
   }
@@ -314,28 +324,33 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
     const k = keyOf(n);
     if (k !== null) inByKey.set(k, n);
   }
-  // 消す物: 新しい版に無くなったカードと、ほかの地図（この地図からたどれる物は除く）
-  const gone = new Set<ID>();
+  // 消す物: 新しい版に無くなったカードと、ほかの地図
+  const gone = new Set<ID>(others);
   for (const [k, n] of oldByKey) if (!inByKey.has(k)) gone.add(n.id);
-  for (const m of maps) if (m.root !== rootId) for (const id of m.nodes) if (!depth.has(id)) gone.add(id);
 
-  // 同梱の線: カードどうしの道の線。指紋の付いた地図（t0 のある入口）では、指紋（c0）の無い線は利用者が引いた線として残す
+  // 同梱の線: カードどうしの線のうち、指紋の付いた地図（t0 のある入口）では指紋（c0）のある線（関係を変えた物も）、指紋の無い地図では道の線。
+  // 新しい版の線と（元の鍵・先の鍵）で合えば、その線を新しい版にする（合わなければ消す）。合う線の選び方: 同梱の道の線 →
+  // 利用者が引いた道の線 → 関係を変えた同梱の線 → 指紋の無い地図の道でない線（同じ 2 枚の間に線を 2 本にしない）。指紋の付いた地図で
+  // 利用者が引いた道でない線は合わせない（そのまま残す）
   const marked = hasEditPrints(doc, rootId);
-  const ownLine = (e: GEdge): boolean => marked && typeof e.meta?.c0 !== "string";
+  const bundleLine = (e: GEdge): boolean => (marked ? typeof e.meta?.c0 === "string" : isFlowEdge(e));
+  const rank = (e: GEdge): number => (isFlowEdge(e) ? (bundleLine(e) ? 0 : 1) : bundleLine(e) ? 2 : marked ? -1 : 3);
   const oldEdge = new Map<string, GEdge>();
   const bundleEdges = new Set<ID>();
   for (const e of Object.values(doc.edges)) {
-    if (!isFlowEdge(e) || !cards.has(e.source) || !cards.has(e.target)) continue;
-    if (!ownLine(e)) bundleEdges.add(e.id);
+    if (e.source === e.target || !cards.has(e.source) || !cards.has(e.target)) continue;
+    if (bundleLine(e)) bundleEdges.add(e.id);
+    const r = rank(e);
+    if (r < 0) continue;
     const pk = pairKey(keyOf(doc.nodes[e.source])!, keyOf(doc.nodes[e.target])!);
     const cur = oldEdge.get(pk);
-    if (!cur || (ownLine(cur) && !ownLine(e))) oldEdge.set(pk, e);
+    if (!cur || r < rank(cur)) oldEdge.set(pk, e);
   }
 
-  // 残す物: 同梱のカードと消す物を除いたノード、それにつながる線（同梱の線は除く）。利用者の線は、合うカードを指したまま残す
-  // （合うカードはもとの ID のまま入れ直すので、つながりは切れない）
+  // 残す物: 同梱のカードと消す物を除いたノード（鍵が残っていれば外す）、それにつながる線（同梱の線は除く）。利用者の線は、合うカードを
+  // 指したまま残す（合うカードはもとの ID のまま入れ直すので、つながりは切れない）
   const out: DocData = { ...doc, projects: { ...doc.projects }, scenarios: { ...doc.scenarios }, projectOrder: [...doc.projectOrder], scenarioOrder: [...doc.scenarioOrder], nodes: {}, edges: {}, meta: { ...doc.meta } };
-  for (const [id, n] of Object.entries(doc.nodes)) if (!gone.has(id) && !cards.has(id)) out.nodes[id] = n;
+  for (const [id, n] of Object.entries(doc.nodes)) if (!gone.has(id) && !cards.has(id)) out.nodes[id] = keyOf(n) === null ? n : withoutKey(n);
   for (const [id, e] of Object.entries(doc.edges)) if (!gone.has(e.source) && !gone.has(e.target) && !bundleEdges.has(id)) out.edges[id] = e;
   // 新しい版を入れる: プロジェクト・シナリオは同じ名前の物にまとめ（mergeDocs と同じ）、入口の位置をそろえる。
   // カードは、合う物はもとの ID、増えた物は同梱の決まった ID（文書に同じ ID があれば振り直す）
@@ -365,11 +380,15 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       continue;
     }
     const r = upgradeNode(next, old, id === rootId ? salary : null);
-    out.nodes[id] = r.node;
+    // 地図から外れていたカードは文書の位置で見えていた（動かしたかもしれない）: 位置はそのまま（つながり直せば並べ方で並ぶ）
+    out.nodes[id] = depth.has(old.id) ? r.node : { ...r.node, x: old.x, y: old.y };
     if (r.kept) kept++;
     if (r.updated) updated.add(id);
   }
-  // 線: 合う物はもとの ID（直した見込み・書き換えた説明と条件は残す）。増えた物は新しい ID（同梱の線の ID は版ごとに違う）
+  // 線: 合う物はもとの ID（直した見込み・書き換えた説明と条件は残す）。増えた物は新しい ID（同梱の線の ID は版ごとに違う）。
+  // 同じ 2 枚の間に同じ向きの線は 2 本にしない（文書の決まり）: 残した利用者の線（同梱の線を消して道でない線を引き直した など）と同じ向きなら足さない
+  const linked = new Set<string>();
+  for (const e of Object.values(out.edges)) linked.add(pairKey(e.source, e.target));
   const usedOld = new Set<ID>();
   for (const e of Object.values(incoming.edges)) {
     const source = idOf.get(e.source);
@@ -383,11 +402,13 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       usedOld.add(old.id);
       const r = upgradeEdge(next, old);
       out.edges[old.id] = r.edge;
+      linked.add(pairKey(source, target));
       if (r.kept) kept++;
       if (r.updated) updated.add(target);
-    } else {
+    } else if (!linked.has(pairKey(source, target))) {
       const id = newId("e");
       out.edges[id] = { ...next, id };
+      linked.add(pairKey(source, target));
       // 新しい版で別のカードの下に移った
       if (cards.has(target)) updated.add(target);
     }
@@ -399,15 +420,24 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
   return { doc: withFutureTitle(out, incoming), removed: gone.size, added: fresh, root: rootId, kept, updated: updated.size, userKept, inPlace: true };
 }
 
-/** 線の（元の鍵・先の鍵） */
+/** 線の（元・先）。鍵どうしでも ID どうしでも使う */
 const pairKey = (source: string, target: string): string => `${source}\u0000${target}`;
 
-/** 同じ鍵のカードのうち、a を b より先の物（同梱のカード）とみるか: 先に作った物、同じ時刻なら入口に近い物、それも同じなら ID の順 */
+/**
+ * 同じ鍵のカードのうち、a を b より先の物（同梱のカード）とみるか: 先に作った物、同じ時刻なら入口に近い物（地図から外れた物は後）、
+ * それも同じなら ID の順
+ */
 function madeFirst(a: GNode, b: GNode, depth: Map<ID, number>): boolean {
   if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt;
-  const da = depth.get(a.id)!;
-  const db = depth.get(b.id)!;
+  const da = depth.get(a.id) ?? Infinity;
+  const db = depth.get(b.id) ?? Infinity;
   return da !== db ? da < db : a.id < b.id;
+}
+
+/** 鍵を外したノード（同じ鍵の 2 つ目を利用者のノードとして残すとき。新しい版でも同梱のカードと取り違えない） */
+function withoutKey(n: GNode): GNode {
+  const { key: _key, ...meta } = n.meta;
+  return { ...n, meta };
 }
 
 /** 取り込む側の ID を文書の ID に（合わない物は外す） */
