@@ -1,9 +1,11 @@
 // 無限キャンバス: 描画（画面内だけ・拡大率に応じて省略）・当たり判定・カメラ。設計: docs/DESIGN.md §6
+// 位置はすべて vm.posOf（3 年の分かれ道の見えているノードは、開いている所だけで並べ直した重ねる位置）から読む
 
 import type { ViewModel } from "../app/viewModel";
 import type { UiState } from "../app/uiState";
 import { NODE_TYPES } from "../model/constants";
 import { edgeProb, formatPercent } from "../model/forecast";
+import { IMPACT_FIRST_ZOOM, IMPACT_ROW } from "../model/impactLayout";
 import { todayStr } from "../model/dates";
 import type { GNode, ID, Relation } from "../model/types";
 import type { Store } from "../store/store";
@@ -11,6 +13,8 @@ import { h } from "../ui/dom";
 import { Camera } from "./camera";
 import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, gridPattern, lodFor, rgba, type Lod } from "./draw";
 import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, rectsIntersect, type EdgeGeom } from "./geometry";
+import { ImpactCards, binStroke } from "./impactCards";
+import { drawImpactNode, type PillRect } from "./impactDraw";
 import { onPixelRatioChange } from "./pixelRatio";
 import { CANVAS_FONT, wrapText } from "./text";
 
@@ -41,7 +45,40 @@ interface Box {
   h: number;
 }
 
+/** 縮小したときの目印（画面の大きさで描く名前） */
+interface ScreenLabel {
+  x: number;
+  y: number;
+  /** 文。null ならノードの題名から描くときに作る（画面の外・数を超えた物は作らない） */
+  text: string | null;
+  n?: GNode;
+  /** 未来の道筋の見込み（題名に添える） */
+  reach?: number;
+  color: string;
+  alpha: number;
+  rank: number;
+  /** 文の前に付ける色の点（3 年の分かれ道の段の色） */
+  dot: string | null;
+  /** カードの左端にそろえる（3 年の分かれ道。列ごとに目印の頭がそろい、左の列の目印と重なりにくい） */
+  left?: boolean;
+}
+
+/** 描いた札（画面座標。E2E の確かめ用。debugPills を [] にしたときだけ集める） */
+export interface PillDebug {
+  id: ID;
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** 文字の大きさ（画面の px） */
+  font: number;
+}
+
 const PORT_SCREEN_R = 7;
+/** 折りたたみの印を押せる大きさ（3 年の分かれ道。画面の px。指でも押せる大きさ） */
+const BADGE_TOUCH_PX = 44;
+const ORIGIN = { x: 0, y: 0 };
 
 export class CanvasView {
   readonly root: HTMLDivElement;
@@ -61,6 +98,10 @@ export class CanvasView {
   frames = 0;
   /** 画面の右・下にかぶる部品の大きさ（全体表示の余白に使う） */
   insets = { left: 40, right: 48, top: 60, bottom: 60 };
+  /** 確かめ用（E2E）: [] にすると、描くたびに 3 年の分かれ道の選択肢の札の位置を集め直す。ふだんは null（集めない） */
+  debugPills: PillDebug[] | null = null;
+  /** 確かめ用（E2E の性能）: true なら描いた後に 1 画素読み、絵を描き終えるまで待ってから時間を測る（描く命令だけでなく塗りまで） */
+  rasterFlush = false;
 
   private readonly ctx: CanvasRenderingContext2D;
   private scheduled = false;
@@ -72,6 +113,9 @@ export class CanvasView {
   private readonly renderListeners = new Set<() => void>();
   private readonly reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   private centerCache = { version: -1, revision: -1, y: 0 };
+  /** 3 年の分かれ道のカード・線に書く物（計算の結果ごとに作る） */
+  private readonly cards = new ImpactCards();
+  private readonly pillTmp: PillRect = { x: 0, y: 0, w: 0, h: 0, font: 0 };
 
   constructor(
     private readonly store: Store,
@@ -88,6 +132,12 @@ export class CanvasView {
     store.on("change", () => this.requestRender());
     ui.on("visual", () => this.requestRender());
     ui.on("hover", () => this.requestRender());
+    ui.on("expand", (ids) => this.revealOpened(ids));
+  }
+
+  /** 直近の描画で出した線の札の数（確かめ用） */
+  get labelCount(): number {
+    return this.labelBoxes.length;
   }
 
   onCamera(fn: () => void): () => void {
@@ -133,7 +183,7 @@ export class CanvasView {
     this.requestRender();
   }
 
-  private pendingFit: { ids?: Iterable<ID>; animate?: boolean; minZoom?: number } | null = null;
+  private pendingFit: { ids?: Iterable<ID>; animate?: boolean; minZoom?: number; align?: "top-left" } | null = null;
 
   private get measurable(): boolean {
     return this.width > 1 && !this.root.hidden && this.root.isConnected;
@@ -143,7 +193,7 @@ export class CanvasView {
     const p = this.pendingFit;
     if (!p || !this.measurable) return;
     this.pendingFit = null;
-    this.fit(p.ids, { animate: p.animate, minZoom: p.minZoom });
+    this.fit(p.ids, { animate: p.animate, minZoom: p.minZoom, align: p.align });
   }
 
   requestRender(): void {
@@ -200,12 +250,19 @@ export class CanvasView {
 
   /**
    * 範囲が収まるように。minZoom: これより引かない（収まらなければ、範囲の左端を左の余白にそろえ、縦は範囲の中ほどに合わせる。
-   * 狭い画面でも、左から読み進める範囲（未来の道筋の今日など）の入口を、文字の読める大きさで見せる）
+   * 狭い画面でも、左から読み進める範囲（未来の道筋の今日など）の入口を、文字の読める大きさで見せる）。
+   * align "top-left": 範囲の左上を余白の左上にそろえる（3 年の分かれ道の今日と選択肢。上から読み進める）
    */
-  fitBounds(b: { minX: number; minY: number; maxX: number; maxY: number }, opts: { animate?: boolean; maxZoom?: number; minZoom?: number } = {}): void {
+  fitBounds(b: { minX: number; minY: number; maxX: number; maxY: number }, opts: { animate?: boolean; maxZoom?: number; minZoom?: number; align?: "top-left" } = {}): void {
     const box = { minX: b.minX - HALF_W, minY: b.minY - HALF_H, maxX: b.maxX + HALF_W, maxY: b.maxY + HALF_H };
     const t = this.camera.fitTarget(box, this.width, this.height, this.insets, opts.maxZoom ?? 1.05);
-    if (opts.minZoom && t.zoom < opts.minZoom) {
+    if (opts.align === "top-left") {
+      // 上の余白は左と同じくらいに詰める（スマホで 10 の選択肢の最後の印まで、右下の操作の上に入るように）
+      const z = Math.max(t.zoom, opts.minZoom ?? 0);
+      t.zoom = z;
+      t.x = this.insets.left - box.minX * z;
+      t.y = Math.min(this.insets.top, this.insets.left) - box.minY * z;
+    } else if (opts.minZoom && t.zoom < opts.minZoom) {
       const z = opts.minZoom;
       const ah = Math.max(50, this.height - this.insets.top - this.insets.bottom);
       t.zoom = z;
@@ -215,24 +272,31 @@ export class CanvasView {
     this.animateTo(t, opts.animate === false ? 0 : 380);
   }
 
-  /** 全体（または指定したノード）が収まるように（minZoom は fitBounds と同じ） */
-  fit(ids?: Iterable<ID>, opts: { animate?: boolean; minZoom?: number } = {}): void {
+  /**
+   * 全体（または指定したノード）が収まるように（minZoom・align は fitBounds と同じ）。
+   * 3 年の分かれ道の今日と選択肢（開いた・読み込んだ・寄ったとき）なら、見えている物だけで、左上にそろえて 45% より引かない
+   */
+  fit(ids?: Iterable<ID>, opts: { animate?: boolean; minZoom?: number; align?: "top-left" } = {}): void {
     if (!this.measurable || this.root.getBoundingClientRect().width < 2) {
-      this.pendingFit = { ids: ids ? [...ids] : undefined, animate: false, minZoom: opts.minZoom };
+      this.pendingFit = { ids: ids ? [...ids] : undefined, animate: false, minZoom: opts.minZoom, align: opts.align };
       return;
     }
-    const b = this.vm.bounds(ids);
+    const list = ids ? [...ids] : undefined;
+    const b = this.vm.bounds(list);
     if (!b) {
       this.animateTo({ x: this.width / 2, y: this.height / 2, zoom: 1 }, opts.animate === false ? 0 : 300);
       return;
     }
-    this.fitBounds(b, opts);
+    if (list && this.vm.isImpactEntry(list)) this.fitBounds(b, { ...opts, align: "top-left", minZoom: Math.max(opts.minZoom ?? 0, IMPACT_FIRST_ZOOM) });
+    else this.fitBounds(b, opts);
   }
 
-  /** ノードを画面の中ほどへ（小さすぎるときは寄る） */
+  /** ノードを画面の中ほどへ（小さすぎるときは寄る）。3 年の分かれ道で閉じた所の中なら、上流を開いて（見え方だけ）から */
   centerOn(id: ID, opts: { zoom?: number; animate?: boolean; onlyIfHidden?: boolean } = {}): void {
-    const n = this.store.doc.nodes[id];
-    if (!n || !this.measurable) return;
+    if (!this.store.doc.nodes[id] || !this.measurable) return;
+    this.vm.openPathTo(id);
+    const n = this.vm.posOf(id);
+    if (!n) return;
     if (opts.onlyIfHidden) {
       const s = this.camera.toScreen(n.x, n.y);
       const mx = HALF_W * this.camera.zoom + 30;
@@ -243,6 +307,69 @@ export class CanvasView {
     const cx = (this.width - this.insets.right + this.insets.left) / 2;
     const cy = (this.height - this.insets.bottom + this.insets.top) / 2;
     this.animateTo({ zoom, x: cx - n.x * zoom, y: cy - n.y * zoom }, opts.animate === false ? 0 : 360);
+  }
+
+  /**
+   * 3 年の分かれ道でノードを開いた: 開いて出てきた子が画面の外なら、そのノードと子が見える所へ動かす
+   * （拡大率はそのまま。30% より小さければ 30% に。収まらなければ、開いたノードを左上に）
+   */
+  private revealOpened(ids: ID[]): void {
+    if (!this.measurable || !ids.length) return;
+    this.vm.ensure();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let anchor: { x: number; y: number } | null = null;
+    let kids = 0;
+    const add = (p: { x: number; y: number }) => {
+      minX = Math.min(minX, p.x - HALF_W);
+      maxX = Math.max(maxX, p.x + HALF_W);
+      minY = Math.min(minY, p.y - HALF_H);
+      maxY = Math.max(maxY, p.y + HALF_H);
+    };
+    for (const id of ids) {
+      if (!this.vm.hasOverlay(id)) continue;
+      const p = this.vm.posOf(id)!;
+      anchor ??= p;
+      add(p);
+      for (const eid of this.vm.index.out.get(id) ?? []) {
+        const e = this.store.doc.edges[eid];
+        if (!e || this.vm.node(e.target).hidden || !this.vm.hasOverlay(e.target)) continue;
+        add(this.vm.posOf(e.target)!);
+        kids++;
+      }
+    }
+    if (!anchor || !kids) return;
+    const cam = this.camera;
+    let z = cam.zoom;
+    let x = cam.x;
+    let y = cam.y;
+    if (z < 0.3) {
+      // 開いたノードの画面の位置を保ったまま 30% に
+      const s = cam.toScreen(anchor.x, anchor.y);
+      z = 0.3;
+      x = s.x - anchor.x * z;
+      y = s.y - anchor.y * z;
+    }
+    const L = this.insets.left;
+    const T = this.insets.top;
+    const R = this.width - this.insets.right;
+    const B = this.height - this.insets.bottom;
+    const sx0 = minX * z + x;
+    const sx1 = maxX * z + x;
+    const sy0 = minY * z + y;
+    const sy1 = maxY * z + y;
+    let dx = 0;
+    let dy = 0;
+    if (sx1 - sx0 > R - L) dx = L - sx0;
+    else if (sx0 < L) dx = L - sx0;
+    else if (sx1 > R) dx = R - sx1;
+    if (sy1 - sy0 > B - T) dy = T - sy0;
+    else if (sy0 < T) dy = T - sy0;
+    else if (sy1 > B) dy = B - sy1;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && z === cam.zoom) return;
+    this.animateTo({ zoom: z, x: x + dx, y: y + dy }, 320);
   }
 
   zoomBy(factor: number): void {
@@ -265,10 +392,12 @@ export class CanvasView {
 
   // ------------------------------------------------------------ 位置
 
-  pos(id: ID, n: GNode): { x: number; y: number } {
+  /** 描く位置（vm.posOf に、動かしている途中のずれを足す）。返す物は書き換えない */
+  pos(id: ID): { x: number; y: number } {
+    const p = this.vm.posOf(id) ?? ORIGIN;
     const d = this.drag;
-    if (d && d.ids.has(id)) return { x: n.x + d.dx, y: n.y + d.dy };
-    return n;
+    if (d && d.ids.has(id)) return { x: p.x + d.dx, y: p.y + d.dy };
+    return p;
   }
 
   private portCandidates(): ID[] {
@@ -283,31 +412,32 @@ export class CanvasView {
 
   /**
    * 折りたたみの印を描くか。描画と当たり判定はこれだけで決める（描かれていない印は押せない）。
-   * 折りたたみ中は full・compact で描く。出る線のあるノードのホバー・選択中の「−」は full だけ。low・dot では描かない
+   * 折りたたみ中は full・compact で描く。出る線のあるノードのホバー・選択中の「−」は full だけ。low・dot では描かない。
+   * 3 年の分かれ道は、選んでいるノードの「−」を compact でも描く（スマホで開いた所を閉じられるように）
    */
   private badgeVisible(id: ID, lod: Lod): boolean {
     if (lod !== "full" && lod !== "compact") return false;
     const n = this.store.doc.nodes[id];
     if (!n) return false;
-    if (n.collapsed || (this.vm.nodes.get(id)?.collapsedCount ?? 0) > 0) return true;
-    if (lod !== "full") return false;
+    const nv = this.vm.nodes.get(id);
+    if (nv?.collapsed || (nv?.collapsedCount ?? 0) > 0) return true;
+    const selected = this.ui.selection.nodes.has(id);
+    if (lod !== "full" && !(selected && this.vm.inImpact(id))) return false;
     const hasOut = (this.vm.index.out.get(id)?.length ?? 0) > 0;
-    return hasOut && (this.ui.hover.node === id || this.ui.selection.nodes.has(id));
+    return hasOut && (this.ui.hover.node === id || selected);
   }
 
   // ------------------------------------------------------------ 当たり判定
 
   hitTest(sx: number, sy: number): Hit {
     this.vm.ensure();
-    const doc = this.store.doc;
     const z = this.camera.zoom;
     const w = this.camera.toWorld(sx, sy);
     const lod = lodFor(z);
     if (lod === "full" || lod === "compact") {
       const r = (PORT_SCREEN_R + 4) / z;
       for (const id of this.portCandidates()) {
-        const n = doc.nodes[id]!;
-        const p = this.pos(id, n);
+        const p = this.pos(id);
         if (Math.hypot(w.x - (p.x + HALF_W), w.y - p.y) <= r) return { kind: "port", node: id, side: "out" };
         if (Math.hypot(w.x - (p.x - HALF_W), w.y - p.y) <= r) return { kind: "port", node: id, side: "in" };
       }
@@ -317,17 +447,26 @@ export class CanvasView {
       for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
         const id = this.vm.drawNodes[i]!;
         if (!this.badgeVisible(id, lod)) continue;
-        const n = doc.nodes[id]!;
-        const p = this.pos(id, n);
+        const p = this.pos(id);
         const c = badgeCenter(p.x, p.y);
-        if (Math.abs(w.x - c.x) <= (BADGE_W * k) / 2 + 2 / z && Math.abs(w.y - c.y) <= (BADGE_H * k) / 2 + 2 / z) return { kind: "badge", node: id };
+        let hw = (BADGE_W * k) / 2 + 2 / z;
+        let hh = (BADGE_H * k) / 2 + 2 / z;
+        let cy = c.y;
+        if (this.vm.inImpact(id)) {
+          // 指でも押せる大きさ（画面で 44px 以上）。下の縁から下へは、次の行のカードの手前（行の間 32）まで。足りない分は上（カードの中）へ広げる
+          hw = Math.max(hw, BADGE_TOUCH_PX / 2 / z);
+          const half = Math.max(hh, BADGE_TOUCH_PX / 2 / z);
+          const down = Math.min(half, Math.max(hh, IMPACT_ROW - HALF_H * 2));
+          cy = c.y + down - half;
+          hh = half;
+        }
+        if (Math.abs(w.x - c.x) <= hw && Math.abs(w.y - cy) <= hh) return { kind: "badge", node: id };
       }
     }
     for (const b of this.stubBoxes) if (w.x >= b.x && w.x <= b.x + b.w && w.y >= b.y && w.y <= b.y + b.h) return { kind: "stub", edge: b.id };
     for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
       const id = this.vm.drawNodes[i]!;
-      const n = doc.nodes[id]!;
-      const p = this.pos(id, n);
+      const p = this.pos(id);
       if (inNode(p.x, p.y, w.x, w.y, lod === "dot" ? 4 / z : 0)) return { kind: "node", node: id };
     }
     for (let i = this.labelBoxes.length - 1; i >= 0; i--) {
@@ -348,10 +487,8 @@ export class CanvasView {
   geomOf(edgeId: ID): EdgeGeom | null {
     const doc = this.store.doc;
     const e = doc.edges[edgeId];
-    const a = e && doc.nodes[e.source];
-    const b = e && doc.nodes[e.target];
-    if (!a || !b) return null;
-    return this.geomBetween(a, b);
+    if (!e || !doc.nodes[e.source] || !doc.nodes[e.target]) return null;
+    return this.geomBetween(e.source, e.target);
   }
 
   /** グラフの縦の中ほど（戻る線を外側へ回すため） */
@@ -366,9 +503,9 @@ export class CanvasView {
     return c.y;
   }
 
-  private geomBetween(a: GNode, b: GNode): EdgeGeom {
-    const pa = this.pos(a.id, a);
-    const pb = this.pos(b.id, b);
+  private geomBetween(a: ID, b: ID): EdgeGeom {
+    const pa = this.pos(a);
+    const pb = this.pos(b);
     const side = (pa.y + pb.y) / 2 < this.graphCenterY() ? -1 : 1;
     return edgeGeom(pa.x, pa.y, pb.x, pb.y, side);
   }
@@ -378,9 +515,8 @@ export class CanvasView {
     const a = this.camera.toWorld(Math.min(x0, x1), Math.min(y0, y1));
     const b = this.camera.toWorld(Math.max(x0, x1), Math.max(y0, y1));
     const out: ID[] = [];
-    const doc = this.store.doc;
     for (const id of this.vm.drawNodes) {
-      const n = doc.nodes[id]!;
+      const n = this.pos(id);
       if (n.x + HALF_W >= a.x && n.x - HALF_W <= b.x && n.y + HALF_H >= a.y && n.y - HALF_H <= b.y) out.push(id);
     }
     return out;
@@ -423,6 +559,10 @@ export class CanvasView {
     const hover = this.ui.hover;
     const lod = lodFor(z);
     const today = todayStr();
+    // 3 年の分かれ道（無ければ active = false。文書・シナリオが変わらなければ前の計算をそのまま使う）
+    const imp = vm.impact;
+    const cards = this.cards;
+    const pills: PillDebug[] | null = this.debugPills ? (this.debugPills = []) : null;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -434,16 +574,36 @@ export class CanvasView {
     let animating = false;
 
     // 接続
-    const labels: Array<{ id: ID; g: EdgeGeom; text: string; rel: Relation; alpha: number; emph: boolean }> = [];
+    const labels: Array<{ id: ID; g: EdgeGeom; text: string; rel: Relation; alpha: number; emph: boolean; color?: string; maxW?: number; bold?: boolean }> = [];
     for (const eid of vm.drawEdges) {
       const e = doc.edges[eid]!;
-      const a = doc.nodes[e.source]!;
-      const b = doc.nodes[e.target]!;
-      const g = this.geomBetween(a, b);
+      const g = this.geomBetween(e.source, e.target);
       if (!rectsIntersect(g, view)) continue;
       const ev = vm.edges.get(eid)!;
       const selected = sel.edges.has(eid);
       const hovered = hover.edge === eid;
+      const ie = imp.active ? cards.edge(imp, doc, eid) : null;
+      if (ie) {
+        // 3 年の分かれ道: 判断の線は控えめ（★ の線を強く・基準の線は薄く）、結果の線はその結果の色で、見込みの太さ。
+        // 縮小すると、選び方の道（π）だけを濃く
+        const pi = imp.piEdges.has(eid);
+        const k = lod === "low" ? (pi ? 1 : 0.25) : lod === "dot" ? (pi ? 0.8 : 0.1) : ie.alpha;
+        drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: false, offScenario: ev.offScenario, flowT, style: ie.style, styleAlpha: k });
+        if (flowT !== null && (ev.path || selected) && lod !== "low" && lod !== "dot") animating = true;
+        if (lod === "full" || lod === "compact") {
+          if (ie.kind === "chance") {
+            // 「35%」（大きく見ているとき・選んだ・ホバーは「35%｜判断の線」）
+            const long = lod === "full" || selected || hovered;
+            const text = long ? ie.long : ie.pct;
+            if (text && ((prefs.showLabels && ev.alpha > 0.25) || selected || hovered)) labels.push({ id: eid, g, text, rel: e.relation, alpha: Math.max(ev.alpha, selected || hovered ? 1 : 0), emph: selected || hovered || ev.path, color: ie.color, maxW: 170, bold: !long });
+          } else if (selected || hovered) {
+            // 判断の線にはふだん札を付けない（自分で書いた説明は、選んだ・ホバーしたときだけ）
+            const text = e.condition.trim() || e.label.trim();
+            if (text) labels.push({ id: eid, g, text, rel: e.relation, alpha: 1, emph: true });
+          }
+        }
+        continue;
+      }
       drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: ev.cross, offScenario: ev.offScenario, flowT });
       if (flowT !== null && (ev.path || selected) && lod !== "low" && lod !== "dot") animating = true;
       // 分かれ道の線は見込み（%）を先頭に出す（長い条件が省略されても見込みは見える）
@@ -461,27 +621,26 @@ export class CanvasView {
       const perSource = new Map<ID, number>();
       for (const s of vm.stubEdges) {
         const e = doc.edges[s.id]!;
-        const a = doc.nodes[e.source]!;
-        const k = perSource.get(a.id) ?? 0;
-        perSource.set(a.id, k + 1);
-        const p = this.pos(a.id, a);
-        const box = drawStub(ctx, p.x, p.y + k * 24 - 10 * Math.min(k, 1), s.count, e.relation, vm.node(a.id).alpha);
+        const k = perSource.get(e.source) ?? 0;
+        perSource.set(e.source, k + 1);
+        const p = this.pos(e.source);
+        const box = drawStub(ctx, p.x, p.y + k * 24 - 10 * Math.min(k, 1), s.count, e.relation, vm.node(e.source).alpha);
         this.stubBoxes.push({ id: s.id, ...box });
       }
     }
     this.labelBoxes = [];
-    for (const l of labels) this.labelBoxes.push({ id: l.id, ...drawEdgeLabel(ctx, l.g, l.text, l.rel, l.alpha, l.emph, z) });
+    for (const l of labels) this.labelBoxes.push({ id: l.id, ...drawEdgeLabel(ctx, l.g, l.text, l.rel, l.alpha, l.emph, z, l.color ? { color: l.color, maxW: l.maxW, bold: l.bold } : {}) });
 
     // 接続をつくっている途中の線
     const cp = this.connect;
     if (cp) {
       const an = doc.nodes[cp.anchor];
       if (an) {
-        const p = this.pos(an.id, an);
+        const p = this.pos(an.id);
         const tgt = cp.target ? doc.nodes[cp.target] : null;
         let g: EdgeGeom;
-        if (cp.side === "out") g = tgt ? this.geomBetween(an, tgt) : edgeGeom(p.x, p.y, cp.wx + HALF_W, cp.wy);
-        else g = tgt ? this.geomBetween(tgt, an) : edgeGeom(cp.wx - HALF_W, cp.wy, p.x, p.y);
+        if (cp.side === "out") g = tgt ? this.geomBetween(an.id, tgt.id) : edgeGeom(p.x, p.y, cp.wx + HALF_W, cp.wy);
+        else g = tgt ? this.geomBetween(tgt.id, an.id) : edgeGeom(cp.wx - HALF_W, cp.wy, p.x, p.y);
         ctx.save();
         ctx.setLineDash([6, 6]);
         ctx.strokeStyle = "rgba(165,151,255,0.95)";
@@ -496,10 +655,13 @@ export class CanvasView {
 
     // ノード
     const fc = vm.forecast;
-    const screenLabels: Array<{ n: GNode; x: number; y: number; alpha: number; rank: number; reach?: number }> = [];
+    const screenLabels: ScreenLabel[] = [];
+    const impLabels: ScreenLabel[] = [];
+    const ranks = imp.active && (lod === "low" || lod === "dot") ? cards.labelRank(imp, doc, (id) => fc.reach.get(id)?.p ?? 0) : null;
+    const pillBox = this.pillTmp;
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
-      const p = this.pos(id, n);
+      const p = this.pos(id);
       if (p.x + HALF_W < view.minX || p.x - HALF_W > view.maxX || p.y + HALF_H < view.minY || p.y - HALF_H > view.maxY) continue;
       const nv = vm.nodes.get(id)!;
       const colors: string[] = [];
@@ -508,7 +670,8 @@ export class CanvasView {
         if (c) colors.push(c);
       }
       const selected = sel.nodes.has(id);
-      drawNode(ctx, n, p.x, p.y, {
+      const card = imp.active ? cards.card(imp, doc, id) : null;
+      const opts = {
         lod,
         zoom: z,
         alpha: selected ? Math.max(nv.alpha, 0.85) : nv.alpha,
@@ -521,18 +684,33 @@ export class CanvasView {
         editing: this.editingId === id,
         projectColors: colors,
         collapsedCount: nv.collapsedCount,
+        collapsed: nv.collapsed,
         showBadge: this.badgeVisible(id, lod),
         today,
         reach: fc.active ? fc.reach.get(id)?.p : undefined,
-      });
-      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ n, x: p.x, y: p.y, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, reach: fc.active ? fc.reach.get(id)?.p : undefined });
+      };
+      if (card) {
+        drawImpactNode(ctx, n, p.x, p.y, opts, card, pills ? pillBox : null);
+        if (pills && pillBox.w > 0 && card.pill) pills.push({ id, text: card.pill, x: pillBox.x * z + cam.x, y: pillBox.y * z + cam.y, w: pillBox.w * z, h: pillBox.h * z, font: pillBox.font * z });
+        if (lod === "low" || lod === "dot") {
+          // 縮小したときの目印: 選択中 > 検索の当たり > 今日の選択肢 > ★ の選択肢 > 見込みの高い行き先（一番小さくしたときは今日と行き先 5 つ）
+          const r = selected ? 0 : nv.match ? 1 : (ranks?.get(id) ?? -1);
+          const text = lod === "dot" ? card.dotLabel || card.label : card.label;
+          if (r >= 0 && text && (lod === "low" || r <= 1 || card.role === "root" || card.role === "end")) {
+            impLabels.push({ x: p.x, y: p.y, text, color: "#EEF1F7", alpha: nv.alpha, rank: card.role === "root" && lod === "dot" ? -1 : r, dot: card.role === "root" ? null : binStroke(card.bin), left: true });
+          }
+        }
+        continue;
+      }
+      drawNode(ctx, n, p.x, p.y, opts);
+      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fc.active ? fc.reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
     }
     // つまみ
     if (lod === "full" || lod === "compact") {
       const r = PORT_SCREEN_R / z;
       for (const id of this.portCandidates()) {
         const n = doc.nodes[id]!;
-        const p = this.pos(id, n);
+        const p = this.pos(id);
         const color = NODE_TYPES[n.type].color;
         drawPort(ctx, p.x + HALF_W, p.y, r, color, cp?.anchor === id && cp.side === "out");
         drawPort(ctx, p.x - HALF_W, p.y, r * 0.82, rgba(color, 0.8), cp?.anchor === id && cp.side === "in");
@@ -541,7 +719,8 @@ export class CanvasView {
 
     // 画面の大きさで描く文字（縮小したときのタイトル・目印）
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (screenLabels.length) this.drawScreenLabels(screenLabels);
+    if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80);
+    if (screenLabels.length) this.drawScreenLabels(screenLabels, 80);
 
     // 範囲選択
     const m = this.marquee;
@@ -555,42 +734,58 @@ export class CanvasView {
       ctx.strokeRect(x + 0.5, y + 0.5, Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
     }
 
+    if (this.rasterFlush) ctx.getImageData(0, 0, 1, 1);
     this.lastFrameMs = performance.now() - t0;
     this.frames++;
     for (const fn of this.renderListeners) fn();
     if (this.camAnim || animating) this.requestRender();
   }
 
-  /** 縮小したときの目印（目標・選択中・検索の当たりの名前を画面の大きさで） */
-  private drawScreenLabels(items: Array<{ n: GNode; x: number; y: number; alpha: number; rank: number; reach?: number }>): void {
+  /** ふつうの地図の目印の文（題名。未来の道筋の行き先などは見込みを添える）。ctx.font は呼ぶ側で 12px にしておく */
+  private plainText(n: GNode, reach: number | undefined): string {
+    const title = wrapText(this.ctx, n.title.trim() || "（無題）", 180, 1)[0] ?? "";
+    return reach !== undefined && reach < 0.9995 ? `${title}（${formatPercent(reach)}）` : title;
+  }
+
+  /** 縮小したときの目印（画面の大きさで）。重なる名前は出さない（大事なものから置く）。cap まで */
+  private drawScreenLabels(items: ScreenLabel[], cap: number): void {
     const ctx = this.ctx;
     const z = this.camera.zoom;
     const cam = this.camera;
     ctx.textBaseline = "alphabetic";
     ctx.font = `650 12px ${CANVAS_FONT}`;
     ctx.lineJoin = "round";
-    // 重なる名前は出さない（大事なものから置く）。多いときは画面の格子で数を抑える
     items.sort((a, b) => a.rank - b.rank || b.alpha - a.alpha);
     const placed: Array<{ x0: number; y0: number; x1: number; y1: number }> = [];
     let shown = 0;
     for (const it of items) {
-      if (shown >= 80) break;
+      if (shown >= cap) break;
       const sx = it.x * z + cam.x;
       const sy = (it.y - HALF_H) * z + cam.y - 6;
       if (sx < -100 || sx > this.width + 100 || sy < -20 || sy > this.height + 20) continue;
-      const title = wrapText(ctx, it.n.title.trim() || "（無題）", 180, 1)[0] ?? "";
-      // 未来の道筋の行き先などは、縮小しても見込みが分かるように添える
-      const text = it.reach !== undefined && it.reach < 0.9995 ? `${title}（${formatPercent(it.reach)}）` : title;
+      const text = it.text ?? this.plainText(it.n!, it.reach);
       const w = ctx.measureText(text).width;
-      const box = { x0: sx - w / 2 - 4, y0: sy - 14, x1: sx + w / 2 + 4, y1: sy + 4 };
+      const dw = it.dot ? 12 : 0;
+      const left = it.left ? sx - HALF_W * z : sx - (w + dw) / 2;
+      const box = { x0: left - 4, y0: sy - 14, x1: left + w + dw + 4, y1: sy + 4 };
       if (it.rank > 0 && placed.some((b) => b.x0 < box.x1 && b.x1 > box.x0 && b.y0 < box.y1 && b.y1 > box.y0)) continue;
       placed.push(box);
       shown++;
+      if (it.dot) {
+        ctx.beginPath();
+        ctx.arc(left + 4, sy - 4, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(7,9,13,0.92)";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(left + 4, sy - 4, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = rgba(it.dot, Math.max(0.5, it.alpha));
+        ctx.fill();
+      }
       ctx.strokeStyle = "rgba(7,9,13,0.92)";
       ctx.lineWidth = 4;
-      ctx.strokeText(text, sx - w / 2, sy);
-      ctx.fillStyle = rgba(NODE_TYPES[it.n.type].color, Math.max(0.4, it.alpha));
-      ctx.fillText(text, sx - w / 2, sy);
+      ctx.strokeText(text, left + dw, sy);
+      ctx.fillStyle = rgba(it.color, Math.max(0.4, it.alpha));
+      ctx.fillText(text, left + dw, sy);
     }
   }
 }

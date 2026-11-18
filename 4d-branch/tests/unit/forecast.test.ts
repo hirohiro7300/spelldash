@@ -209,21 +209,32 @@ describe("未来の道筋の差し替え", () => {
     expect(r.ends.reduce((n, id) => n + r.reach.get(id)!.p, 0)).toBeCloseTo(1);
   });
 
-  it("開いたときに寄る所: 入口（今日）から右へ 5 列・上下 600 まで。入口が無ければそのまま。開いた後はデモ扱いにならない", () => {
+  it("開いたときに寄る所: 3 年の分かれ道は入口（今日）と選択肢、それより前の未来の道筋は入口から右へ 5 列・上下 600 まで。入口が無ければそのまま。開いた後はデモ扱いにならない", () => {
     const { pv } = buildFuture(TODAY);
     const doc = pv.doc;
     const root = Object.values(doc.nodes).find((n) => n.meta.forecastRoot === true)!;
-    const near = nearFutureRoot(doc);
-    expect(near).toContain(root.id);
-    expect(near.length).toBeGreaterThanOrEqual(5);
-    expect(near.length).toBeLessThan(Object.keys(doc.nodes).length / 5);
-    for (const id of near) {
-      const n = doc.nodes[id]!;
-      expect(n.x >= root.x && n.x <= root.x + 1500 && Math.abs(n.y - root.y) <= 600, n.title).toBe(true);
-    }
-    // ids を渡すとその中から選ぶ。入口の無い文書・入口を含まない ids はそのまま返す
-    const some = near.slice(0, 3);
-    expect(nearFutureRoot(doc, some).every((id) => some.includes(id))).toBe(true);
+    const kids = Object.values(doc.edges)
+      .filter((e) => e.source === root.id)
+      .map((e) => e.target);
+    expect(kids.length).toBe(10);
+    // 3 年の分かれ道: 今日と 10 の選択肢（見えている物だけで寄せ、左上にそろえるのは CanvasView.fit）
+    expect(nearFutureRoot(doc)).toEqual([root.id, ...kids]);
+    // ids を渡すとその中から選ぶ
+    expect(nearFutureRoot(doc, [kids[3]!, root.id, "x", kids[1]!])).toEqual([root.id, kids[1]!, kids[3]!]);
+    // それより前の未来の道筋（meta.impact の無い入口）: 右へ 5 列・上下 600 まで
+    const v1 = createEmptyDoc();
+    const at: Array<[string, number, number]> = [
+      ["r", 0, 0],
+      ["a", 300, 0],
+      ["b", 1500, 600],
+      ["far", 1800, 0],
+      ["low", 600, 700],
+    ];
+    for (const [id, x, y] of at) v1.nodes[id] = makeNode({ id, title: id, x, y, meta: id === "r" ? { forecastRoot: true } : {} });
+    for (const id of ["a", "b", "far", "low"]) v1.edges[`r${id}`] = makeEdge({ id: `r${id}`, source: "r", target: id });
+    expect(nearFutureRoot(v1).sort()).toEqual(["a", "b", "r"]);
+    // 入口の無い文書・入口を含まない ids はそのまま返す
+    expect(nearFutureRoot(v1, ["a", "far"])).toEqual(["a", "far"]);
     const demo = buildDemoDoc();
     expect(nearFutureRoot(demo)).toEqual(Object.keys(demo.nodes));
     // 何もしていないデモ・空は自動で開いてよいが、開いた後の未来の道筋は「捨ててよい」ではない（二度と勝手に入れ替えない）

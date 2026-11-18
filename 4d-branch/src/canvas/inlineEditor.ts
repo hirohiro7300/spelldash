@@ -95,7 +95,9 @@ export class InlineEditor {
     if (!n) return;
     const z = this.view.camera.zoom;
     const inset = n.type === "branch" ? 22 : 16;
-    const p = this.view.camera.toScreen(n.x - HALF_W + inset - 4, n.y - HALF_H + 38);
+    // 描いている位置に重ねる（3 年の分かれ道は重ねる位置）
+    const at = this.view.pos(this.id);
+    const p = this.view.camera.toScreen(at.x - HALF_W + inset - 4, at.y - HALF_H + 38);
     const s = this.el.style;
     s.left = `${p.x}px`;
     s.top = `${p.y}px`;

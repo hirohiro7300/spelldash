@@ -184,13 +184,29 @@ export class Interaction {
         return;
       }
       case "drag": {
-        if (this.store.readOnly) return;
+        // 3 年の分かれ道のカードは自動で並ぶので動かさない: その動きはキャンバスの移動にする（閲覧のみのタブでも。知らせは一度だけ）
+        const fixed = !m.moved && this.vm.inImpact(m.node);
+        if (this.store.readOnly && !fixed) return;
         if (!m.moved && Math.hypot(p.x - m.sx, p.y - m.sy) < 4) return;
         if (!m.moved) {
+          if (fixed) {
+            if (!this.store.readOnly) this.cmd.noticeFixedLayout();
+            this.mode = { kind: "pan", sx: m.sx, sy: m.sy, cx: this.view.camera.x, cy: this.view.camera.y, moved: true, clearOnClick: false };
+            this.setCursor("grabbing");
+            this.view.camera.x += p.x - m.sx;
+            this.view.camera.y += p.y - m.sy;
+            this.view.cameraChanged();
+            return;
+          }
           m.moved = true;
           if (m.ids.size === 0) {
             m.ids = new Set([m.node]);
             this.ui.select([m.node]);
+          }
+          // 一緒に選んでいる 3 年の分かれ道のカードは動かさない
+          if ([...m.ids].some((id) => this.vm.inImpact(id))) {
+            this.cmd.noticeFixedLayout();
+            m.ids = new Set([...m.ids].filter((id) => !this.vm.inImpact(id)));
           }
         }
         const w = this.view.camera.toWorld(p.x, p.y);
@@ -424,15 +440,16 @@ export class Interaction {
     this.hooks.contextMenu(hit, ev.clientX, ev.clientY, this.view.camera.toWorld(p.x, p.y));
   };
 
-  /** 矢印キーで少しずつ動かす（選択なしならパン） */
+  /** 矢印キーで少しずつ動かす（選択なしならパン。3 年の分かれ道のカードは動かさず、それだけならパン） */
   nudge(dx: number, dy: number): void {
     const ids = [...this.ui.selection.nodes];
-    if (ids.length) this.cmd.moveNodes(ids, dx, dy, "少し移動");
+    const movable = ids.filter((id) => !this.vm.inImpact(id));
+    if (movable.length < ids.length) this.cmd.noticeFixedLayout();
+    if (movable.length) this.cmd.moveNodes(movable, dx, dy, "少し移動");
     else {
       this.view.camera.x -= dx * this.view.camera.zoom * 4;
       this.view.camera.y -= dy * this.view.camera.zoom * 4;
       this.view.cameraChanged();
     }
-    void this.vm;
   }
 }

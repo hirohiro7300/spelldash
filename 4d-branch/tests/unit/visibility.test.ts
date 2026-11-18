@@ -107,6 +107,20 @@ describe("折りたたみ", () => {
     expect(hiddenOf(doc, (e) => e.id !== "cb")).toEqual(["b"]);
   });
 
+  it("折りたたみの決まりを差し替えられる（3 年の分かれ道は見え方の「開いているノード」で決める）。文書の collapsed は見ない", () => {
+    // a は文書では折りたたんでいるが、決まりでは開いている。p は文書では開いているが、決まりでは閉じている
+    const doc = graph("r>a*>b>c, r>p>q, p>s");
+    const index = buildIndex(doc);
+    const open = new Set(["r", "a", "b"]);
+    const res = computeCollapse(doc, index, new Set(Object.keys(doc.nodes)), () => true, (id) => !open.has(id));
+    expect([...res.hidden].sort()).toEqual(["q", "s"]);
+    expect(res.counts.get("p")).toBe(2);
+    // 先の無いノード（c・q・s）は、閉じていても何も隠さず、件数も出さない
+    expect(res.counts.has("c")).toBe(false);
+    // 既定（決まりを渡さない）は今までどおり文書の collapsed
+    expect(hiddenOf(doc)).toEqual(["b", "c"]);
+  });
+
   it("2,000 ノード・3,000 接続でも速い", () => {
     const doc = createEmptyDoc();
     const N = 2000;

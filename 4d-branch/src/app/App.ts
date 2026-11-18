@@ -395,7 +395,7 @@ export class App implements AppContext {
         const all = ids.every((id) => store.doc.nodes[id]?.projectIds.includes(pid));
         return { label: p.name, swatch: p.color, checked: all, run: () => cmd.toggleProjectOf(ids, pid) };
       });
-      const collapsed = ids.every((id) => store.doc.nodes[id]?.collapsed);
+      const collapsed = ids.every((id) => cmd.isCollapsed(id));
       entries = [
         ...(single
           ? ([
