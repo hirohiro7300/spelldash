@@ -19,6 +19,7 @@ import { buildBottomBar } from "../ui/bottomBar";
 import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
+import { offerImpactSalary } from "../ui/impactPanel";
 import { buildInspector } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
@@ -256,6 +257,8 @@ export class App implements AppContext {
       else this.offerOnce();
       this.offerFutureUpdate();
       this.autoOpenFuture();
+      // 3 年の分かれ道を初めて見せた後、年収がまだ仮なら一度だけ知らせる
+      offerImpactSalary(this);
       this.afterTour = () => void this.askPersistOnce();
     });
     void this.refreshLastBackup();

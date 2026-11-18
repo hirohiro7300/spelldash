@@ -1,0 +1,519 @@
+// E2E: 右のパネルの「3 年の影響」（概要・選択肢・結果・行き先・年収・お知らせ）をブラウザで確かめる
+//   npm run build の後に node tests/e2e/impactPanels.mjs
+//   BASE_URL を渡せばそのサーバーを使う。無ければ vite preview を立ち上げる（E2E_PORT。既定 4502）
+//   PW_CHROMIUM でブラウザの場所を指定できる。E2E_SHOTS にフォルダを渡すと画面を撮って残す
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const PORT = Number(process.env.E2E_PORT || 4502);
+const BASE = process.env.BASE_URL || `http://localhost:${PORT}/`;
+const SHOTS = process.env.E2E_SHOTS || "";
+
+let server = null;
+async function startServer() {
+  if (process.env.BASE_URL) return;
+  if (!fs.existsSync(path.join(ROOT, "dist", "index.html"))) throw new Error("dist/ がありません。先に npm run build を実行してください");
+  if (await fetch(BASE).then(() => true, () => false)) throw new Error(`ポート ${PORT} では別のサーバーがもう答えています（E2E_PORT で変えられます）`);
+  server = spawn(process.execPath, [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "preview", "--port", String(PORT), "--strictPort"], { cwd: ROOT, stdio: "pipe" });
+  let exited = false;
+  server.on("exit", () => (exited = true));
+  for (let i = 0; i < 100; i++) {
+    if (exited) throw new Error(`preview サーバーが起動しません（ポート ${PORT} が使われているかもしれません。E2E_PORT で変えられます）`);
+    try {
+      if ((await fetch(BASE)).ok) return;
+    } catch {
+      /* まだ */
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("preview サーバーが起動しません");
+}
+
+const results = [];
+const ONLY = process.env.E2E_ONLY || "";
+async function check(name, fn) {
+  if (ONLY && !name.includes(ONLY)) return;
+  const t0 = Date.now();
+  try {
+    await fn();
+    results.push({ name, ok: true });
+    console.log(`  ✓ ${name} (${Date.now() - t0}ms)`);
+  } catch (e) {
+    results.push({ name, ok: false, err: e });
+    console.log(`  ✗ ${name}\n      ${String(e?.stack || e).split("\n").slice(0, 4).join("\n      ")}`);
+  }
+}
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+async function shot(name, page) {
+  if (!SHOTS) return;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+}
+
+/** 画面の数（「+62万」「−0.9万」「±0」「1,299 万円」）を数に */
+const num = (s) => {
+  const t = String(s).replace(/\s|万円?|,/g, "").replace("−", "-");
+  return t === "±0" ? 0 : Number(t);
+};
+
+/** 何もしていないデモから「未来の道筋」で 3 年の分かれ道を開く（自動で開くのは、このコンテキストでは済んだことにする） */
+async function openImpact(browser, viewport) {
+  const ctx = await browser.newContext({ viewport });
+  await ctx.addInitScript(() => {
+    try {
+      const k = "4d-branch:prefs";
+      const p = JSON.parse(localStorage.getItem(k) || "{}");
+      if (p.futureAutoOpened !== true) {
+        p.futureAutoOpened = true;
+        localStorage.setItem(k, JSON.stringify(p));
+      }
+    } catch {
+      /* about:blank など */
+    }
+  });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => console.log(`      [pageerror] ${e.message}`));
+  await page.goto(BASE, { waitUntil: "networkidle" });
+  const skip = page.getByRole("button", { name: "すぐに使う" });
+  if (await skip.count()) await skip.click();
+  await page.evaluate(() => window.__fourD.app.showFuture());
+  await page.waitForFunction(() => window.__fourD?.app.vm.impact.active === true, null, { timeout: 15000 });
+  await page.waitForTimeout(300);
+  // 概要から確かめる（開いた後に今日を選ぶ形になっても）
+  await page.evaluate(() => window.__fourD.ui.clearSelection());
+  return { ctx, page };
+}
+
+/** 今の 3 年の影響（画面の確かめ用に、計算の結果を読む） */
+const impactOf = (page) =>
+  page.evaluate(() => {
+    const f = window.__fourD;
+    const imp = f.app.vm.impact;
+    const root = imp.decision.get(imp.root);
+    const alts = root.alts.map((id) => ({ id, ...imp.alt.get(id), title: f.store.doc.nodes[id].title, status: f.store.doc.nodes[id].status }));
+    return { root: imp.root, annual: imp.annual, annualSet: imp.annualSet, vRoot: imp.vRoot, vSQ: imp.vSQ, counts: imp.counts, best: root.best, alts, ends: imp.ends.slice(0, 10).map((e) => e.id), hasPicks: imp.hasPicks };
+  });
+
+/** そのノードが画面（キャンバス）の中に見えているか */
+const onScreen = (page, id) =>
+  page.evaluate((nid) => {
+    const f = window.__fourD;
+    const v = f.app.view;
+    const n = f.store.doc.nodes[nid];
+    const p = (typeof f.app.vm.posOf === "function" && f.app.vm.posOf(nid)) || { x: n.x, y: n.y };
+    const s = v.camera.toScreen(p.x, p.y);
+    return s.x > 0 && s.x < v.width && s.y > 0 && s.y < v.height;
+  }, id);
+
+/** 右のパネルが横にはみ出していないか（引き出しの中で横に動かない） */
+const noHScroll = (page) =>
+  page.evaluate(() => {
+    const b = document.querySelector(".insp-body-scroll");
+    return { ok: b.scrollWidth <= b.clientWidth + 1, scrollW: b.scrollWidth, clientW: b.clientWidth, side: document.querySelector(".sidebar-right").getBoundingClientRect().width };
+  });
+
+async function main() {
+  await startServer();
+  const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
+  console.log("3 年の影響（右のパネル）");
+
+  // ---- 机（1280×800）
+  const { ctx, page } = await openImpact(browser, { width: 1280, height: 800 });
+
+  await check("概要: 見出し（期間・年収（仮）・おすすめの 3 年・ずっと今のまま・数）", async () => {
+    const imp = await impactOf(page);
+    const t = await page.evaluate(() => ({
+      title: document.querySelector(".imp-overview .imp-title")?.textContent,
+      salary: document.querySelector(".imp-overview .imp-salary")?.textContent,
+      kari: !document.querySelector(".imp-overview .imp-kari")?.hidden,
+      main: document.querySelector(".imp-overview .imp-hl-main")?.textContent,
+      sub: document.querySelector(".imp-overview .imp-hl-sub")?.textContent,
+      counts: document.querySelector(".imp-overview .imp-counts")?.textContent,
+      v1: !!document.querySelector(".forecast-ends:not([hidden])"),
+    }));
+    assert(/^3 年の影響（\d{4}年\d{1,2}月 → \d{4}年\d{1,2}月・税引き前）$/.test(t.title ?? ""), `見出し: ${t.title}`);
+    assert(/年収（額面）360 万円で計算中（仮）/.test(t.salary ?? "") && t.kari && !imp.annualSet, `年収: ${t.salary}`);
+    assert(/^おすすめの選び方で 3 年 [\d,]+ 万円$/.test(t.main ?? ""), `見出し: ${t.main}`);
+    assert(Math.abs(num(t.main.replace("おすすめの選び方で 3 年 ", "")) - imp.vRoot) < 1, `3 年の稼ぎ ${t.main} / ${imp.vRoot}`);
+    assert(/^ずっと今のままなら [\d,]+ 万円（差 \+[\d,]+ 万円）$/.test(t.sub ?? ""), `今のまま: ${t.sub}`);
+    assert(t.counts === `判断 ${imp.counts.decisions} · 選択肢 ${imp.counts.options} · 3 年後の行き先 ${imp.counts.ends}`, `数: ${t.counts}`);
+    assert(!t.v1, "前の版の「行き先の見込み」が出ている");
+    await shot("impact-desktop-overview", page);
+  });
+
+  await check("概要: 今決めること（10 行・3 年の影響の順・★ か ≒・基準・差の棒・2 行目・年収で入れ替わる所）", async () => {
+    const imp = await impactOf(page);
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll(".imp-overview .imp-decide .imp-alt-row")].map((r) => ({
+        id: r.dataset.id,
+        mark: r.querySelector(".imp-mark")?.textContent ?? "",
+        pill: r.querySelector(".imp-pill")?.textContent ?? "",
+        area: r.querySelector(".imp-area")?.textContent ?? "",
+        bar: !!r.querySelector(".imp-bar .imp-bar-zero"),
+        meta: r.querySelector(".imp-alt-meta")?.textContent ?? "",
+      })),
+    );
+    assert(rows.length === 10, `行の数 ${rows.length}`);
+    const ds = rows.map((r) => imp.alts.find((a) => a.id === r.id)?.delta ?? null);
+    for (let i = 1; i < ds.length; i++) assert(ds[i - 1] >= ds[i] - 1e-9, `3 年の影響の順になっていない: ${ds.join(",")}`);
+    const stars = rows.filter((r) => r.mark.includes("★")).length;
+    const ties = rows.filter((r) => r.mark.includes("≒")).length;
+    assert((stars === 1 && ties === 0) || (stars === 0 && ties === 2), `★ ${stars}・≒ ${ties}`);
+    assert(rows.filter((r) => r.pill === "基準").length === 1, "基準（今のまま）の行が 1 つでない");
+    assert(rows.every((r) => r.bar && r.area), "差の棒か領域の札が無い行がある");
+    for (const r of rows) {
+      if (r.pill === "基準") continue;
+      const a = imp.alts.find((x) => x.id === r.id);
+      assert(Math.abs(num(r.pill) - a.delta) < (Math.abs(a.delta) < 10 ? 0.06 : 0.6), `札 ${r.pill} / ${a.delta}`);
+      assert(/^悪くなる \d+%/.test(r.meta) && r.meta.includes("3年後 月") && /週[+−±]/.test(r.meta), `2 行目: ${r.meta}`);
+    }
+    const flip = (await page.locator(".imp-overview .imp-flip").textContent()) ?? "";
+    assert(/年収 [\d,]+ 万円より(上|下)なら『.+』がいちばん|いちばんの手は同じ/.test(flip), `年収で入れ替わる所: ${flip}`);
+  });
+
+  await check("概要: 3 年後の分布（2 本の棒・段の色・平均と 10〜90%）と行き先（10 行）・前提・見方", async () => {
+    const d = await page.evaluate(() => ({
+      bars: [...document.querySelectorAll(".imp-overview .imp-dist-bar")].map((b) => b.querySelectorAll(".imp-dist-seg").length),
+      labels: [...document.querySelectorAll(".imp-overview .imp-dist-label")].map((x) => x.textContent),
+      height: document.querySelector(".imp-overview .imp-dist-bar")?.getBoundingClientRect().height,
+      text: document.querySelector(".imp-overview .imp-dist-text")?.textContent ?? "",
+      ends: [...document.querySelectorAll(".imp-overview .imp-end-row")].map((r) => ({ g: r.querySelector(".imp-pill")?.textContent, pct: r.querySelector(".imp-end-pct")?.textContent })),
+      legend: document.querySelector(".imp-overview .imp-legend")?.textContent ?? "",
+      premise: document.querySelector(".imp-overview .imp-premise")?.textContent ?? "",
+    }));
+    assert(d.bars.length === 2 && d.bars.every((n) => n >= 1), `分布の棒 ${JSON.stringify(d.bars)}`);
+    assert(d.labels[0] === "おすすめ" && d.labels[1] === "ずっと今のまま", `分布の名前 ${d.labels}`);
+    assert(Math.round(d.height) === 14, `分布の棒の高さ ${d.height}`);
+    assert(/^平均 [\d,]+万（[+−][\d,.]+万）· 10〜90%: [\d,]+〜[\d,]+万 · 今のままより悪くなる \d+%$/.test(d.text), `分布の文: ${d.text}`);
+    assert(d.ends.length === 10 && d.ends.every((e) => /%$/.test(e.pct ?? "") && /^([+−][\d,.]+万|±0)$/.test(e.g ?? "")), `行き先 ${JSON.stringify(d.ends.slice(0, 3))}`);
+    for (const s of ["塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）", "% の札: その結果になる見込み。色はその結果の良し悪し（今のままと比べて）", "★ おすすめ（2 位より 3 万円以上良い）・≒ ほぼ同じ・✓ 選んだ手", "月+2.1万: 3 年後の月の稼ぎの差"])
+      assert(d.legend.includes(s), `見方に「${s}」が無い`);
+    assert(d.premise.includes("数字はモデルの目安です"), "前提の注意が無い");
+    await page.locator(".imp-premises summary").click();
+    // 開いた知らせ（toggle）は後から届く
+    await page.locator(".imp-premise-list li").first().waitFor({ timeout: 3000 });
+    const items = await page.locator(".imp-premise-list li").count();
+    assert(items >= 3, `前提の数 ${items}`);
+    await page.locator(".imp-premises summary").click();
+    assert((await page.getByRole("button", { name: "全部ひらく" }).count()) === 1, "「全部ひらく」が無い");
+  });
+
+  await check("年収: 一度だけのお知らせの「入れる」で欄が開き、540 を入れると計算し直し、元に戻せる", async () => {
+    const before = await impactOf(page);
+    const offer = page.locator(".toast", { hasText: "年収（額面）を入れると、本業の数字が合います（いまは仮に 360 万円）" });
+    // 「開きました」のお知らせが消えてから出る（重ねない）
+    await offer.waitFor({ timeout: 20000 });
+    const others = await page.evaluate(() => [...document.querySelectorAll(".toast:not(.closing) .toast-text")].map((t) => t.textContent));
+    assert(others.length === 1, `ほかのお知らせと重なった: ${others.join(" / ")}`);
+    await offer.getByRole("button", { name: "入れる" }).click();
+    await page.waitForFunction(() => document.activeElement?.classList.contains("imp-salary-input"));
+    // 範囲の外は受け付けない
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("50");
+    await page.keyboard.press("Enter");
+    const err = (await page.locator(".imp-overview .imp-salary-err").textContent()) ?? "";
+    assert(err.includes("100〜3,000 万円"), `範囲の外の知らせ: ${err}`);
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("540");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const after = await impactOf(page);
+    assert(after.annual === 540 && after.annualSet, `年収 ${after.annual}`);
+    const stored = await page.evaluate((r) => window.__fourD.store.doc.nodes[r].meta.impact.annual, after.root);
+    assert(stored === 540, `入口に年収が無い: ${stored}`);
+    const t = await page.evaluate(() => ({ salary: document.querySelector(".imp-overview .imp-salary")?.textContent, kari: !document.querySelector(".imp-overview .imp-kari")?.hidden }));
+    assert(/年収（額面）540 万円で計算中/.test(t.salary ?? "") && !t.kari, `年収の行: ${t.salary}`);
+    assert(Math.abs(after.vRoot - before.vRoot) > 1, "3 年の稼ぎが変わらない");
+    const changed = after.alts.filter((a) => {
+      const b = before.alts.find((x) => x.id === a.id);
+      return a.delta !== null && b.delta !== null && Math.abs(a.delta - b.delta) > 0.05;
+    });
+    assert(changed.length > 0, "今日の手の札が変わらない");
+    // 札の表示も変わる（同じフレームの後）
+    const pill = await page.evaluate((id) => document.querySelector(`.imp-overview .imp-alt-row[data-id="${id}"] .imp-pill`)?.textContent, changed[0].id);
+    assert(Math.abs(num(pill) - changed[0].delta) < (Math.abs(changed[0].delta) < 10 ? 0.06 : 0.6), `札 ${pill} / ${changed[0].delta}`);
+    await shot("impact-desktop-salary", page);
+    await page.locator(".graph-canvas").focus();
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(200);
+    const undone = await impactOf(page);
+    assert(!undone.annualSet && undone.annual === 360 && Math.abs(undone.vRoot - before.vRoot) < 1e-6, `元に戻らない: ${undone.annual}`);
+    assert(!(await page.locator(".imp-overview .imp-kari").evaluate((x) => x.hidden)), "（仮）に戻らない");
+  });
+
+  let alt2 = null;
+  await check("選択肢: 今決めることの 2 行目を押すと選んで寄り、3 年の影響・内訳（合計と同じ）・結果・同じ判断の手・ボタンが出る", async () => {
+    const imp = await impactOf(page);
+    const rowId = await page.locator(".imp-overview .imp-decide .imp-alt-row").nth(1).getAttribute("data-id");
+    alt2 = rowId;
+    await page.locator(".imp-overview .imp-decide .imp-alt-row").nth(1).click();
+    await page.waitForTimeout(500);
+    const sel = await page.evaluate(() => [...window.__fourD.ui.selection.nodes]);
+    assert(sel.length === 1 && sel[0] === rowId, `選択 ${sel}`);
+    assert(await onScreen(page, rowId), "選んだカードが画面に入らない");
+    const a = imp.alts.find((x) => x.id === rowId);
+    const p = await page.evaluate(() => {
+      const box = document.querySelector(".imp-node.is-alt");
+      return {
+        hl: box?.querySelector(".imp-hl")?.textContent ?? "",
+        note: box?.querySelector(".imp-note")?.textContent ?? "",
+        facts: box?.querySelector(".imp-facts")?.textContent ?? "",
+        total: box?.querySelector(".imp-split .insp-count")?.textContent ?? "",
+        split: [...(box?.querySelectorAll(".imp-split-val") ?? [])].map((x) => x.textContent),
+        outs: box?.querySelectorAll(".imp-out-row").length ?? 0,
+        sibs: [...(box?.querySelectorAll(".imp-sibs .imp-alt-row") ?? [])].map((r) => ({ id: r.dataset.id, cur: r.classList.contains("is-current") })),
+        kari: box?.querySelector(".imp-kari-note")?.textContent ?? "",
+        buttons: [...(box?.querySelectorAll(".imp-picks .btn") ?? [])].map((b) => b.textContent),
+        todo: [...document.querySelectorAll(".insp-node .insp-section .insp-label")].map((x) => x.firstChild?.textContent),
+      };
+    });
+    assert(/^3 年の稼ぎ: 今のままより[+−][\d,.]+ 万円$/.test(p.hl), `見出し: ${p.hl}`);
+    assert(p.note === "（この期間に何もせず、その後は一番良い選び方をした場合と比べて）", `注: ${p.note}`);
+    assert(/この手を 3 年間ずっとやらない場合と比べると [+−±]/.test(p.facts), `ずっとやらない: ${p.facts}`);
+    assert(/3 年後の月の稼ぎ: 月 [+−±]/.test(p.facts) && /悪くなる見込み \d+%/.test(p.facts) && /週の時間 [+−±][\d.]* ?時間（今は 52 時間）/.test(p.facts), `数: ${p.facts}`);
+    const shown = num(p.total.replace("合計 ", ""));
+    const sum = p.split.reduce((s, x) => s + num(x), 0);
+    assert(p.split.length === 3 && Math.abs(sum - shown) < 1e-6, `内訳 ${p.split.join(" ")} の合計 ${sum} / ${p.total}`);
+    assert(Math.abs(shown - a.delta) < (Math.abs(a.delta) < 10 ? 0.06 : 0.6), `内訳の合計 ${shown} / ${a.delta}`);
+    assert(p.outs === a.outcomes.length, `結果の行 ${p.outs} / ${a.outcomes.length}`);
+    assert(p.sibs.length === 10 && p.sibs.filter((s) => s.cur).length === 1 && p.sibs.find((s) => s.cur).id === rowId, `同じ判断の手 ${JSON.stringify(p.sibs)}`);
+    assert(p.kari.includes("年収が仮（360 万円）なので本業の数字は目安です"), `年収の注: ${p.kari}`);
+    assert(p.buttons.some((b) => b.includes("これにする")) && p.buttons.some((b) => b.includes("見送る")) && p.buttons.some((b) => b.includes("選び直す")), `ボタン ${p.buttons}`);
+    assert(p.todo.indexOf("やること") >= 0 && p.todo.indexOf("やること") < p.todo.indexOf("文章"), `やることが文章の前に無い: ${p.todo}`);
+    await shot("impact-desktop-alt", page);
+  });
+
+  await check("選択肢: 「これにする」で見出しが「あなたの選び方で…（おすすめとの差）」になり、★ はそのまま。「選び直す」で戻る", async () => {
+    const before = await impactOf(page);
+    assert(alt2 && alt2 !== before.best, "2 行目がおすすめと同じ");
+    await page.locator(".imp-node.is-alt .imp-picks .btn", { hasText: "これにする" }).click();
+    await page.waitForTimeout(200);
+    const after = await impactOf(page);
+    assert(after.alts.find((a) => a.id === alt2).status === "active" && after.hasPicks, "進行中にならない");
+    const pressed = await page.locator(".imp-node.is-alt .imp-pick").getAttribute("aria-pressed");
+    assert(pressed === "true", "「これにした」にならない");
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(200);
+    const main = (await page.locator(".imp-overview .imp-hl-main").textContent()) ?? "";
+    assert(/^あなたの選び方で 3 年 [\d,]+ 万円（おすすめとの差 −[\d,.]+ 万円）$/.test(main), `見出し: ${main}`);
+    const marks = await page.evaluate(() => [...document.querySelectorAll(".imp-overview .imp-decide .imp-alt-row")].map((r) => ({ id: r.dataset.id, mark: r.querySelector(".imp-mark").textContent })));
+    assert(marks.find((m) => m.id === before.best).mark.includes("★"), `★ が動いた ${JSON.stringify(marks)}`);
+    assert(marks.find((m) => m.id === alt2).mark.includes("✓"), "選んだ手に ✓ が無い");
+    assert((await page.locator(".imp-overview .imp-dist-label").first().textContent()) === "あなたの選び方", "分布の名前が変わらない");
+    await page.evaluate((id) => window.__fourD.ui.select([id]), alt2);
+    await page.locator(".imp-node.is-alt .imp-picks .btn", { hasText: "選び直す" }).click();
+    await page.waitForTimeout(200);
+    const back = await impactOf(page);
+    assert(!back.hasPicks && Math.abs(back.vRoot - before.vRoot) < 1e-6, "選び直しで戻らない");
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(100);
+    assert(/^おすすめの選び方で/.test((await page.locator(".imp-overview .imp-hl-main").textContent()) ?? ""), "見出しがおすすめに戻らない");
+  });
+
+  await check("結果の線: % の欄に「この手の結果の合計」、判断の線の % には使わないと出す", async () => {
+    const ids = await page.evaluate(() => {
+      const f = window.__fourD;
+      const imp = f.app.vm.impact;
+      const best = imp.decision.get(imp.root).best;
+      const chance = imp.alt.get(best).outcomes[0].edge;
+      const decision = imp.alt.get(best).edge;
+      return { chance, decision };
+    });
+    await page.evaluate((id) => window.__fourD.ui.select([], [id]), ids.chance);
+    await page.waitForTimeout(150);
+    const sum = (await page.locator(".prob-sum").textContent()) ?? "";
+    assert(/^この手の結果の合計 100%$/.test(sum), `合計: ${sum}`);
+    const title = await page.locator(".insp-edge .insp-section", { has: page.locator(".edge-prob") }).locator(".insp-label").textContent();
+    assert(title === "見込み（この結果になる見込み %）", `欄の名前: ${title}`);
+    await page.evaluate((id) => window.__fourD.ui.select([], [id]), ids.decision);
+    await page.waitForTimeout(150);
+    assert(!(await page.locator(".edge-prob").isVisible()), "判断の線に % の欄が出ている");
+    await page.evaluate((id) => {
+      const f = window.__fourD;
+      f.app.cmd.updateEdge(id, { meta: { ...f.store.doc.edges[id].meta, prob: 40 } });
+    }, ids.decision);
+    await page.waitForTimeout(150);
+    const note = (await page.locator(".prob-sum").textContent()) ?? "";
+    assert(note === "判断の線なので % は使いません（選んだ手で計算します）", `判断の線: ${note}`);
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("基準（今のまま）が無い判断: 差を出さずに訳を言い、「これを基準にする」で基準を決められ、元に戻せる", async () => {
+    const ids = await page.evaluate(() => {
+      const imp = window.__fourD.app.vm.impact;
+      const best = imp.decision.get(imp.root).best;
+      const state = imp.alt.get(best).outcomes[0].node;
+      const dec = imp.decision.get(state);
+      return { state, base: dec.base, other: dec.alts.find((a) => a !== dec.base) };
+    });
+    await page.evaluate(({ base }) => {
+      const f = window.__fourD;
+      const meta = { ...f.store.doc.nodes[base].meta };
+      delete meta.base;
+      f.app.cmd.updateNode(base, { meta }, { label: "基準を外す" });
+    }, ids);
+    await page.evaluate((id) => window.__fourD.ui.select([id]), ids.state);
+    await page.waitForTimeout(150);
+    const rows = await page.evaluate(() => [...document.querySelectorAll(".imp-node.is-outcome .imp-sibs .imp-alt-row")].map((r) => ({ pill: r.querySelector(".imp-pill").textContent, meta: r.querySelector(".imp-alt-meta").textContent })));
+    assert(rows.length > 1 && rows.every((r) => r.pill === "—" && r.meta.includes("基準（今のまま）が無いので差を出せません")), `基準の無い判断の行 ${JSON.stringify(rows)}`);
+    await page.evaluate((id) => window.__fourD.ui.select([id]), ids.other);
+    await page.waitForTimeout(150);
+    const warn = (await page.locator(".imp-node.is-alt .imp-warn").first().textContent()) ?? "";
+    assert(warn.includes("基準（今のまま）が無いので差を出せません"), `訳: ${warn}`);
+    await page.locator(".imp-node.is-alt .btn", { hasText: "これを基準にする" }).click();
+    await page.waitForTimeout(150);
+    const after = await page.evaluate((id) => {
+      const a = window.__fourD.app.vm.impact.alt.get(id);
+      return { isBase: a.isBase, delta: a.delta };
+    }, ids.other);
+    assert(after.isBase && after.delta === 0, `基準にならない ${JSON.stringify(after)}`);
+    await page.evaluate(() => {
+      window.__fourD.app.cmd.undo();
+      window.__fourD.app.cmd.undo();
+    });
+    const restored = await page.evaluate((s) => window.__fourD.app.vm.impact.decision.get(s).base, ids.state);
+    assert(restored === ids.base, `元の基準に戻らない ${restored}`);
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("行き先: 概要の行き先を押すと、見込み（この手で・この道で・おすすめで）・3 年の稼ぎ・その時の状態・目印が出る", async () => {
+    const id = await page.locator(".imp-overview .imp-end-row").first().getAttribute("data-id");
+    await page.locator(".imp-overview .imp-end-row").first().click();
+    await page.waitForTimeout(500);
+    assert((await page.evaluate(() => [...window.__fourD.ui.selection.nodes][0])) === id, "行き先が選ばれない");
+    assert(await onScreen(page, id), "行き先のカードが画面に入らない");
+    const p = await page.evaluate(() => {
+      const box = document.querySelector(".imp-node.is-outcome");
+      return {
+        facts: box?.querySelector(".imp-facts")?.textContent ?? "",
+        state: box?.querySelector(".imp-state")?.textContent ?? "",
+        trail: [...(box?.querySelectorAll(".imp-trail-step") ?? [])].map((s) => ({ when: s.querySelector(".imp-trail-when").textContent, cur: s.classList.contains("is-current") })),
+      };
+    });
+    assert(/この結果になる見込み \d+%（この手を選んだ場合）/.test(p.facts) && /この手:.+/.test(p.facts), `見込み: ${p.facts}`);
+    assert(/この道で [\d.]+% · おすすめの選び方で [\d.]+%/.test(p.facts), `この道で: ${p.facts}`);
+    assert(/この結果なら 今のままより/.test(p.facts) && /この行き先の 3 年の稼ぎ [\d,]+ 万円（ずっと今のままより [+−±]/.test(p.facts), `3 年の稼ぎ: ${p.facts}`);
+    assert(/^その時: (会社員|週 4 日勤務|独立)/.test(p.state) && p.state.includes("SpellDash"), `状態: ${p.state}`);
+    assert(p.trail.length === 3 && p.trail.every((s) => /^\d{4}年\d{1,2}月$/.test(s.when)) && p.trail[2].cur, `目印 ${JSON.stringify(p.trail)}`);
+    await shot("impact-desktop-end", page);
+  });
+
+  await check("今日を選ぶと、見出し（年収）と今決めることが詳細に出る", async () => {
+    const imp = await impactOf(page);
+    await page.evaluate((id) => window.__fourD.ui.select([id]), imp.root);
+    await page.waitForTimeout(200);
+    const p = await page.evaluate(() => ({ head: document.querySelector(".imp-node.is-root .imp-hl-main")?.textContent ?? "", rows: document.querySelectorAll(".imp-node.is-root .imp-alt-row").length, salary: !!document.querySelector(".imp-node.is-root .imp-salary") }));
+    assert(/^おすすめの選び方で 3 年/.test(p.head) && p.rows === 10 && p.salary, JSON.stringify(p));
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("方針（早期独立）を選ぶと「早期独立の方針だと…（おすすめとの差）」になり、方針の外の手は薄くなる", async () => {
+    await page.locator(".scen-chip", { hasText: "早期独立" }).click();
+    await page.waitForTimeout(300);
+    const p = await page.evaluate(() => ({
+      main: document.querySelector(".imp-overview .imp-hl-main")?.textContent ?? "",
+      label: document.querySelector(".imp-overview .imp-dist-label")?.textContent ?? "",
+      off: document.querySelectorAll(".imp-overview .imp-decide .imp-alt-row.is-off").length,
+    }));
+    assert(/^早期独立の方針だと 3 年 [\d,]+ 万円（おすすめとの差 [−±][\d,.]* ?万円?）$/.test(p.main), `見出し: ${p.main}`);
+    assert(p.label === "早期独立の方針", `分布の名前: ${p.label}`);
+    assert(p.off > 0, "方針の外の手が薄くならない");
+    await shot("impact-desktop-scenario", page);
+    await page.locator(".scen-chip", { hasText: "すべて" }).click();
+    await page.waitForTimeout(200);
+  });
+  await ctx.close();
+
+  // ---- スマホ（390×844）: 引き出しは幅 300px、横にはみ出さない。今決めることを押すと引き出しを閉じて寄る
+  const ph = await openImpact(browser, { width: 390, height: 844 });
+  const pp = ph.page;
+  await check("スマホ: 引き出しの幅・横にはみ出さない・見出しと今決めることが読める", async () => {
+    await pp.evaluate(() => window.__fourD.ui.clearSelection());
+    await pp.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
+    await pp.waitForTimeout(400);
+    const w = await noHScroll(pp);
+    assert(Math.round(w.side) === 300, `引き出しの幅 ${w.side}`);
+    assert(w.ok, `横にはみ出す ${JSON.stringify(w)}`);
+    const vis = await pp.evaluate(() => {
+      const r = (sel) => document.querySelector(sel)?.getBoundingClientRect();
+      const head = r(".imp-overview .imp-head");
+      const first = r(".imp-overview .imp-decide .imp-alt-row");
+      const fs = parseFloat(getComputedStyle(document.querySelector(".imp-overview .imp-alt-title")).fontSize);
+      return { headTop: head?.top, headBottom: head?.bottom, firstBottom: first?.bottom, h: innerHeight, fs };
+    });
+    assert(vis.headTop > 0 && vis.firstBottom < vis.h && vis.fs >= 12, `見出しと最初の手が見えない ${JSON.stringify(vis)}`);
+    await shot("impact-phone-overview", pp);
+  });
+
+  await check("スマホ: 今決めることの行を押すと引き出しを閉じ、そのカードを選んで寄る", async () => {
+    const id = await pp.locator(".imp-overview .imp-decide .imp-alt-row").first().getAttribute("data-id");
+    await pp.locator(".imp-overview .imp-decide .imp-alt-row").first().click();
+    await pp.waitForTimeout(500);
+    const s = await pp.evaluate(() => ({ open: window.__fourD.ui.prefs.rightOpen, sel: [...window.__fourD.ui.selection.nodes] }));
+    assert(!s.open && s.sel.length === 1 && s.sel[0] === id, JSON.stringify(s));
+    assert(await onScreen(pp, id), "選んだカードが画面に入らない");
+  });
+
+  await check("スマホ: 選択肢・行き先の詳細も横にはみ出さない", async () => {
+    const imp = await impactOf(pp);
+    await pp.evaluate((id) => window.__fourD.ui.select([id]), imp.best);
+    await pp.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
+    await pp.waitForTimeout(400);
+    const a = await noHScroll(pp);
+    assert(a.ok, `選択肢: ${JSON.stringify(a)}`);
+    await shot("impact-phone-alt", pp);
+    await pp.evaluate((id) => window.__fourD.ui.select([id]), imp.ends[0]);
+    await pp.waitForTimeout(300);
+    const e = await noHScroll(pp);
+    assert(e.ok, `行き先: ${JSON.stringify(e)}`);
+    await shot("impact-phone-end", pp);
+  });
+  await ph.ctx.close();
+
+  // ---- ふつうの地図（デモ）: 今までどおり（3 年の影響は出さない）
+  await check("ふつうの地図（デモ）では 3 年の影響を出さない", async () => {
+    const c = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await c.addInitScript(() => {
+      try {
+        localStorage.setItem("4d-branch:prefs", JSON.stringify({ futureAutoOpened: true }));
+      } catch {
+        /* about:blank など */
+      }
+    });
+    const p = await c.newPage();
+    await p.goto(BASE, { waitUntil: "networkidle" });
+    const skip = p.getByRole("button", { name: "すぐに使う" });
+    if (await skip.count()) await skip.click();
+    await p.waitForTimeout(300);
+    const s = await p.evaluate(() => ({ active: window.__fourD.app.vm.impact.active, overview: !!document.querySelector(".imp-overview:not([hidden])"), stats: !!document.querySelector(".stat-grid .stat") }));
+    assert(!s.active && !s.overview && s.stats, JSON.stringify(s));
+    await p.evaluate(() => window.__fourD.ui.select([Object.keys(window.__fourD.store.doc.nodes)[0]]));
+    await p.waitForTimeout(200);
+    assert((await p.locator(".imp-node").count()) === 0, "ふつうのノードに 3 年の影響が出た");
+    assert((await p.locator(".insp-node .insp-section .insp-label", { hasText: "条件" }).count()) === 1, "条件の欄が変わった");
+    await p.waitForTimeout(3500);
+    assert((await p.locator(".toast", { hasText: "年収（額面）を入れると" }).count()) === 0, "ふつうの地図で年収のお知らせが出た");
+    await c.close();
+  });
+
+  await browser.close();
+}
+
+try {
+  await main();
+} catch (e) {
+  console.error(e);
+  results.push({ name: "起動", ok: false, err: e });
+} finally {
+  server?.kill();
+}
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} 件 通過`);
+process.exit(failed.length ? 1 : 0);

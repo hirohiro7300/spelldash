@@ -8,6 +8,7 @@ import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from ".
 import type { GEdge, GNode, ID } from "../model/types";
 import { MOD, autosize, clear, h, isImeKey, setValue } from "./dom";
 import { icon } from "./icons";
+import { buildImpactNodeBlock, buildImpactOverview, impactEdgeKind } from "./impactPanel";
 import { toast } from "./overlays";
 import { edgeProb, formatPercent } from "../model/forecast";
 
@@ -81,6 +82,17 @@ export function buildInspector(app: AppContext): HTMLElement {
 
 function sectionEl(title: string, ...children: Array<Node | null>): HTMLElement {
   return h("section", { class: "insp-section" }, h("h3", { class: "insp-label" }, title), ...children);
+}
+
+/**
+ * テキストエリアの高さを中身に合わせる。閉じている右のパネル（狭い画面の引き出しも）の中では幅がほとんど無く、
+ * 高く測ったまま開いた後も残る。パネルを開く知らせはパネルが広がる前に届くので、次のフレーム（広がった後）にもう一度合わせる
+ */
+function fitHeight(ta: HTMLTextAreaElement, max?: number): void {
+  autosize(ta, max);
+  requestAnimationFrame(() => {
+    if (ta.isConnected) autosize(ta, max);
+  });
 }
 
 /** 入力のたびに保存し、続けての入力は Undo 1 回にまとめる。欄を離れたらまとめを切る */
@@ -187,6 +199,9 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
   const projLine = h("div", { class: "insp-projline" });
   wrap.append(h("div", { class: "insp-meta" }, status, projLine));
+  // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）
+  const impact = buildImpactNodeBlock(app, id);
+  if (impact) wrap.append(impact.el);
   // 未来の道筋: ここに至る見込みと、今日から何歩目か
   const forecastLine = h("div", { class: "insp-forecast", attrs: { role: "status" } });
   forecastLine.hidden = true;
@@ -195,7 +210,8 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   // 文章
   const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", attrs: { rows: "3", "aria-label": "文章" } });
   bindText(app, bodyTa, (v) => cmd.updateNode(id, { body: v }, { label: "文章を編集", coalesce: `body:${id}` }));
-  wrap.append(sectionEl("文章", bodyTa));
+  const bodySec = sectionEl("文章", bodyTa);
+  wrap.append(bodySec);
 
   // 期限
   const n0 = node()!;
@@ -212,10 +228,11 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   );
   wrap.append(sectionEl("時間", dates));
 
-  // 条件
+  // 条件（3 年の分かれ道の選択肢では「やること」として文章の前に）
+  const todo = !!impact?.isAlt;
   const condCount = h("span", { class: "insp-count" });
   const condList = h("div", { class: "cond-list" });
-  const condAdd = h("input", { class: "input input-sm", placeholder: "条件を追加（Enter）", attrs: { "aria-label": "条件を追加" } });
+  const condAdd = h("input", { class: "input input-sm", placeholder: todo ? "やることを追加（Enter）" : "条件を追加（Enter）", attrs: { "aria-label": todo ? "やることを追加" : "条件を追加" } });
   condAdd.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !isImeKey(ev) && condAdd.value.trim()) {
       ev.preventDefault();
@@ -223,9 +240,10 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
       condAdd.value = "";
     }
   });
-  const condSec = sectionEl("条件", condList, condAdd);
+  const condSec = sectionEl(todo ? "やること" : "条件", condList, condAdd);
   condSec.querySelector(".insp-label")!.append(condCount);
   wrap.append(condSec);
+  if (todo) wrap.insertBefore(condSec, bodySec);
   const condRows = new Map<ID, { row: HTMLElement; box: HTMLInputElement; text: HTMLInputElement }>();
 
   // タグ
@@ -274,9 +292,9 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     const doc = store.doc;
     wrap.style.setProperty("--type-color", NODE_TYPES[n.type].color);
     setValue(title, n.title);
-    autosize(title, 140);
+    fitHeight(title, 140);
     setValue(bodyTa, n.body);
-    autosize(bodyTa);
+    fitHeight(bodyTa);
     for (const el of [title, bodyTa, due, start, condAdd, tagInput]) el.disabled = ro();
     setValue(due, n.time.due ?? "");
     setValue(start, n.time.start ?? "");
@@ -294,9 +312,12 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     if (n.projectIds.length > 1) projLine.append(h("span", { class: "shared-pill", title: "複数のプロジェクトから参照されている共有ノード" }, icon("link", 12), "共有"));
     if (!n.projectIds.length) projLine.append(h("span", { class: "muted-pill" }, "未分類"));
 
-    // 見込み（予測の入口から届くノードだけ）
+    // 3 年の影響（数が変わったときだけ作り直す）
+    impact?.update();
+
+    // 見込み（予測の入口から届くノードだけ。3 年の分かれ道の中では上の 3 年の影響に出す）
     const fc = vm.forecast;
-    const reach = fc.active ? fc.reach.get(id) : undefined;
+    const reach = fc.active && !impact ? fc.reach.get(id) : undefined;
     forecastLine.hidden = !reach;
     clear(forecastLine);
     if (reach) {
@@ -452,6 +473,7 @@ function edgePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     cmd.updateEdge(id, { meta }, { label: "見込みを編集", coalesce: `eprob:${id}` });
   });
   const probSec = sectionEl("見込み（この道に進む見込み %）", h("div", { class: "prob-row" }, prob, h("span", { class: "prob-unit" }, "%"), probSum));
+  const probTitle = probSec.querySelector(".insp-label")!;
   wrap.append(probSec);
 
   const label = h("input", { class: "input", placeholder: "例: 実績が営業材料になる", attrs: { "aria-label": "説明" } });
@@ -490,19 +512,26 @@ function edgePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
       b.disabled = ro();
     }
     setValue(cond, e.condition);
-    autosize(cond);
-    // 見込みは分かれ道から出る線か、すでに見込みのある線にだけ出す
+    fitHeight(cond);
+    // 見込みは分かれ道から出る線か、すでに見込みのある線にだけ出す。
+    // 3 年の分かれ道の中では、結果の線（選択肢から出る線）に出し、判断の線の % は使わない（あれば、そう伝えて消せるように残す）
     const p0 = edgeProb(e);
-    const fromBranch = doc.nodes[e.source]?.type === "branch";
-    probSec.hidden = !fromBranch && p0 === null;
+    const impKind = e.relation === "leads" || e.relation === "condition" ? impactEdgeKind(app, e.source) : null;
+    const fromBranch = impKind === null && doc.nodes[e.source]?.type === "branch";
+    probSec.hidden = impKind === "decision" ? p0 === null : impKind === "chance" ? false : !fromBranch && p0 === null;
+    probTitle.textContent = impKind === "chance" ? "見込み（この結果になる見込み %）" : "見込み（この道に進む見込み %）";
     if (document.activeElement !== prob) prob.value = p0 === null ? "" : String(p0);
     prob.disabled = ro();
-    if (fromBranch) {
+    if (fromBranch || impKind === "chance") {
       const sibs = (vm.index.out.get(e.source) ?? []).map((x) => doc.edges[x]!).filter((x) => x.relation === "leads" || x.relation === "condition");
       const total = sibs.reduce((n, x) => n + (edgeProb(x) ?? 0), 0);
       const missing = sibs.filter((x) => edgeProb(x) === null).length;
-      probSum.textContent = `この分かれ道の合計 ${total}%${missing ? `（見込みの無い線 ${missing} 本には残りを等分）` : ""}`;
-      probSum.dataset.tone = !missing && total !== 100 ? "warn" : "ok";
+      if (impKind === "chance" && sibs.length > 1 && missing === sibs.length) probSum.textContent = "見込み（%）が入っていません（等分で計算中）";
+      else probSum.textContent = `${impKind === "chance" ? "この手の結果の合計" : "この分かれ道の合計"} ${total}%${missing ? `（見込みの無い線 ${missing} 本には残りを等分）` : ""}`;
+      probSum.dataset.tone = (!missing && total !== 100) || (impKind === "chance" && missing === sibs.length && sibs.length > 1) ? "warn" : "ok";
+    } else if (impKind === "decision") {
+      probSum.textContent = "判断の線なので % は使いません（選んだ手で計算します）";
+      probSum.dataset.tone = "warn";
     } else probSum.textContent = "";
     setValue(label, e.label);
     cond.disabled = ro();
@@ -612,9 +641,11 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
   const stats = h("div", { class: "stat-grid" });
   const bars = h("div", { class: "type-bars" });
   const insight = h("div", { class: "insight" });
+  // 3 年の分かれ道（v2）: 3 年の影響・今決めること・分布・行き先（あれば下の「行き先の見込み」の代わり）
+  const impact = buildImpactOverview(app);
   // 未来の道筋: 行き先（その先が無いノード）の見込み
   const ends = h("div", { class: "forecast-ends" });
-  wrap.append(ends, stats, bars, insight);
+  wrap.append(impact.el, ends, stats, bars, insight);
   wrap.append(
     h(
       "div",
@@ -637,10 +668,11 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
     vm.ensure();
     const doc = store.doc;
     const nodes = Object.values(doc.nodes);
+    const impactShown = impact.update();
     clear(ends);
     const fc = vm.forecast;
-    ends.hidden = !fc.active || !fc.ends.length;
-    if (fc.active && fc.ends.length) {
+    ends.hidden = impactShown || !fc.active || !fc.ends.length;
+    if (!impactShown && fc.active && fc.ends.length) {
       const sid = ui.prefs.scenarioId;
       const scen = sid ? doc.scenarios[sid] : undefined;
       const forks = [...fc.reach.keys()].filter((id) => doc.nodes[id]?.type === "branch").length;
