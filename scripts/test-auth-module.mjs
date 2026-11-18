@@ -1,6 +1,6 @@
 // 認証の部品を自分の配信から出す（Batch 97。api/auth-module.js・api/_lib/authModule.js・js/supabase.js の読み先。docs/SECURITY.md の Batch 97 の節）の単体:
 //   A. 作り方（偽の登録所: この検査がメモリの中で作った tarball。固定の値は検査が渡す）: 正しい tarball だけから答えを作る・sha512／束の sha256／答えの sha256／
-//      包みの名前と版／束の形／LICENSE のどれが違っても作らない・5 秒で打ち切る・https だけ・2 MB まで
+//      包みの名前と版／束の形／LICENSE のどれが違っても作らない・5 秒で打ち切る（本文を読む間も）・https だけ・2 MB まで（読みながら数える）
 //   B. 配信の関数（偽の作り手）: 決まった 1 つの URL（版と答えの印）だけ 200（スクリプトの型・nosniff・1 年の immutable・同じオリジンだけ）・
 //      ほかの版や印や問いは 404・GET のほかは 405（HEAD も: 中身の無い答えに 1 年の保存の頭を付けない）・
 //      作れないときは 503（保存させない）・1 回作った物を持つ・同時の呼び出しは 1 回の作り・失敗の後 10 秒は作り直さない・ログは理由の字だけ
@@ -140,8 +140,9 @@ function pinFor(tgz) {
   const body = M.moduleBody(UMD).body;
   return { version: VERSION, integrity: M.sha512Integrity(tgz), body: sha256(body), served: sha256(M.servedText(LICENSE, body)) };
 }
-// 偽の fetch: url → tarball。呼ばれた URL と signal を控える
-function fakeFetch(tgz, { status = 200, finalUrl = null, hang = false, throws = null, length = null } = {}) {
+// 偽の fetch: url → tarball。呼ばれた URL と signal を控える。答えは本物の fetch と同じ Response（本文は流れで読む。
+// 長さの見出しは length を渡したときだけ。body を渡すと、本文はそれが作る流れ〔打ち切りの signal を受け取る〕）
+function fakeFetch(tgz, { status = 200, finalUrl = null, hang = false, throws = null, length = null, body = null } = {}) {
   const calls = [];
   const fetchImpl = (url, init = {}) => {
     calls.push({ url, signal: init.signal ?? null, redirect: init.redirect ?? null });
@@ -149,13 +150,9 @@ function fakeFetch(tgz, { status = 200, finalUrl = null, hang = false, throws = 
     // 答えない登録所（打ち切りの signal が来るまで待つ。打ち切りの時計はプロセスを生かさないので、待つ間だけ別の時計で生かす。
     // 打ち切りの無い作りでも検査が止まらないように、生かすのは 3 秒まで）
     if (hang) return new Promise((_, reject) => { const keep = setTimeout(() => {}, 3000); init.signal?.addEventListener("abort", () => { clearTimeout(keep); reject(init.signal.reason); }); });
-    return Promise.resolve({
-      ok: status >= 200 && status < 300,
-      status,
-      url: finalUrl ?? url,
-      headers: { get: (k) => (k.toLowerCase() === "content-length" && length !== null ? String(length) : null) },
-      arrayBuffer: async () => tgz.buffer.slice(tgz.byteOffset, tgz.byteOffset + tgz.byteLength)
-    });
+    const res = new Response(body ? body(init.signal) : tgz, { status, headers: length !== null ? { "content-length": String(length) } : {} });
+    Object.defineProperty(res, "url", { value: finalUrl ?? url });
+    return Promise.resolve(res);
   };
   return { fetchImpl, calls };
 }
@@ -218,6 +215,45 @@ const codeOf = async (p) => {
     ok("A8 登録所が 404・500 → 作らない（status_404・status_500）", (await tryPin({}, goodEntries(), { status: 404 })) === "status_404" && (await tryPin({}, goodEntries(), { status: 500 })) === "status_500");
     ok("A8 転送の先が https でない → 作らない（not_https）", (await tryPin({}, goodEntries(), { finalUrl: "http://registry.example/x.tgz" })) === "not_https");
     ok("A8 大きすぎる（見出しの長さ・本当の長さ）→ 作らない（too_large）", (await tryPin({}, goodEntries(), { length: 3 * 1024 * 1024 })) === "too_large" && (await tryPin({}, goodEntries(), { maxBytes: 100 })) === "too_large");
+    // 長さの見出しが無く、2 MB を超えて流れ続ける本文: 読みながら数え、2 MB を超えたところで読むのをやめる（全部をメモリーに読んでから比べない）
+    {
+      const CHUNK = 64 * 1024;
+      let pulled = 0;
+      let cancelled = false;
+      const endless = () => new ReadableStream({
+        pull(c) {
+          pulled += CHUNK;
+          c.enqueue(new Uint8Array(CHUNK));
+          if (pulled >= 8 * 1024 * 1024) c.close();
+        },
+        cancel() {
+          cancelled = true;
+        }
+      });
+      const code = await tryPin({}, goodEntries(), { body: endless });
+      ok("A8 長さの見出しが無く 2 MB を超えて流れる → 2 MB を超えたところで読むのをやめる（too_large。読んだのは 2 MB と少し・流れを止めた）", code === "too_large" && cancelled && pulled <= 2 * 1024 * 1024 + 4 * CHUNK, `${code} 読んだ ${pulled} 止めた ${cancelled}`);
+    }
+    // 見出しの後に本文が届き終わらない: 5 秒（検査では 50 ミリ秒）の打ち切りは本文を読む間も効く（2 秒で終わらなければ hung）
+    {
+      const stalled = (signal) => new ReadableStream({
+        start(c) {
+          c.enqueue(new Uint8Array(1000));
+          const keep = setTimeout(() => {}, 3000);
+          signal?.addEventListener("abort", () => {
+            clearTimeout(keep);
+            c.error(signal.reason);
+          });
+        }
+      });
+      const code = await new Promise((resolve) => {
+        const t = setTimeout(() => resolve("hung"), 2000);
+        tryPin({}, goodEntries(), { body: stalled, timeoutMs: 50 }).then((c) => {
+          clearTimeout(t);
+          resolve(c);
+        });
+      });
+      ok("A8 本文が届き終わらない → 作らない（timeout。本文を読む間も打ち切りが効く）", code === "timeout", code);
+    }
     ok("A9 固定の値は凍っている（書き換えられない）・版の形・sha512 と sha256 の形", Object.isFrozen(M.AUTH_MODULE_PIN) && /^\d+\.\d+\.\d+$/.test(M.AUTH_MODULE_PIN.version) && /^sha512-[A-Za-z0-9+/]{86}==$/.test(M.AUTH_MODULE_PIN.integrity) && /^[0-9a-f]{64}$/.test(M.AUTH_MODULE_PIN.body) && /^[0-9a-f]{64}$/.test(M.AUTH_MODULE_PIN.served) && M.AUTH_MODULE_PIN.body !== M.AUTH_MODULE_PIN.served);
   }
 }
