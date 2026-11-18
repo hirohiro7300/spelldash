@@ -112,7 +112,7 @@ export function staleFutureMaps(doc: DocData, version: string): FutureMap[] {
  * 未来の道筋を新しい版に差し替えた文書を作る（doc は変えない）。
  * 未来の道筋が無ければ、ふつうの追加と同じく右側に足す
  */
-export function swapFutureDoc(doc: DocData, incoming: DocData): { doc: DocData; removed: number; added: number; root: ID | null } {
+export function swapFutureDoc(doc: DocData, incoming: DocData): { doc: DocData; removed: number; added: number; root: ID | null; kept: number } {
   const maps = futureMaps(doc);
   const gone = new Set(maps.flatMap((m) => [...m.nodes]));
   const nodes: DocData["nodes"] = {};
@@ -120,11 +120,44 @@ export function swapFutureDoc(doc: DocData, incoming: DocData): { doc: DocData; 
   const edges: DocData["edges"] = {};
   for (const [id, e] of Object.entries(doc.edges)) if (!gone.has(e.source) && !gone.has(e.target)) edges[id] = e;
   const base: DocData = { ...doc, nodes, edges };
+  // 版が変わっても同じカードは同じ鍵（meta.key）を持つ。利用者が決めたこと（選んだ手・見送り・完了、やることのチェック、年収）は新しい版に引き継ぐ
+  let kept = 0;
+  const carried: DocData = { ...incoming, nodes: { ...incoming.nodes } };
+  const oldByKey = new Map<string, DocData["nodes"][string]>();
+  for (const id of gone) {
+    const o = doc.nodes[id];
+    const k = o?.meta?.key;
+    if (o && typeof k === "string") oldByKey.set(k, o);
+  }
+  for (const [id, n] of Object.entries(incoming.nodes)) {
+    const k = n.meta?.key;
+    const o = typeof k === "string" ? oldByKey.get(k) : undefined;
+    if (!o) continue;
+    let next = n;
+    if (o.status !== "open" && o.status !== n.status) next = { ...next, status: o.status };
+    const met = new Set(o.conditions.filter((c) => c.met).map((c) => c.text));
+    if (met.size && next.conditions.some((c) => met.has(c.text) && !c.met)) next = { ...next, conditions: next.conditions.map((c) => (met.has(c.text) ? { ...c, met: true } : c)) };
+    const oi = o.meta?.impact as Record<string, unknown> | undefined;
+    const ni = n.meta?.impact as Record<string, unknown> | undefined;
+    if (oi && ni && (oi.annual !== undefined || oi.tail !== undefined)) {
+      const impact = { ...ni, ...(oi.annual !== undefined ? { annual: oi.annual } : {}), ...(oi.tail !== undefined ? { tail: oi.tail } : {}) };
+      next = { ...next, meta: { ...next.meta, impact } };
+    }
+    if (next !== n) {
+      carried.nodes[id] = next;
+      kept++;
+    }
+  }
   const oldRoot = maps.length ? doc.nodes[maps[0]!.root] : undefined;
-  const newRoot = Object.values(incoming.nodes).find(isForecastRoot);
+  const newRoot = Object.values(carried.nodes).find(isForecastRoot);
   const offset = oldRoot && newRoot ? { dx: oldRoot.x - newRoot.x, dy: oldRoot.y - newRoot.y } : undefined;
   const before = new Set(Object.keys(base.nodes));
-  const res = mergeDocs(base, incoming, offset ? { offset } : {});
+  const res = mergeDocs(base, carried, offset ? { offset } : {});
   const root = Object.values(res.doc.nodes).find((n) => !before.has(n.id) && isForecastRoot(n))?.id ?? null;
-  return { doc: res.doc, removed: gone.size, added: res.added.nodes, root };
+  // 地図の題名が古い版の題名のままなら、新しい版の題名にする（自分で付けた題名はそのまま）
+  const out = OLD_FUTURE_TITLES.includes(res.doc.title) && incoming.title ? { ...res.doc, title: incoming.title } : res.doc;
+  return { doc: out, removed: gone.size, added: res.added.nodes, root, kept };
 }
+
+/** 同梱の未来の道筋の、これまでの版の題名 */
+const OLD_FUTURE_TITLES = ["未来の道筋（仕事・10 年）"];

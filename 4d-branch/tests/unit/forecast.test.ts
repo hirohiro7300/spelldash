@@ -333,6 +333,34 @@ describe("未来の道筋の差し替え", () => {
     expect(yieldsToRemote({ ...map, updatedAt: "2099-01-01T00:00:00.000Z" }, written)).toBe(false);
   });
 
+  it("新しい版に差し替えても、同じカードの選んだ手・見送り・チェック・年収は引き継ぎ、古い版の題名は新しい題名にする", () => {
+    const old = buildFuture(TODAY).pv.doc;
+    old.title = "未来の道筋（仕事・10 年）";
+    const root = Object.values(old.nodes).find((n) => n.meta.forecastRoot === true)!;
+    root.meta = { ...root.meta, futureVersion: "old", impact: { ...(root.meta.impact as object), annual: 540 } };
+    const alts = Object.values(old.nodes).filter((n) => n.meta.fork === "chance" && n.conditions.length);
+    const picked = alts[0]!;
+    const dropped = alts[1]!;
+    picked.status = "active";
+    picked.conditions = picked.conditions.map((c, i) => (i === 0 ? { ...c, met: true } : c));
+    dropped.status = "dropped";
+    const res = swapFutureDoc(old, buildFuture(TODAY).pv.doc);
+    expect(res.kept).toBe(3);
+    const d = res.doc;
+    expect(d.title).toBe("未来の道筋（仕事・3 年の分かれ道）");
+    const byKey = (k: unknown) => Object.values(d.nodes).find((n) => n.meta.key === k)!;
+    expect(byKey(picked.meta.key).status).toBe("active");
+    expect(byKey(picked.meta.key).conditions[0]?.met).toBe(true);
+    expect(byKey(dropped.meta.key).status).toBe("dropped");
+    expect(Object.values(d.nodes).filter((n) => n.status !== "open").length).toBe(2);
+    const r2 = Object.values(d.nodes).find((n) => n.meta.forecastRoot === true)!;
+    expect((r2.meta.impact as { annual?: number }).annual).toBe(540);
+    expect(r2.meta.futureVersion).toBe(futureVersion());
+    // 自分で付けた題名はそのまま
+    const own = { ...old, title: "わたしの地図" };
+    expect(swapFutureDoc(own, buildFuture(TODAY).pv.doc).doc.title).toBe("わたしの地図");
+  });
+
   it("未来の道筋が無い文書では、ふつうの追加と同じく右側に足す", () => {
     const base = buildDemoDoc();
     const res = swapFutureDoc(base, oldFuture("v1"));

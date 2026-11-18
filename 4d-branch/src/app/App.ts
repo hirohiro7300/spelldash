@@ -1048,7 +1048,7 @@ export class App implements AppContext {
     this.ui.setPrefs({ futureNotified: futureVersion(), futureOffered: true });
     this.ui.clearSelection();
     if (res.root && this.store.doc.nodes[res.root]) this.view.fit(nearFutureRoot(this.store.doc), { minZoom: FUTURE_MIN_ZOOM });
-    toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件）`, { tone: "ok", action: this.cmd.undoAction() });
+    toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件${res.kept ? `・選んだ手や年収など ${n(res.kept)} 件を引き継ぎ` : ""}）`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
   }
 
