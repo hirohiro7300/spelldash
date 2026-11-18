@@ -4,7 +4,7 @@
 
 import { impactColX, outlineLayout } from "../model/impactLayout";
 import { createEmptyDoc, makeCondition, makeEdge, makeNode, makeProject, makeScenario } from "../model/schema";
-import type { DocData, GNode, ID } from "../model/types";
+import type { DocData, GNode, ID, Meta } from "../model/types";
 
 export type ImpactRole = "r" | "a" | "s" | "e";
 
@@ -148,6 +148,23 @@ const ROLE_TAG: Record<ImpactRole, (m: number) => string> = {
   e: () => "3年後",
 };
 
+/** どの同梱のカードにも付くタグ */
+const COMMON_TAGS = ["未来の道筋", "3年"];
+
+/** 同梱のカードに付けるタグ（役割と月から） */
+const cardTags = (role: ImpactRole, m: number): string[] => [...COMMON_TAGS, ROLE_TAG[role](m)];
+
+/**
+ * 同梱のカードが同梱データから受け取ったタグ（カードの meta の役割と月から。buildImpactDoc と同じ決まり）。
+ * 新しい版にしたとき、前の版で付いたタグと利用者が付けたタグを見分ける（月が変わって付かなくなった役割のタグは外す）。
+ * 状態のカードで月が分からなければ、役割のタグは数えない
+ */
+export function impactTagsOf(meta: Meta): string[] {
+  const role: ImpactRole = meta.forecastRoot === true ? "r" : meta.end === true ? "e" : typeof meta.ak === "string" ? "a" : "s";
+  const m = typeof meta.m === "number" && Number.isFinite(meta.m) ? meta.m : null;
+  return m === null && role === "s" ? [...COMMON_TAGS] : cardTags(role, m ?? 0);
+}
+
 export interface ImpactCounts {
   nodes: number;
   decisions: number;
@@ -207,7 +224,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
   b.nodes.forEach((n, i) => {
     const [key, parent, role, m, title, short, body, x] = n;
     const p = pos.get(ids[i]!) ?? { x: impactColX(0), y: 0 };
-    const tags = ["未来の道筋", "3年", ROLE_TAG[role](m)];
+    const tags = cardTags(role, m);
     const common: Partial<GNode> = { id: ids[i]!, title, body, tags, x: p.x, y: p.y, status: "open" };
     const prints = { t0: fnv36(title), b0: fnv36(body) };
     let node: GNode;

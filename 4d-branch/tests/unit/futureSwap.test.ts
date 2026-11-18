@@ -5,7 +5,7 @@ import { ViewModel } from "../../src/app/viewModel";
 import { buildDemoDoc } from "../../src/demo/demo";
 import { buildFuture, futureData, futureRelease, futureVersion } from "../../src/demo/futureBundle";
 import { futureAge, futureMaps, hasEditPrints, hasStaleFuture, inPlaceRoot, newerFutureMaps, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
-import { buildImpactDoc, edgeTextPrint, fnv36, impactDataVersion, nextImpactRelease, type ImpactBundle, type ImpactOutX } from "../../src/demo/impact";
+import { buildImpactDoc, edgeTextPrint, fnv36, impactDataVersion, impactTagsOf, nextImpactRelease, type ImpactBundle, type ImpactOutX } from "../../src/demo/impact";
 import raw from "../../src/demo/impact-data.json?raw";
 import releaseFile from "../../src/demo/impact-release.json";
 import { primaryImpactRoot } from "../../src/model/forks";
@@ -386,6 +386,38 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     expect(Object.values(d.edges).some((e) => e.source === dup)).toBe(false);
     expect(d.nodes[dup!]).toEqual(store.doc.nodes[dup!]);
     expect(Object.keys(d.nodes).length).toBe(Object.keys(store.doc.nodes).length);
+  });
+});
+
+describe("タグを新しい版にする", () => {
+  it("月が変わった版では、前の版で付いた役割のタグ（3か月後）を外して新しい版のタグにし、自分で付けたタグは残す（新しい版のほかのカードで使うタグでも）", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const states = Object.values(store.doc.nodes).filter((n) => n.tags.includes("3か月後"));
+    expect(states.length).toBeGreaterThan(5);
+    const card = states[0]!;
+    cmd.updateNode(card.id, { tags: [...card.tags, "自分のタグ", "1年後"] });
+    // 次の版: 3 か月後の状態をすべて 4 か月後にする
+    const nb = nextBundle((b) => {
+      for (const n of b.nodes) if (n[2] === "s" && n[3] === 3) n[3] = 4;
+    });
+    const fresh = mapOf(nb, "tags-next", futureRelease() + 1);
+    const res = swapFutureDoc(store.doc, fresh);
+    const d = res.doc;
+    expect(Object.values(d.nodes).filter((n) => n.tags.includes("3か月後")).length).toBe(0);
+    expect(d.nodes[card.id]!.tags).toEqual(["未来の道筋", "3年", "4か月後", "自分のタグ", "1年後"]);
+    // ほかのカードは新しい版の地図と同じタグ（積み重ならない）
+    for (const n of Object.values(d.nodes)) if (n.id !== card.id) expect(n.tags, n.title).toEqual(fresh.nodes[n.id]!.tags);
+    expect(res.updated).toBeGreaterThanOrEqual(states.length);
+    // 同じ版を当て直しても変わらない
+    const again = swapFutureDoc(d, mapOf(nb, "tags-next", futureRelease() + 1));
+    expect(again.updated).toBe(0);
+    expect(again.doc.nodes[card.id]!.tags).toEqual(d.nodes[card.id]!.tags);
+  });
+
+  it("カードの役割と月から、同梱データで付くタグが分かる（地図を作るときと同じ）", () => {
+    const doc = buildFuture(TODAY).pv.doc;
+    for (const n of Object.values(doc.nodes)) expect(impactTagsOf(n.meta), n.title).toEqual(n.tags);
+    expect(impactTagsOf({ fork: "decision" })).toEqual(["未来の道筋", "3年"]);
   });
 });
 

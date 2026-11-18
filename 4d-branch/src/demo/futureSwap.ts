@@ -7,7 +7,7 @@ import { isForecastRoot } from "../model/forecast";
 import { isFlowEdge, isImpactRoot, primaryImpactRoot } from "../model/forks";
 import { newId } from "../model/ids";
 import { isDisposableDoc } from "./demo";
-import { edgeTextPrint, fnv36 } from "./impact";
+import { edgeTextPrint, fnv36, impactTagsOf } from "./impact";
 import type { Condition, DocData, GEdge, GNode, ID, Project, Scenario } from "../model/types";
 import { mergeDocs, nameKey } from "../persist/io";
 
@@ -350,8 +350,6 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
     const old = k === null ? undefined : oldByKey.get(k);
     idOf.set(n.id, old ? old.id : doc.nodes[n.id] ? newId("n") : n.id);
   }
-  const bundleTags = new Set<string>();
-  for (const n of Object.values(incoming.nodes)) for (const t of n.tags) bundleTags.add(t);
   const salary = salaryOf(doc);
   let kept = 0;
   let fresh = 0;
@@ -366,7 +364,7 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       fresh++;
       continue;
     }
-    const r = upgradeNode(next, old, bundleTags, id === rootId ? salary : null);
+    const r = upgradeNode(next, old, id === rootId ? salary : null);
     out.nodes[id] = r.node;
     if (r.kept) kept++;
     if (r.updated) updated.add(id);
@@ -442,16 +440,19 @@ const edited = (text: string, print: unknown): boolean => typeof print === "stri
 
 /**
  * 合ったカードを新しい版にする（next: 新しい版のカード。ID はもとの物）。利用者の物は old から残す:
- * 選んだ手・見送り・完了、やることのチェック・足した項目・書き換えた項目（upgradeTodo）、書き換えたタイトル・本文、付けたタグ（新しい版で使っていない物）、
- * カードのシナリオ・折りたたみ、入口なら年収（salary）。指紋（t0・b0・k0）は新しい版の物のまま（書き換えた文は、次の版でも書き換えたと分かる）
+ * 選んだ手・見送り・完了、やることのチェック・足した項目・書き換えた項目（upgradeTodo）、書き換えたタイトル・本文、
+ * 付けたタグ（前の版で同梱データから付いたタグ＝カードの役割と月から決まる物でも、新しい版で付くタグでもない物。
+ * 月が変わって付かなくなった役割のタグは外す）、カードのシナリオ・折りたたみ、入口なら年収（salary）。
+ * 指紋（t0・b0・k0）は新しい版の物のまま（書き換えた文は、次の版でも書き換えたと分かる）
  */
-function upgradeNode(next: GNode, old: GNode, bundleTags: Set<string>, salary: Salary | null): { node: GNode; kept: boolean; updated: boolean } {
+function upgradeNode(next: GNode, old: GNode, salary: Salary | null): { node: GNode; kept: boolean; updated: boolean } {
   const title = edited(old.title, old.meta.t0) ? old.title : next.title;
   const body = edited(old.body, old.meta.b0) ? old.body : next.body;
   const status = old.status !== "open" ? old.status : next.status;
   const todo = upgradeTodo(next.conditions, old.conditions, todoPrints(old));
   const conditions = todo.list;
-  const own = old.tags.filter((t) => !bundleTags.has(t));
+  const given = new Set([...impactTagsOf(old.meta), ...next.tags]);
+  const own = old.tags.filter((t) => !given.has(t));
   const tags = own.length ? [...next.tags, ...own] : next.tags;
   const meta = withSalary(next.meta, salary);
   const node: GNode = { ...next, title, body, status, conditions, tags, meta, scenarioIds: old.scenarioIds, collapsed: old.collapsed, createdAt: old.createdAt };
