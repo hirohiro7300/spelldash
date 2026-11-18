@@ -1839,15 +1839,38 @@ async function main() {
     assert((await fp.locator(".toast", { hasText: /未来の道筋.*を用意しました/ }).count()) === 0, "二度目のお知らせが出た");
   });
 
-  await check("未来の道筋: 古い版が入っていれば一度だけ知らせ、「差し替える」で未来の道筋だけを新しい版に入れ替える（自分のノードは残る）", async () => {
-    // 古い版で読み込んだ状態を作る: 入口の版を古くし、自分のメモを 1 つ足す
+  /** 地図の今日（入口）の版の印を変える（古い版・新しい版で作った地図の形にする）。変える前の版の印を返す */
+  const setMapVersion = (p, version, release) =>
+    p.evaluate(
+      ([v, r]) => {
+        const f = window.__fourD;
+        const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+        const was = { version: root.meta.futureVersion, release: root.meta.futureRelease, root: root.id };
+        f.app.cmd.updateNode(root.id, { meta: { ...root.meta, futureVersion: v, futureRelease: r } });
+        return was;
+      },
+      [version, release],
+    );
+  const NEWER_FUTURE = "この地図の未来の道筋は、このページより新しい版で作られています";
+  const toastTexts = (p) => p.evaluate(() => [...document.querySelectorAll(".toast:not(.closing) .toast-text")].map((t) => t.textContent));
+  /** 今のページの版（地図を新しくした直後の入口の印） */
+  let appVer = null;
+
+  await check("未来の道筋: 古い版が入っていれば一度だけ知らせ、「新しい版にする」で同じ地図の文章と数字を新しくする（ID・自分で足したカード・書き換えた文は残る）", async () => {
+    // 古い版で読み込んだ状態を作る: 入口の版を古くし、自分のメモ（地図の外）と自分の手（今日の下）を足し、カードの題を書き換える
+    const was = await setMapVersion(fp, "old", 0);
+    appVer = { version: was.version, release: was.release };
+    assert(typeof appVer.release === "number" && appVer.release >= 1, `入口に版の順番が無い: ${JSON.stringify(was)}`);
     const prep = await fp.evaluate(() => {
       const f = window.__fourD;
       const root = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
-      f.app.cmd.updateNode(root.id, { meta: { ...root.meta, futureVersion: "old" } });
       const own = f.app.cmd.createNode("goal", { x: root.x - 2000, y: root.y - 2000 }, { title: "自分で足したメモ", exact: true });
-      return { own, nodes: Object.keys(f.store.doc.nodes).length, rootPos: [root.x, root.y] };
+      const mine = f.app.cmd.createNode("action", { x: root.x, y: root.y + 3000 }, { from: [root.id], title: "自分で足した手", exact: true });
+      const card = Object.values(f.store.doc.nodes).find((n) => n.meta?.key === "r.sd_grow");
+      f.app.cmd.updateNode(card.id, { title: "遊ぶ人を増やす（自分の言葉）" });
+      return { own, mine, card: card.id, root: root.id, nodes: Object.keys(f.store.doc.nodes).length, rootPos: [root.x, root.y], newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new") };
     });
+    assert(prep.newMark === true, "古い版の地図があるのに「未来の道筋」に「新」の印が無い");
     await fp.waitForTimeout(800);
     await fp.evaluate(() => {
       const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
@@ -1857,29 +1880,173 @@ async function main() {
     await fp.reload({ waitUntil: "networkidle" });
     const notice = fp.locator(".toast", { hasText: /未来の道筋(が新しくなりました|の新しい版があります)/ });
     await notice.waitFor({ timeout: 8000 });
-    await notice.getByRole("button", { name: "差し替える" }).click();
-    const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版に差し替えますか？" });
+    await notice.getByRole("button", { name: "新しい版にする" }).click();
+    const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版にしますか？" });
     await confirm.waitFor();
-    await confirm.getByRole("button", { name: "差し替える" }).click();
+    const body = await confirm.innerText();
+    assert(body.includes("あなたが足したカード") && body.includes("そのまま残ります"), body);
+    await confirm.getByRole("button", { name: "新しい版にする" }).click();
     await fp.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true && n.meta.futureVersion !== "old"));
     await fp.waitForTimeout(500);
-    const after = await fp.evaluate((own) => {
+    const after = await fp.evaluate((prep) => {
       const f = window.__fourD;
-      const roots = Object.values(f.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true);
+      const d = f.store.doc;
+      const roots = Object.values(d.nodes).filter((n) => n.meta?.forecastRoot === true);
       const imp = f.app.vm.impact;
-      return { own: f.store.doc.nodes[own]?.title, roots: roots.length, pos: [roots[0].x, roots[0].y], nodes: Object.keys(f.store.doc.nodes).length, sum: imp.ends.reduce((n, e) => n + e.p, 0), zoom: f.app.view.camera.zoom, toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / ") };
-    }, prep.own);
+      return {
+        own: d.nodes[prep.own]?.title,
+        mine: d.nodes[prep.mine]?.title,
+        mineLinked: Object.values(d.edges).some((e) => e.source === prep.root && e.target === prep.mine),
+        card: d.nodes[prep.card]?.title,
+        roots: roots.map((r) => r.id),
+        ver: [roots[0].meta.futureVersion, roots[0].meta.futureRelease],
+        pos: [roots[0].x, roots[0].y],
+        nodes: Object.keys(d.nodes).length,
+        sum: imp.ends.reduce((n, e) => n + e.p, 0),
+        zoom: f.app.view.camera.zoom,
+        newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new"),
+        toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / "),
+      };
+    }, prep);
     assert(after.own === "自分で足したメモ", `自分のノードが消えた: ${after.own}`);
-    assert(after.roots === 1 && after.pos[0] === prep.rootPos[0] && after.pos[1] === prep.rootPos[1], `入口: ${JSON.stringify(after)}`);
+    assert(after.mine === "自分で足した手" && after.mineLinked, `今日の下に足した手が消えた・外れた: ${JSON.stringify(after)}`);
+    assert(after.card === "遊ぶ人を増やす（自分の言葉）", `書き換えた題が戻った: ${after.card}`);
+    assert(after.roots.length === 1 && after.roots[0] === prep.root && after.pos[0] === prep.rootPos[0] && after.pos[1] === prep.rootPos[1], `入口: ${JSON.stringify(after)}`);
+    assert(after.ver[0] === appVer.version && after.ver[1] === appVer.release, `版の印: ${JSON.stringify(after.ver)}`);
     assert(after.nodes === prep.nodes, `ノードの数 ${after.nodes} / ${prep.nodes}`);
     assert(Math.abs(after.sum - 1) < 1e-6, `選び方の行き先の見込みの合計 ${after.sum}`);
-    assert(after.zoom >= 0.45 - 1e-9, `差し替えた後の大きさ ${after.zoom}`);
-    assert(after.toast.includes("差し替えました"), after.toast);
+    assert(after.zoom >= 0.45 - 1e-9, `新しくした後の大きさ ${after.zoom}`);
+    assert(after.toast.includes("新しい版にしました") && after.toast.includes("あなたが足したカード 1 件"), after.toast);
+    assert(after.newMark === false, "新しくしたのに「新」の印が残った");
     // 同じ版ではもう知らせない
     await fp.waitForTimeout(600);
     await fp.reload({ waitUntil: "networkidle" });
     await fp.waitForTimeout(2600 + 1200);
-    assert((await fp.locator(".toast", { hasText: /未来の道筋(が新しくなりました|の新しい版があります)/ }).count()) === 0, "差し替えた後も知らせた");
+    assert((await fp.locator(".toast", { hasText: /未来の道筋(が新しくなりました|の新しい版があります)/ }).count()) === 0, "新しくした後も知らせた");
+  });
+
+  await check("未来の道筋: 「未来の道筋」で聞かれた新しい版を断ると、この版ではもう聞かない（「新」の印は残り、メニューからはできる）", async () => {
+    await setMapVersion(fp, "old", 0);
+    const btn = fp.locator(".zoom-ctl .future-btn");
+    await btn.click();
+    const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版にしますか？" });
+    await confirm.waitFor();
+    await confirm.getByRole("button", { name: "キャンセル" }).click();
+    await fp.waitForTimeout(400);
+    const declined = await fp.evaluate(() => window.__fourD.ui.prefs.futureDeclined);
+    assert(declined === appVer.version, `断った版を覚えていない: ${declined}`);
+    // もう一度押しても聞かない（今日に寄るだけ）。「新」の印は残る
+    await btn.click();
+    await fp.waitForTimeout(800);
+    const again = await fp.evaluate(() => ({ modal: document.querySelectorAll(".modal").length, sel: [...window.__fourD.ui.selection.nodes], newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new") }));
+    assert(again.modal === 0, "断ったのにまた聞いた");
+    assert(again.sel.length === 1 && again.newMark === true, JSON.stringify(again));
+    // メニューからは新しい版にできる（ここでは閉じる）
+    await fp.getByRole("button", { name: "メニュー", exact: true }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋だけを新しい版に差し替える/ }).click();
+    await confirm.waitFor();
+    await confirm.getByRole("button", { name: "キャンセル" }).click();
+    await fp.waitForTimeout(300);
+  });
+
+  await check("未来の道筋: お知らせ・確認を出している間に、同期で地図が新しい版になった・無くなったら、差し替えずに知らせる", async () => {
+    /** 今の地図を、別の端末が新しい版にして手を足した形（同期で届く内容）にする */
+    const docFromOther = (p, mode) =>
+      p.evaluate(
+        ([mode, ver]) => {
+          const d = JSON.parse(JSON.stringify(window.__fourD.store.doc));
+          const root = Object.values(d.nodes).find((n) => n.meta?.forecastRoot === true);
+          if (mode === "gone") {
+            for (const id of Object.keys(d.nodes)) if (d.nodes[id].meta?.key) delete d.nodes[id];
+            for (const id of Object.keys(d.edges)) if (!d.nodes[d.edges[id].source] || !d.nodes[d.edges[id].target]) delete d.edges[id];
+          } else {
+            root.meta.futureVersion = ver.version;
+            root.meta.futureRelease = ver.release;
+            const id = "n_other_device_card";
+            d.nodes[id] = { ...root, id, title: "別の端末で足した手", meta: {}, tags: [], conditions: [], type: "action" };
+            d.edges.e_other_device = { ...Object.values(d.edges)[0], id: "e_other_device", source: root.id, target: id, relation: "leads", label: "", condition: "", meta: {}, scenarioIds: [] };
+          }
+          d.updatedAt = new Date(Date.now() + 1000).toISOString();
+          return d;
+        },
+        [mode, appVer],
+      );
+    const adopt = (p, d) => p.evaluate((d) => window.__fourD.store.replaceDoc(d, "別の端末の内容を読み込む"), d);
+    const swaps = (p) => p.evaluate(() => window.__fourD.store.history.undoStack.filter((e) => e.label === "未来の道筋を新しい版にする").length);
+    const before = await swaps(fp);
+    // 1) メニューから開いた確認の間に、別の端末で新しい版にした地図が届く
+    await setMapVersion(fp, "old", 0);
+    const current = await docFromOther(fp, "current");
+    await fp.getByRole("button", { name: "メニュー", exact: true }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋だけを新しい版に差し替える/ }).click();
+    const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版にしますか？" });
+    await confirm.waitFor();
+    await adopt(fp, current);
+    await confirm.getByRole("button", { name: "新しい版にする" }).click();
+    await fp.locator(".toast", { hasText: "未来の道筋はもう新しい版になっています" }).waitFor({ timeout: 3000 });
+    const kept = await fp.evaluate(() => ({ card: !!window.__fourD.store.doc.nodes.n_other_device_card, edge: !!window.__fourD.store.doc.edges.e_other_device }));
+    assert(kept.card && kept.edge, `届いた別の端末の手が消えた: ${JSON.stringify(kept)}`);
+    // 2) 確認の間に、地図の無い内容が届く: 地図を足し直さない
+    await setMapVersion(fp, "old", 0);
+    const gone = await docFromOther(fp, "gone");
+    await fp.getByRole("button", { name: "メニュー", exact: true }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋だけを新しい版に差し替える/ }).click();
+    await confirm.waitFor();
+    await adopt(fp, gone);
+    await confirm.getByRole("button", { name: "新しい版にする" }).click();
+    await fp.locator(".toast", { hasText: "未来の道筋が地図から無くなったので、差し替えませんでした" }).waitFor({ timeout: 3000 });
+    const roots = await fp.evaluate(() => Object.values(window.__fourD.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length);
+    assert(roots === 0, `無くなった地図を足し直した（入口 ${roots}）`);
+    assert((await swaps(fp)) === before, "差し替えなくてよいのに差し替えた");
+    // 3) 開いたときのお知らせ（20 秒出ている）の間に、新しい版の地図が届く: 押しても確認を出さずに知らせる
+    await fp.evaluate(() => window.__fourD.store.undo());
+    await setMapVersion(fp, "old", 0);
+    await fp.waitForTimeout(800);
+    await fp.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      delete p.futureNotified;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+    });
+    await fp.reload({ waitUntil: "networkidle" });
+    const notice = fp.locator(".toast", { hasText: "未来の道筋の新しい版があります" });
+    await notice.waitFor({ timeout: 8000 });
+    await adopt(fp, await docFromOther(fp, "current"));
+    await notice.getByRole("button", { name: "新しい版にする" }).click();
+    await fp.locator(".toast", { hasText: "未来の道筋はもう新しい版になっています" }).waitFor({ timeout: 3000 });
+    const after = await fp.evaluate(() => ({ modal: document.querySelectorAll(".modal").length, card: !!window.__fourD.store.doc.nodes.n_other_device_card }));
+    assert(after.modal === 0 && after.card, JSON.stringify(after));
+    assert((await swaps(fp)) === 0, "お知らせから、もう新しい版の地図を差し替えた");
+  });
+
+  await check("未来の道筋: このページより新しい版で作った地図は戻さず、開き直せば新しい版で見られると知らせる（このページで 1 回。メニューからも戻さない）", async () => {
+    await setMapVersion(fp, "zz-newer-page", appVer.release + 1);
+    const btn = fp.locator(".zoom-ctl .future-btn");
+    await btn.click();
+    await fp.locator(".toast", { hasText: NEWER_FUTURE }).waitFor({ timeout: 3000 });
+    const first = await fp.evaluate(() => ({ modal: document.querySelectorAll(".modal").length, newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new") }));
+    assert(first.modal === 0 && first.newMark === false, `新しい地図に差し替えを聞いた・印を出した: ${JSON.stringify(first)}`);
+    // 2 回目からは知らせない（このページで 1 回）
+    await fp.evaluate(() => document.querySelectorAll(".toast .toast-close").forEach((b) => b.click()));
+    await fp.waitForTimeout(500);
+    await btn.click();
+    await fp.waitForTimeout(800);
+    assert(!(await toastTexts(fp)).some((t) => t.includes(NEWER_FUTURE)), "二度目も知らせた");
+    // メニューから頼まれても戻さず、訳を知らせる
+    await fp.getByRole("button", { name: "メニュー", exact: true }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋だけを新しい版に差し替える/ }).click();
+    await fp.locator(".toast", { hasText: NEWER_FUTURE }).waitFor({ timeout: 3000 });
+    const still = await fp.evaluate(() => ({ modal: document.querySelectorAll(".modal").length, ver: Object.values(window.__fourD.store.doc.nodes).find((n) => n.meta?.forecastRoot === true).meta.futureVersion }));
+    assert(still.modal === 0 && still.ver === "zz-newer-page", JSON.stringify(still));
+    // 開き直したとき: 差し替えのお知らせの代わりに、訳を 1 回だけ知らせる
+    await fp.waitForTimeout(800);
+    await fp.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      delete p.futureNotified;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+    });
+    await fp.reload({ waitUntil: "networkidle" });
+    await fp.locator(".toast", { hasText: NEWER_FUTURE }).waitFor({ timeout: 8000 });
+    assert((await fp.locator(".toast", { hasText: /未来の道筋(が新しくなりました|の新しい版があります)/ }).count()) === 0, "新しい版の地図に差し替えを勧めた");
   });
   await fctx.close();
 

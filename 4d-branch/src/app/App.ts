@@ -30,8 +30,8 @@ import { Commands } from "./commands";
 import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
-import { buildFuture, futureVersion } from "../demo/futureBundle";
-import { FRESH_FUTURE, FUTURE_MIN_ZOOM, NO_AUTO_FUTURE, futureMaps, hasFutureRoot, isFreshFuture, nearFutureRoot, staleFutureMaps, swapFutureDoc, withNoAutoFuture, yieldsToRemote } from "../demo/futureSwap";
+import { buildFuture, futureRelease, futureVersion } from "../demo/futureBundle";
+import { FRESH_FUTURE, FUTURE_MIN_ZOOM, NO_AUTO_FUTURE, futureAge, futureMaps, hasFutureRoot, hasStaleFuture, inPlaceRoot, isFreshFuture, nearFutureRoot, swapFutureDoc, withNoAutoFuture, yieldsToRemote, type FutureMap } from "../demo/futureSwap";
 
 export interface AppOptions {
   store: Store;
@@ -79,6 +79,14 @@ function closeWaitToast(): void {
 const READ_ONLY_FUTURE = "このタブは閲覧のみです。未来の道筋を開くには、上の「このタブで編集する」を押してください。";
 /** 未来の道筋を一度に開く入れ替えの名前（履歴・安全用バックアップ） */
 const FUTURE_OPEN_LABEL = "未来の道筋を開く";
+/** 地図の未来の道筋が、このページより新しい版で作られているとき（古い版に戻さない） */
+const FUTURE_NEWER = "この地図の未来の道筋は、このページより新しい版で作られています。ページを開き直すと新しい版で見られます";
+/** 新しい版にする前に確かめ直したら、もう新しい版だった */
+const FUTURE_UP_TO_DATE = "未来の道筋はもう新しい版になっています";
+/** 新しい版にする前に確かめ直したら、地図に未来の道筋が無かった */
+const FUTURE_GONE = "未来の道筋が地図から無くなったので、差し替えませんでした";
+/** 地図の右下の「未来の道筋」のボタンの説明 */
+const FUTURE_BTN_TITLE = "未来の道筋（仕事・3 年の分かれ道）: 地図にあれば今日に寄る・無ければ開く";
 /**
  * 自動で開く前に、アカウントとの最初の突き合わせを待つ長さ。これより遅い・つながらないときは開く
  * （開いたばかりで手を付けていない未来の道筋は、後で重なったら別の端末の内容に譲るので、待ち続けて見せないより良い）
@@ -115,6 +123,10 @@ export class App implements AppContext {
   /** この起動では、もう自動で開かない（利用者が未来の道筋の読み込みの確認を開いた: 決めるのは利用者） */
   private futureAutoDeclined = false;
   private futureWaitSeq = 0;
+  /** 「この地図の未来の道筋は、このページより新しい版」を、このページを開いている間に知らせた */
+  private futureNewerTold = false;
+  /** 「未来の道筋」のボタン（古い版の地図があれば「新」の印を付ける） */
+  private futureBtn: HTMLElement | null = null;
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null = null;
   onCloudChanged: () => void = () => undefined;
   private adopting = false;
@@ -166,11 +178,18 @@ export class App implements AppContext {
 
     // ---- キャンバスの上の部品
     this.zoomLabel = h("button", { class: "zoom-label", type: "button", title: "100% に戻す（0）", onClick: () => this.view.setZoom(1) }, "100%");
+    // 未来の道筋（仕事・3 年の分かれ道）: どの幅でも見える所に置く（あれば今日に寄る・無ければ開く）。古い版の地図があれば「新」の印
+    this.futureBtn = h(
+      "button",
+      { class: "future-btn", type: "button", title: FUTURE_BTN_TITLE, onClick: () => void this.showFuture() },
+      icon("split", 15),
+      h("span", null, "未来の道筋"),
+      h("span", { class: "future-new", attrs: { "aria-hidden": "true" } }, "新"),
+    );
     const zoomCtl = h(
       "div",
       { class: "zoom-ctl" },
-      // 未来の道筋（仕事・3 年の分かれ道）: どの幅でも見える所に置く（あれば今日に寄る・無ければ開く）
-      h("button", { class: "future-btn", type: "button", title: "未来の道筋（仕事・3 年の分かれ道）: 地図にあれば今日に寄る・無ければ開く", onClick: () => void this.showFuture() }, icon("split", 15), h("span", null, "未来の道筋")),
+      this.futureBtn,
       h("span", { class: "zoom-sep" }),
       h("button", { class: "icon-btn", type: "button", title: "縮小（−）", ariaLabel: "縮小", onClick: () => this.view.zoomBy(0.8) }, icon("minus", 16)),
       this.zoomLabel,
@@ -221,7 +240,10 @@ export class App implements AppContext {
     opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
 
     // ---- 配線
-    this.store.on("change", () => this.syncEmpty());
+    this.store.on("change", () => {
+      this.syncEmpty();
+      this.syncFutureNew();
+    });
     this.persistence.on("writer", (w) => {
       this.renderBanner();
       if (!w) this.cloud?.writerLost();
@@ -239,6 +261,7 @@ export class App implements AppContext {
 
     this.applyPrefs({});
     this.syncEmpty();
+    this.syncFutureNew();
     this.renderBanner();
     this.ui.persistPrefs = !this.ephemeral;
 
@@ -286,6 +309,16 @@ export class App implements AppContext {
 
   private syncEmpty(): void {
     this.emptyHint.hidden = Object.keys(this.store.doc.nodes).length > 0;
+  }
+
+  /** 古い版の未来の道筋があれば、「未来の道筋」のボタンに「新」の印（断って聞かれなくなっても、新しい版にできると分かる。入口だけを見るので軽い） */
+  private syncFutureNew(): void {
+    const btn = this.futureBtn;
+    if (!btn) return;
+    const on = hasStaleFuture(this.store.doc, futureVersion(), futureRelease());
+    if (btn.classList.contains("has-new") === on) return;
+    btn.classList.toggle("has-new", on);
+    btn.title = on ? `${FUTURE_BTN_TITLE}（新しい版があります）` : FUTURE_BTN_TITLE;
   }
 
   private onCamera(): void {
@@ -829,12 +862,35 @@ export class App implements AppContext {
     this.futureAutoDeclined = true;
     if (!this.ui.prefs.futureOffered) this.ui.setPrefs({ futureOffered: true });
     if (hasFutureRoot(this.store.doc)) {
-      // 古い版（10 年の道筋など）なら、今日に寄ってから差し替えを聞く（showFuture が聞く）
-      if (!staleFutureMaps(this.store.doc, futureVersion()).length) toast("未来の道筋はもう地図にあります。今日（入口）に寄りました", { ms: 5000 });
+      // 古い版（10 年の道筋など）なら、今日に寄ってから新しい版にするか聞く。このページより新しい版の地図なら訳を知らせる（どちらも showFuture が）
+      const st = this.futureState();
+      const asks = !st.newer.length && st.stale.length > 0 && !this.futureDeclined();
+      const tells = st.newer.length > 0 && !this.futureNewerTold;
+      if (!asks && !tells) toast("未来の道筋はもう地図にあります。今日（入口）に寄りました", { ms: 5000 });
       void this.showFuture();
       return;
     }
     openFutureDialog(this);
+  }
+
+  /** 今の地図の未来の道筋と版の様子（stale: このページの版より古い・newer: このページより新しい版で作った） */
+  private futureState(): { maps: FutureMap[]; stale: FutureMap[]; newer: FutureMap[] } {
+    const maps = futureMaps(this.store.doc);
+    const age = (m: FutureMap) => futureAge(m, futureVersion(), futureRelease());
+    return { maps, stale: maps.filter((m) => age(m) === "old"), newer: maps.filter((m) => age(m) === "newer") };
+  }
+
+  /** この版への差し替えを、「未来の道筋」から聞いて断った（この端末で。別のタブで断った物も） */
+  private futureDeclined(): boolean {
+    const v = futureVersion();
+    return this.ui.prefs.futureDeclined === v || this.ui.storedPrefs().futureDeclined === v;
+  }
+
+  /** 地図の未来の道筋が、このページより新しい版で作られている: 差し替えずに訳を知らせる（always でなければ、このページを開いている間に 1 回） */
+  private tellNewerFuture(always = false): void {
+    if (this.futureNewerTold && !always) return;
+    this.futureNewerTold = true;
+    toast(FUTURE_NEWER, { ms: 9000 });
   }
 
   /**
@@ -849,8 +905,12 @@ export class App implements AppContext {
       this.cmd.revealNode(root.id);
       this.ui.select([root.id]);
       this.view.fit(nearFutureRoot(this.store.doc), { minZoom: FUTURE_MIN_ZOOM });
-      // 地図の未来の道筋が同梱より古い版（10 年の道筋など）なら、押したこの時に差し替えるか聞く（お知らせを見逃しても入れ替えられる）
-      if (!this.store.readOnly && staleFutureMaps(this.store.doc, futureVersion()).length) void this.swapFuture();
+      // 地図の未来の道筋がこのページより新しい版で作られていれば、古い版に戻さずに訳を知らせる（このページで 1 回）。
+      // 同梱より古い版（10 年の道筋など）なら、押したこの時に新しい版にするか聞く（お知らせを見逃しても新しい版にできる。
+      // 断ったら、この版ではもう聞かない。お知らせとメニューからはできる）
+      const st = this.futureState();
+      if (st.newer.length) this.tellNewerFuture();
+      else if (!this.store.readOnly && st.stale.length && !this.futureDeclined()) void this.swapFuture("button");
       return;
     }
     if (this.store.readOnly) {
@@ -1020,11 +1080,22 @@ export class App implements AppContext {
     setTimeout(tick, 800);
   }
 
-  /** 文書に入っている未来の道筋だけを、同梱の新しい版に差し替える（ほかのノードはそのまま。元に戻せる） */
-  async swapFuture(): Promise<void> {
+  /**
+   * 文書に入っている未来の道筋を、同梱の新しい版にする（確かめてから。元に戻せる）。3 年の分かれ道は同じ地図の文章と数字だけを新しくし
+   * （足したカード・選んだ手・書き換えた所は残る）、それより前の地図（10 年の道筋など）は入れ替える。ほかのノードはそのまま。
+   * how: 頼まれた所（menu: メニュー・button: 「未来の道筋」・notice: 新しい版のお知らせ）。
+   * 確認を出す前と閉じた後に、今の地図で確かめ直す（お知らせ・確認を出している間に、同期で地図が新しい版になった・無くなった・
+   * このページより新しい版になった なら、差し替えずに知らせる）。「未来の道筋」から聞いて断ったら、この版ではもう聞かない
+   */
+  async swapFuture(how: "menu" | "button" | "notice" = "menu"): Promise<void> {
     if (this.store.readOnly) return;
-    const maps = futureMaps(this.store.doc);
-    if (!maps.length) return this.loadFuture();
+    const pre = this.futureState();
+    if (!pre.maps.length) {
+      if (how === "menu") return this.loadFuture();
+      toast(FUTURE_GONE, { ms: 6000 });
+      return;
+    }
+    if (!this.futureSwapNeeded(pre)) return;
     let built: ReturnType<typeof buildFuture>;
     try {
       built = buildFuture();
@@ -1033,39 +1104,100 @@ export class App implements AppContext {
       return;
     }
     const n = (v: number) => v.toLocaleString("ja-JP");
-    const old = maps.reduce((k, m) => k + m.nodes.size, 0);
+    // 3 年の分かれ道どうし: 同じ地図を新しい版にする（鍵で合わせる）。それより前の地図: 入れ替える
+    const upRoot = inPlaceRoot(this.store.doc, built.pv.doc);
+    const inPlace = upRoot !== null;
+    const old = pre.maps.reduce((k, m) => k + m.nodes.size, 0);
+    // 同じ地図を新しくするときも、ほかの未来の道筋（10 年の道筋・2 つ目の今日）は今までどおり消える: その数を確認に出す
+    const mine = pre.maps.find((m) => m.root === upRoot)?.nodes;
+    const others = new Set<ID>();
+    for (const m of pre.maps) if (m.root !== upRoot) for (const id of m.nodes) if (!mine?.has(id)) others.add(id);
     const { stats } = built;
-    const ok = await confirmDialog({
-      title: "未来の道筋を新しい版に差し替えますか？",
-      body: `今の地図にある未来の道筋（ノード ${n(old)} 件）を、新しい版「3 年の分かれ道」（判断 ${n(stats.decisions)}・選択肢 ${n(stats.options)}・3 年後の行き先 ${n(stats.ends)}。選択肢ごとに 3 年の稼ぎへの影響が見えます）に入れ替えます。ほかのノードはそのままです。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
-      ok: "差し替える",
-    });
-    if (!ok || this.store.readOnly) return;
-    const label = "未来の道筋を新しい版に差し替える";
+    const ok = await confirmDialog(
+      inPlace
+        ? {
+            title: "未来の道筋を新しい版にしますか？",
+            body: `3 年の分かれ道の文章と数字を新しい版にします。あなたが足したカード・選んだ手・見送った手・やることのチェック・年収・自分で書き換えた見込み（%）や文章はそのまま残ります。${others.size ? `ほかの古い未来の道筋（ノード ${n(others.size)} 件）は消えます。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+            ok: "新しい版にする",
+          }
+        : {
+            title: "未来の道筋を新しい版に差し替えますか？",
+            body: `今の地図にある未来の道筋（ノード ${n(old)} 件）を、新しい版「3 年の分かれ道」（判断 ${n(stats.decisions)}・選択肢 ${n(stats.options)}・3 年後の行き先 ${n(stats.ends)}。選択肢ごとに 3 年の稼ぎへの影響が見えます）に入れ替えます。ほかのノードはそのままです。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+            ok: "差し替える",
+          },
+    );
+    if (!ok) {
+      // 「未来の道筋」から聞いて断った: この版ではもう聞かない（お知らせ・メニューからは新しい版にできる。ボタンの「新」の印は残る）
+      if (how === "button") this.ui.setPrefs({ futureDeclined: futureVersion() });
+      return;
+    }
+    if (this.store.readOnly) return;
+    // 確認を出している間に、同期で地図が変わったかもしれない: 今の地図で確かめ直す
+    const now = this.futureState();
+    if (!now.maps.length) {
+      toast(FUTURE_GONE, { tone: "warn", ms: 6000 });
+      return;
+    }
+    if (!this.futureSwapNeeded(now)) return;
+    if ((inPlaceRoot(this.store.doc, built.pv.doc) !== null) !== inPlace) {
+      // 確かめた物と違うやり方になる（同じ地図を新しくすると聞いたのに入れ替える など）: しない
+      toast("確かめている間に地図が変わったため、新しい版にしませんでした。もう一度試してください", { tone: "warn", ms: 6000 });
+      return;
+    }
+    const label = inPlace ? "未来の道筋を新しい版にする" : "未来の道筋を新しい版に差し替える";
     void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
     const res = swapFutureDoc(this.store.doc, built.pv.doc);
     this.store.replaceDoc(res.doc, label);
     this.ui.setPrefs({ futureNotified: futureVersion(), futureOffered: true });
     this.ui.clearSelection();
     if (res.root && this.store.doc.nodes[res.root]) this.view.fit(nearFutureRoot(this.store.doc), { minZoom: FUTURE_MIN_ZOOM });
-    toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件${res.kept ? `・選んだ手や年収など ${n(res.kept)} 件を引き継ぎ` : ""}）`, { tone: "ok", action: this.cmd.undoAction() });
+    if (inPlace) {
+      const changes = [res.updated ? `カードの更新 ${n(res.updated)}` : "", res.added ? `追加 ${n(res.added)}` : "", res.removed ? `削除 ${n(res.removed)}` : ""].filter(Boolean).join("・");
+      const mine = res.userKept ? `あなたが足したカード ${n(res.userKept)} 件と、` : "";
+      toast(`未来の道筋を新しい版にしました（${changes || "変わったカードはありません"}）。${mine}選んだ手・チェック・年収・書き換えた文章や見込みはそのままです`, { tone: "ok", action: this.cmd.undoAction(), ms: 9000 });
+    } else {
+      toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件${res.kept ? `・選んだ手や年収など ${n(res.kept)} 件を引き継ぎ` : ""}）`, { tone: "ok", action: this.cmd.undoAction() });
+    }
     void this.refreshLastBackup();
   }
 
   /**
-   * 文書に入っている未来の道筋が同梱の版より古ければ、一度だけ知らせて差し替えを勧める（版ごとに 1 回）。
-   * 閲覧のみのタブでは、編集できるようになってから
+   * 新しい版にすることがあるか（無ければ訳を知らせて false）。このページより新しい版で作った地図は古い版に戻さない。
+   * もう新しい版なら何もしない
+   */
+  private futureSwapNeeded(st: { stale: FutureMap[]; newer: FutureMap[] }): boolean {
+    if (st.newer.length) {
+      this.tellNewerFuture(true);
+      return false;
+    }
+    if (!st.stale.length) {
+      toast(FUTURE_UP_TO_DATE, { ms: 5000 });
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 文書に入っている未来の道筋が同梱の版より古ければ、一度だけ知らせて新しい版にするのを勧める（版ごとに 1 回）。
+   * このページより新しい版で作った地図なら、勧めずに訳を知らせる。閲覧のみのタブでは、編集できるようになってから
    */
   private offerFutureUpdate(): void {
     if (this.ephemeral) return;
     const show = (): void => {
       if (this.store.readOnly) return;
       if (!Object.values(this.store.doc.nodes).some((x) => x.meta?.forecastRoot === true)) return;
+      const st = this.futureState();
+      if (st.newer.length) return this.tellNewerFuture();
       const v = futureVersion();
       if (this.ui.prefs.futureNotified === v || this.ui.storedPrefs().futureNotified === v) return;
-      if (!staleFutureMaps(this.store.doc, v).length) return;
+      if (!st.stale.length) return;
       this.ui.setPrefs({ futureNotified: v });
-      toast("未来の道筋が新しくなりました（選択肢ごとに 3 年の影響が見えます）。今の地図の未来の道筋だけを入れ替えます（ほかのノードはそのまま）", { action: { label: "差し替える", run: () => void this.swapFuture() }, ms: 20000 });
+      // 押したときに、今の地図で確かめ直す（20 秒の間に同期で新しい版になった・無くなった なら差し替えない）
+      if (inPlaceRoot(this.store.doc) !== null) {
+        toast("未来の道筋の新しい版があります（3 年の分かれ道の文章と数字）。あなたが足したカードや選んだ手はそのまま残ります", { action: { label: "新しい版にする", run: () => void this.swapFuture("notice") }, ms: 20000 });
+      } else {
+        toast("未来の道筋が新しくなりました（選択肢ごとに 3 年の影響が見えます）。今の地図の未来の道筋だけを入れ替えます（ほかのノードはそのまま）", { action: { label: "差し替える", run: () => void this.swapFuture("notice") }, ms: 20000 });
+      }
     };
     setTimeout(() => {
       if (!this.store.readOnly) return show();
