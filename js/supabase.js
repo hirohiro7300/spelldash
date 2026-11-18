@@ -1,9 +1,8 @@
 // Supabaseクライアント（遅延ロード版）。
 //
-// 以前は静的import("https://esm.sh/...")だったため、CDN障害時に
-// モジュールグラフ全体が失敗しアプリが起動しなかった（単一障害点）。
-// 動的importに変更し、失敗時はオフラインスタブで応答することで、
-// CDNが落ちてもゲーム本体はLocal Firstで動き続ける。
+// 部品は動的 import で読み、読めないときはオフラインスタブで応答する（以前は外の配信元から静的 import していて、
+// そこが落ちるとモジュールグラフ全体が失敗しアプリが起動しなかった）。Batch 97 から読む先は自分の配信（下の OWN_MODULE_URL）。
+// 配信の関数が答えなくても、ゲーム本体は Local First で動き続ける（ログイン・同期・ご意見の送信・動線の計測が使えない）。
 //
 // ここに置くキーはブラウザに埋め込む前提の「公開キー」（anon / publishable）です。
 // 秘密の service_role キーは絶対に置かないこと。
@@ -21,13 +20,32 @@ export const isSupabaseConfigured =
   supabaseAnonKey.length > 20 &&
   (supabaseAnonKey.startsWith("eyJ") || supabaseAnonKey.startsWith("sb_"));
 
-// テスト用の差し替え口（本番では常にesm.sh）。
+// 認証の部品は自分の配信から読む（Batch 97。api/auth-module.js が登録所の固定の版を確かめてから出す。外の配信元は CSP に無い）。
 // 部品の版は固定する（2.118.0。2026-10-29 に決めた）: 人ごとの保存の領域（js/areaGuard.js）は、部品が保存するセッションの鍵と形・
 // タブをまたぐ知らせ・SIGNED_OUT を出す時機に頼る。幅のある版（@2）だと、知らないうちに振る舞いが変わる。版を上げるときは
-// 旧タブの検査（tests/oldtab）と scripts/test-areas.mjs を流してから
-const MODULE_URL =
-  (typeof window !== "undefined" && window.__SUPABASE_MODULE_URL) ||
-  "https://esm.sh/@supabase/supabase-js@2.118.0";
+// api/_lib/authModule.js の値とこの字を替え、旧タブの検査（tests/oldtab）・scripts/test-areas.mjs・scripts/test-auth-module.mjs を流してから。
+// この字は api/_lib/authModule.js の AUTH_MODULE_URL と同じ（v は版、h は答えの sha256 の頭 8 字: 答えが変われば URL も変わる。
+// scripts/test-auth-module.mjs が確かめる）
+const OWN_MODULE_URL = "/api/auth-module?v=2.118.0&h=c1a6b90c";
+// テスト用の差し替え口（window.__SUPABASE_MODULE_URL）。本番では読まない: 字（string）で、しかもページの無い所（単体の検査）か
+// 手元の名前（localhost・127.0.0.1・[::1]: E2E と旧タブの検査の台）のときだけ使う。www・確認用の配信では読まない。
+// 入った HTML の id・name が window の名前を上書きしても、それは要素で字ではないので使わない
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+// ページの名前（ページの無い所では null。location は名前だけを読む: scripts/test-share.mjs の「URL を送る module」の決まり）
+function pageHostname() {
+  try {
+    return String(location.hostname ?? "");
+  } catch {
+    return null;
+  }
+}
+function testModuleUrl() {
+  const url = typeof window !== "undefined" ? window.__SUPABASE_MODULE_URL : undefined;
+  if (typeof url !== "string" || url === "") return null;
+  const host = pageHostname();
+  return host === null || LOCAL_HOSTS.includes(host) ? url : null;
+}
+const MODULE_URL = testModuleUrl() ?? OWN_MODULE_URL;
 
 // 認証のセッションを置く鍵（世代を分けた新しい名前。spelldash_ で始めない）。旧い既定の鍵 sb-<ref>-auth-token は、移行のときに
 // 切り替えの画面（js/areaSwitch.js）がここへ移して消す。旧コードのタブの部品は旧い鍵と旧い知らせの名前しか見ないので、

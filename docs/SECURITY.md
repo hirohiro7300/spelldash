@@ -8,11 +8,11 @@
 |---|---|
 | 秘密情報の混入 | なし。リポジトリ内のキーはanon（公開前提）のみ。service_roleキーなし |
 | 危険シンク（eval / new Function / document.write / javascript:） | 使用なし |
-| XSS | （2026-11-09・Batch 88 で書き直し）語・訳・名前・id の字は、HTML に入れるとき必ず `esc`（js/html.js。`'` も実体にする）か `escapeHtml` を通す。渡すリンク・同期・バックアップで届いた語は信用しない入力で、学習状況・一覧・語の詳細・回の板まで届く。scripts/test-text-safe.mjs の 7（HTML を組むテンプレートの見張り）が漏れを見張る。ハッシュだけの script-src（下の Batch 88 の節）は、入った on* の属性・インラインの script・`javascript:` を止めるが、**認証の部品の配信元（esm.sh）が script-src に残る間は 2 つ目の守りにならない**: 入った HTML の `<iframe srcdoc>` の中の `<script src>` はその配信元から読め（その配信元はだれでも出せる公開の部品を配る）、srcdoc の文書は同じオリジンなので、このページの保存（ログインのセッションを含む）に届く（frame-src でも止まらない）。だから今は esc が唯一の守りで、配信元を外すのは 1 人目の前（docs/FOUNDER_TODO.md の決めてほしいことの 16）。ランキングの display_name も `escapeHtml` |
+| XSS | （2026-11-09・Batch 88 で書き直し・2026-11-18・Batch 97 で直した）語・訳・名前・id の字は、HTML に入れるとき必ず `esc`（js/html.js。`'` も実体にする）か `escapeHtml` を通す。渡すリンク・同期・バックアップで届いた語は信用しない入力で、学習状況・一覧・語の詳細・回の板まで届く。scripts/test-text-safe.mjs の 7（HTML を組むテンプレートの見張り）が漏れを見張る。ハッシュだけの script-src（下の Batch 88 の節）は、入った on* の属性・インラインの script・`javascript:` を止める。Batch 97 から script-src は自分のファイルとハッシュだけ（認証の部品も自分の配信から出す。下の Batch 97 の節）なので、入った HTML の `<iframe srcdoc>` の中の外の `<script src>` も走らない（E2E 97.1 (3)）。esc は 1 つ目の守りのまま（scripts/test-text-safe.mjs の 7 が漏れを見張る）。ランキングの display_name も `escapeHtml` |
 | RLS | 全テーブルで有効。daily_scores の select-all 以外はすべて `auth.uid() = user_id` で本人限定 |
 | Service Worker | same-origin GET のみ処理。クロスオリジン（Supabase・認証）には触れない。res.ok のみキャッシュ |
 | target="_blank" | すべて rel="noopener" 付き |
-| 外部通信先 | esm.sh（Supabase SDK）と Supabase プロジェクトのみ |
+| 外部通信先 | 認証とデータのプロジェクト（connect-src の 1 か所）のみ。認証の部品は自分の配信から出す（2026-11-18・Batch 97。下の Batch 97 の節） |
 | 依存パッケージ | ゼロ（ビルドなし・npm依存なし）。サプライチェーン面が極小 |
 
 ## ⚠️ 発見事項と対応
@@ -29,14 +29,14 @@ score=999999 や巨大display_nameの荒らしが可能だった。
 
 ### 3.【低】セキュリティヘッダー未設定 → 対応準備済み
 **対応**: vercel.json 新規作成（X-Frame-Options: DENY / nosniff / Referrer-Policy / Permissions-Policy / CSP）。
-CSP の script-src は、自分のファイル・配るページのインラインの script のハッシュ（中身が 1 字でも違えば動かない）・認証の部品の配信元だけ（2026-11-09・Batch 88 で 'unsafe-inline' を外した。下の Batch 88 の節）
+CSP の script-src は、自分のファイルと配るページのインラインの script のハッシュ（中身が 1 字でも違えば動かない）だけ（2026-11-09・Batch 88 で 'unsafe-inline' を外し、2026-11-18・Batch 97 で認証の部品の外の配信元を外した。下の Batch 88 と Batch 97 の節）
 
 ### 4.【低・受容】daily_scores が user_id (UUID) を公開
 自分の行のハイライトに使用。RLSは auth.uid() 基準のため、UUIDを知っても他人のデータにはアクセス不可。受容
 
-### 5.【低・記録】esm.sh 単一障害点
-supabase.js が CDN import のため、esm.sh 障害時はモジュールグラフ全体が失敗しアプリが起動しない。
-**推奨（将来）**: dynamic import化＋失敗時スタブでLocal First起動を保証。バージョンも完全固定（@2.x.y）が望ましい
+### 5.【低・記録】認証の部品の配信の単一障害点 → 対応済み
+以前は js/supabase.js が外の配信元から静的 import していて、そこが落ちるとモジュールグラフ全体が失敗しアプリが起動しなかった。
+**対応**: 動的 import と、読めないときのオフラインのスタブ（Local First で起動する）・版の固定（2.118.0）。2026-11-18・Batch 97 から部品は自分の配信の関数（api/auth-module.js）が出す。関数が答えないときも、使えないのはログイン・同期・ご意見の送信・動線の計測だけで、学習は端末の記録で動く（E2E 97.1 (2)）
 
 ### 6.【低・記録】メールマジックリンクのレート制限
 Supabase側設定の既知課題（STATUS.md記載）。Googleログインが主経路のため優先度低
@@ -95,7 +95,7 @@ Supabase側設定の既知課題（STATUS.md記載）。Googleログインが主
 - 創業者の作業は docs/FOUNDER_TODO.md の「守り」1〜14（払えなかった後の設定・異議・アカウントを消す順・本番への切り替えの確かめ・AI の鍵の入れ方・Preview の守り・SQL 4 本〔AI の回数・user_items の大きさと数・ご意見の長さ・動線の集計〕・認証の設定・`CRON_SECRET`・`ADMIN_USER_IDS`・量の見張り）。SQL は流さなくてもアプリは壊れない（コードは SQL に頼っていない）。
 - 創業者の決めは同じ docs の「決めてほしいこと」10〜17（端末の Pro の印・払えなかった人を Pro とする長さ・無料期間の取り直し・異議の自動化・AI のインスタンスごとの合計・アプリの控え・認証の部品の配信元・無料 100 語をデータベースでも守るか）。
 - 端末の Pro の印（上の「受容リスク」）は今のまま。書き換えると端末の特典は開く（決めてほしいことの 10）。
-- 認証の部品は外の配信元（esm.sh）から読む（script-src と connect-src に残る。決めてほしいことの 16）。この配信元はだれでも出せる公開の部品を配るので、esc の漏れが 1 か所でもあると、入った HTML の `<iframe srcdoc>` の中の `<script src>` がその配信元の任意の部品を読み、同じオリジンの保存（ログインのセッション）に届く（反証で同じ形の CSP を手元のブラウザで確かめた。`frame-src 'none'` を足しても止まらない）。**1 人目の前に**、固定の版の部品を自分の配信から出してこの配信元を外す（こちらの次の守りの回。Preview は部品を読まないので、配信の答えのハッシュを確かめてから本番に出す）。それまでは HTML を組む所は必ず esc を通し、scripts/test-text-safe.mjs の 7 で見張る。
+- ✅（2026-11-18・Batch 97 で直した）認証の部品を外の配信元から読んでいた（script-src と connect-src に残っていた。決めてほしいことの 16）。esc の漏れが 1 か所でもあると、入った HTML の `<iframe srcdoc>` の中の `<script src>` がその配信元の任意の部品を読み、同じオリジンの保存（ログインのセッション）に届く形だった（`frame-src 'none'` を足しても止まらない）。固定の版を自分の配信から出し、この配信元を CSP から外した（下の Batch 97 の節）。Preview は部品を読まないので、マージ（＝本番に出す）の前に創業者が確認用の配信で関数の答えを開いて見る（関数は sha512 と sha256 が固定の値と同じときだけ答えを出すので、`/*!` と `MIT License` の字が出れば確かめは済む。PR の本文）。本番に出たら www で 1 回ログインする（docs/FOUNDER_TODO.md の守り 15）
 - アプリの包み（dist）のページに CSP の meta を入れる直し（計画の A8）は今回入れていない。アプリはまだ出しておらず、ログインも購入の画面も無い。アプリを出す回で入れる（frame-ancestors は meta で効かないので外し、connect-src に本番の API の origin を足す）。
 - word_progress・play_sessions・battle_sessions の 1 人の行の数の上限は次の守りの回で（それまでは守り 14 の量の見張りで見る）。
 
@@ -106,3 +106,34 @@ Supabase側設定の既知課題（STATUS.md記載）。Googleログインが主
 3. `node scripts/test-site-map.mjs`（8 がハッシュと HTML の一致を見る）と E2E 88.1 (3) を流す。
 
 ハッシュの合わないインラインの script は本番で黙って動かない。検査が落ちるので、そのまま出ることは無い。
+
+## 2026-11-18 追記: Batch 97（認証の部品を自分の配信から）
+
+Batch 88 で残した「認証の部品の外の配信元」を外した（docs/FOUNDER_TODO.md の決めてほしいことの 16）。直す前の木で落ちる検査を先に書いた（docs/CHANGELOG.md 2026-11-18）。こちらでは本番・配信の管理画面・本物の認証には触れていない（登録所の公開の tarball は CI と手元で取った）。
+
+### 形
+
+| 項目 | 決まり | 検査 |
+|---|---|---|
+| 出す口 | `GET` の `/api/auth-module?v=2.118.0&h=c1a6b90c` だけ（api/auth-module.js。ログイン不要・鍵なし）。v は版、h は答えの sha256 の頭 8 字（答えのバイトが変われば URL も変わる）。ほかの版・印・余った問い・問い無しは 404、GET のほかは 405（HEAD も: 中身の無い答えに 1 年の保存の頭を付けない）。どちらも保存させない | 単体 test-auth-module の B・C5 |
+| 作り方 | 関数が登録所の決まった tarball の URL（https。転送されたら行き着いた先も https か見る）から固定の版を取る（5 秒で打ち切り・読みながら数えて 2 MB まで）→ 開く前に sha512 が固定の integrity と同じか → メモリの中で開く（ファイルに書かない）→ package.json の名前と版 → 束の形 → 束と export の行の sha256 → 頭に配布物の LICENSE の文（そのまま）→ 答えの sha256。どれかが違えば作らない。固定の値と作り方は api/_lib/authModule.js の 1 か所（tests/oldtab/lib/authLib.mjs も同じ物を読む） | 単体 A・C。CI の oldtab のジョブの `--live`（毎回本物の登録所から作って、固定の値と同じか・旧タブの証明の写しと束が 1 バイトも違わないか） |
+| 答え | 200 は `text/javascript; charset=utf-8`・`nosniff`・`public, max-age=31536000, s-maxage=31536000, immutable`（版ごとに URL が変わる）・`Cross-Origin-Resource-Policy: same-origin`。作れないときは 503・`no-store`・`Retry-After: 10`。インスタンスのメモリーに 1 回作った物を持つ。同時の呼び出しは同じ 1 回を待つ。作れなかった後 10 秒は作り直さない（登録所が止まっている間、呼ぶたびに待たせない） | 単体 B |
+| ログ | `auth-module: unavailable <理由の短い字>` だけ（URL・問いの字・中身を書かない） | 単体 B7 |
+| 読む側 | js/supabase.js は同じオリジンの `/api/auth-module?v=2.118.0&h=c1a6b90c`（api/_lib/authModule.js の `AUTH_MODULE_URL` と同じ字。単体 C1）を動的 import で読む（Service Worker は `/api/` を保存しないので sw.js は変えていない）。確認用の Preview は今までどおり読まない | E2E 97.1 (1)・78.8・86.1 |
+| テストの口 | `window.__SUPABASE_MODULE_URL` は、字（string）で、ページの無い所（単体の検査）か手元の名前（localhost・127.0.0.1・[::1]）のときだけ読む。www では読まない。入った HTML の要素で window の名前を上書きされても読まない（前は読んだ） | 単体 D・E2E 97.1 (4) |
+| CSP | script-src は `'self'` とインラインの script のハッシュだけ。connect-src から外の配信元を外した（締めるだけ。ほかの指示は同じ） | scripts/test-site-map.mjs の 8（外の先・`https:`・`data:`・`blob:`・`*` などを足す変異で落ちる）・E2E 88.1 (3)・7.5 の P1・97.1 (3) |
+| 答えないとき | ログイン・同期・ご意見の送信・動線の計測だけが使えない（ご意見は端末の列に残る）。学習と記録は端末で今までどおり。データは消えない | E2E 97.1 (2)・78.7 (14) |
+
+### 版を上げるとき
+
+1. `node scripts/test-auth-module.mjs --print <版>`（ネットワーク）が、登録所の版の情報の integrity と tarball の sha512 を合わせてから、4 つの値（版・integrity・body・served）と配る URL を出す。
+2. api/_lib/authModule.js の `AUTH_MODULE_VERSION` と `AUTH_MODULE_PIN` をその値に、js/supabase.js の `OWN_MODULE_URL` を出た URL（`AUTH_MODULE_URL` と同じ字。h は served の頭 8 字）にする（単体 C1・C5 が見る）。
+3. 旧タブの証明（tests/oldtab）・scripts/test-areas.mjs・scripts/test-auth-module.mjs（`--live` も）・E2E 78.7 と 97.1 を流す。CI の控えの鍵は api/_lib/authModule.js が変わると変わる。
+4. 版を上げずに答えのバイトだけが変わるとき（束の作り方・注記を変える）も同じ: served が変わるので URL の h も変わる。答えは端末に 1 年保存させる（immutable）ので、同じ URL のまま答えを替えると、前に読んだ端末には届かない（C5 が URL と served の頭 8 字を合わせて見る）。
+
+### 残したこと
+
+- 答えの大きさ: 約 220 KB（縮めると約 56 KB）。配信が関数の答えを縮めて届けるかは、こちらから確かめられない。immutable なので端末ごとに 1 回。本番で見てから決める（docs/BACKLOG.md）。
+- 冷えたインスタンスの初めの 1 回は登録所から取る（手元で 3 回測って 0.09〜0.13 秒）。登録所が止まっていて縁にも保存が無いときは 503 で、上の表の「答えないとき」と同じ（ログイン・同期・ご意見の送信・動線の計測が使えず、学習は端末で動く）。作れなかったインスタンスは 10 秒は作り直さず、その後の要求で作り直す（登録所が戻っていれば出る）。
+- アプリの包み（dist）は部品を読まない（アプリの中に `/api/` は無い）。アプリはまだ出しておらず、ログインの入口も無い。アプリを出す回で読み方を決める（docs/BACKLOG.md）。
+- 確かめは創業者のブラウザで: マージの前に確認用の配信で関数の答えを 1 回（PR の本文）、本番に出たら www で 1 回（docs/FOUNDER_TODO.md の守り 15）。

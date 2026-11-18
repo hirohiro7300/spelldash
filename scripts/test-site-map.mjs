@@ -26,7 +26,7 @@
 //      3 ページの旗は js/focus.js FOCUS_ENGLISH と同じ（index.html・profile.html と同じ旗）。門は 3 ページで同じ文
 //   8. CSP の script-src（Batch 88。docs/SECURITY.md）: 配る HTML 全部（.vercelignore と .git・node_modules を除いた木の *.html。今はルートと packs/）の
 //      inline の script（src なし・type なしか module・text/javascript・application/javascript）の本文の sha256 を数え、vercel.json の全体のヘッダーの
-//      Content-Security-Policy の script-src が「'self'・そのハッシュ全部（重ねない）・https://esm.sh」とちょうど同じ。'unsafe-inline'・'unsafe-eval'・
+//      Content-Security-Policy の script-src が「'self'・そのハッシュ全部（重ねない）」とちょうど同じ（外の配信元・https: などの形は無い。Batch 97）。'unsafe-inline'・'unsafe-eval'・
 //      'unsafe-hashes'・'strict-dynamic' は無い。script-src のほかの指示は決めた字のまま（緩めない。締めるときはこの表も直す）。配る HTML の要素に
 //      on* の属性（onclick= など）と javascript: の URL が 0。違うときは足りない・余ったハッシュと、そのハッシュの script があるファイルを出す
 //      （inline の script を 1 字でも直したら、node scripts/lib/csp.mjs が出す script-src の値を vercel.json に写す）。写しを壊すと落ちる
@@ -237,7 +237,7 @@ const CSP_OTHER = [
   "default-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
-  "connect-src 'self' https://esm.sh https://sujvgwozsnzjsjmkcrnk.supabase.co wss://sujvgwozsnzjsjmkcrnk.supabase.co",
+  "connect-src 'self' https://sujvgwozsnzjsjmkcrnk.supabase.co wss://sujvgwozsnzjsjmkcrnk.supabase.co",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'"
@@ -256,8 +256,9 @@ function cspProblems(vercelJson, html) {
   if (JSON.stringify(others) !== JSON.stringify(CSP_OTHER)) problems.push(`script-src のほかの指示が決めた字と違う: ${JSON.stringify(others)}`);
   const tokens = scriptSrc.split(/\s+/).slice(1);
   for (const bad of ["'unsafe-inline'", "'unsafe-eval'", "'unsafe-hashes'", "'strict-dynamic'", "'wasm-unsafe-eval'"]) if (tokens.includes(bad)) problems.push(`script-src に ${bad}`);
-  if (tokens[0] !== "'self'" || tokens.at(-1) !== "https://esm.sh") problems.push(`script-src の頭が 'self'・終わりが https://esm.sh でない: ${tokens.slice(0, 1)}…${tokens.slice(-1)}`);
-  const middle = tokens.slice(1, -1);
+  if (tokens[0] !== "'self'") problems.push(`script-src の頭が 'self' でない: ${tokens.slice(0, 1)}`);
+  // 'self' の後はハッシュだけ（Batch 97: 認証の部品は自分の配信から読むので、外の配信元・https:・data:・* などは置かない）
+  const middle = tokens.slice(1);
   const where = new Map();
   for (const [file, h] of Object.entries(html)) for (const body of inlineScripts(h)) {
     const hash = scriptHash(body);
@@ -311,7 +312,7 @@ const served = servedHtml(ROOT);
 const servedFiles = Object.keys(served);
 const cp = cspProblems(vercelText, served);
 const inlineCount = new Set(Object.values(served).flatMap((h) => inlineScripts(h).map(scriptHash))).size;
-ok(`8. CSP: vercel.json の script-src は 'self'・配る HTML（${servedFiles.length} ファイル: ルートと packs/）の inline の script の sha256 全部（${inlineCount} 種類）・https://esm.sh だけ（'unsafe-inline' なし）・ほかの指示は決めた字のまま・on* の属性と javascript: の URL は 0`, cp.length === 0 && servedFiles.length >= 175 && servedFiles.includes("index.html") && servedFiles.includes("packs/ngsl01.html") && !servedFiles.some((f) => /^(tests|scripts|docs|ios|android|dist)\//.test(f)) && inlineCount >= 10, show(cp));
+ok(`8. CSP: vercel.json の script-src は 'self'・配る HTML（${servedFiles.length} ファイル: ルートと packs/）の inline の script の sha256 全部（${inlineCount} 種類）だけ（外の配信元・'unsafe-inline' なし）・ほかの指示は決めた字のまま・on* の属性と javascript: の URL は 0`, cp.length === 0 && servedFiles.length >= 175 && servedFiles.includes("index.html") && servedFiles.includes("packs/ngsl01.html") && !servedFiles.some((f) => /^(tests|scripts|docs|ios|android|dist)\//.test(f)) && inlineCount >= 10, show(cp));
 
 // 9. 間違えた URL の行き先（Batch 89 A6）: root の 404.html（配信は見つからない道でこれを返す）。noindex・sitemap に無い・ナビの 4 つとフッター（5 と同じ決まり。現在地なし）・
 //    「ページが見つからない。」と「ホームへ」（href="/"）・入れ子の道（/a/b）でも読めるよう href と src は / か https:// か # で始まる・inline の script はほかの配るページと
@@ -420,14 +421,20 @@ const withCsp = (f) => {
 const firstHash = (v) => v.match(/'sha256-[^']+'/)?.[0] ?? "";
 mutate("script-src に 'unsafe-inline' を戻す", cspProblems(withCsp((v) => v.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'")), served));
 mutate("script-src からハッシュを 1 つ消す", cspProblems(withCsp((v) => v.replace(`${firstHash(v)} `, "")), served));
-mutate("script-src に余ったハッシュを足す", cspProblems(withCsp((v) => v.replace("https://esm.sh;", `'sha256-${"A".repeat(43)}=' https://esm.sh;`)), served));
+// script-src の終わり（次の指示の「;」の前）に足す
+const addToScriptSrc = (v, extra) => v.replace(/(script-src [^;]*);/, `$1 ${extra};`);
+const addToConnectSrc = (v, extra) => v.replace(/(connect-src [^;]*);/, `$1 ${extra};`);
+mutate("script-src に余ったハッシュを足す", cspProblems(withCsp((v) => addToScriptSrc(v, `'sha256-${"A".repeat(43)}='`)), served));
 mutate("script-src に同じハッシュを 2 回", cspProblems(withCsp((v) => v.replace(firstHash(v), `${firstHash(v)} ${firstHash(v)}`)), served));
 mutate("ページの inline の script を 1 字変える（ハッシュを直さない）", cspProblems(vercelText, { ...served, "news.html": served["news.html"].replace("renderNews", "renderNews ") }));
 mutate("パックのページの inline の script を 1 字変える", cspProblems(vercelText, { ...served, "packs/ngsl01.html": served["packs/ngsl01.html"].replace('location.replace("/?from=old");', 'location.replace("/?from=old"); ') }));
 mutate("ページに inline の on* の属性（onclick）を足す", cspProblems(vercelText, { ...served, "terms.html": served["terms.html"].replace("<body", '<body onload="x()"') }));
 mutate("ページに javascript: の URL を足す", cspProblems(vercelText, { ...served, "privacy.html": served["privacy.html"].replace('<a href="./news.html">', '<a href="javascript:void(0)">') }));
 mutate("connect-src を緩める（https: を足す）", cspProblems(withCsp((v) => v.replace("connect-src 'self'", "connect-src 'self' https:")), served));
-mutate("script-src に外の先を足す", cspProblems(withCsp((v) => v.replace("https://esm.sh;", "https://esm.sh https://cdn.example.com;")), served));
+mutate("script-src に外の先を足す", cspProblems(withCsp((v) => addToScriptSrc(v, "https://cdn.example.com")), served));
+mutate("script-src に外の部品の配信元を戻す（ハッシュの前）", cspProblems(withCsp((v) => v.replace("script-src 'self'", "script-src 'self' https://lib.example.net")), served));
+for (const scheme of ["https:", "data:", "blob:", "*", "'unsafe-hashes'", "'strict-dynamic'"]) mutate(`script-src に ${scheme} を足す`, cspProblems(withCsp((v) => addToScriptSrc(v, scheme)), served));
+mutate("connect-src に外の部品の配信元を戻す", cspProblems(withCsp((v) => addToConnectSrc(v, "https://lib.example.net")), served));
 mutate("script-src に 'unsafe-eval' を足す", cspProblems(withCsp((v) => v.replace("script-src 'self'", "script-src 'self' 'unsafe-eval'")), served));
 mutate("frame-ancestors を消す", cspProblems(withCsp((v) => v.replace(" frame-ancestors 'none';", "")), served));
 mutate("新しいページの inline の script（ハッシュを足していない）", cspProblems(vercelText, { ...served, "new-page.html": "<!doctype html><script>console.log(1)</script>" }));
