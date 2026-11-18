@@ -3,7 +3,8 @@
 //   詳細（選んだノード）: 選択肢なら 3 年の影響・選ぶ／見送る・内訳・結果・同じ判断の手。結果・行き先なら見込み・その時の状態・目印
 // 数は vm.impact（src/model/impact.ts）を読むだけ。文は src/model/impactText.ts。
 // 中身は数が変わったとき（vm.impact が新しくなったとき）と、書いた題名・線の文が変わったときだけ作り直す。年収の欄は作り直さない（入力中に消さない）。
-// 作り直すときは、フォーカスのあった部品（data-fk の鍵）か代わりの部品へフォーカスを戻す（体に落とすと、次の Tab・Backspace がキャンバスの操作になる）
+// キーボードで操作しているときは、作り直した後もフォーカスのあった部品（data-fk の鍵）か代わりの部品へ戻す
+// （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押したときは動かさない（続くキーは選んだカードへの操作のまま）
 
 import type { AppContext } from "../app/context";
 import { futureData } from "../demo/futureBundle";
@@ -131,6 +132,24 @@ const FOCUSABLE = "button, input, select, textarea, summary, a[href]";
 
 const canFocus = (el: HTMLElement): boolean => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0;
 
+/** 最後にマウス・タッチで押した所。キーを押したら消す（その後のフォーカスはキーボードで動かした物） */
+let pointed: Node | null = null;
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", (ev) => (pointed = ev.target instanceof Node ? ev.target : null), true);
+  document.addEventListener("keydown", () => (pointed = null), true);
+}
+
+/** マウス・タッチで root の中を押した後で、まだキーを押していないか */
+const pointerIn = (root: Node): boolean => !!pointed && root.contains(pointed);
+
+/**
+ * キーボード（や読み上げ）で操作しているフォーカスか。マウス・タッチで押して移ったフォーカスは false
+ * （そのときはフォーカスを動かさない。押すと決まるボタンへ黙って移すと、続く Enter・Space で知らないうちに選んでしまう）
+ */
+export function keyboardFocus(el: Element | null): el is HTMLElement {
+  return el instanceof HTMLElement && !pointerIn(el);
+}
+
 /** 最初の押せる部品へフォーカスを移す。移せたら true */
 function focusFirst(root: ParentNode): boolean {
   for (const el of root.querySelectorAll<HTMLElement>(FOCUSABLE)) {
@@ -141,15 +160,27 @@ function focusFirst(root: ParentNode): boolean {
   return false;
 }
 
-/** root の中にフォーカスがあれば、その部品の鍵（data-fk。鍵の無い部品は ""）。無ければ null */
+/** root の中の部品をキーボードで操作していれば、その部品の鍵（data-fk。鍵の無い部品は ""）。していなければ null */
 function focusKeyIn(root: HTMLElement): string | null {
   const a = document.activeElement;
-  return a instanceof HTMLElement && root.contains(a) ? (a.dataset.fk ?? "") : null;
+  return keyboardFocus(a) && root.contains(a) ? (a.dataset.fk ?? "") : null;
+}
+
+/** 今押している「これにする」「見送る」の鍵（押した後の作り直しでだけ「選び直す」へ移す。ほかの変更で作り直しても同じ部品に残す） */
+let pressing: string | null = null;
+
+function press(key: string, run: () => void): void {
+  pressing = key;
+  try {
+    run();
+  } finally {
+    pressing = null;
+  }
 }
 
 /**
  * 作り直した後に、前にフォーカスのあった部品（鍵が同じ物）へ戻す。押して用が済んだ・押せなくなった・無くなった部品は代わりへ
- * （「これにする」「見送る」の後は「選び直す」、「選び直す」「これを基準にする」の後は「これにする」、それも無ければ最初の部品）
+ * （「これにする」「見送る」を押した後は「選び直す」、「選び直す」「これを基準にする」の後は「これにする」、それも無ければ最初の部品）
  */
 function refocus(root: HTMLElement, key: string): void {
   const at = (k: string) => (k ? root.querySelector<HTMLElement>(`[data-fk="${CSS.escape(k)}"]`) : null);
@@ -157,7 +188,7 @@ function refocus(root: HTMLElement, key: string): void {
   const kind = i < 0 ? key : key.slice(0, i);
   const id = key.slice(i + 1);
   const keys = [key];
-  if ((kind === "pick" || kind === "drop") && at(key)?.getAttribute("aria-pressed") === "true") keys.unshift(`redo:${id}`);
+  if ((kind === "pick" || kind === "drop") && key === pressing && at(key)?.getAttribute("aria-pressed") === "true") keys.unshift(`redo:${id}`);
   if (kind === "redo" || kind === "base") keys.push(`pick:${id}`);
   for (const k of keys) {
     const el = at(k);
@@ -171,27 +202,23 @@ function refocus(root: HTMLElement, key: string): void {
 
 // ------------------------------------------------------------ 移動
 
-/** そのノードを出して選び、地図ならそこへ寄る（closeDrawer: 狭い画面では右のパネルを閉じてカードを見せる） */
+/**
+ * そのノードを出して選び、地図ならそこへ寄る（closeDrawer: 狭い画面では右のパネルを閉じてカードを見せる）。
+ * キーボードでパネルの行を押したときは、引き出しを開いたまま、選んだノードの詳細（3 年の影響）の最初の部品へフォーカスを移す
+ * （体に落とすと、次の Tab・Backspace がキャンバスの操作になる）。マウス・タッチで押したときはフォーカスを動かさない
+ */
 function goTo(app: AppContext, id: ID, closeDrawer: boolean): void {
   if (!app.store.doc.nodes[id]) return;
-  // パネルの行から選んだ（キーボードでも）: 作り直したパネルへフォーカスを移す（体に落とすと、次の Tab・Backspace がキャンバスの操作になる）
   const panel = document.querySelector<HTMLElement>(".sidebar-right");
   const active = document.activeElement;
-  const from = panel && active instanceof HTMLElement && panel.contains(active) ? active : null;
+  const from = panel && !pointerIn(panel) && active instanceof HTMLElement && panel.contains(active) ? active : null;
   app.cmd.revealNode(id);
   app.ui.select([id]);
-  const close = closeDrawer && isNarrowScreen() && app.ui.prefs.rightOpen;
-  if (close) app.ui.setPrefs({ rightOpen: false });
+  if (closeDrawer && !from && isNarrowScreen() && app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: false });
   if (app.ui.prefs.view === "map") app.view.centerOn(id);
   else app.revealInList(id);
-  if (!panel || !from) return;
-  // 引き出しを閉じた: 見えるようになったキャンバスへ。開いたまま: 選んだノードの詳細（3 年の影響）の最初の部品へ
-  // （同じノードを押してパネルが作り直されていなければ、そのまま）
-  if (close) {
-    if (app.ui.prefs.view === "map") app.view.canvas.focus({ preventScroll: true });
-    return;
-  }
-  if (from.isConnected) return;
+  // 同じノードを押してパネルが作り直されていなければ、そのまま
+  if (!panel || !from || from.isConnected) return;
   const block = panel.querySelector<HTMLElement>(".imp-node:not([hidden])");
   if (!(block && focusFirst(block))) focusFirst(panel);
 }
@@ -375,11 +402,12 @@ function salaryWidget(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
     input.select();
   };
   const close = () => {
-    const had = edit.contains(document.activeElement);
+    const a = document.activeElement;
+    const had = keyboardFocus(a) && edit.contains(a);
     edit.hidden = true;
     view.hidden = false;
     err.textContent = "";
-    // 欄の中にフォーカスがあったら「変える」へ戻す（隠した欄から体に落とさない）
+    // 欄の中をキーボードで操作していたら「変える」へ戻す（隠した欄から体に落とさない。マウスで押したときは今までどおり）
     if (had && !change.hidden) change.focus();
   };
   const submit = () => {
@@ -726,13 +754,13 @@ function picksRow(app: AppContext, id: ID, info: AltInfo): HTMLElement {
   const status = app.store.doc.nodes[id]?.status;
   const pick = h(
     "button",
-    { class: `btn btn-sm imp-pick${info.picked ? " is-on" : " btn-primary"}`, type: "button", disabled: ro, dataset: { fk: `pick:${id}` }, attrs: { "aria-pressed": String(info.picked) }, onClick: () => !info.picked && pickAlt(app, id) },
+    { class: `btn btn-sm imp-pick${info.picked ? " is-on" : " btn-primary"}`, type: "button", disabled: ro, dataset: { fk: `pick:${id}` }, attrs: { "aria-pressed": String(info.picked) }, onClick: () => !info.picked && press(`pick:${id}`, () => pickAlt(app, id)) },
     icon("check", 14),
     info.picked ? (status === "done" ? "これにした（完了）" : "これにした") : "これにする",
   );
   const drop = h(
     "button",
-    { class: `btn btn-sm imp-drop${info.dropped ? " is-on" : ""}`, type: "button", disabled: ro, dataset: { fk: `drop:${id}` }, attrs: { "aria-pressed": String(info.dropped) }, onClick: () => !info.dropped && app.cmd.setStatus([id], "dropped") },
+    { class: `btn btn-sm imp-drop${info.dropped ? " is-on" : ""}`, type: "button", disabled: ro, dataset: { fk: `drop:${id}` }, attrs: { "aria-pressed": String(info.dropped) }, onClick: () => !info.dropped && press(`drop:${id}`, () => app.cmd.setStatus([id], "dropped")) },
     icon("x", 14),
     info.dropped ? "見送った" : "見送る",
   );

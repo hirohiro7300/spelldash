@@ -402,6 +402,16 @@ async function main() {
     await page.waitForTimeout(150);
     assert((await status()) === "active", "Enter で選べない");
     assert((await fk()) === `redo:${alt}`, `「これにする」の後のフォーカス ${await fk()}`);
+    // 「これにした」へ戻ってから、ほかの手の変更で作り直しても、同じ部品に残る（「選び直す」へは、押した直後だけ）
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Shift+Tab");
+    assert((await fk()) === `pick:${alt}`, `Shift+Tab で「これにした」へ戻れない（${await fk()}）`);
+    const other = imp.alts.find((x) => !x.isBase && x.id !== alt && x.id !== imp.best).id;
+    await page.evaluate((id) => window.__fourD.app.cmd.setStatus([id], "dropped"), other);
+    await page.waitForTimeout(150);
+    assert((await fk()) === `pick:${alt}`, `ほかの手の変更で、フォーカスが「これにした」から動いた（${await fk()}）`);
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    await page.locator(`.imp-node [data-fk="redo:${alt}"]`).focus();
     await page.keyboard.press("Tab");
     await page.waitForTimeout(150);
     assert((await count()) === n0 && (await fk()) !== "BODY", `Tab でノードが増えた・フォーカスが外れた（${await fk()}）`);
@@ -458,6 +468,116 @@ async function main() {
     await page.keyboard.press("Tab");
     await page.waitForTimeout(150);
     assert((await count()) === n0, "行の後の Tab でノードが増えた");
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  }
+
+  await check("マウス: 今決めることの行・「これにする」を押した後は、フォーカスをパネルへ移さない（続く Enter は選んだカードの題名の書き換え。黙って選ばない）", async () => {
+    const u0 = await undoCount(page);
+    try {
+      await mouseFocus();
+    } finally {
+      await page.evaluate(() => window.__fourD.app.editor.cancel());
+      await undoTo(page, u0);
+    }
+  });
+  async function mouseFocus() {
+    const read = (id) =>
+      page.evaluate((x) => {
+        const f = window.__fourD;
+        return { status: f.store.doc.nodes[x].status, editor: f.app.editor.active, inPanel: !!document.activeElement?.closest(".sidebar-right"), undo: f.store.history.undoStack.at(-1)?.label ?? null };
+      }, id);
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(150);
+    const id = await page.locator(".imp-overview .imp-decide .imp-alt-row").nth(2).getAttribute("data-id");
+    await page.locator(`.imp-overview [data-fk="row:${id}"]`).click();
+    await page.waitForTimeout(300);
+    assert((await page.evaluate(() => [...window.__fourD.ui.selection.nodes][0])) === id, "行の手が選ばれない");
+    const r0 = await read(id);
+    assert(!r0.inPanel, "マウスで行を押した後に、フォーカスがパネルへ移った");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const r1 = await read(id);
+    assert(r1.status === r0.status && r1.undo === r0.undo && r1.editor, `行の後の Enter ${JSON.stringify({ r0, r1 })}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+    // 「これにする」をマウスで: 選んだ後の Enter で「選び直す」を押さない
+    await page.locator(`.imp-node [data-fk="pick:${id}"]`).click();
+    await page.waitForTimeout(150);
+    const r2 = await read(id);
+    assert(r2.status === "active" && !r2.inPanel, `マウスで「これにする」を押した後 ${JSON.stringify(r2)}`);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const r3 = await read(id);
+    assert(r3.status === "active" && r3.undo === r2.undo && r3.editor, `「これにする」の後の Enter ${JSON.stringify({ r2, r3 })}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+  }
+
+  await check("入力欄: 打つたびに入れる欄（題名）・空のタグの欄にフォーカスがあるだけなら同期の取り込みを待たず、取り込んで作り直してもフォーカスと文字の位置が残る。書きかけのタグの間は待つ", async () => {
+    const u0 = await undoCount(page);
+    try {
+      await inputsOnAdopt();
+    } finally {
+      await undoTo(page, u0);
+    }
+  });
+  async function inputsOnAdopt() {
+    const imp = await impactOf(page);
+    const alt = imp.alts.find((x) => !x.isBase && x.delta !== null).id;
+    await page.evaluate((id) => window.__fourD.ui.select([id]), alt);
+    await page.waitForTimeout(150);
+    const editing = () => page.evaluate(() => window.__fourD.app.editingNow());
+    const fk = () => page.evaluate(() => (document.activeElement?.closest(".sidebar-right") ? (document.activeElement.dataset.fk ?? document.activeElement.className) : document.activeElement?.tagName));
+    // 別の端末の内容を読み込む（同期の入れ替えと同じ。右のパネルは全部作り直す）
+    const adopt = () =>
+      page.evaluate(() => {
+        const f = window.__fourD;
+        const next = structuredClone(f.store.doc);
+        const other = Object.values(next.nodes).find((n) => n.type === "goal");
+        if (other) other.title += "（別の端末）";
+        f.store.replaceDoc(next, "別の端末の内容を読み込む");
+      });
+    const t0 = await page.evaluate((id) => window.__fourD.store.doc.nodes[id].title, alt);
+    await page.locator(".insp-title").focus();
+    await page.evaluate(() => {
+      window.__el0 = document.activeElement;
+      document.activeElement.setSelectionRange(2, 2);
+    });
+    assert(!(await editing()), "題名の欄にフォーカスがあるだけで、入力の途中と見なした");
+    await adopt();
+    await page.waitForTimeout(150);
+    const r = await page.evaluate(() => {
+      const a = document.activeElement;
+      return { title: !!a?.classList.contains("insp-title"), rebuilt: a !== window.__el0, sel: [a?.selectionStart, a?.selectionEnd] };
+    });
+    assert(r.title && r.rebuilt && r.sel[0] === 2 && r.sel[1] === 2, `作り直した後のフォーカス・文字の位置 ${JSON.stringify(r)}`);
+    await page.keyboard.type("！");
+    await page.waitForTimeout(100);
+    const t1 = await page.evaluate((id) => window.__fourD.store.doc.nodes[id].title, alt);
+    assert(t1 === `${t0.slice(0, 2)}！${t0.slice(2)}`, `続けて打った文字 ${t1}`);
+    // タグの欄: 空なら待たない。書きかけがあれば待つ
+    await page.locator(".tag-input").focus();
+    assert(!(await editing()), "空のタグの欄にフォーカスがあるだけで、入力の途中と見なした");
+    await page.keyboard.type("書きかけ");
+    assert(await editing(), "書きかけのタグを、入力の途中と見なさない");
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Backspace");
+    // キーボードで操作していたボタンは、作り直した後も同じ部品へ。マウスで押さえただけのボタンからは動かさない
+    await page.locator(`.imp-node [data-fk="drop:${alt}"]`).focus();
+    await adopt();
+    await page.waitForTimeout(150);
+    assert((await fk()) === `drop:${alt}`, `作り直した後のフォーカス（キーボード） ${await fk()}`);
+    const box = await page.locator(`.imp-node [data-fk="drop:${alt}"]`).boundingBox();
+    const hl = await page.locator(".imp-node.is-alt .imp-hl").boundingBox();
+    await page.mouse.move(box.x + 8, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hl.x + 8, hl.y + hl.height / 2);
+    await page.mouse.up();
+    assert((await fk()) === `drop:${alt}`, `マウスで押さえたボタンにフォーカスが無い（確かめの前提） ${await fk()}`);
+    await adopt();
+    await page.waitForTimeout(150);
+    assert(!(await page.evaluate(() => !!document.activeElement?.closest(".sidebar-right"))), `マウスで押さえただけのボタンへ、作り直した後もフォーカスを戻した ${await fk()}`);
+    assert((await page.evaluate((id) => window.__fourD.store.doc.nodes[id].status, alt)) !== "dropped", "押さえただけで見送った");
     await page.evaluate(() => window.__fourD.ui.clearSelection());
   }
 
@@ -754,6 +874,26 @@ async function main() {
     const s = await pp.evaluate(() => ({ open: window.__fourD.ui.prefs.rightOpen, sel: [...window.__fourD.ui.selection.nodes] }));
     assert(!s.open && s.sel.length === 1 && s.sel[0] === id, JSON.stringify(s));
     assert(await onScreen(pp, id), "選んだカードが画面に入らない");
+  });
+
+  await check("スマホ: キーボードで今決めることの行を押すと、引き出しは開いたまま選んだ手の詳細（これにする）へフォーカスが移り、次の Tab で地図を変えない", async () => {
+    await pp.evaluate(() => {
+      window.__fourD.ui.clearSelection();
+      window.__fourD.ui.setPrefs({ rightOpen: true });
+    });
+    await pp.waitForTimeout(400);
+    const n0 = await pp.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
+    const id = await pp.locator(".imp-overview .imp-decide .imp-alt-row").nth(1).getAttribute("data-id");
+    await pp.locator(`.imp-overview [data-fk="row:${id}"]`).focus();
+    await pp.keyboard.press("Enter");
+    await pp.waitForTimeout(400);
+    const s = await pp.evaluate(() => ({ open: window.__fourD.ui.prefs.rightOpen, sel: [...window.__fourD.ui.selection.nodes], fk: document.activeElement?.dataset?.fk ?? document.activeElement?.tagName }));
+    assert(s.open && s.sel.length === 1 && s.sel[0] === id && s.fk === `pick:${id}`, JSON.stringify(s));
+    await pp.keyboard.press("Tab");
+    await pp.waitForTimeout(200);
+    const t = await pp.evaluate(() => ({ nodes: Object.keys(window.__fourD.store.doc.nodes).length, editor: window.__fourD.app.editor.active, fk: document.activeElement?.dataset?.fk ?? document.activeElement?.tagName }));
+    assert(t.nodes === n0 && !t.editor && t.fk !== "BODY", `Tab の後 ${JSON.stringify(t)}`);
+    await pp.evaluate(() => window.__fourD.ui.clearSelection());
   });
 
   await check("スマホ: 選択肢・行き先の詳細も横にはみ出さない", async () => {

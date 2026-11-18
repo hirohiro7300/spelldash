@@ -20,7 +20,7 @@ import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, o
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { offerImpactSalary } from "../ui/impactPanel";
-import { buildInspector } from "../ui/inspector";
+import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
@@ -296,11 +296,12 @@ export class App implements AppContext {
   }
 
   /**
-   * その場の入力（カードの題名）か、パネルの入力欄（年収・条件・タグなど）に入力している途中か。同期の取り込みは終わるまで待つ
-   * （入れ替えると欄が作り直されて入力が消え、残りのキーがキャンバスの操作になる。見分け方はキーの扱いと同じ）
+   * その場の入力（カードの題名）か、パネルの入力欄（年収・書きかけのタグなど）に、まだ入れていない入力がある途中か。同期の取り込みは終わるまで待つ
+   * （入れ替えると欄が作り直されて入力が消え、残りのキーがキャンバスの操作になる）。
+   * 打つたびに入れる欄（詳細の題名など）にフォーカスがあるだけなら待たない（作り直した後も、フォーカスと文字の位置が残る）
    */
   editingNow(): boolean {
-    return this.editor.active || isTypingTarget(document.activeElement);
+    return this.editor.active || hasUnsavedInput(document.activeElement);
   }
 
   private startEdit(id: ID): void {
