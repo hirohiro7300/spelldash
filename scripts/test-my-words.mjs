@@ -2868,7 +2868,8 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ["come up with（～を思いつく）", W("come up with", "～を思いつく")],
     ["be able to (～できる)", W("be able to", "～できる")],
     ["lemon: (レモン)", W("lemon", "(レモン)")],
-    ["lemon - (レモン)", W("lemon", "(レモン)")]
+    ["lemon - (レモン)", W("lemon", "(レモン)")],
+    ["TV/テレビ", W("TV", "テレビ")]
   ]) {
     const p = parse(line);
     ok(`T71 区切りの印: 「${line.trim()}」→ 英語「${want.en}」・訳「${want.ja}」（足せる）`, JSON.stringify(p) === JSON.stringify(want) && takes(p), JSON.stringify(p));
@@ -2914,6 +2915,8 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ["A／B testing ABテスト", W("A／B", "testing ABテスト")],
     ["and／or または", W("and／or", "または")],
     ["and/or または", W("and/or", "または")],
+    ["w/ 〜と一緒に", W("w/", "〜と一緒に")],
+    ["w／ 〜と一緒に", W("w／", "〜と一緒に")],
     ["deadline: 3日後まで", W("deadline:", "3日後まで")],
     ["締め切り：deadline", W("締め切り：deadline", "")],
     ["締め切り: deadline", noEn("締め切り: deadline")],
@@ -2930,7 +2933,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ["e.g.: 例えば", W("e.g.:", "例えば")]
   ];
   const r73 = T73.map(([line]) => parse(line));
-  eq("T73 断る行（A/B testing・全角の／の英語・and／or・印の後が数字・日本語が先・印の後が英字・記号・全角の英数字・「～」や括弧の後が英字か空・印の後が空・印の前が英語でない）は e36d086 と同じ結果",
+  eq("T73 断る行（A/B testing・全角の／の英語・and／or・1 字の英語の後の「/」「／」・印の後が数字・日本語が先・印の後が英字・記号・全角の英数字・「～」や括弧の後が英字か空・印の後が空・印の前が英語でない）は e36d086 と同じ結果",
     r73, T73.map(([, want]) => want));
   ok("T73 その行はどれも足さない（英語が無い・使えない字・訳が無い）", r73.every((p) => !takes(p)), JSON.stringify(r73.filter(takes)));
 
