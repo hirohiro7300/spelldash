@@ -185,6 +185,13 @@ export function groupOutcomes(w: World, kind: string, driver: Driver, s0: St, m0
     groups.splice(a, 1, g);
   };
   const minP = w.minOutcomeP / 100;
+  // 会社の答え（全部可・SpellDash だけ・不可）は会社ごとに決まった事実で、アプリは同じ答えの世界どうしで比べる（結果の線の meta.rv）。
+  // 答えの違う組をまとめると、その比べ方と「結果の差の平均 = 手の差」が崩れるので、小さい組はまず同じ答えの組にまとめる
+  const answerOf = (g: Group): string | null => {
+    if (driver.t !== "cat" || (driver.metric !== "perm" && driver.metric !== "permside")) return null;
+    const set = new Set(g.keys.map((k) => k.charAt(0)));
+    return set.size === 1 ? [...set][0]! : "*";
+  };
   // 2) 小さい組（10% 未満）を隣（分類なら似た組）にまとめる
   for (let guard = 0; guard < 50 && groups.length > 1; guard++) {
     let i = -1;
@@ -198,7 +205,10 @@ export function groupOutcomes(w: World, kind: string, driver: Driver, s0: St, m0
       const cand = [i - 1, i + 1].filter((k) => k >= 0 && k < groups.length);
       j = cand.sort((a, b) => Number(groups[b]!.sig === groups[i]!.sig) - Number(groups[a]!.sig === groups[i]!.sig) || Math.abs(groups[a]!.local - groups[i]!.local) - Math.abs(groups[b]!.local - groups[i]!.local))[0]!;
     } else {
-      const cand = groups.map((_, k) => k).filter((k) => k !== i);
+      let cand = groups.map((_, k) => k).filter((k) => k !== i);
+      const ans = answerOf(groups[i]!);
+      const same = ans === null ? [] : cand.filter((k) => answerOf(groups[k]!) === ans);
+      if (same.length) cand = same;
       j = cand.sort((a, b) => Number(groups[b]!.sig === groups[i]!.sig) - Number(groups[a]!.sig === groups[i]!.sig) || Math.abs(groups[a]!.local - groups[i]!.local) - Math.abs(groups[b]!.local - groups[i]!.local))[0]!;
     }
     merge(i, j);
@@ -262,7 +272,7 @@ export function groupOutcomes(w: World, kind: string, driver: Driver, s0: St, m0
   return groups.map((g, i) => {
     const st = repState(g.samples);
     const r = meanR(g.samples);
-    const { id, lab, line, ln } = describe(driver, g, i, groups.length, salCuts, mEnd, kind);
+    const { id, lab, line, ln } = describe(driver, g, i, groups.length, salCuts, mEnd, kind, w.kinds.plan_ind?.p.threshold ?? 3);
     return { id, p: groups.length === 1 ? 100 : fl[i]!, w: g.w / total, st, r, lab, short: shortOf(driver, g, groups.length, ln, kind), line, ln, sig: g.sig, local: g.local };
   });
 }
@@ -310,8 +320,12 @@ function shortOf(driver: Driver, g: Group, n: number, ln: Line, kind: string): s
     const t = T[driver.flag!];
     return g.keys.length > 1 || !t ? "" : yes ? t[0] : t[1];
   }
+  if (driver.t === "cat" && driver.metric === "permside" && isAllAnswer(g.keys)) return SHORT_TAG.a!;
   return g.keys.map((k) => SHORT_TAG[k] ?? k).join("・");
 }
+
+/** 『全部可』の 1 社目が決まる・まだ をまとめた組 */
+const isAllAnswer = (keys: string[]) => keys.length === 2 && keys.includes("a0") && keys.includes("a1");
 
 const PERM_TEXT: Record<string, string> = { a: "『副業も SpellDash も可』", s: "『SpellDash だけ可』", n: "『どちらも不可』" };
 const PERM_LAB: Record<string, string> = { a: "全部可", s: "SpellDash だけ", n: "どちらも不可" };
@@ -330,7 +344,7 @@ function numText(metric: string, lo: number | null, hi: number | null): { lab: s
   return { lab: `${name} ${fmt(lo)}〜${fmt(hi - 1)} ${unit}`, range: `${fmt(lo)}〜${fmt(hi - 1)} ${unit}` };
 }
 
-function describe(driver: Driver, g: Group, i: number, n: number, salCuts: number[], mEnd: number, kind: string): { id: string; lab: string; line: string; ln: Line } {
+function describe(driver: Driver, g: Group, i: number, n: number, salCuts: number[], mEnd: number, kind: string, indAt: number): { id: string; lab: string; line: string; ln: Line } {
   const when = whenText(mEnd);
   if (driver.t === "none" || n === 1) {
     return { id: "all", lab: "—", line: "（どの場合もこの道）", ln: { metric: "none", at: mEnd, lo: null, hi: null, cat: "all" } };
@@ -377,6 +391,7 @@ function describe(driver: Driver, g: Group, i: number, n: number, salCuts: numbe
       return { id, lab: yes ? t[0] : t[2], line: yes ? t[1] : t[3], ln: { metric: driver.flag!, at: mEnd, lo: null, hi: null, cat: id } };
     }
     case "permside": {
+      if (isAllAnswer(keys)) return { id, lab: PERM_LAB.a!, line: `会社の答えが${PERM_TEXT.a}`, ln: { metric: "permside", at: mEnd, lo: null, hi: null, cat: id } };
       const T: Record<string, [string, string]> = {
         a1: ["全部可・1 社目", "『全部可』で副業の 1 社目が決まる"],
         a0: ["全部可・まだ", "『全部可』だが 1 社目はまだ決まらない"],
@@ -387,9 +402,9 @@ function describe(driver: Driver, g: Group, i: number, n: number, salCuts: numbe
     }
     case "ind": {
       const T: Record<string, [string, string]> = {
-        i5: ["独立・5 社以上", "2 年後に 3 社以上で独立し、3 年後の顧客が 5 社以上"],
-        i0: ["独立・4 社以下", "2 年後に 3 社以上で独立し、3 年後の顧客が 4 社以下"],
-        e: ["会社員のまま", "2 年後の顧客が 3 社に届かず、会社員のまま"],
+        i5: ["独立・5 社以上", `2 年後に ${indAt} 社以上で独立し、3 年後の顧客が 5 社以上`],
+        i0: ["独立・4 社以下", `2 年後に ${indAt} 社以上で独立し、3 年後の顧客が 4 社以下`],
+        e: ["会社員のまま", `2 年後の顧客が ${indAt} 社に届かず、会社員のまま`],
       };
       return { id, lab: keys.map((k) => T[k]![0]).join("か"), line: keys.map((k) => T[k]![1]).join("か、"), ln: { metric: "ind", at: mEnd, lo: null, hi: null, cat: id } };
     }

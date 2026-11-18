@@ -85,11 +85,11 @@ describe("3 年の分かれ道の並べ方（目次の形）", () => {
     expect([...pos.values()].every((p) => p.x === 0 || p.x === IMPACT_X[1])).toBe(true);
   });
 
-  it("全部開くと 1,724 枚すべてに位置があり、行き先は 975 行", () => {
+  it("全部開くと全部のカードに位置があり、行き先（3 年後）は 1 つずつ別の行", () => {
     const pos = layout(allOpen);
     expect(pos.size).toBe(ids.length);
     const leafRows = new Set([...pos.entries()].filter(([id]) => kidsOf.get(id)!.length === 0).map(([, p]) => p.y));
-    expect(leafRows.size).toBe(975);
+    expect(leafRows.size).toBe(futureData().check.counts.ends);
   });
 
   it("開く・閉じるで、そのノード自身と、それより上のカードは動かない", () => {

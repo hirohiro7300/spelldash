@@ -329,6 +329,20 @@ describe("3 年の影響", () => {
     expect(a.outcomes.map((o) => o.u)).toEqual([30, 0]);
     expect(a.pBad).toBe(0);
     expect(a.outcomes.reduce((s, o) => s + o.w * o.u!, 0)).toBeCloseTo(a.delta!);
+    // 同じ答えの線が 2 本（全部可・1 社目 / 全部可・まだ）あっても、それぞれの見込みの割合で数える
+    {
+      const d2 = JSON.parse(JSON.stringify(doc));
+      // 今のままの道の「後で聞く」を、全部可を 2 つ（1 社目 30% で +90・まだ 20% で +40）に分ける
+      d2.nodes.K1aY2 = { ...d2.nodes.K1aY, id: "K1aY2" };
+      d2.edges["K1a-K1aY"].meta = { prob: 30, r: [0, 90, 0], rv: ["pm:0", "a"] };
+      d2.edges["K1a-K1aY2"] = { ...d2.edges["K1a-K1aY"], id: "K1a-K1aY2", target: "K1aY2", meta: { prob: 20, r: [0, 40, 0], rv: ["pm:0", "a"] } };
+      const r3 = run(d2);
+      const a3 = r3.alt.get("A")!;
+      // 今のまま: 全部可の世界の値は (30×90 + 20×40) / 50 = 70、不可なら 0。Δ は 50 − 35 = 15 のまま
+      expect(a3.delta).toBeCloseTo(15);
+      expect(a3.outcomes.map((o) => o.u)).toEqual([30, 0]);
+      expect(a3.outcomes.reduce((s, o) => s + o.w * o.u!, 0)).toBeCloseTo(a3.delta!);
+    }
     // 印が無ければ、今のままの平均（35）と比べる
     for (const e of Object.values(doc.edges)) delete e.meta.rv;
     const r2 = run(doc);

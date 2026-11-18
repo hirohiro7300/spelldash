@@ -685,7 +685,8 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
         const j = c.tgt[s]!;
         const v = j >= 0 ? val.get(j) : undefined;
         if (v === undefined) continue;
-        const ww = forced ? (c.rvKey[s] === R && c.rvCat[s] === cat ? 1 : 0) : c.w[s]!;
+        // 答えを決めた世界: その答えの線だけを、それぞれの見込みの割合で（全部可・1 社目と全部可・まだ など）
+        const ww = forced ? (c.rvKey[s] === R && c.rvCat[s] === cat ? c.w[s]! : 0) : c.w[s]!;
         sw += ww;
         sv += ww * (Wsum(s) + v);
         cnt++;
