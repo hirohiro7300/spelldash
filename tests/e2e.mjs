@@ -30755,7 +30755,7 @@ console.log("own auth module (97.1):");
       await waitUntil(async () => { const m = await page.evaluate(() => document.getElementById("authMessage")?.textContent ?? ""); return m.length > 0 && !/送信中|移動する/.test(m); }, 6000, 100);
       const v = await page.evaluate(() => ({ path: location.pathname, cards: document.querySelectorAll("#learnCards .learn-card").length, msg: document.getElementById("authMessage")?.textContent ?? "", guest: document.getElementById("accountGuest")?.hidden === false })).catch((e) => ({ err: String(e).slice(0, 160) }));
       const inDoc = await cspInDoc(page);
-      check("97.1 (2) 関数が作れない（503・保存させない）: 学習状況は端末の記録で開き、ログインを押すと「ログインに失敗した。少しあけてもう一度。」・外へ 0 件・CSP の違反 0・エラー 0",
+      check("97.1 (2) 関数が作れない（503・保存させない）: 学習状況は端末の記録で開き、ログインを押すと「ログインに失敗した。少しあけてもう一度。」・外へ 0 件・CSP の違反 0・ページのエラー 0",
         log.moduleRes.length === 1 && log.moduleRes[0].status === 503 && /no-store/.test(log.moduleRes[0].cache) && v.path === "/stats.html" && v.cards > 0 && v.guest && v.msg === "ログインに失敗した。少しあけてもう一度。" && log.outside.length === 0 && log.csp.length === 0 && inDoc.length === 0 && log.errs.length === 0,
         JSON.stringify({ res: log.moduleRes, v, outside: log.outside.slice(0, 3), csp: [...log.csp, ...inDoc].slice(0, 2), errs: log.errs.slice(0, 2) }));
     } finally {

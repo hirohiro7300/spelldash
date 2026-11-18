@@ -210,7 +210,7 @@ jobs:
       - name: 直前の本番（分離の前の最後の本番）を取る
         run: git cat-file -e "$OLDTAB_OLD^{commit}" 2>/dev/null || git fetch --no-tags --depth 1 origin "$OLDTAB_OLD"
 
-      - name: 認証の部品の置き場を控えから戻す（tests/oldtab/lib/authLib.mjs が変われば作り直す）
+      - name: 認証の部品の置き場を控えから戻す（tests/oldtab/lib/authLib.mjs か api/_lib/authModule.js が変われば作り直す）
         id: oldtab-auth-lib
         uses: actions/cache/restore@v4
         with:
