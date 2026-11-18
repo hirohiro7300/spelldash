@@ -151,6 +151,15 @@ export function areaOf(n: GNode, doc: Pick<DocData, "projects">): AreaInfo | nul
   return { key: known?.key ?? pid, label: known?.label ?? p!.name, color: p?.color ?? known!.color };
 }
 
+/** プロジェクトの領域の札（選択肢の行と同じ名前と色。手の種類の行で使う）。分からなければ null */
+export function projectArea(pid: ID | null, doc: Pick<DocData, "projects">): AreaInfo | null {
+  if (!pid) return null;
+  const known = AREAS[pid];
+  const p = doc.projects[pid];
+  if (!known && !p) return null;
+  return { key: known?.key ?? pid, label: known?.label ?? p!.name, color: p?.color ?? known!.color };
+}
+
 /** 影響の内訳の並び（impact.ts の deltaV と同じ: 本業・広告運用と独立・SpellDash） */
 export function breakdownAreas(doc: Pick<DocData, "projects">): Array<{ label: string; color: string }> {
   const color = (pid: string) => doc.projects[pid]?.color ?? AREAS[pid]!.color;

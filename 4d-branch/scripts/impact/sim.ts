@@ -83,6 +83,8 @@ export interface World {
   keyFamilies: string[];
   rootMenu: string[];
   kinds: Record<string, KindDef>;
+  /** 手の種類（KindDef.family）の名前（概要の「3 年でやる価値が大きい手」「避けたい手」に出す。12 文字まで） */
+  familyLabels?: Record<string, string>;
   premises: string[];
   baseRates: Array<{ id: string; statement: string; range: [number, number]; source: string }>;
 }

@@ -230,6 +230,12 @@ export function runChecks(w: World, tree: TNode, b: ImpactBundle, sel: Selection
     if (!body.trim()) fail(`T1 本文が無い: ${key}`);
     if (role === "e" && !title.startsWith("3 年後:")) fail(`T1 行き先のタイトル: ${title}`);
   });
+  // 手の種類（まとまり）の名前: 使っているまとまりには、概要の順位の行に出す名前が要る（12 文字まで）
+  for (const fam of new Set(Object.values(w.kinds).map((k) => k.family))) {
+    const label = b.fams?.[fam];
+    if (!label?.trim()) fail(`T5 手の種類の名前が無い: ${fam}（world.json の familyLabels）`);
+    else if (len(label) > 12) fail(`T5 手の種類の名前が長い（${len(label)}）: ${label}`);
+  }
   const sib = new Map<number, Set<string>>();
   N.forEach((n) => {
     if (n[2] !== "a") return;
@@ -278,7 +284,7 @@ export function runChecks(w: World, tree: TNode, b: ImpactBundle, sel: Selection
   });
   rows.push(`- 手の種類ごとの数: ${[...fams.entries()].sort((a, b2) => b2[1] - a[1]).map(([k, v]) => `${k} ${v}`).join("・")}`);
   rows.push("", "## 3 年でやる価値（ずっとやらない場合との差）", "");
-  for (const fam of im.families().sort((x, y) => (im.never(y).k ?? 0) - (im.never(x).k ?? 0))) rows.push(`- ${fam}: ${fmt(im.never(fam).k ?? 0)}`);
+  for (const fam of im.families().sort((x, y) => (im.never(y).k ?? 0) - (im.never(x).k ?? 0))) rows.push(`- ${b.fams?.[fam] ?? fam}（${fam}）: ${fmt(im.never(fam).k ?? 0)}`);
   rows.push("", `## 失敗 ${failures.length}`, "", ...failures.map((x) => `- ${x}`), "", `## 気になる所 ${warnings.length}`, "", ...warnings.map((x) => `- ${x}`));
   return { failures, warnings, report: rows.join("\n") + "\n" };
 }
