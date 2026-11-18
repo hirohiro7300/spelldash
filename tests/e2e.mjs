@@ -30616,6 +30616,196 @@ console.log("my words learn order (96.1):");
   check("96.1 (9) どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
+// ===== 97.1 認証の部品を自分の配信から（Batch 97。api/auth-module.js・api/_lib/authModule.js・js/supabase.js の読み先とテストの口の門・vercel.json の CSP。docs/SECURITY.md の Batch 97 の節）: (1) 本物の頭（CSP）・本物の js/supabase.js・口なしで、部品は同じオリジンの /api/auth-module?v=<版>&h=<答えの印> から 1 回だけ（外へ 0 件）・答えは本物の配信の関数（固定の版の束。sha256 が固定の値）・保存のセッションの人を部品が読み、ログインの形で開く・CSP の違反 0・エラー 0 (2) 関数が作れない（503）: 学習状況は端末の記録で開き、ログインを押すと「ログインに失敗した。…」・外へ出ない・エラー 0 (3) 入った HTML の iframe（srcdoc）から外の script は走らない (4) 入った HTML の要素で口の名前を上書きしても、偽の部品を読まない =====
+console.log("own auth module (97.1):");
+{
+  const AM = await import("../api/_lib/authModule.js").catch(() => null);
+  const AH = await import("../api/auth-module.js").catch(() => null);
+  const AUTH_HOST = "https://sujvgwozsnzjsjmkcrnk.supabase.co";
+  const UA = "aaaaaaaa-9797-4797-8797-979797979797";
+  const EMAIL = "a97@example.test";
+  check("97.1 配信の関数と固定の値がある（api/auth-module.js の createAuthModuleHandler・api/_lib/authModule.js の AUTH_MODULE_URL）", Boolean(AH?.createAuthModuleHandler && AM?.AUTH_MODULE_URL));
+  // 固定の版の答え（本番の関数が作る物と 1 バイトも違わない物）: 旧タブの証明の写し（tests/oldtab/lib/authLib.mjs が登録所から作って確かめた置き場の物。
+  // CI は e2e の組の前に用意する）の束と LICENSE の文から、本番と同じ servedText で作り、sha256 が固定の値と同じときだけ使う
+  const real = await (async () => {
+    if (!AM) return { served: null, why: "api/_lib/authModule.js が無い" };
+    try {
+      const lib = await import("./oldtab/lib/authLib.mjs");
+      const r = await lib.ensureAuthLib(AM.AUTH_MODULE_VERSION, { log: () => {} });
+      const text = fs.readFileSync(r.file, "utf8");
+      let cut = -1;
+      for (let i = 0; i < 3; i++) cut = text.indexOf("\n", cut + 1);
+      const lic = fs.readFileSync(r.file.replace(/\.mjs$/, ".LICENSE.txt"), "utf8");
+      const served = AM.servedText(lic.slice(lic.indexOf("\n\n") + 2), text.slice(cut + 1));
+      return AM.sha256(served) === AM.AUTH_MODULE_PIN.served ? { served: Buffer.from(served, "utf8"), why: null } : { served: null, why: "作った答えの sha256 が固定の値と違う" };
+    } catch (e) {
+      return { served: null, why: String(e?.message ?? e).slice(0, 160) };
+    }
+  })();
+  check("97.1 固定の版の答えを作れた（旧タブの証明の写しから・sha256 が固定の値と同じ）", Boolean(real.served), real.why ?? "");
+  // 本物の頭（cookie e2e_csp=real）・本物の js/supabase.js・同じオリジンの /api/auth-module は本物の配信の関数（作り手だけ替える）・認証の受け口は偽物
+  async function ownCtx({ build, seed = {} }) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    await ctx.addCookies([{ name: "e2e_csp", value: "real", url: BASE }]);
+    const log = { module: [], moduleRes: [], outside: [], csp: [], errs: [] };
+    await ctx.route(`${BASE}/js/supabase.js`, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: fs.readFileSync(path.join(ROOT, "js", "supabase.js"), "utf8") }));
+    if (AH?.createAuthModuleHandler) {
+      const handler = AH.createAuthModuleHandler({ build });
+      await ctx.route((url) => url.origin === BASE && url.pathname === "/api/auth-module", async (route) => {
+        const req = route.request();
+        const u = new URL(req.url());
+        const res = { statusCode: 200, headers: {}, body: undefined };
+        res.setHeader = (k, v) => { res.headers[k] = String(v); };
+        res.status = (c) => { res.statusCode = c; return res; };
+        res.json = (b) => { res.body = JSON.stringify(b); return res; };
+        res.end = (b) => { res.body = b; return res; };
+        await handler({ method: req.method(), url: u.pathname + u.search, headers: req.headers() }, res);
+        return route.fulfill({ status: res.statusCode, headers: res.headers, body: res.body ?? "" });
+      });
+    }
+    await ctx.route(`${AUTH_HOST}/**`, (route) => {
+      const u = new URL(route.request().url());
+      if (u.pathname === "/auth/v1/user") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: UA, aud: "authenticated", role: "authenticated", email: EMAIL, app_metadata: { provider: "email" }, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" }) });
+      if (u.pathname === "/auth/v1/health") return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+      return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    ctx.on("request", (req) => {
+      const url = req.url();
+      if (url.startsWith(BASE + "/api/auth-module")) log.module.push(url.slice(BASE.length));
+      else if (!url.startsWith(BASE + "/") && !url.startsWith(AUTH_HOST + "/") && !/^(data|blob|about):/.test(url)) log.outside.push(url.slice(0, 120));
+    });
+    ctx.on("response", (r) => {
+      if (r.url().startsWith(BASE + "/api/auth-module")) log.moduleRes.push({ status: r.status(), type: r.headers()["content-type"] ?? "", cache: r.headers()["cache-control"] ?? "", nosniff: r.headers()["x-content-type-options"] ?? "" });
+    });
+    await ctx.addInitScript((s) => {
+      document.addEventListener("securitypolicyviolation", (e) => {
+        try { const a = JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]"); a.push(`${e.violatedDirective} ${e.blockedURI || "inline"}`); sessionStorage.setItem("__e2e_csp", JSON.stringify(a)); } catch {}
+      });
+      if (!location.origin || location.origin === "null" || location.pathname.startsWith("/css/")) return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v);
+    }, seed);
+    const page = await ctx.newPage();
+    page.on("pageerror", (e) => log.errs.push(e.message.slice(0, 160)));
+    page.on("console", (m) => { if (/Content Security Policy/i.test(m.text())) log.csp.push(m.text().slice(0, 200)); });
+    return { ctx, page, log };
+  }
+  const cspInDoc = (page) => page.evaluate(() => JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]")).catch(() => ["(読めない)"]);
+  const GUEST = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+
+  // (1) 本物の部品を自分の配信から読み、保存のセッションの人でログインの形
+  if (real.served && AH?.createAuthModuleHandler) {
+    const now = Math.floor(Date.now() / 1000);
+    const b64u = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const jwt = `${b64u({ alg: "HS256", typ: "JWT" })}.${b64u({ sub: UA, aud: "authenticated", role: "authenticated", exp: now + 3600, iat: now, email: EMAIL })}.c2lnbmF0dXJlc2lnbmF0dXJl`;
+    const session = JSON.stringify({ access_token: jwt, token_type: "bearer", expires_in: 3600, expires_at: now + 3600, refresh_token: "refresh97", user: { id: UA, aud: "authenticated", role: "authenticated", email: EMAIL, app_metadata: { provider: "email" }, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" } });
+    const area = `u:${UA}`;
+    const seed = {
+      "sd2.area": `${area}#1`, "sd2.index": JSON.stringify({ [area]: { at: "ls" } }), "sd2.migrated": JSON.stringify({ at: new Date().toISOString(), fromSchema: "7", legacyId: "L97" }),
+      "sd2.auth": session, spelldash_onboarded: "1", spelldash_audio: JSON.stringify({ mode: "off" }),
+      [`sd2.${area}.schema_version`]: "7", [`sd2.${area}.placement`]: "done", [`sd2.${area}.owner`]: UA
+    };
+    let builds = 0;
+    const { ctx, page, log } = await ownCtx({ build: async () => (builds++, { served: real.served }), seed });
+    try {
+      await page.goto(BASE + "/stats.html", { waitUntil: "load" }).catch(() => {});
+      await waitUntil(() => page.evaluate(() => { const u = document.getElementById("accountUser"); return !!u && !u.hidden && window.SpellDashArea !== undefined; }).catch(() => false), 15000, 100);
+      await page.waitForTimeout(800);
+      const v = await page.evaluate(async () => {
+        const { supabase } = await import("/js/supabase.js");
+        const { data } = await supabase.auth.getSession();
+        return { path: location.pathname, lib: data?.session?.user?.id ?? null, guard: window.SpellDashArea?.userId?.() ?? null, area: window.SpellDashArea?.area ?? null,
+          shown: document.getElementById("accountUser")?.hidden === false, guest: document.getElementById("accountGuest")?.hidden === false, status: document.getElementById("userStatus")?.textContent ?? "" };
+      }).catch((e) => ({ err: String(e).slice(0, 160) }));
+      const inDoc = await cspInDoc(page);
+      const want = AM.AUTH_MODULE_URL;
+      check("97.1 (1) 本物の頭・本物の js/supabase.js・口なし: 部品は同じオリジンの /api/auth-module?v=<版>&h=<答えの印> から 1 回だけ（200・スクリプトの型・1 年の immutable・nosniff）・外へ 0 件・関数の作りは 1 回",
+        JSON.stringify(log.module) === JSON.stringify([want]) && log.moduleRes.length === 1 && log.moduleRes[0].status === 200 && /^text\/javascript/.test(log.moduleRes[0].type) && /immutable/.test(log.moduleRes[0].cache) && log.moduleRes[0].nosniff === "nosniff" && log.outside.length === 0 && builds === 1,
+        JSON.stringify({ module: log.module, res: log.moduleRes, outside: log.outside.slice(0, 3), builds }));
+      check("97.1 (1) 部品は保存のセッションの人を読み、ログインの形で開く（見張りの人と同じ・アカウントの欄にメール）・CSP の違反 0・エラー 0",
+        v.path === "/stats.html" && v.lib === UA && v.guard === UA && v.area === area && v.shown && !v.guest && v.status === EMAIL && log.csp.length === 0 && inDoc.length === 0 && log.errs.length === 0,
+        JSON.stringify({ v, csp: [...log.csp, ...inDoc].slice(0, 2), errs: log.errs.slice(0, 2) }));
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (2) 関数が作れない（503）: 端末の記録で開き、ログインは使えない（失敗の文）・外へ出ない
+  if (AH?.createAuthModuleHandler) {
+    const { ctx, page, log } = await ownCtx({ build: async () => { throw Object.assign(new Error("down"), { code: "timeout" }); }, seed: GUEST });
+    const quiet = console.error;
+    console.error = () => {};
+    try {
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" }).catch(() => {});
+      await waitUntil(() => page.evaluate(() => { const t = document.getElementById("loginToggle"); return !!t && t.getClientRects().length > 0 && window.SpellDashArea !== undefined && document.querySelectorAll("#learnCards .learn-card").length > 0; }).catch(() => false), 10000, 100);
+      await page.click("#loginToggle");
+      await page.waitForTimeout(150);
+      await page.click("#googleLoginButton");
+      await waitUntil(async () => { const m = await page.evaluate(() => document.getElementById("authMessage")?.textContent ?? ""); return m.length > 0 && !/送信中|移動する/.test(m); }, 6000, 100);
+      const v = await page.evaluate(() => ({ path: location.pathname, cards: document.querySelectorAll("#learnCards .learn-card").length, msg: document.getElementById("authMessage")?.textContent ?? "", guest: document.getElementById("accountGuest")?.hidden === false })).catch((e) => ({ err: String(e).slice(0, 160) }));
+      const inDoc = await cspInDoc(page);
+      check("97.1 (2) 関数が作れない（503・保存させない）: 学習状況は端末の記録で開き、ログインを押すと「ログインに失敗した。少しあけてもう一度。」・外へ 0 件・CSP の違反 0・エラー 0",
+        log.moduleRes.length === 1 && log.moduleRes[0].status === 503 && /no-store/.test(log.moduleRes[0].cache) && v.path === "/stats.html" && v.cards > 0 && v.guest && v.msg === "ログインに失敗した。少しあけてもう一度。" && log.outside.length === 0 && log.csp.length === 0 && inDoc.length === 0 && log.errs.length === 0,
+        JSON.stringify({ res: log.moduleRes, v, outside: log.outside.slice(0, 3), csp: [...log.csp, ...inDoc].slice(0, 2), errs: log.errs.slice(0, 2) }));
+    } finally {
+      console.error = quiet;
+      await ctx.close();
+    }
+  }
+
+  // (3) 入った HTML の iframe（srcdoc）の中の外の script は走らない（srcdoc の文書はこのページの CSP を受け継ぐ。script-src に外の先が無い）。
+  // 確かめる先は、今の vercel.json の script-src にある外の先の全部と、ほかの外の先 1 つ（どれも台が小さな script で答える）
+  {
+    const tokens = (cspDirectives(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).find((d) => d.startsWith("script-src ")) ?? "").split(/\s+/).slice(1);
+    const hosts = [...new Set([...tokens.filter((t) => /^https?:\/\/[^/]+\/?$/.test(t)).map((t) => t.replace(/\/$/, "")), "https://cdn.example.com"])];
+    const urls = hosts.map((h) => `${h}/e2e-outside.js`);
+    const { ctx, page, log } = await ownCtx({ build: async () => { throw Object.assign(new Error("off"), { code: "off" }); }, seed: GUEST });
+    let hits = 0;
+    await ctx.route((url) => url.pathname === "/e2e-outside.js" && url.origin !== BASE, (route) => { hits++; return route.fulfill({ status: 200, contentType: "text/javascript", body: "parent.__e2eOutside = (parent.__e2eOutside || 0) + 1;" }); });
+    const quiet = console.error;
+    console.error = () => {};
+    try {
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" }).catch(() => {});
+      await page.evaluate((list) => {
+        const f = document.createElement("iframe");
+        f.srcdoc = list.map((u) => `<script src="${u}"></script>`).join("");
+        document.body.append(f);
+      }, urls);
+      await page.waitForTimeout(1500);
+      const ran = await page.evaluate(() => window.__e2eOutside ?? 0).catch(() => -1);
+      const refused = urls.filter((u) => log.csp.some((m) => m.includes(u)));
+      check(`97.1 (3) 入った HTML の iframe（srcdoc）から外の script（${hosts.length} か所: script-src の外の先 ${hosts.length - 1}・ほかの先 1）は読まれず走らない（CSP が止めた知らせが出る）`,
+        ran === 0 && hits === 0 && refused.length === urls.length, JSON.stringify({ ran, hits, refused, hosts }));
+    } finally {
+      console.error = quiet;
+      await ctx.close();
+    }
+  }
+
+  // (4) 入った HTML の要素（id="__SUPABASE_MODULE_URL" の a）で window の名前を上書きしても、テストの口として読まない（字でない）。偽の部品は読まず、自分の配信から読む
+  {
+    const { ctx, page, log } = await ownCtx({ build: async () => { if (!real.served) throw Object.assign(new Error("none"), { code: "none" }); return { served: real.served }; }, seed: GUEST });
+    let fake = 0;
+    await ctx.route(`${BASE}/__e2e/fake-auth.mjs`, (route) => { fake++; return route.fulfill({ status: 200, contentType: "text/javascript", body: "window.__e2eFakeAuth = 1; export const createClient = () => ({ auth: { getSession: async () => ({ data: { session: null } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) }, from: () => ({}) });" }); });
+    await ctx.route(`${BASE}/stats.html`, async (route) => {
+      const response = await route.fetch();
+      const html = (await response.text()).replace(/<body([^>]*)>/, '<body$1><a id="__SUPABASE_MODULE_URL" href="/__e2e/fake-auth.mjs" hidden>x</a>');
+      return route.fulfill({ response, body: html });
+    });
+    try {
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" }).catch(() => {});
+      await page.waitForTimeout(500);
+      const v = await page.evaluate(() => ({ fake: window.__e2eFakeAuth ?? 0, clobbered: typeof window.__SUPABASE_MODULE_URL })).catch((e) => ({ err: String(e).slice(0, 160) }));
+      check("97.1 (4) 入った HTML の要素で口の名前を上書きしても偽の部品を読まない（要素は字でない）・部品は自分の配信から 1 回・エラー 0",
+        v.clobbered === "object" && v.fake === 0 && fake === 0 && Boolean(AM) && JSON.stringify(log.module) === JSON.stringify([AM?.AUTH_MODULE_URL]) && log.errs.length === 0,
+        JSON.stringify({ v, fake, module: log.module, errs: log.errs.slice(0, 2) }));
+    } finally {
+      await ctx.close();
+    }
+  }
+}
+
 // ===== 92.1 ショートカットキー（Batch 92。shortcuts.html・js/shortcutsPage.js・js/shortcutsCore.js・js/shortcutsArt.js・js/shortcutsData.js・入口は index.html・stats.html・js/statsView.js。docs/SPEC_SHORTCUTS.md）: 入口（ホームの「スラング」の下のボタン・学習状況のスラングの行の下の 1 行と練習のページと同じ 覚えた の数・2,858 と学習状況の今の数は動かない）・ページ（ナビ 4 つ・フッター・noindex・sitemap に無い・CSP の違反 0・320／390／1200 × 昼夜で横スクロール 0）・キーボードを選ばずに練習 → 選ぶ所へ・押す組を全部本物のキーで（Ctrl は Control、⌘ は Meta）・止める・取り違えと近い組・ほかの項目の組・repeat・⌘ の keyup の欠け・Esc と Tab・届かなかった組（1 回目と 2 回目）・戻る・進む・再読み込みの守り・指の端末・絵（2 問目の前と後・字の大きさ・動き・光るキー・⌘ の日本語の並び）・キーボードだけで 10 問・日本語入力・保存と領域とバックアップ・アプリの状態 =====
 // Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来・読み込み直しでは種に戻さない）
 console.log("shortcuts (92.1):");
