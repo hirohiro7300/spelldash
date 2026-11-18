@@ -419,19 +419,21 @@ await check("やりたいことリスト（3,000 件）を読み込むと、ア�
   assert((await cloudState(A.page)) === "synced", await cloudState(A.page));
 });
 
-await check("未来の道筋を追加で読み込むと、見込み（線の %・予測の入口）ごとアカウントの写しも新しくなる", async () => {
+await check("未来の道筋を追加で読み込むと、見込み（線の %・予測の入口）と 3 年の影響ごとアカウントの写しも新しくなる", async () => {
   const before = JSON.parse(dbStore.get("data/users/u_test/fourd"));
   await A.page.evaluate(() => window.__fourD.app.loadFuture());
   const dlg = A.page.getByRole("dialog", { name: "未来の道筋を読み込む" });
   await dlg.waitFor();
   await dlg.getByRole("button", { name: "読み込む" }).click();
   await A.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
+  // 3 年の分かれ道: おすすめの選び方で来る見込み（P_π）は行き先で合計 100%。今日の 10 の手に差が出る
   const local = await A.page.evaluate(() => {
     const f = window.__fourD;
-    const fc = f.app.vm.forecast;
-    return { nodes: Object.keys(f.store.doc.nodes).length, probs: Object.values(f.store.doc.edges).filter((e) => typeof e.meta?.prob === "number").length, ends: fc.ends.length, sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0) };
+    const im = f.app.vm.impact;
+    const root = im.decision.get(im.root);
+    return { nodes: Object.keys(f.store.doc.nodes).length, probs: Object.values(f.store.doc.edges).filter((e) => typeof e.meta?.prob === "number").length, ends: im.ends.length, sum: im.ends.reduce((n, e) => n + e.p, 0), alts: root ? root.alts.length : 0, withDelta: root ? root.alts.filter((id) => im.alt.get(id)?.delta !== null).length : 0 };
   });
-  assert(local.probs >= 3 && local.ends >= 3 && Math.abs(local.sum - 1) < 1e-6, JSON.stringify(local));
+  assert(local.probs >= 3 && local.ends >= 3 && Math.abs(local.sum - 1) < 1e-6 && local.alts === 10 && local.withDelta === 10, JSON.stringify(local));
   await A.page.evaluate(() => window.__fourD.app.cloud.flush());
   const m = JSON.parse(dbStore.get("data/users/u_test/fourd"));
   assert(m.gen !== before.gen && m.nodes === local.nodes && m.nodes > before.nodes, `写し: ${m.nodes} / ${local.nodes}`);
@@ -452,7 +454,7 @@ await check("デモのまま同期していた端末で開き直すと、同期�
   await D.page.waitForTimeout(500);
   await D.page.reload({ waitUntil: "load" });
   await D.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
-  await D.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor();
+  await D.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" }).waitFor();
   await D.page.evaluate(() => window.__fourD.app.cloud.flush());
   await D.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   const m1 = JSON.parse(dbStore.get(U));
@@ -571,7 +573,7 @@ await check("アカウントに長くつながらなくても、何もしてい�
   await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 12000 });
   assert(Date.now() - t0 < 16000, `開くまで ${Date.now() - t0}ms`);
   assert((await X.page.evaluate(() => window.__fourD.app.cloudInfo?.state)) !== "synced", "（確かめの前提）つながらないまま開いていない");
-  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 3000 });
+  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" }).waitFor({ timeout: 3000 });
   await X.ctx.close();
 });
 
@@ -607,7 +609,7 @@ await check("自動で開いた未来の道筋は、送る前に別の端末で�
   // Y で書き始め（5 秒まとめてから送る）、すぐに X を開き直す（X は古い写しと突き合わせて、未来の道筋を開く）
   await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
   await X.page.reload({ waitUntil: "load" });
-  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 15000 });
+  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" }).waitFor({ timeout: 15000 });
   // Y の送信が先に届き、X は自分の未来の道筋を送らずに、Y の内容を読み込む
   await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.title === "別の端末で書いた目標"), null, { timeout: 25000 });
   await X.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
@@ -633,7 +635,7 @@ await check("自動で開いた未来の道筋をすぐ元に戻しても、送�
   const { X, Y } = await xyDemo("u_undoyield", { autoFuture: true, write: false });
   await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
   await X.page.reload({ waitUntil: "load" });
-  const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+  const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" });
   await done.waitFor({ timeout: 15000 });
   // 開いたお知らせの「元に戻す」で、開く前のデモに戻す（まだ送っていない）
   await done.getByRole("button", { name: "元に戻す" }).click();
@@ -655,7 +657,7 @@ await check("自動で開いた未来の道筋を元に戻してやり直した�
   const { X, Y } = await xyDemo(uid, { autoFuture: true, write: false });
   await Y.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: -900, y: 900 }, { title: "別の端末で書いた目標", exact: true }));
   await X.page.reload({ waitUntil: "load" });
-  const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+  const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" });
   await done.waitFor({ timeout: 15000 });
   await done.getByRole("button", { name: "元に戻す" }).click();
   await X.page.waitForFunction(() => !Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
@@ -685,7 +687,7 @@ await check("自動で開いた未来の道筋を元に戻して断ったら、�
   // ようこそは xyDemo で済ませている（閉じかけのようこそをもう一度押さない）
   await Y.page.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
   await X.page.reload({ waitUntil: "load" });
-  const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" });
+  const done = X.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" });
   await done.waitFor({ timeout: 15000 });
   // X は断った地図を送る前につながらなくなる（Y が先に送る）
   await X.page.evaluate(() => (window.__dbDownUntil = Date.now() + 20000));
@@ -693,7 +695,7 @@ await check("自動で開いた未来の道筋を元に戻して断ったら、�
   await X.page.waitForFunction(() => !Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
   // Y を開き直すと自動で開いて送る
   await Y.page.reload({ waitUntil: "load" });
-  await Y.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 15000 });
+  await Y.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" }).waitFor({ timeout: 15000 });
   await Y.page.evaluate(() => window.__fourD.app.cloud.flush());
   await Y.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   assert(manifestOf(uid).nodes > 1500, `Y の未来の道筋が送られていない（確かめの前提）${manifestOf(uid).nodes}`);
@@ -711,7 +713,7 @@ await check("開いたままの未来の道筋に別の端末の書き足しが�
   const uid = "u_keepcam";
   const { X, Y } = await xyDemo(uid, { autoFuture: true, write: false });
   await X.page.reload({ waitUntil: "load" });
-  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 15000 });
+  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" }).waitFor({ timeout: 15000 });
   await X.page.evaluate(() => window.__fourD.app.cloud.flush());
   await X.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   await Y.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
@@ -751,7 +753,7 @@ await check("開いたばかりの未来の道筋が、別の端末で自分の�
   const uid = "u_movedmap";
   const { X, Y } = await xyDemo(uid, { autoFuture: true, write: false });
   await X.page.reload({ waitUntil: "load" });
-  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 15000 });
+  await X.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" }).waitFor({ timeout: 15000 });
   // X は送る前につながらなくなる（Y が先に送る）
   await X.page.evaluate(() => (window.__dbDownUntil = Date.now() + 20000));
   // Y は自分の目標を書き、未来の道筋を追加で読み込んで送る（今日は Y の内容の横に来る）
@@ -794,7 +796,7 @@ await check("別の端末から同期で受け取った未来の道筋を元に�
   await B.page.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
   await B.page.waitForTimeout(500);
   await B.page.reload({ waitUntil: "load" });
-  await B.page.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を開きました" }).waitFor({ timeout: 15000 });
+  await B.page.locator(".toast", { hasText: "未来の道筋（仕事・3 年の分かれ道）を開きました" }).waitFor({ timeout: 15000 });
   await B.page.evaluate(() => window.__fourD.app.cloud.flush());
   await A.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
   // A で元に戻す（受け取る前のデモに戻る）。戻したデモには入れ替えない印が付き、アカウントにも届く
@@ -845,7 +847,7 @@ await check("押した「未来の道筋」が突き合わせを待つ間に、�
     await X.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 10000 });
     await X.ctx.close();
   }
-  // 2) 確認を閉じる: 待っている間に、メニューの「未来の道筋（仕事・10 年）を読み込む…」を開いてキャンセルした
+  // 2) 確認を閉じる: 待っている間に、メニューの「未来の道筋（仕事・3 年）を読み込む…」を開いてキャンセルした
   //    （自動で開く端末: 押した頼みも、この起動の自動で開くのも、どちらも入れ替えない）
   {
     const { X, Y } = await xyDemo("u_wait2", { autoFuture: true, write: false });
@@ -856,7 +858,7 @@ await check("押した「未来の道筋」が突き合わせを待つ間に、�
     await X.page.locator(".zoom-ctl .future-btn").click();
     await X.page.locator(".toast", { hasText: "アカウントの内容を確かめています" }).waitFor({ timeout: 5000 });
     await X.page.getByRole("button", { name: "メニュー", exact: true }).click();
-    await X.page.getByRole("menuitem", { name: /未来の道筋（仕事・10 年）を読み込む/ }).click();
+    await X.page.getByRole("menuitem", { name: /未来の道筋（仕事・3 年）を読み込む/ }).click();
     const dlg = X.page.getByRole("dialog", { name: "未来の道筋を読み込む" });
     await dlg.waitFor();
     await dlg.getByRole("button", { name: "キャンセル" }).click();
