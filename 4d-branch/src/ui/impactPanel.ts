@@ -170,7 +170,9 @@ function focusKeyIn(root: HTMLElement): string | null {
   return keyboardFocus(a) && root.contains(a) ? (a.dataset.fk ?? "") : null;
 }
 
-/** 右のパネルの入れ物（中身を作り直しても残る。tabindex=-1 のフォーカスの置き場。src/ui/inspector.ts） */
+/** 右のパネルのフォーカスの置き場（作り直しても残る。tabindex=-1・高さ 0。src/ui/inspector.ts） */
+const panelPark = (): HTMLElement | null => document.querySelector<HTMLElement>(".sidebar-right .insp-focus-park");
+/** 右のパネルの中身の入れ物（押したのがパネルの中か） */
 const panelBox = (): HTMLElement | null => document.querySelector<HTMLElement>(".sidebar-right .insp-body-scroll");
 
 /**
@@ -189,7 +191,8 @@ export function focusLost(): boolean {
 function parkFocus(): void {
   if (!focusLost()) return;
   const box = panelBox();
-  if (box && box.getClientRects().length && getComputedStyle(box).visibility !== "hidden") box.focus({ preventScroll: true });
+  const park = panelPark();
+  if (box && park && box.getClientRects().length && getComputedStyle(box).visibility !== "hidden") park.focus({ preventScroll: true });
 }
 
 /**

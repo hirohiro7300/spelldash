@@ -344,7 +344,7 @@ async function main() {
       assert(a.count === 1 && a.fam === row.fam, `${sec}: 1 回目に選んだカード ${JSON.stringify(a)} / ${row.fam}`);
       assert(await onScreen(page, a.id), `${sec}: 選んだカードが画面に入らない`);
       // マウスで押した後は、パネルの入れ物にフォーカス（押した行は詳細に変わって消える）
-      assert(await page.evaluate(() => !!document.activeElement?.classList.contains("insp-body-scroll")), `${sec}: 押した後のフォーカス`);
+      assert(await page.evaluate(() => !!document.activeElement?.classList.contains("insp-focus-park")), `${sec}: 押した後のフォーカス`);
       // 概要へ戻ると、次は 2 つ目
       await page.evaluate(() => window.__fourD.ui.clearSelection());
       await page.waitForTimeout(150);
@@ -396,7 +396,7 @@ async function main() {
     const k = rows[Math.min(1, rows.length - 1)];
     await page.locator(`.imp-overview [data-fk="key:${k.id}"]`).click();
     await page.waitForTimeout(250);
-    const s = await page.evaluate(() => ({ sel: [...window.__fourD.ui.selection.nodes], sibs: document.querySelectorAll(".imp-node .imp-sibs .imp-alt-row").length, box: !!document.activeElement?.classList.contains("insp-body-scroll") }));
+    const s = await page.evaluate(() => ({ sel: [...window.__fourD.ui.selection.nodes], sibs: document.querySelectorAll(".imp-node .imp-sibs .imp-alt-row").length, box: !!document.activeElement?.classList.contains("insp-focus-park") }));
     assert(s.sel.length === 1 && s.sel[0] === k.id, `選んだカード ${JSON.stringify(s.sel)} / ${k.id}`);
     assert(s.sibs >= 2 && s.box, `判断の詳細 ${JSON.stringify(s)}`);
     await page.evaluate(() => window.__fourD.ui.clearSelection());
@@ -657,7 +657,7 @@ async function main() {
           sel: [...f.ui.selection.nodes].join(","),
           nodes: Object.keys(f.store.doc.nodes).length,
           editor: f.app.editor.active,
-          box: !!a?.classList.contains("insp-body-scroll"),
+          box: !!a?.classList.contains("insp-focus-park"),
           inPanel: !!a?.closest(".sidebar-right"),
           undo: f.store.history.undoStack.at(-1)?.label ?? null,
         };
@@ -709,7 +709,22 @@ async function main() {
     assert((await page.evaluate(() => window.__fourD.ui.selection.nodes.size)) === 0, "Escape で選択が外れない");
   }
 
-  await check("取り込み: フォーカスのあった欄・線・ノードが別の端末で消えたら、フォーカスはパネルの中（入力していた欄なら題名の欄、無ければ入れ物）へ移り、次のキーで地図を変えない", async () => {
+  await check("マウス: パネルの何も無い所（見出し）を押しても、フォーカスは置き場へ移らず、キャンバスのキー（Escape で選択を外す）は今までどおり効く", async () => {
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(150);
+    const id = await page.locator(".imp-overview .imp-decide .imp-alt-row").nth(1).getAttribute("data-id");
+    await page.evaluate((x) => window.__fourD.ui.select([x]), id);
+    await page.waitForTimeout(200);
+    await page.locator(".sidebar-right .insp-head").click({ position: { x: 4, y: 4 } });
+    await page.waitForTimeout(100);
+    const a = await page.evaluate(() => ({ park: !!document.activeElement?.classList.contains("insp-focus-park"), tag: document.activeElement?.tagName }));
+    assert(!a.park && a.tag === "BODY", `見出しを押した後のフォーカス ${JSON.stringify(a)}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+    assert((await page.evaluate(() => window.__fourD.ui.selection.nodes.size)) === 0, "見出しを押した後、Escape で選択が外れない");
+  });
+
+  await check("取り込み: フォーカスのあった欄・線・ノードが別の端末で消えたら、フォーカスはパネルの置き場へ移り、次のキーで地図もほかの欄も変えない", async () => {
     const u0 = await undoCount(page);
     try {
       await vanishedOnAdopt();
@@ -722,7 +737,7 @@ async function main() {
       page.evaluate(() => {
         const f = window.__fourD;
         const a = document.activeElement;
-        return { fk: a?.dataset?.fk ?? (a?.classList.contains("insp-body-scroll") ? "box" : a?.tagName), nodes: Object.keys(f.store.doc.nodes).length, editor: f.app.editor.active, sel: [...f.ui.selection.nodes], caret: a?.selectionStart ?? null, len: a?.value?.length ?? null };
+        return { fk: a?.dataset?.fk ?? (a?.classList.contains("insp-focus-park") ? "box" : a?.tagName), nodes: Object.keys(f.store.doc.nodes).length, editor: f.app.editor.active, sel: [...f.ui.selection.nodes], caret: a?.selectionStart ?? null, len: a?.value?.length ?? null };
       });
     const editing = () => page.evaluate(() => window.__fourD.app.editingNow());
     const imp = await impactOf(page);
@@ -748,13 +763,15 @@ async function main() {
     );
     await page.waitForTimeout(200);
     const a1 = await st();
-    assert(a1.fk === "title" && a1.caret === a1.len && a1.sel[0] === X, `項目が消えた後のフォーカス ${JSON.stringify(a1)}`);
+    assert(a1.fk === "box" && a1.sel[0] === X, `項目が消えた後のフォーカス ${JSON.stringify(a1)}`);
+    // 続けて打ったキーは、ほかの欄（題名）を黙って書き換えず、カードも消さない
     const t0 = await page.evaluate((x) => window.__fourD.store.doc.nodes[x].title, X);
     await page.keyboard.press("Backspace");
+    await page.keyboard.type("xy");
     await page.waitForTimeout(150);
     const a2 = await st();
     const t1 = await page.evaluate((x) => window.__fourD.store.doc.nodes[x]?.title ?? null, X);
-    assert(a2.nodes === a1.nodes && t1 === t0.slice(0, -1), `続く Backspace がカードを消した・題名に入らない ${JSON.stringify({ a1, a2, t0, t1 })}`);
+    assert(a2.nodes === a1.nodes && t1 === t0 && !a2.editor, `続くキーがカードを消した・題名を書き換えた ${JSON.stringify({ a1, a2, t0, t1 })}`);
     // (2) 題名の欄。別の端末でそのノードが消えた: 選択が外れて概要になり、入れ物へ
     const Y = await page.evaluate(() => {
       const f = window.__fourD;

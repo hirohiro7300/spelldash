@@ -1220,8 +1220,11 @@ button.tag-chip:hover {
   padding-left: 16px;
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-/* フォーカスの置き場（tabindex=-1）。作り直しで押した部品が消えたときにだけ置くので、枠は出さない */
-.insp-body-scroll:focus {
+/* フォーカスの置き場（tabindex=-1・高さ 0）。作り直しで押した部品が消えたときにだけ置くので、枠は出さない */
+.insp-focus-park {
+  display: block;
+  height: 0;
+  overflow: hidden;
   outline: none;
 }
 .insp-row-between {

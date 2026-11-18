@@ -18,9 +18,12 @@ export function buildInspector(app: AppContext): HTMLElement {
   const { store, ui } = app;
   const headTitle = h("span", { class: "insp-head-title" }, "詳細");
   const headSub = h("span", { class: "insp-head-sub" });
-  // 中身は作り直すが、この入れ物は残る。押した部品・入力していた欄が作り直しで消えたときのフォーカスの置き場（tabindex=-1）
-  const body = h("div", { class: "insp-body-scroll", tabIndex: -1 });
-  const root = h("aside", { class: "sidebar sidebar-right", ariaLabel: "詳細" }, h("div", { class: "insp-head" }, headTitle, headSub), body);
+  // 中身は作り直すが、この入れ物は残る
+  const body = h("div", { class: "insp-body-scroll" });
+  // 押した部品・入力していた欄が作り直しで消えたときのフォーカスの置き場（tabindex=-1・高さ 0）。
+  // 入れ物そのものにすると、パネルの何も無い所を押しただけでフォーカスが移り、キャンバスのキーが黙って効かなくなる
+  const park = h("div", { class: "insp-focus-park", tabIndex: -1, ariaLabel: "詳細のパネル" });
+  const root = h("aside", { class: "sidebar sidebar-right", ariaLabel: "詳細" }, park, h("div", { class: "insp-head" }, headTitle, headSub), body);
   let key = "";
   let updaters: Updater[] = [];
   /** 見え方だけの変更（3 年の分かれ道の開閉など）で合わせる物。文書の変更でも updaters から合わせる */
@@ -40,29 +43,18 @@ export function buildInspector(app: AppContext): HTMLElement {
    */
   const heldFocus = (): HTMLElement | null => {
     const a = document.activeElement;
-    return a instanceof HTMLElement && a !== body && body.contains(a) && (isTypingTarget(a) || keyboardFocus(a)) ? a : null;
+    return a instanceof HTMLElement && body.contains(a) && (isTypingTarget(a) || keyboardFocus(a)) ? a : null;
   };
   /**
    * 作り直しで held（前にフォーカスのあった部品）が無くなり、フォーカスが体に落ちたとき（別の端末で、その欄・線・ノードが消えた など）:
-   * パネルの中の決まった所へ移す。入力していた欄なら題名の欄（あれば。文字の位置は終わり）、それ以外はこの入れ物（tabindex=-1）。
-   * 体に落とすと、次の Tab・Backspace・文字のキーがキャンバスの操作（分岐を足す・選んだカードを消す・作る）になる
+   * パネルのフォーカスの置き場へ移す。体に落とすと、次の Tab・Backspace・文字のキーがキャンバスの操作（分岐を足す・選んだカードを消す・作る）になる。
+   * 入力していた欄でも、ほかの欄（題名など）へは移さない（続けて打った文字・Backspace が黙ってその欄を書き換える）
    */
   const settleFocus = (held: HTMLElement | null): void => {
     // ほとんどの変更（打っている欄が残っている）は、ここで済ませる（大きさを測らない）
     if (!held || (held.isConnected && document.activeElement === held) || !focusLost()) return;
     if (!root.isConnected || getComputedStyle(root).visibility === "hidden") return;
-    if (isTypingTarget(held)) {
-      const t = body.querySelector<HTMLTextAreaElement>(".insp-title");
-      if (t && !t.disabled && t.getClientRects().length) {
-        t.focus();
-        if (document.activeElement === t) {
-          const n = t.value.length;
-          t.setSelectionRange(n, n);
-          return;
-        }
-      }
-    }
-    body.focus({ preventScroll: true });
+    park.focus({ preventScroll: true });
   };
 
   const render = (force = false) => {

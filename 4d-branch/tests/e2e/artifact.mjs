@@ -1008,7 +1008,7 @@ await check("古い版の地図のまま開き直した端末: 新しい版を�
   assert(after.newMark === false, "新しい版になったのに「新」の印が残っている");
 });
 
-await check("項目の欄にフォーカスを置いたまま（打っていない）、別の端末がその項目を消して取り込んでも、フォーカスは詳細の題名の欄へ移り、続く Backspace でノードを消さない", async () => {
+await check("項目の欄にフォーカスを置いたまま（打っていない）、別の端末がその項目を消して取り込んでも、フォーカスはパネルの置き場へ移り、続く Backspace でノードも題名も変えない", async () => {
   const { X, Y } = await xyDemo("u_vanish_cond", { write: false });
   const nid = await X.page.evaluate(() => {
     const f = window.__fourD;
@@ -1030,12 +1030,12 @@ await check("項目の欄にフォーカスを置いたまま（打っていな�
   await Y.page.evaluate(() => window.__fourD.app.cloud.flush());
   await X.page.waitForFunction(([id, c]) => !window.__fourD.store.doc.nodes[id]?.conditions.some((x) => x.id === c), [nid, cid], { timeout: 20000 });
   await X.page.waitForTimeout(300);
-  const mid = await X.page.evaluate(() => ({ fk: document.activeElement?.dataset?.fk ?? document.activeElement?.tagName, nodes: Object.keys(window.__fourD.store.doc.nodes).length }));
-  assert(mid.fk === "title", `取り込んだ後のフォーカス ${JSON.stringify(mid)}`);
+  const mid = await X.page.evaluate((id) => ({ park: !!document.activeElement?.classList.contains("insp-focus-park"), fk: document.activeElement?.dataset?.fk ?? document.activeElement?.tagName, nodes: Object.keys(window.__fourD.store.doc.nodes).length, title: window.__fourD.store.doc.nodes[id]?.title }), nid);
+  assert(mid.park, `取り込んだ後のフォーカス ${JSON.stringify(mid)}`);
   await X.page.keyboard.press("Backspace");
   await X.page.waitForTimeout(300);
-  const fin = await X.page.evaluate((id) => ({ exists: !!window.__fourD.store.doc.nodes[id], nodes: Object.keys(window.__fourD.store.doc.nodes).length }), nid);
-  assert(fin.exists && fin.nodes === mid.nodes, `続く Backspace でノードを消した ${JSON.stringify({ mid, fin })}`);
+  const fin = await X.page.evaluate((id) => ({ exists: !!window.__fourD.store.doc.nodes[id], nodes: Object.keys(window.__fourD.store.doc.nodes).length, title: window.__fourD.store.doc.nodes[id]?.title }), nid);
+  assert(fin.exists && fin.nodes === mid.nodes && fin.title === mid.title, `続く Backspace でノード・題名を変えた ${JSON.stringify({ mid, fin })}`);
   await X.ctx.close();
   await Y.ctx.close();
 });
