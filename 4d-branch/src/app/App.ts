@@ -295,6 +295,14 @@ export class App implements AppContext {
     this.cameraSaveTimer = setTimeout(() => this.ui.saveCamera(this.store.doc.id, this.view.camera), 600);
   }
 
+  /**
+   * その場の入力（カードの題名）か、パネルの入力欄（年収・条件・タグなど）に入力している途中か。同期の取り込みは終わるまで待つ
+   * （入れ替えると欄が作り直されて入力が消え、残りのキーがキャンバスの操作になる。見分け方はキーの扱いと同じ）
+   */
+  editingNow(): boolean {
+    return this.editor.active || isTypingTarget(document.activeElement);
+  }
+
   private startEdit(id: ID): void {
     if (this.store.readOnly) return;
     if (this.ui.prefs.view === "list" || this.view.width === 0) {
@@ -1254,7 +1262,7 @@ export class App implements AppContext {
       bootDoc: async () => (pendingBase ? null : asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY))),
       isWriter: () => this.persistence.writer && !this.store.readOnly,
       isDisposable: (doc) => isDisposableDoc(doc),
-      isEditing: () => this.editor.active,
+      isEditing: () => this.editingNow(),
       // 開いてから手を付けていない未来の道筋（とそれを元に戻しただけの地図）は、重なったら別の端末の内容に譲る
       // （押せばまた開ける。書いた内容を押し流さない。戻した地図は、別の端末が開いたばかりの地図には譲らない）
       yieldsOnConflict: (local, remote) => yieldsToRemote(local, remote),

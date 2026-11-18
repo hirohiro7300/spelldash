@@ -10,9 +10,9 @@ import { computeImpact, emptyImpact, type ImpactResult } from "../model/impact";
 import { compareImpactKids, outlineLayout } from "../model/impactLayout";
 import { buildIndex, inScenario, type GraphIndex } from "../model/graph";
 import { isEmptyQuery, parseQuery, searchNodes } from "../model/search";
-import type { DocData, GEdge, ID } from "../model/types";
+import type { DocData, GEdge, GNode, ID } from "../model/types";
 import { computeCollapse, computePaths, computeUnreached, type CollapseResult } from "../model/visibility";
-import type { Store } from "../store/store";
+import type { ChangeInfo, Store } from "../store/store";
 import { isNarrowScreen } from "../ui/breakpoints";
 import type { UiState } from "./uiState";
 
@@ -45,6 +45,34 @@ export interface EdgeVis {
 }
 
 const HIDDEN_NODE: NodeVis = { hidden: true, alpha: 0, match: false, path: false, ghost: false, future: false, offScenario: false, collapsedCount: 0, collapsed: false, inProject: false };
+
+/** 3 年の影響の計算（と、その範囲の見込み）が読まない所: ノードの文字・位置、線の説明と条件、更新の時刻 */
+const NODE_TEXT_KEYS: ReadonlySet<string> = new Set(["title", "body", "tags", "conditions", "x", "y", "updatedAt"]);
+const EDGE_TEXT_KEYS: ReadonlySet<string> = new Set(["label", "condition", "updatedAt"]);
+
+/** 1 段だけの比較（配列は要素ごと、オブジェクトはキーごと。それより深い物は同じ物かだけ） */
+function same1(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+  if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+    const ra = a as Record<string, unknown>;
+    const rb = b as Record<string, unknown>;
+    const ka = Object.keys(ra);
+    return ka.length === Object.keys(rb).length && ka.every((k) => k in rb && Object.is(ra[k], rb[k]));
+  }
+  return false;
+}
+
+/** skip のほかの所がすべて同じか（どちらかが無ければ違う＝足した・消した） */
+function sameExcept(a: object | undefined, b: object | undefined, skip: ReadonlySet<string>): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  for (const k of Object.keys(ra)) if (!skip.has(k) && !same1(ra[k], rb[k])) return false;
+  for (const k of Object.keys(rb)) if (!skip.has(k) && !(k in ra)) return false;
+  return true;
+}
 
 /** 3 年の分かれ道の範囲（索引ごとに作り直す） */
 interface ImpactScopeInfo {
@@ -79,6 +107,13 @@ export class ViewModel {
   private forecastCache: ForecastResult = { active: false, reach: new Map(), ends: [], longest: 0, order: [], impactScope: new Set() };
   private impactKey = "";
   private impactCache: ImpactResult = emptyImpact();
+  /**
+   * 3 年の影響の計算に使う物の版（impact の鍵）。文字だけの変更（題名・本文・タグ・条件・線の説明と条件）と位置では進めない。
+   * 見分けるために、直前に見たノード・線を覚えておき、変わった物だけ前と後を比べる
+   */
+  private impactInputs = 0;
+  private seenNodes = new Map<ID, GNode>();
+  private seenEdges = new Map<ID, GEdge>();
   private dirtyIndex = true;
   private dirtyVis = true;
   /** 位置だけが変わった（重ねる位置を入口の位置に合わせ直す） */
@@ -118,15 +153,51 @@ export class ViewModel {
         this.dirtyIndex = true;
         this.dirtyVis = true;
       } else this.dirtyPos = true;
+      this.noteImpactInputs(info);
     });
     ui.on("visual", () => {
       this.dirtyVis = true;
     });
+    this.seeAll();
   }
 
   invalidate(): void {
     this.dirtyIndex = true;
     this.dirtyVis = true;
+    this.impactInputs++;
+    this.seeAll();
+  }
+
+  /** 今の文書のノード・線を覚え直す（全部が入れ替わったとき） */
+  private seeAll(): void {
+    const doc = this.store.doc;
+    this.seenNodes = new Map(Object.entries(doc.nodes));
+    this.seenEdges = new Map(Object.entries(doc.edges));
+  }
+
+  /** 変わったノード・線の前と後を比べ、3 年の影響の計算に使う所が変わっていたら版を進める */
+  private noteImpactInputs(info: ChangeInfo): void {
+    if (info.full) {
+      this.impactInputs++;
+      this.seeAll();
+      return;
+    }
+    const doc = this.store.doc;
+    // プロジェクト（領域の名前と色）・シナリオ（方針で絞る）は、変わったら計算し直す（まれ）。位置だけの変更は比べない
+    let hit = info.projects.size > 0 || info.scenarios.size > 0;
+    for (const id of info.nodes) {
+      const now = doc.nodes[id];
+      if (!hit && !info.positionsOnly && !sameExcept(this.seenNodes.get(id), now, NODE_TEXT_KEYS)) hit = true;
+      if (now) this.seenNodes.set(id, now);
+      else this.seenNodes.delete(id);
+    }
+    for (const id of info.edges) {
+      const now = doc.edges[id];
+      if (!hit && !sameExcept(this.seenEdges.get(id), now, EDGE_TEXT_KEYS)) hit = true;
+      if (now) this.seenEdges.set(id, now);
+      else this.seenEdges.delete(id);
+    }
+    if (hit) this.impactInputs++;
   }
 
   private ensureIndex(): void {
@@ -172,13 +243,14 @@ export class ViewModel {
   }
 
   /**
-   * 3 年の影響（v2 の未来の道筋があるときだけ active）。見込みと同じく、文書が変わるか選んだシナリオが変わったときだけ計算し直す
-   * （% ・状態・年収の編集は文書の変更。開く・閉じる・選ぶだけでは計算し直さない）
+   * 3 年の影響（v2 の未来の道筋があるときだけ active）。計算に使う物が変わるか、選んだシナリオが変わったときだけ計算し直す
+   * （% ・状態・年収・種類・時間・meta・つなぎ方の編集。題名などの文字だけの編集・開く・閉じる・選ぶだけでは計算し直さない。
+   * 題名を書いている所は、それぞれが文書から書き直す）
    */
   get impact(): ImpactResult {
     const fc = this.forecast;
     const sid = this.ui.prefs.scenarioId ?? null;
-    const key = `${this.indexVersion}|${sid ?? ""}`;
+    const key = `${this.impactInputs}|${sid ?? ""}`;
     if (key !== this.impactKey) {
       this.impactCache = fc.impactScope.size ? computeImpact(this.store.doc, this.index.out, fc, sid && this.store.doc.scenarios[sid] ? sid : null) : emptyImpact();
       this.impactKey = key;

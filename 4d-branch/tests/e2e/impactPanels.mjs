@@ -100,6 +100,16 @@ const impactOf = (page) =>
     return { root: imp.root, annual: imp.annual, annualSet: imp.annualSet, vRoot: imp.vRoot, vSQ: imp.vSQ, counts: imp.counts, best: root.best, alts, ends: imp.ends.slice(0, 10).map((e) => e.id), hasPicks: imp.hasPicks };
   });
 
+/** 元に戻すで、履歴が n 件の形まで戻して選択を外す（確かめが途中で失敗しても、後の確かめに変更を残さない） */
+const undoTo = (page, n) =>
+  page.evaluate((k) => {
+    const f = window.__fourD;
+    f.store.readOnly = false;
+    for (let i = 0; i < 20 && f.store.history.undoStack.length > k; i++) f.app.cmd.undo();
+    f.ui.clearSelection();
+  }, n);
+const undoCount = (page) => page.evaluate(() => window.__fourD.store.history.undoStack.length);
+
 /** そのノードが画面（キャンバス）の中に見えているか */
 const onScreen = (page, id) =>
   page.evaluate((nid) => {
@@ -193,7 +203,7 @@ async function main() {
     assert(Math.round(d.height) === 14, `分布の棒の高さ ${d.height}`);
     assert(/^平均 [\d,]+万（[+−][\d,.]+万）· 10〜90%: [\d,]+〜[\d,]+万 · 今のままより悪くなる \d+%$/.test(d.text), `分布の文: ${d.text}`);
     assert(d.ends.length === 10 && d.ends.every((e) => /%$/.test(e.pct ?? "") && /^([+−][\d,.]+万|±0)$/.test(e.g ?? "")), `行き先 ${JSON.stringify(d.ends.slice(0, 3))}`);
-    for (const s of ["塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）", "% の札: その結果になる見込み。色はその結果の良し悪し（今のままと比べて）", "★ おすすめ（2 位より 3 万円以上良い）・≒ ほぼ同じ・✓ 選んだ手", "月+2.1万: 3 年後の月の稼ぎの差"])
+    for (const s of ["塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）", "% の札: その結果になる見込み。色はその結果の良し悪し（今のままと比べて）", "★ おすすめ（2 位より 10 万円以上良い）・≒ 一番から 10 万円以内・✓ 選んだ手", "月+2.1万: 3 年後の月の稼ぎの差"])
       assert(d.legend.includes(s), `見方に「${s}」が無い`);
     assert(d.premise.includes("数字はモデルの目安です"), "前提の注意が無い");
     await page.locator(".imp-premises summary").click();
@@ -319,6 +329,280 @@ async function main() {
     assert(/^おすすめの選び方で/.test((await page.locator(".imp-overview .imp-hl-main").textContent()) ?? ""), "見出しがおすすめに戻らない");
   });
 
+  await check("選択肢: 同じ判断で別の手を「これにする」と、前に選んだ手は未着手に戻り、✓ と見出しはあとの手に移る（1 回で元に戻せる）", async () => {
+    const u0 = await undoCount(page);
+    try {
+      await pickTwo();
+    } finally {
+      await undoTo(page, u0);
+    }
+  });
+  async function pickTwo() {
+    const before = await impactOf(page);
+    const others = before.alts.filter((x) => !x.isBase && x.id !== before.best && x.delta !== null);
+    const a = others[0];
+    const b = others[1];
+    assert(a && b, "選べる手が足りない（確かめの前提）");
+    for (const x of [a, b]) {
+      await page.evaluate((id) => window.__fourD.ui.select([id]), x.id);
+      await page.waitForTimeout(150);
+      await page.locator(".imp-node.is-alt .imp-picks .btn", { hasText: "これにする" }).click();
+      await page.waitForTimeout(150);
+    }
+    const after = await impactOf(page);
+    const st = (s, id) => s.alts.find((x) => x.id === id).status;
+    assert(st(after, a.id) === "open" && st(after, b.id) === "active", `状態 ${st(after, a.id)} / ${st(after, b.id)}`);
+    const r = await page.evaluate(() => {
+      const f = window.__fourD;
+      const imp = f.app.vm.impact;
+      return { chosen: imp.decision.get(imp.root).chosen, undo: f.store.history.undoStack.at(-1)?.label };
+    });
+    assert(r.chosen === b.id, "あとで選んだ手で計算していない");
+    assert(r.undo === `「${b.title}」にする`, `元に戻すの名前 ${r.undo}`);
+    // あとの手だけを選んだ数（おすすめとの差 = その手とおすすめの手の差）
+    const best = before.alts.find((x) => x.id === before.best);
+    assert(Math.abs(after.vRoot - (before.vRoot + b.delta - best.delta)) < 1e-6, `3 年の稼ぎ ${after.vRoot} / ${before.vRoot + b.delta - best.delta}`);
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(150);
+    const main = (await page.locator(".imp-overview .imp-hl-main").textContent()) ?? "";
+    assert(/^あなたの選び方で 3 年 [\d,]+ 万円（おすすめとの差 −[\d,.]+ 万円）$/.test(main) && Math.abs(num(main.replace(/^あなたの選び方で 3 年 /, "").replace(/（.*$/, "")) - after.vRoot) < 1, `見出し: ${main}`);
+    const picked = await page.evaluate(() => [...document.querySelectorAll(".imp-overview .imp-decide .imp-alt-row")].filter((x) => x.querySelector(".imp-mark").textContent.includes("✓")).map((x) => x.dataset.id));
+    assert(picked.length === 1 && picked[0] === b.id, `✓ の行 ${JSON.stringify(picked)}`);
+    // 1 回で両方が戻る（前の手を選んだ所へ）、もう 1 回で何も選んでいない形へ
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    const back1 = await impactOf(page);
+    assert(st(back1, a.id) === "active" && st(back1, b.id) === "open", `1 回戻した状態 ${st(back1, a.id)} / ${st(back1, b.id)}`);
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    const back2 = await impactOf(page);
+    assert(!back2.hasPicks && Math.abs(back2.vRoot - before.vRoot) < 1e-6, "選ぶ前に戻らない");
+  }
+
+  await check("キーボード: 「これにする」「見送る」「選び直す」・年収の欄・今決めることの行を押した後も、フォーカスはパネルに残り、次の Tab・Backspace で地図を変えない", async () => {
+    const u0 = await undoCount(page);
+    try {
+      await keyboardFocus();
+    } finally {
+      await undoTo(page, u0);
+    }
+  });
+  async function keyboardFocus() {
+    const imp = await impactOf(page);
+    const alt = imp.alts.find((x) => !x.isBase && x.id !== imp.best && x.delta !== null).id;
+    const count = () => page.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
+    const fk = () => page.evaluate(() => (document.activeElement?.closest(".sidebar-right") ? (document.activeElement.dataset.fk ?? document.activeElement.className) : document.activeElement?.tagName));
+    const status = () => page.evaluate((id) => window.__fourD.store.doc.nodes[id].status, alt);
+    const n0 = await count();
+    await page.evaluate((id) => window.__fourD.ui.select([id]), alt);
+    await page.waitForTimeout(150);
+    // タイトルの欄から Tab で「これにする」へ進み、Enter
+    await page.locator(".insp-title").focus();
+    for (let i = 0; i < 40 && (await fk()) !== `pick:${alt}`; i++) await page.keyboard.press("Tab");
+    assert((await fk()) === `pick:${alt}`, `Tab で「これにする」へ行けない（${await fk()}）`);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    assert((await status()) === "active", "Enter で選べない");
+    assert((await fk()) === `redo:${alt}`, `「これにする」の後のフォーカス ${await fk()}`);
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(150);
+    assert((await count()) === n0 && (await fk()) !== "BODY", `Tab でノードが増えた・フォーカスが外れた（${await fk()}）`);
+    // 「選び直す」の後は「これにする」へ
+    await page.locator(`.imp-node [data-fk="redo:${alt}"]`).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    assert((await status()) === "open" && (await fk()) === `pick:${alt}`, `「選び直す」の後のフォーカス ${await fk()}`);
+    // 「見送る」の後は「選び直す」へ。Backspace で選択肢を消さない
+    await page.locator(`.imp-node [data-fk="drop:${alt}"]`).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    assert((await status()) === "dropped" && (await fk()) === `redo:${alt}`, `「見送る」の後のフォーカス ${await fk()}`);
+    await page.keyboard.press("Backspace");
+    await page.waitForTimeout(150);
+    assert((await count()) === n0 && (await page.evaluate((id) => !!window.__fourD.store.doc.nodes[id], alt)), "Backspace で選択肢が消えた");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    assert((await status()) === "open", "選び直せない");
+    // 今日の年収: 「変える」→ 入れて Enter → 「変える」へ戻る。入力中は同期の取り込みを待つ（入力の途中と見なす）
+    await page.evaluate((id) => window.__fourD.ui.select([id]), imp.root);
+    await page.waitForTimeout(150);
+    await page.locator(".imp-node.is-root .imp-salary-change").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.activeElement?.classList.contains("imp-salary-input"));
+    assert(await page.evaluate(() => window.__fourD.app.editingNow()), "年収の欄に入力中を、入力の途中と見なさない");
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("540");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    assert((await page.evaluate(() => window.__fourD.app.vm.impact.annual)) === 540, "年収が変わらない");
+    assert((await fk()) === "salary", `年収を決めた後のフォーカス ${await fk()}`);
+    assert(!(await page.evaluate(() => window.__fourD.app.editingNow())), "欄を閉じても入力の途中のまま");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(150);
+    assert((await count()) === n0, "年収の後の Tab でノードが増えた");
+    await page.locator(".imp-node.is-root .imp-salary-change").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.activeElement?.classList.contains("imp-salary-input"));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+    assert((await fk()) === "salary", `年収の欄をやめた後のフォーカス ${await fk()}`);
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    assert((await page.evaluate(() => window.__fourD.app.vm.impact.annualSet)) === false, "年収が仮に戻らない");
+    // 概要の今決めることの行を Enter: 選んだ手の詳細の最初の部品（これにする）へ
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(150);
+    const rowId = await page.locator(".imp-overview .imp-decide .imp-alt-row").nth(2).getAttribute("data-id");
+    await page.locator(`.imp-overview [data-fk="row:${rowId}"]`).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    assert((await page.evaluate(() => [...window.__fourD.ui.selection.nodes][0])) === rowId, "行の手が選ばれない");
+    assert((await fk()) === `pick:${rowId}`, `行を押した後のフォーカス ${await fk()}`);
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(150);
+    assert((await count()) === n0, "行の後の Tab でノードが増えた");
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  }
+
+  await check("詳細で題名を書き換えると、3 年の影響は計算し直さず、パネルの行の題名はすぐ変わる", async () => {
+    const u0 = await undoCount(page);
+    try {
+      await retitle();
+    } finally {
+      await undoTo(page, u0);
+    }
+  });
+  async function retitle() {
+    const imp = await impactOf(page);
+    const alt = imp.alts.find((x) => !x.isBase && x.delta !== null).id;
+    await page.evaluate((id) => window.__fourD.ui.select([id]), alt);
+    await page.waitForTimeout(150);
+    await page.evaluate(() => void (window.__imp0 = window.__fourD.app.vm.impact));
+    await page.locator(".insp-title").focus();
+    await page.keyboard.press("End");
+    await page.keyboard.type("（書き換え）");
+    await page.waitForTimeout(150);
+    const r = await page.evaluate((id) => ({
+      same: window.__fourD.app.vm.impact === window.__imp0,
+      title: window.__fourD.store.doc.nodes[id].title,
+      row: document.querySelector(`.imp-node .imp-sibs .imp-alt-row[data-id="${id}"] .imp-alt-name`)?.textContent,
+      focus: document.activeElement?.classList.contains("insp-title"),
+    }), alt);
+    assert(r.title.endsWith("（書き換え）"), `題名 ${r.title}`);
+    assert(r.same, "題名の入力で 3 年の影響を計算し直した");
+    assert(r.row === r.title, `同じ判断の手の行 ${r.row}`);
+    assert(r.focus, "入力中の題名の欄からフォーカスが外れた");
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(150);
+    const row = await page.evaluate((id) => document.querySelector(`.imp-overview .imp-decide .imp-alt-row[data-id="${id}"] .imp-alt-name`)?.textContent, alt);
+    assert(row === r.title, `今決めることの行 ${row}`);
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    await page.waitForTimeout(150);
+    const back = await page.evaluate((id) => ({ title: window.__fourD.store.doc.nodes[id].title, row: document.querySelector(`.imp-overview .imp-decide .imp-alt-row[data-id="${id}"] .imp-alt-name`)?.textContent }), alt);
+    assert(!back.title.endsWith("（書き換え）") && back.row === back.title, `元に戻した題名 ${JSON.stringify(back)}`);
+  }
+
+  await check("概要の「全部ひらく」は 3 年の分かれ道だけを見え方で開く（自分で折りたたんだノード・文書・元に戻すはそのまま。閲覧のみでもお知らせを出さない）", async () => {
+    const own = await page.evaluate(() => {
+      const f = window.__fourD;
+      const id = f.app.cmd.createNode("goal", { x: -3000, y: 0 }, { exact: true, title: "自分のメモ" });
+      const kid = f.app.cmd.createNode("action", { x: -2700, y: 0 }, { exact: true, title: "自分のメモの先", from: [id] });
+      f.store.transact("自分で折りたたむ", (tx) => tx.updateNode(id, { collapsed: true }));
+      f.ui.clearSelection();
+      return { id, kid };
+    });
+    await page.waitForTimeout(150);
+    const before = await page.evaluate(() => ({ rev: window.__fourD.store.revision, undo: window.__fourD.store.history.undoStack.length }));
+    let after;
+    try {
+      await page.evaluate(() => (window.__fourD.store.readOnly = true));
+      await page.getByRole("button", { name: "全部ひらく" }).click();
+      await page.waitForTimeout(300);
+      after = await page.evaluate((o) => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
+        vm.ensure();
+        const imp = vm.impact;
+        return {
+          rev: f.store.revision,
+          undo: f.store.history.undoStack.length,
+          collapsed: f.store.doc.nodes[o.id].collapsed,
+          kidHidden: vm.node(o.kid).hidden,
+          hiddenInScope: [...imp.scope].filter((id) => vm.node(id).hidden).length,
+          warn: [...document.querySelectorAll(".toast:not(.closing) .toast-text")].filter((t) => t.textContent.includes("閲覧のみ")).length,
+        };
+      }, own);
+    } finally {
+      // 後の確かめのために戻す（閲覧のみ・開いた所・足したノード）
+      await page.evaluate((n) => {
+        const f = window.__fourD;
+        f.store.readOnly = false;
+        f.app.cmd.resetImpactOpen();
+        for (let i = 0; i < 10 && f.store.history.undoStack.length > n; i++) f.app.cmd.undo();
+      }, before.undo - 3);
+    }
+    assert(after.rev === before.rev && after.undo === before.undo, `文書・元に戻すが変わった ${JSON.stringify({ before, after })}`);
+    assert(after.collapsed === true && after.kidHidden, `自分で折りたたんだノードが開いた ${JSON.stringify(after)}`);
+    assert(after.hiddenInScope === 0, `3 年の分かれ道に隠れたノードが残る（${after.hiddenInScope}）`);
+    assert(after.warn === 0, "閲覧のみのお知らせが出た");
+    assert(await page.evaluate((o) => !window.__fourD.store.doc.nodes[o.id], own), "確かめに足したノードが残った");
+  });
+
+  await check("詳細の「折りたたむ／展開する」は、3 年の分かれ道では見え方の開閉に合わせ、キャンバスで開閉しても合い、閲覧のみでも押せる（文書は変えない）", async () => {
+    const id = await page.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      vm.ensure();
+      for (const [x, m] of vm.impact.month) if (m === 3 && vm.isCollapsed(x) && !vm.node(x).hidden) return x;
+      return null;
+    });
+    assert(id, "閉じた 3 か月後のカードが無い（確かめの前提）");
+    await page.evaluate((x) => window.__fourD.ui.select([x]), id);
+    await page.waitForTimeout(150);
+    const read = () =>
+      page.evaluate((x) => {
+        const f = window.__fourD;
+        const b = document.querySelectorAll(".insp-node .insp-actions .btn")[1];
+        return { label: b.textContent.trim(), disabled: b.disabled, view: f.app.vm.isCollapsed(x), doc: f.store.doc.nodes[x].collapsed, rev: f.store.revision };
+      }, id);
+    const r0 = await read();
+    assert(r0.label === "展開する" && r0.view && !r0.doc, `閉じたカードの見出し ${JSON.stringify(r0)}`);
+    await page.locator(".insp-node .insp-actions .btn").nth(1).click();
+    await page.waitForTimeout(150);
+    const r1 = await read();
+    assert(r1.label === "折りたたむ" && !r1.view && !r1.doc && r1.rev === r0.rev, `開いた後 ${JSON.stringify(r1)}`);
+    // キャンバスで閉じる（C）: ボタンも合わせる
+    await page.locator(".graph-canvas").focus();
+    await page.keyboard.press("c");
+    await page.waitForTimeout(150);
+    const r2 = await read();
+    assert(r2.label === "展開する" && r2.view && r2.rev === r0.rev, `キャンバスで閉じた後 ${JSON.stringify(r2)}`);
+    // 閲覧のみでも見え方の開閉は押せる
+    let r3;
+    let r4;
+    try {
+      await page.evaluate((x) => {
+        const f = window.__fourD;
+        f.store.readOnly = true;
+        f.ui.clearSelection();
+        f.ui.select([x]);
+      }, id);
+      await page.waitForTimeout(150);
+      r3 = await read();
+      if (!r3.disabled) {
+        await page.locator(".insp-node .insp-actions .btn").nth(1).click();
+        await page.waitForTimeout(150);
+      }
+      r4 = await read();
+    } finally {
+      await page.evaluate(() => {
+        const f = window.__fourD;
+        f.store.readOnly = false;
+        f.app.cmd.resetImpactOpen();
+        f.ui.clearSelection();
+      });
+    }
+    assert(!r3.disabled, "閲覧のみで押せない");
+    assert(r4.label === "折りたたむ" && !r4.view && r4.rev === r0.rev, `閲覧のみで開いた後 ${JSON.stringify(r4)}`);
+  });
+
   await check("結果の線: % の欄に「この手の結果の合計」、判断の線の % には使わないと出す", async () => {
     const ids = await page.evaluate(() => {
       const f = window.__fourD;
@@ -437,7 +721,7 @@ async function main() {
   // ---- スマホ（390×844）: 引き出しは幅 300px、横にはみ出さない。今決めることを押すと引き出しを閉じて寄る
   const ph = await openImpact(browser, { width: 390, height: 844 });
   const pp = ph.page;
-  await check("スマホ: 引き出しの幅・横にはみ出さない・見出しと今決めることが読める", async () => {
+  await check("スマホ: 引き出しの幅・横にはみ出さない・見出しと今決めること（10 行）が引き出しに収まって読める", async () => {
     await pp.evaluate(() => window.__fourD.ui.clearSelection());
     await pp.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
     await pp.waitForTimeout(400);
@@ -445,13 +729,21 @@ async function main() {
     assert(Math.round(w.side) === 300, `引き出しの幅 ${w.side}`);
     assert(w.ok, `横にはみ出す ${JSON.stringify(w)}`);
     const vis = await pp.evaluate(() => {
+      document.querySelector(".insp-body-scroll").scrollTop = 0;
       const r = (sel) => document.querySelector(sel)?.getBoundingClientRect();
       const head = r(".imp-overview .imp-head");
-      const first = r(".imp-overview .imp-decide .imp-alt-row");
+      const rows = [...document.querySelectorAll(".imp-overview .imp-decide .imp-alt-row")];
       const fs = parseFloat(getComputedStyle(document.querySelector(".imp-overview .imp-alt-title")).fontSize);
-      return { headTop: head?.top, headBottom: head?.bottom, firstBottom: first?.bottom, h: innerHeight, fs };
+      // 詰めた行: タイトルは 1 行（短い名前）、全部の題名は行の title に
+      const oneLine = rows.every((x) => {
+        const t = x.querySelector(".imp-alt-title");
+        return t.getBoundingClientRect().height <= parseFloat(getComputedStyle(t).lineHeight) + 1 && x.title.length > 0;
+      });
+      return { headTop: head?.top, headBottom: head?.bottom, bottoms: rows.map((x) => Math.round(x.getBoundingClientRect().bottom)), h: innerHeight, fs, oneLine };
     });
-    assert(vis.headTop > 0 && vis.firstBottom < vis.h && vis.fs >= 12, `見出しと最初の手が見えない ${JSON.stringify(vis)}`);
+    assert(vis.headTop > 0 && vis.bottoms.length === 10 && vis.fs >= 12, `見出しと今決めることが見えない ${JSON.stringify(vis)}`);
+    assert(vis.bottoms.every((b) => b <= vis.h), `今決めることの 10 行が引き出しに収まらない ${JSON.stringify(vis)}`);
+    assert(vis.oneLine, "詰めた行のタイトルが 1 行でない");
     await shot("impact-phone-overview", pp);
   });
 

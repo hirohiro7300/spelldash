@@ -22,6 +22,8 @@ export function buildInspector(app: AppContext): HTMLElement {
   const root = h("aside", { class: "sidebar sidebar-right", ariaLabel: "詳細" }, h("div", { class: "insp-head" }, headTitle, headSub), body);
   let key = "";
   let updaters: Updater[] = [];
+  /** 見え方だけの変更（3 年の分かれ道の開閉など）で合わせる物。文書の変更でも updaters から合わせる */
+  let viewUpdaters: Updater[] = [];
 
   const selKey = () => {
     const s = ui.selection;
@@ -37,13 +39,17 @@ export function buildInspector(app: AppContext): HTMLElement {
       for (const u of updaters) u();
       return;
     }
+    // 同じ選択のまま作り直す（全部が入れ替わった・書き手が変わった）: フォーカスのあった部品（data-fk の鍵）へ戻す
+    const active = document.activeElement;
+    const fk = k === key && active instanceof HTMLElement && body.contains(active) ? (active.dataset.fk ?? null) : null;
     key = k;
     updaters = [];
+    viewUpdaters = [];
     clear(body);
     const doc = store.doc;
     if (k.startsWith("node:")) {
       const id = k.slice(5);
-      if (doc.nodes[id]) nodePanel(app, id, body, (u) => updaters.push(u));
+      if (doc.nodes[id]) nodePanel(app, id, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     } else if (k.startsWith("edge:")) {
       const id = k.slice(5);
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
@@ -52,6 +58,7 @@ export function buildInspector(app: AppContext): HTMLElement {
     headTitle.textContent = k === "none" ? "概要" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
     for (const u of updaters) u();
+    if (fk) body.querySelector<HTMLElement>(`[data-fk="${CSS.escape(fk)}"]`)?.focus();
   };
 
   ui.on("selection", () => render());
@@ -63,6 +70,10 @@ export function buildInspector(app: AppContext): HTMLElement {
   });
   ui.on("prefs", (p) => {
     if (!onlyTimeCursor(p)) render();
+  });
+  // 3 年の分かれ道の開閉は見え方だけ（文書の変更は届かない）: 折りたたみのボタンなどをキャンバスでの開閉に合わせる
+  ui.on("visual", () => {
+    for (const u of viewUpdaters) u();
   });
   app.persistence.on("writer", () => render(true));
   app.focusInspectorTitle = () => {
@@ -175,7 +186,7 @@ function chipToggle(label: string, color: string | null, on: boolean, onClick: (
 
 // ------------------------------------------------------------ ノード
 
-function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater) => void): void {
+function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater) => void, pushView: (u: Updater) => void): void {
   const { store, cmd, ui, vm } = app;
   const node = () => store.doc.nodes[id];
   const ro = () => store.readOnly;
@@ -281,10 +292,27 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
   // 操作
   const dupBtn = h("button", { class: "btn btn-sm", type: "button", title: `複製（${MOD}D）`, onClick: () => cmd.duplicate([id]) }, icon("copy", 14), "複製");
-  const colBtn = h("button", { class: "btn btn-sm", type: "button", title: "この先を折りたたむ（C）", onClick: () => cmd.toggleCollapse([id]) }, icon("collapse", 14), h("span", null, "折りたたむ"));
+  const colLabel = h("span", null, "折りたたむ");
+  const colBtn = h("button", { class: "btn btn-sm", type: "button", title: "この先を折りたたむ（C）", onClick: () => cmd.toggleCollapse([id]) }, icon("collapse", 14), colLabel);
   const delBtn = h("button", { class: "btn btn-sm btn-danger-ghost", type: "button", title: "削除（Delete）", onClick: () => cmd.deleteNodes([id]) }, icon("trash", 14), "削除");
   const foot = h("div", { class: "insp-foot" });
   wrap.append(h("div", { class: "insp-actions" }, dupBtn, colBtn, delBtn), foot);
+  /**
+   * 折りたたむ・展開する。3 年の分かれ道のノードは見え方で開閉する（文書の collapsed ではない。閲覧のみでも使える）。
+   * キャンバスで開閉したとき（見え方だけの変更）にも合わせる
+   */
+  let colShown: boolean | null = null;
+  const syncCol = () => {
+    if (!node()) return;
+    const collapsed = cmd.isCollapsed(id);
+    colBtn.disabled = (ro() && !vm.inImpact(id)) || !(vm.index.out.get(id)?.length ?? 0);
+    if (collapsed === colShown) return;
+    colShown = collapsed;
+    colLabel.textContent = collapsed ? "展開する" : "折りたたむ";
+    colBtn.title = collapsed ? "この先を展開する（C）" : "この先を折りたたむ（C）";
+    colBtn.replaceChild(icon(collapsed ? "expand" : "collapse", 14), colBtn.firstElementChild!);
+  };
+  pushView(syncCol);
 
   push(() => {
     const n = node();
@@ -423,9 +451,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     addTwo.disabled = ro();
     dupBtn.disabled = ro();
     delBtn.disabled = ro();
-    colBtn.disabled = ro() || outs.length === 0;
-    (colBtn.lastElementChild as HTMLElement).textContent = n.collapsed ? "展開する" : "折りたたむ";
-    colBtn.replaceChild(icon(n.collapsed ? "expand" : "collapse", 14), colBtn.firstElementChild!);
+    syncCol();
     foot.textContent = `作成 ${new Date(n.createdAt).toLocaleDateString("ja-JP")} · 更新 ${new Date(n.updatedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
   });
 }
