@@ -52,7 +52,7 @@ export function buildInspector(app: AppContext): HTMLElement {
     } else if (k.startsWith("edge:")) {
       const id = k.slice(5);
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
-    } else if (k.startsWith("multi:")) multiPanel(app, body, (u) => updaters.push(u));
+    } else if (k.startsWith("multi:")) multiPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     else overviewPanel(app, body, (u) => updaters.push(u));
     headTitle.textContent = k === "none" ? "概要" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
@@ -651,8 +651,8 @@ function edgePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
 // ------------------------------------------------------------ 複数選択
 
-function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void): void {
-  const { store, cmd, ui } = app;
+function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void, pushView: (u: Updater) => void): void {
+  const { store, cmd, ui, vm } = app;
   const ids = () => [...ui.selection.nodes].filter((id) => store.doc.nodes[id]);
   const edges = () => [...ui.selection.edges].filter((id) => store.doc.edges[id]);
   const ro = () => store.readOnly;
@@ -695,9 +695,28 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
   wrap.append(sectionEl("並べる", h("div", { class: "btn-row" }, alignH, alignV)));
 
   const dup = h("button", { class: "btn btn-sm", type: "button", onClick: () => cmd.duplicate(ids()) }, icon("copy", 14), "複製");
-  const col = h("button", { class: "btn btn-sm", type: "button", onClick: () => cmd.toggleCollapse(ids()) }, icon("collapse", 14), "折りたたむ");
+  const colLabel = h("span", null, "折りたたむ");
+  const col = h("button", { class: "btn btn-sm", type: "button", title: "この先を折りたたむ（C）", onClick: () => cmd.toggleCollapse(ids()) }, icon("collapse", 14), colLabel);
   const del = h("button", { class: "btn btn-sm btn-danger-ghost", type: "button", onClick: () => cmd.deleteSelection() }, icon("trash", 14), "削除");
   wrap.append(h("div", { class: "insp-actions" }, dup, col, del));
+  /**
+   * 折りたたむ・展開する: C・右クリックのメニューと同じ決まり。開閉する物（3 年の分かれ道は同じ範囲の子のあるカード）が無ければ押せず、
+   * 向きは開閉する物だけで決める（先の無いカードを混ぜて選んでも、閉じたカードには「展開する」）。3 年の分かれ道のカードだけなら
+   * 見え方の開閉なので閲覧のみでも使える。キャンバスでの開閉（見え方だけの変更）にも合わせる
+   */
+  let colShown: boolean | null = null;
+  const syncCol = () => {
+    const ns = ids();
+    const viewOnly = ns.every((id) => vm.inImpact(id));
+    col.disabled = (ro() && !viewOnly) || !cmd.canToggleCollapse(ns);
+    const collapsed = cmd.collapsedAll(ns);
+    if (collapsed === colShown) return;
+    colShown = collapsed;
+    colLabel.textContent = collapsed ? "展開する" : "折りたたむ";
+    col.title = collapsed ? "この先を展開する（C）" : "この先を折りたたむ（C）";
+    col.replaceChild(icon(collapsed ? "expand" : "collapse", 14), col.firstElementChild!);
+  };
+  pushView(syncCol);
 
   push(() => {
     const ns = ids();
@@ -718,7 +737,8 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
       projChips.append(chipToggle(p.name, p.color, k === ns.length && k > 0, () => cmd.toggleProjectOf(ns, pid), { partial: k > 0 && k < ns.length, disabled: ro() || !ns.length, title: k > 0 && k < ns.length ? `${k}/${ns.length} 件が所属` : undefined }));
     }
     for (const b of [alignH, alignV]) b.disabled = ro() || ns.length < 2;
-    for (const b of [dup, col]) b.disabled = ro() || !ns.length;
+    dup.disabled = ro() || !ns.length;
+    syncCol();
     del.disabled = ro();
     tagInput.disabled = ro() || !ns.length;
   });

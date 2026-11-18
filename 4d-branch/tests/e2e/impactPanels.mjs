@@ -807,6 +807,64 @@ async function main() {
     assert(r.altOpened, "メニューの「展開する」で閉じた選択肢が開かない");
   });
 
+  await check("複数選んだ詳細の「折りたたむ」も同じ決まり: 相乗効果の線しか出ていないカード 2 枚では押せず、閉じた選択肢と一緒なら「展開する」で開き、開いたら「折りたたむ」に戻る", async () => {
+    const undo0 = await undoCount(page);
+    /** 複数選んだ詳細の開閉のボタン（見出し・押せるか・題） */
+    const btn = () => page.locator(".insp-multi .insp-actions .btn").nth(1);
+    const read = async () => ({ label: (await btn().textContent())?.trim(), disabled: await btn().isDisabled(), title: await btn().getAttribute("title") });
+    let r;
+    try {
+      const ids = await page.evaluate(() => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
+        vm.ensure();
+        const ends = vm.impact.ends.map((e) => e.id).filter((id) => !(vm.index.out.get(id)?.length ?? 0)).slice(0, 2);
+        f.app.cmd.revealNode(ends[0]);
+        const own = f.app.cmd.createNode("goal", { x: -3000, y: 0 }, { exact: true, title: "自分のメモ" });
+        for (const e of ends) f.app.cmd.connect([e], own, "supports");
+        // 閉じる選択肢は、1 枚目の行き先への道の上に無い物（閉じても行き先は見えたまま）
+        let alt = null;
+        for (const a of vm.impact.decision.get(vm.impact.root).alts) {
+          vm.setImpactOpen([], [a]);
+          vm.ensure();
+          if (!vm.node(ends[0]).hidden) {
+            alt = a;
+            break;
+          }
+          vm.setImpactOpen([a]);
+        }
+        f.ui.select(ends);
+        return { ends, alt };
+      });
+      assert(ids.ends.length === 2 && ids.alt, `確かめの前提（行き先 2 枚と、閉じても 1 枚目が見えたままの選択肢） ${JSON.stringify(ids)}`);
+      await page.waitForTimeout(200);
+      r = { ends: await read() };
+      // 閉じた選択肢と行き先: 「展開する」で開く。開いたら「折りたたむ」に変わる（キャンバスでの開閉にも合わせる）
+      await page.evaluate((o) => window.__fourD.ui.select([o.alt, o.ends[0]]), ids);
+      await page.waitForTimeout(200);
+      r.mix = await read();
+      assert(!r.mix.disabled, `閉じた選択肢と一緒なのに押せない ${JSON.stringify(r)}`);
+      await btn().click();
+      await page.waitForTimeout(200);
+      r.altOpened = await page.evaluate((o) => window.__fourD.app.vm.isOpen(o.alt), ids);
+      r.mixAfter = await read();
+      await page.evaluate((o) => window.__fourD.app.vm.setImpactOpen([], [o.alt]), ids);
+      await page.waitForTimeout(200);
+      r.mixClosedOnCanvas = await read();
+      r.altClosed = await page.evaluate((o) => !window.__fourD.app.vm.isOpen(o.alt), ids);
+      r.endShown = await page.evaluate((o) => !window.__fourD.app.vm.node(o.ends[0]).hidden, ids);
+    } finally {
+      await undoTo(page, undo0);
+      await page.evaluate(() => window.__fourD.app.cmd.resetImpactOpen());
+    }
+    assert(r.endShown, `確かめの前提 ${JSON.stringify(r)}`);
+    assert(r.ends.disabled === true, `相乗効果の線しか出ていないカード 2 枚で「折りたたむ」が押せる（押しても何も起きない） ${JSON.stringify(r.ends)}`);
+    assert(r.mix.label === "展開する" && !r.mix.disabled && r.mix.title === "この先を展開する（C）", `閉じた選択肢と一緒のボタン ${JSON.stringify(r.mix)}`);
+    assert(r.altOpened, "「展開する」で閉じた選択肢が開かない");
+    assert(r.mixAfter.label === "折りたたむ" && !r.mixAfter.disabled, `開いた後のボタン ${JSON.stringify(r.mixAfter)}`);
+    assert(r.altClosed && r.mixClosedOnCanvas.label === "展開する", `キャンバスで閉じた後のボタン ${JSON.stringify(r.mixClosedOnCanvas)}`);
+  });
+
   await check("結果の線: % の欄に「この手の結果の合計」、判断の線の % には使わないと出す", async () => {
     const ids = await page.evaluate(() => {
       const f = window.__fourD;
