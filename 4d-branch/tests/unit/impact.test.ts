@@ -276,6 +276,51 @@ describe("3 年の影響", () => {
     expect(r.alt.get("B")!.delta).toBeCloseTo(-60);
   });
 
+  it("確かめるだけの手（会社の答えを聞く）は、聞かなかった場合の同じ答えの世界と比べる（悪くなる見込みを大きく出さない）", () => {
+    const doc = createEmptyDoc();
+    const node = (id: string, type: NodeType, meta: Record<string, unknown> = {}) => (doc.nodes[id] = makeNode({ id, title: id, type, meta }));
+    const edge = (a: string, b: string, opt: { prob?: number; r?: R3; rv?: [string, string] } = {}) => {
+      const e = makeEdge({ id: `${a}-${b}`, source: a, target: b, relation: opt.prob !== undefined ? "condition" : "leads" });
+      e.meta = { ...(opt.prob !== undefined ? { prob: opt.prob } : {}), ...(opt.r ? { r: opt.r } : {}), ...(opt.rv ? { rv: opt.rv } : {}) };
+      doc.edges[e.id] = e;
+    };
+    node("R", "goal", { forecastRoot: true, impact: { v: 2, horizon: 36, annual: 360 }, fork: "decision", m: 0, rr: [0, 0, 0] });
+    // 今のまま → 3 か月後に聞く（全部可なら +70、不可なら 0）
+    node("K", "action", { fork: "chance", m: 0, base: true });
+    node("K1", "branch", { fork: "decision", m: 3, rr: [0, 0, 0] });
+    edge("R", "K");
+    edge("K", "K1", { prob: 100, r: [0, 0, 0] });
+    node("K1k", "action", { fork: "chance", m: 3, base: true });
+    node("K1kE", "result", { m: 36, rr: [0, 0, 0] });
+    edge("K1", "K1k");
+    edge("K1k", "K1kE", { prob: 100, r: [0, 0, 0] });
+    node("K1a", "action", { fork: "chance", m: 3 });
+    node("K1aY", "result", { m: 36, rr: [0, 0, 0] });
+    node("K1aN", "result", { m: 36, rr: [0, 0, 0] });
+    edge("K1", "K1a");
+    edge("K1a", "K1aY", { prob: 50, r: [0, 70, 0], rv: ["pm:0", "a"] });
+    edge("K1a", "K1aN", { prob: 50, r: [0, 0, 0], rv: ["pm:0", "n"] });
+    // 今すぐ聞く（全部可なら +100、不可なら 0）
+    node("A", "action", { fork: "chance", m: 0 });
+    node("AY", "result", { m: 36, rr: [0, 0, 0] });
+    node("AN", "result", { m: 36, rr: [0, 0, 0] });
+    edge("R", "A");
+    edge("A", "AY", { prob: 50, r: [0, 100, 0], rv: ["pm:0", "a"] });
+    edge("A", "AN", { prob: 50, r: [0, 0, 0], rv: ["pm:0", "n"] });
+    const r = run(doc);
+    const a = r.alt.get("A")!;
+    expect(a.delta).toBeCloseTo(15);
+    // 同じ答えの世界の今のまま: 全部可なら 70、不可なら 0 → 差は +30 と 0（悪くならない）
+    expect(a.outcomes.map((o) => o.u)).toEqual([30, 0]);
+    expect(a.pBad).toBe(0);
+    expect(a.outcomes.reduce((s, o) => s + o.w * o.u!, 0)).toBeCloseTo(a.delta!);
+    // 印が無ければ、今のままの平均（35）と比べる
+    for (const e of Object.values(doc.edges)) delete e.meta.rv;
+    const r2 = run(doc);
+    expect(r2.alt.get("A")!.outcomes.map((o) => o.u)).toEqual([65, -35]);
+    expect(r2.alt.get("A")!.pBad).toBeCloseTo(0.5);
+  });
+
   it("入口が v2 でなければ出さない", () => {
     const { doc } = tree();
     delete doc.nodes.R!.meta.impact;

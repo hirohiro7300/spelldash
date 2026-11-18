@@ -178,6 +178,9 @@ interface Compiled {
   isBase: Uint8Array;
   fam: string[];
   roots: number[];
+  /** 確かめるだけの事実を知る結果の線: 事実の名前と答え（meta.rv）。無ければ null */
+  rvKey: Array<string | null>;
+  rvCat: Array<string | null>;
   /** 入ってくる線（slot の番号） */
   incOff: Int32Array;
   incSlot: Int32Array;
@@ -290,6 +293,8 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
   const er = new Float64Array(slots * 3);
   const allowed = new Uint8Array(slots);
   const src = new Int32Array(slots);
+  const rvKey: Array<string | null> = new Array<string | null>(slots).fill(null);
+  const rvCat: Array<string | null> = new Array<string | null>(slots).fill(null);
   const firstParent = new Int32Array(n).fill(-1);
 
   const rootNode = doc.nodes[rootIds[0]!];
@@ -325,6 +330,11 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
       w[s] = ws[j]!;
       src[s] = i;
       allowed[s] = kind[i] !== DECISION || !scenarioId || e.scenarioIds.length === 0 || e.scenarioIds.includes(scenarioId) ? 1 : 0;
+      const rv = e.meta?.rv;
+      if (Array.isArray(rv) && typeof rv[0] === "string" && typeof rv[1] === "string") {
+        rvKey[s] = rv[0];
+        rvCat[s] = rv[1];
+      }
       if (ti2 !== undefined && firstParent[ti2] === -1) firstParent[ti2] = i;
     });
   }
@@ -369,7 +379,7 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
     fill[j]!++;
   }
   const roots = rootIds.map((r) => idx.get(r)).filter((x): x is number => x !== undefined);
-  return { ids, idx, kind, t, rr, off, tgt, eid, w, er, allowed, base, stat, rank, isBase, fam, roots, incOff, incSlot, src };
+  return { ids, idx, kind, t, rr, off, tgt, eid, w, er, allowed, base, stat, rank, isBase, fam, roots, rvKey, rvCat, incOff, incSlot, src };
 }
 
 /** 逆にたどる（mode 0: ふつう・1: ずっと今のまま・2: その種類の手を使わない） */
@@ -625,6 +635,60 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
     res.acc.set(c.ids[i]!, A[i]!);
   }
 
+  /**
+   * 選び方を決めたまま（main.pi）、start から先の値を出す。事実 R の答えを cat に決めた世界（R を知る結果の線は cat の線だけ）で数える。
+   * 「聞く」手の結果を、聞かなかった場合の同じ答えの世界と比べるために使う（答えは会社ごとに決まった事実で、聞くたびに変わらない）
+   */
+  const evalFixed = (start: number, R: string, cat: string): number | null => {
+    if (!main.def[start]) return null;
+    const seen = new Set<number>();
+    const stack = [start];
+    while (stack.length) {
+      const i = stack.pop()!;
+      if (seen.has(i)) continue;
+      seen.add(i);
+      const k = c.kind[i]!;
+      if (k === DECISION) {
+        const s = main.pi[i]!;
+        if (s >= 0) stack.push(c.tgt[s]!);
+      } else if (k === CHANCE || k === PASS) {
+        for (let s = c.off[i]!; s < c.off[i + 1]!; s++) if (c.tgt[s]! >= 0 && main.def[c.tgt[s]!]) stack.push(c.tgt[s]!);
+      }
+    }
+    const val = new Map<number, number>();
+    for (const i of [...seen].sort((a, b) => b - a)) {
+      const k = c.kind[i]!;
+      if (k === LEAF || c.off[i] === c.off[i + 1]) {
+        val.set(i, sumV(main.V, i));
+        continue;
+      }
+      if (k === DECISION) {
+        const s = main.pi[i]!;
+        const v = s >= 0 ? val.get(c.tgt[s]!) : undefined;
+        if (v !== undefined) val.set(i, Wsum(s) + v);
+        continue;
+      }
+      const a = c.off[i]!;
+      const b = c.off[i + 1]!;
+      let forced = false;
+      for (let s = a; s < b; s++) if (c.rvKey[s] === R && c.rvCat[s] === cat) forced = true;
+      let sw = 0;
+      let sv = 0;
+      let cnt = 0;
+      for (let s = a; s < b; s++) {
+        const j = c.tgt[s]!;
+        const v = j >= 0 ? val.get(j) : undefined;
+        if (v === undefined) continue;
+        const ww = forced ? (c.rvKey[s] === R && c.rvCat[s] === cat ? 1 : 0) : c.w[s]!;
+        sw += ww;
+        sv += ww * (Wsum(s) + v);
+        cnt++;
+      }
+      if (cnt) val.set(i, sw > 0 ? sv / sw : 0);
+    }
+    return val.get(start) ?? null;
+  };
+
   // 判断と選択肢
   let hasPicks = false;
   for (let d = 0; d < n; d++) {
@@ -685,12 +749,29 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
           if (t2 >= 0 && main.def[t2]) (sw += c.w[o]!), cnt++;
         }
         const equal = sw <= 0;
+        // 確かめるだけの事実を知る手なら、基準は同じ答えの世界の今のまま（答えごとに 1 回だけ数える）
+        const R = c.rvKey[c.off[j]!] ?? null;
+        let matched: Map<string, number | null> | null = null;
+        if (R !== null && bs >= 0 && jBase >= 0) {
+          let same = true;
+          for (let o = c.off[j]!; o < c.off[j + 1]!; o++) if (c.rvKey[o] !== R) same = false;
+          if (same) {
+            matched = new Map();
+            for (let o = c.off[j]!; o < c.off[j + 1]!; o++) {
+              const cat = c.rvCat[o]!;
+              if (matched.has(cat)) continue;
+              const v = evalFixed(jBase, R, cat);
+              matched.set(cat, v === null ? null : Wsum(bs) + v);
+            }
+          }
+        }
         let bad = 0;
         for (let o = c.off[j]!; o < c.off[j + 1]!; o++) {
           const t2 = c.tgt[o]!;
           const defined = t2 >= 0 && main.def[t2] === 1;
           const ww = defined && cnt ? (equal ? 1 : c.w[o]!) / (equal ? cnt : sw) : 0;
-          const u = defined && qBase !== null ? Wsum(s) + Wsum(o) + sumV(main.V, t2) - qBase : null;
+          const ref = matched ? (matched.get(c.rvCat[o]!) ?? qBase) : qBase;
+          const u = defined && ref !== null ? Wsum(s) + Wsum(o) + sumV(main.V, t2) - ref : null;
           outcomes.push({ edge: c.eid[o]!, node: t2 >= 0 ? c.ids[t2]! : (doc.edges[c.eid[o]!]?.target ?? ""), w: ww, u, bin: impactBin(u) });
           if (u !== null) {
             if (u < -BAD_EPS) bad += ww;

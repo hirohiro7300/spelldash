@@ -55,6 +55,28 @@ export function rollback(n: TNode, S: number, sq: boolean): number {
   return Math.max(...n.kids.map((a) => rollback(a, S, sq)));
 }
 
+/**
+ * 会社の副業の答えは会社ごとに決まった事実（聞くたびに変わらない）。聞いた結果の線に [会社の番号, 答え] を付け、
+ * アプリが「聞かなかった場合」と比べるときに同じ答えの世界どうしで比べられるようにする（悪くなる見込みを正しく出す）。
+ * 会社の番号は、転職・独立から会社員に戻るたびに増える
+ */
+function employerOf(n: TNode): number {
+  let k = 0;
+  let prev: TNode | null = null;
+  const path: TNode[] = [];
+  for (let x: TNode | null = n; x; x = x.parent) path.unshift(x);
+  for (const x of path) {
+    if (x.role === "s" || x.role === "e") {
+      const before = prev?.st;
+      if (before && ((x.st.fl.includes("switched") && !before.fl.includes("switched")) || (before.j === "i" && x.st.j !== "i"))) k++;
+      prev = x;
+    } else if (x.role === "r") prev = x;
+  }
+  return k;
+}
+
+const REVEALS = new Set(["perm", "permside"]);
+
 export function buildBundle(w: World, tree: TNode, texts: Record<string, WriterText>, annual: number): ImpactBundle {
   const nodes: ImpactBNode[] = [];
   const visit = (n: TNode, parent: number) => {
@@ -83,7 +105,9 @@ export function buildBundle(w: World, tree: TNode, texts: Record<string, WriterT
       x = ax;
     } else {
       const o = n.out!;
-      x = { p: o.p, lab: t.label ?? o.lab, line: o.line, ln: lnOut(o.ln), r: o.r, st: stOut(n.st), rr: runRate(w, n.st) };
+      const ox: ImpactOutX = { p: o.p, lab: t.label ?? o.lab, line: o.line, ln: lnOut(o.ln), r: o.r, st: stOut(n.st), rr: runRate(w, n.st) };
+      if (REVEALS.has(o.ln.metric) && n.parent?.parent) ox.rv = [`pm:${employerOf(n.parent.parent)}`, n.st.pm];
+      x = ox;
     }
     nodes.push([n.key, parent, n.role, n.m, t.title, t.short, t.body, x]);
     for (const k of n.kids) visit(k, i);

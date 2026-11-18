@@ -54,6 +54,8 @@ export interface ImpactOutX {
   st: ImpactSt;
   /** その時点の月の稼ぎ [給与の倍率, 広告運用 万円/月, SpellDash 万円/月] */
   rr: R3;
+  /** 確かめるだけの事実（会社の副業の答えなど）を知る結果: [事実の名前, 答え]。同じ事実の結果は道が違っても同じ答え */
+  rv?: [string, string];
 }
 
 /** [鍵, 親の番号, 役割, 月, タイトル, 短い名前, 本文, 中身] */
@@ -219,7 +221,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
       const ox = x as ImpactOutX;
       e.label = ox.lab === "—" ? "" : ox.lab;
       e.condition = ox.line;
-      e.meta = { prob: ox.p, r: ox.r, ln: ox.ln };
+      e.meta = { prob: ox.p, r: ox.r, ln: ox.ln, ...(ox.rv ? { rv: ox.rv } : {}) };
     }
     doc.edges[e.id] = e;
   });
