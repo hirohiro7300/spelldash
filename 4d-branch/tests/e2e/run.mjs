@@ -2188,7 +2188,8 @@ async function main() {
     const roots = await fp.evaluate(() => Object.values(window.__fourD.store.doc.nodes).filter((n) => n.meta?.forecastRoot === true).length);
     assert(roots === 0, `無くなった地図を足し直した（入口 ${roots}）`);
     assert((await swaps(fp)) === before, "差し替えなくてよいのに差し替えた");
-    // 3) 開いたときのお知らせ（20 秒出ている）の間に、新しい版の地図が届く: 押しても確認を出さずに知らせる
+    // 3) 開いたときのお知らせ（20 秒出ている）の間に、新しい版の地図が届く: もう当たらないお知らせは下げる。
+    // 下げる前に押されていても（お知らせの「新しい版にする」と同じ）、確認を出さずに知らせる
     await fp.evaluate(() => window.__fourD.store.undo());
     await setMapVersion(fp, "old", 0);
     await fp.waitForTimeout(800);
@@ -2198,14 +2199,34 @@ async function main() {
       localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
     });
     await fp.reload({ waitUntil: "networkidle" });
-    const notice = fp.locator(".toast", { hasText: "未来の道筋の新しい版があります" });
+    const notice = fp.locator(".toast:not(.closing)", { hasText: "未来の道筋の新しい版があります" });
     await notice.waitFor({ timeout: 8000 });
     await adopt(fp, await docFromOther(fp, "current"));
-    await notice.getByRole("button", { name: "新しい版にする" }).click();
+    await fp.waitForTimeout(400);
+    assert((await notice.count()) === 0, "新しい版の地図が届いたのに、新しい版を勧めるお知らせが残っている");
+    await fp.evaluate(() => window.__fourD.app.swapFuture("notice"));
     await fp.locator(".toast", { hasText: "未来の道筋はもう新しい版になっています" }).waitFor({ timeout: 3000 });
     const after = await fp.evaluate(() => ({ modal: document.querySelectorAll(".modal").length, card: !!window.__fourD.store.doc.nodes.n_other_device_card }));
     assert(after.modal === 0 && after.card, JSON.stringify(after));
     assert((await swaps(fp)) === 0, "お知らせから、もう新しい版の地図を差し替えた");
+    // 4) 届いた地図もまだ古い版なら、お知らせは出したまま（押せば新しい版にできる）
+    await fp.evaluate(() => window.__fourD.store.undo());
+    await setMapVersion(fp, "old", 0);
+    await fp.waitForTimeout(800);
+    await fp.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      delete p.futureNotified;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+    });
+    await fp.reload({ waitUntil: "networkidle" });
+    await notice.waitFor({ timeout: 8000 });
+    const stillOld = await docFromOther(fp, "current");
+    for (const n of Object.values(stillOld.nodes)) if (n.meta?.forecastRoot === true) Object.assign(n.meta, { futureVersion: "old", futureRelease: 0 });
+    await adopt(fp, stillOld);
+    await fp.waitForTimeout(400);
+    assert((await notice.count()) === 1, "届いた地図もまだ古い版なのに、新しい版を勧めるお知らせを下げた");
+    await fp.evaluate(() => document.querySelectorAll(".toast .toast-close").forEach((b) => b.click()));
+    assert((await swaps(fp)) === 0, "お知らせを押さずに差し替えた");
   });
 
   await check("未来の道筋: このページより新しい版で作った地図は戻さず、開き直せば新しい版で見られると知らせる（このページで 1 回。メニューからも戻さない）", async () => {

@@ -1212,11 +1212,20 @@ export class App implements AppContext {
       if (!st.stale.length) return;
       this.ui.setPrefs({ futureNotified: v });
       // 押したときに、今の地図で確かめ直す（20 秒の間に同期で新しい版になった・無くなった なら差し替えない）
-      if (inPlaceRoot(this.store.doc) !== null) {
-        toast("未来の道筋の新しい版があります（3 年の分かれ道の文章と数字）。あなたが足したカードや選んだ手はそのまま残ります", { action: { label: "新しい版にする", run: () => void this.swapFuture("notice") }, ms: 20000 });
-      } else {
-        toast("未来の道筋が新しくなりました（選択肢ごとに 3 年の影響が見えます）。今の地図の未来の道筋だけを入れ替えます（ほかのノードはそのまま）", { action: { label: "差し替える", run: () => void this.swapFuture("notice") }, ms: 20000 });
-      }
+      let off = (): void => undefined;
+      const opts = { ms: 20000, onClose: () => off() };
+      const close =
+        inPlaceRoot(this.store.doc) !== null
+          ? toast("未来の道筋の新しい版があります（3 年の分かれ道の文章と数字）。あなたが足したカードや選んだ手はそのまま残ります", { ...opts, action: { label: "新しい版にする", run: () => void this.swapFuture("notice") } })
+          : toast("未来の道筋が新しくなりました（選択肢ごとに 3 年の影響が見えます）。今の地図の未来の道筋だけを入れ替えます（ほかのノードはそのまま）", { ...opts, action: { label: "差し替える", run: () => void this.swapFuture("notice") } });
+      // 出している間に地図が入れ替わり（アカウントの内容を読み込んだ・別のタブの変更・元に戻した など）、古い版の地図が無くなったら
+      // （新しい版になった・地図が無くなった・このページより新しい版になった）、もう当たらないお知らせなので下げる
+      off = this.store.on("change", (info) => {
+        if (!info.full) return;
+        const now = this.futureState();
+        if (now.stale.length && !now.newer.length) return;
+        close();
+      });
     };
     setTimeout(() => {
       if (!this.store.readOnly) return show();

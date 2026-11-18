@@ -290,9 +290,15 @@ export interface ToastOpts {
   action?: { label: string; run: () => void };
   tone?: "info" | "warn" | "error" | "ok";
   ms?: number;
+  /** 閉じたとき（時間切れ・閉じるボタン・ボタンを押した・新しいお知らせに押し出された・返した関数で閉じた）に 1 回だけ呼ぶ */
+  onClose?: () => void;
 }
 
-export function toast(text: string, opts: ToastOpts = {}): void {
+/** 出しているお知らせを閉じる関数（押し出すときに使う） */
+const toastClosers = new WeakMap<Element, () => void>();
+
+/** お知らせを出す。返す関数で閉じられる（もう言うことが当たらなくなったとき。閉じた後に呼んでも何もしない） */
+export function toast(text: string, opts: ToastOpts = {}): () => void {
   let stack = document.getElementById("toast-stack");
   if (!stack) {
     stack = h("div", { class: "toast-stack", attrs: { "aria-live": "polite" } });
@@ -301,11 +307,16 @@ export function toast(text: string, opts: ToastOpts = {}): void {
   }
   const el = h("div", { class: `toast tone-${opts.tone ?? "info"}`, role: "status" }, h("span", { class: "toast-text" }, text));
   let timer: ReturnType<typeof setTimeout>;
+  let closed = false;
   const close = () => {
+    if (closed) return;
+    closed = true;
     clearTimeout(timer);
     el.classList.add("closing");
     setTimeout(() => el.remove(), 180);
+    opts.onClose?.();
   };
+  toastClosers.set(el, close);
   if (opts.action) {
     const a = opts.action;
     // 1 回だけ効かせる（閉じかけのお知らせはまだ押せるので、ダブルクリックの 2 回目で同じことを繰り返さない）
@@ -329,8 +340,14 @@ export function toast(text: string, opts: ToastOpts = {}): void {
   }
   el.append(h("button", { class: "toast-close icon-btn", type: "button", ariaLabel: "閉じる", onClick: close }, icon("x", 14)));
   stack.append(el);
-  while (stack.children.length > 3) stack.firstElementChild?.remove();
+  // 4 つ目からは古い物を押し出す（すぐ外す）
+  while (stack.children.length > 3) {
+    const first = stack.firstElementChild!;
+    first.remove();
+    toastClosers.get(first)?.();
+  }
   timer = setTimeout(close, opts.ms ?? (opts.action ? 6000 : 3200));
+  return close;
 }
 
 export function clearChildren(el: HTMLElement): void {
