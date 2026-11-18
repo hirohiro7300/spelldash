@@ -303,9 +303,11 @@ const call = async (handler, method, url) => {
       ok("B1 GET 決まった URL → 200・スクリプトの型（utf-8）・nosniff・1 年の immutable（端末と配信の縁）・同じオリジンだけ・中身は作った答え",
         r.statusCode === 200 && r.headers["content-type"] === "text/javascript; charset=utf-8" && r.headers["x-content-type-options"] === "nosniff" && r.headers["cache-control"] === "public, max-age=31536000, s-maxage=31536000, immutable" && r.headers["cross-origin-resource-policy"] === "same-origin" && Buffer.isBuffer(r.body) && r.body.equals(SERVED),
         JSON.stringify({ s: r.statusCode, h: r.headers }));
+      // 404・405・503 の中身は短い字の error 1 つだけ（わけ・URL・問いの字・作れなかったときの例外の字を出さない）
+      const onlyError = (a, code) => JSON.stringify(a.body) === JSON.stringify({ error: code });
       const head = await call(h, "HEAD", M.AUTH_MODULE_URL);
-      ok("B2 HEAD → 405・Allow: GET・保存させない（中身の無い答えに 1 年の保存の頭を付けない）・スクリプトの型でない",
-        head.statusCode === 405 && head.headers.allow === "GET" && head.headers["cache-control"] === "no-store" && !/javascript/.test(head.headers["content-type"] ?? ""), JSON.stringify({ s: head.statusCode, h: head.headers }));
+      ok("B2 HEAD → 405・Allow: GET・保存させない（中身の無い答えに 1 年の保存の頭を付けない）・スクリプトの型でない・中身は error の字だけ（method_not_allowed）",
+        head.statusCode === 405 && head.headers.allow === "GET" && head.headers["cache-control"] === "no-store" && !/javascript/.test(head.headers["content-type"] ?? "") && onlyError(head, "method_not_allowed"), JSON.stringify({ s: head.statusCode, h: head.headers, b: head.body }));
       await call(h, "GET", M.AUTH_MODULE_URL);
       ok("B3 1 回作った物を持つ（3 回の呼び出しで作りは 1 回）", builds === 1, String(builds));
       const P = M.AUTH_MODULE_PATH;
@@ -314,13 +316,14 @@ const call = async (handler, method, url) => {
       const otherT = T.slice(0, -1) + (T.endsWith("0") ? "1" : "0");
       const upperT = T !== T.toUpperCase() ? [`${P}?v=${VERSION}&h=${T.toUpperCase()}`] : [];
       const wrong = [`${P}?v=2.117.0&h=${T}`, `${P}?v=${VERSION}&h=${otherT}`, ...upperT, `${P}?v=${VERSION}`, `${P}?h=${T}`, `${P}?v=${VERSION}&h=${T}&x=1`,
-        `${P}?v=${VERSION}&v=${VERSION}&h=${T}`, `${P}?v=${VERSION}&h=${T}&h=${T}`, `${P}?V=${VERSION}&h=${T}`, P, `${P}?v=&h=${T}`, `${P}?v=${VERSION}.0&h=${T}`];
+        `${P}?v=${VERSION}&v=${VERSION}&h=${T}`, `${P}?v=${VERSION}&h=${T}&h=${T}`, `${P}?V=${VERSION}&h=${T}`, P, `${P}?v=&h=${T}`, `${P}?v=${VERSION}.0&h=${T}`,
+        `${P}?v=${VERSION}&h=`, `${P}?v=${VERSION}&h=${T.slice(0, 7)}`];
       const answers = [];
       for (const u of wrong) answers.push(await call(h, "GET", u));
-      ok("B4 ほかの版・ほかの印（大文字も）・印が無い・版が無い・余った問い・2 つの v や h・大文字の V・問い無し・空の版 → 404・保存させない（no-store）・スクリプトの型でない",
-        answers.every((a) => a.statusCode === 404 && a.headers["cache-control"] === "no-store" && !/javascript/.test(a.headers["content-type"] ?? "")), JSON.stringify(answers.map((a) => a.statusCode)));
+      ok("B4 ほかの版・ほかの印（大文字も）・印が無い・版が無い・余った問い・2 つの v や h・大文字の V・問い無し・空の版・空の印・印の頭だけ → 404・保存させない（no-store）・スクリプトの型でない・中身は error の字だけ（not_found）",
+        answers.every((a) => a.statusCode === 404 && a.headers["cache-control"] === "no-store" && !/javascript/.test(a.headers["content-type"] ?? "") && onlyError(a, "not_found")), JSON.stringify(answers.map((a) => [a.statusCode, a.body])));
       const post = await call(h, "POST", M.AUTH_MODULE_URL);
-      ok("B5 POST → 405・Allow: GET・保存させない", post.statusCode === 405 && post.headers.allow === "GET" && post.headers["cache-control"] === "no-store");
+      ok("B5 POST → 405・Allow: GET・保存させない・中身は error の字だけ（method_not_allowed）", post.statusCode === 405 && post.headers.allow === "GET" && post.headers["cache-control"] === "no-store" && onlyError(post, "method_not_allowed"), JSON.stringify(post.body));
       // 作れない → 503・10 秒は作り直さない・その後は作り直す
       let clock = 1_000_000;
       let tries = 0;
@@ -334,7 +337,7 @@ const call = async (handler, method, url) => {
         }
       });
       const f1 = await call(h2, "GET", M.AUTH_MODULE_URL);
-      ok("B6 作れない → 503・保存させない（no-store）・Retry-After・スクリプトの型でない", f1.statusCode === 503 && f1.headers["cache-control"] === "no-store" && f1.headers["retry-after"] === "10" && !/javascript/.test(f1.headers["content-type"] ?? "") && tries === 1);
+      ok("B6 作れない → 503・保存させない（no-store）・Retry-After・スクリプトの型でない・中身は error の字だけ（unavailable。作れなかったわけの字・URL を出さない）", f1.statusCode === 503 && f1.headers["cache-control"] === "no-store" && f1.headers["retry-after"] === "10" && !/javascript/.test(f1.headers["content-type"] ?? "") && onlyError(f1, "unavailable") && tries === 1, JSON.stringify(f1.body));
       failNext = false;
       clock += 9000;
       const f2 = await call(h2, "GET", M.AUTH_MODULE_URL);
