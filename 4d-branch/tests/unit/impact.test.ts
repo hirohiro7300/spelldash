@@ -242,9 +242,23 @@ describe("3 年の影響", () => {
     expect(r.families().sort()).toEqual(["part", "side"]);
   });
 
-  it("36 か月より前に終わる行き先は、その月の稼ぎで 36 か月目まで埋める。その後の月も足せる", () => {
+  it("自分で足した、先も月の稼ぎも無い手は「数字なし」。一番良い手・★ にしない（選んだときだけ数える）", () => {
     const { doc, node, edge } = tree({ annual: 360, tail: 12 });
     node("X", "action", { rank: 9 });
+    edge("R", "X");
+    let r = run(doc);
+    expect(r.alt.get("X")!.delta).toBeNull();
+    expect(r.alt.get("X")!.mark).toBeNull();
+    expect(r.decision.get("R")!.best).toBe("A");
+    doc.nodes.X!.status = "active";
+    r = run(doc);
+    expect(r.decision.get("R")!.chosen).toBe("X");
+    expect(r.alt.get("X")!.delta).toBeNull();
+  });
+
+  it("36 か月より前に終わる行き先は、その月の稼ぎで 36 か月目まで埋める。その後の月も足せる", () => {
+    const { doc, node, edge } = tree({ annual: 360, tail: 12 });
+    node("X", "action", { rank: 9, rr: [1, 0, 0] });
     edge("R", "X");
     const r = run(doc);
     // X は入口の月の稼ぎ（月給 1 倍）を受け継ぎ、36 + 12 か月分

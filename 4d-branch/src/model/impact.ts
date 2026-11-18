@@ -176,6 +176,8 @@ interface Compiled {
   stat: Uint8Array;
   rank: Float64Array;
   isBase: Uint8Array;
+  /** 数の材料が無い手（自分で足した、先も月の稼ぎも無い行き止まり）。選んだときだけ数える */
+  noData: Uint8Array;
   fam: string[];
   roots: number[];
   /** 確かめるだけの事実を知る結果の線: 事実の名前と答え（meta.rv）。無ければ null */
@@ -279,6 +281,7 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
   const stat = new Uint8Array(n);
   const rank = new Float64Array(n);
   const isBase = new Uint8Array(n);
+  const noData = new Uint8Array(n);
   const fam: string[] = new Array<string>(n);
   const off = new Int32Array(n + 1);
   let slots = 0;
@@ -309,6 +312,7 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
     stat[i] = node.status === "active" || node.status === "done" ? 1 : node.status === "dropped" ? 2 : 0;
     rank[i] = typeof node.meta?.rank === "number" && Number.isFinite(node.meta.rank) ? (node.meta.rank as number) : 1e9 + i;
     isBase[i] = node.meta?.base === true ? 1 : 0;
+    noData[i] = list.length === 0 && vec3(node.meta?.rr) === null && typeof node.meta?.ak !== "string" && node.meta?.end !== true && !node.meta?.forecastRoot ? 1 : 0;
     fam[i] = typeof node.meta?.fam === "string" ? (node.meta.fam as string) : typeof node.meta?.ak === "string" ? (node.meta.ak as string) : "";
     const fp = firstParent[i]!;
     const m = node.meta?.m;
@@ -379,7 +383,7 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
     fill[j]!++;
   }
   const roots = rootIds.map((r) => idx.get(r)).filter((x): x is number => x !== undefined);
-  return { ids, idx, kind, t, rr, off, tgt, eid, w, er, allowed, base, stat, rank, isBase, fam, roots, rvKey, rvCat, incOff, incSlot, src };
+  return { ids, idx, kind, t, rr, off, tgt, eid, w, er, allowed, base, stat, rank, isBase, noData, fam, roots, rvKey, rvCat, incOff, incSlot, src };
 }
 
 /** 逆にたどる（mode 0: ふつう・1: ずっと今のまま・2: その種類の手を使わない） */
@@ -464,6 +468,8 @@ function backward(c: Compiled, S: number, tail: number, H: number, mode: 0 | 1 |
       const j = c.tgt[s]!;
       if (j < 0 || !def[j] || !c.allowed[s]) continue;
       if (mode === 2 && fam !== null && c.fam[j] === fam && !c.isBase[j]) continue;
+      // 数の材料が無い手は、自分で選んだときだけ数える（一番良い手・★ にしない）
+      if (c.noData[j] && c.stat[j] !== 1) continue;
       const qs = q(s, j);
       if (better(s, qs, anyS, anyQ)) (anyS = s), (anyQ = qs);
       if (c.stat[j] !== 2 && better(s, qs, bestS, bestQ)) (bestS = s), (bestQ = qs);
@@ -708,7 +714,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
       if (j < 0) continue;
       if (c.stat[j] === 1) hasPicks = true;
       const qs = Q(main, s);
-      if (qs === null || !c.allowed[s] || c.stat[j] === 2) continue;
+      if (qs === null || !c.allowed[s] || c.stat[j] === 2 || (c.noData[j] && c.stat[j] !== 1)) continue;
       cands.push({ s, q: qs });
     }
     cands.sort((x, y) => {
@@ -728,7 +734,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
       const altId = c.ids[j]!;
       if (res.alt.has(altId)) continue;
       const qs = Q(main, s);
-      const delta = qs !== null && qBase !== null ? qs - qBase : null;
+      const delta = qs !== null && qBase !== null && !c.noData[j] ? qs - qBase : null;
       let deltaV: Vec3 | null = null;
       if (delta !== null && jBase >= 0) {
         const ws = W(s);
