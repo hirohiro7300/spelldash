@@ -2,7 +2,7 @@
 // 打ち方（英小文字だけの語は 1 字ずつ、ほかは全文入力で大文字小文字・空白・ハイフン・アポストロフィを見ない）・マイ単語帳だけの 3 状態（js/learnState.js と同じ決まり）・
 // 学ぶ回の列（これから → あやふや → 覚えた・10 語）・入口 ?learn=my。
 // Batch 81: 複数の単語帳（前からの語は最初の単語帳）・英語は全部の単語帳で 1 つ・単語帳を消すと語も・まとめて消す／移す（1 回の書き込み）・訳の書き直し・150 字
-// Batch 96: 学ぶ回の順（今日出す あやふや を先に・1 セットに これから 3 語・回の始めと終わりの数。T63〜T70）
+// Batch 96: 学ぶ回の順（今日出す あやふや を先に・1 セットに これから 3 語・回の始めと終わりの数。T63〜T70）・まとめて足すの区切りの印（T71〜T74）
 // 使い方: node scripts/test-my-words.mjs
 import * as C from "../js/myWordsCore.js";
 import { typeAnswer, answerModeOf } from "../js/judge.js";
@@ -2820,6 +2820,108 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const NEW_NAMES = /\b(buildMyQueue|mySetMixText|myMixOf|myDueCount|myUnsureDue|MY_SET_NEW_MIN|MY_UNSURE_GAP)\b/;
   const hits70 = PATH.map((fn) => [fn, bodyOf(game, fn)]).filter(([, b]) => b === null || NEW_NAMES.test(b)).map(([fn, b]) => `${fn}:${b === null ? "関数が無い" : NEW_NAMES.exec(b)[0]}`);
   eq("T70 答えの道（completeWord・acceptChar・advanceNow と語ごとの描画 setNewWord・次の語 nextLearnWordId・答えの受け手）にこれらの名前が無い", hits70, []);
+}
+
+// ===== Batch 96 T71〜T74: まとめて足すの区切りの印（docs/SPEC_MY_WORDS.md §11.3） =====
+// 英語の後に区切りの印（全角「：＝／；｜（，」・ASCII「: = / ; | (」・「 - 」）を書いた行は、印より前が英語として使える形で、印の後の 1 字目が日本語の字
+// （ASCII でも全角の英数字・記号でもない字）のときだけ、そこで英語と訳に分ける（js/myWordsCore.js parseBulkLine の矢印の段の後の 1 段）。
+// 前の分け方で読める行（カンマ・タブ・読点・英語と日本語の境・矢印・引用符・訳の中の印）と、断る行は e36d086 と同じ結果
+{
+  const parse = (line) => C.parseBulkLine(line);
+  const takes = (p) => !p.error && C.checkEnText(p.en).ok && C.checkJaText(p.ja).ok; // 足すときの確かめ（js/myWords.js validateEntry の字の決まり）
+  const W = (en, ja) => ({ en, ja });
+
+  // ---- T71 区切りの印で英語と訳に分ける（2 語以上の英語・印の前後の空白も） ----
+  for (const [line, want] of [
+    ["lemon：レモン", W("lemon", "レモン")],
+    ["lemon＝レモン", W("lemon", "レモン")],
+    ["lemon／レモン", W("lemon", "レモン")],
+    ["lemon；レモン", W("lemon", "レモン")],
+    ["lemon｜レモン", W("lemon", "レモン")],
+    ["lemon，レモン", W("lemon", "レモン")],
+    ["lemon（レモン）", W("lemon", "レモン")],
+    ["lemon: レモン", W("lemon", "レモン")],
+    ["lemon = レモン", W("lemon", "レモン")],
+    ["lemon / レモン", W("lemon", "レモン")],
+    ["lemon; レモン", W("lemon", "レモン")],
+    ["lemon | レモン", W("lemon", "レモン")],
+    ["lemon - レモン", W("lemon", "レモン")],
+    ["lemon (レモン)", W("lemon", "レモン")],
+    ["follow up：追って連絡する", W("follow up", "追って連絡する")],
+    ["follow up: 追って連絡する", W("follow up", "追って連絡する")],
+    ["follow up - 追って連絡する", W("follow up", "追って連絡する")],
+    ["  lemon  ：  レモン  ", W("lemon", "レモン")],
+    ["e-mail: 電子メール", W("e-mail", "電子メール")],
+    ["up-to-date: 最新の", W("up-to-date", "最新の")],
+    ["don't: しないで", W("don't", "しないで")],
+    ["KPI：重要業績評価指標", W("KPI", "重要業績評価指標")],
+    ["lemon：レモン：果物", W("lemon", "レモン：果物")],
+    ["C:ドライブ", W("C", "ドライブ")]
+  ]) {
+    const p = parse(line);
+    ok(`T71 区切りの印: 「${line.trim()}」→ 英語「${want.en}」・訳「${want.ja}」（足せる）`, JSON.stringify(p) === JSON.stringify(want) && takes(p), JSON.stringify(p));
+  }
+
+  // ---- T72 前の分け方で読める行は e36d086 と同じ結果（見張り） ----
+  const T72 = [
+    ["lemon, レモン", W("lemon", "レモン")],
+    ["lemon\tレモン", W("lemon", "レモン")],
+    ["lemon、レモン", W("lemon", "レモン")],
+    ["lemon　レモン", W("lemon", "レモン")],
+    ["due diligence 適正評価", W("due diligence", "適正評価")],
+    ["follow up 追って連絡する", W("follow up", "追って連絡する")],
+    ["KPI 重要業績評価指標", W("KPI", "重要業績評価指標")],
+    ["e-mail -> 電子メール", W("e-mail", "電子メール")],
+    ["電子メール → e-mail", W("e-mail", "電子メール")],
+    ["agenda => 議題", W("agenda", "議題")],
+    ["lemon ⇒ レモン：果物", W("lemon", "レモン：果物")],
+    ["\"lemon\", \"レモン\"", W("lemon", "レモン")],
+    ["lemon, レモン：果物", W("lemon", "レモン：果物")],
+    ["lemon, 色は黄色 - 酸っぱい", W("lemon", "色は黄色 - 酸っぱい")],
+    ["lemon, (レモン)", W("lemon", "(レモン)")],
+    ["up ->", W("up", "")]
+  ];
+  eq("T72 前の分け方で読める行（カンマ・タブ・読点・全角の空白・英語と日本語の境・矢印・引用符・訳の中の印・片側が空の矢印）は e36d086 と同じ結果",
+    T72.map(([line]) => parse(line)), T72.map(([, want]) => want));
+
+  // ---- T73 断る行は e36d086 と同じ結果で断ったまま（見張り） ----
+  const noEn = (line) => ({ error: `英語が無い。${C.BULK_FORM_NOTE}`, line });
+  const T73 = [
+    ["A/B testing ABテスト", W("A/B", "testing ABテスト")],
+    ["A／B testing ABテスト", W("A／B", "testing ABテスト")],
+    ["and／or または", W("and／or", "または")],
+    ["and/or または", W("and/or", "または")],
+    ["deadline: 3日後まで", W("deadline:", "3日後まで")],
+    ["締め切り：deadline", W("締め切り：deadline", "")],
+    ["締め切り: deadline", noEn("締め切り: deadline")],
+    ["lemon: a fruit", W("lemon:", "a fruit")],
+    ["lemon: (レモン)", W("lemon:", "(レモン)")],
+    ["lemon：１２３", W("lemon：１２３", "")],
+    ["lemon：ＡＢＣ", W("lemon：ＡＢＣ", "")],
+    ["lemon:", W("lemon:", "")],
+    ["：レモン", noEn("：レモン")],
+    ["x+y: 足し算", W("x+y:", "足し算")],
+    ["e.g.: 例えば", W("e.g.:", "例えば")]
+  ];
+  const r73 = T73.map(([line]) => parse(line));
+  eq("T73 断る行（A/B testing・全角の／の英語・and／or・印の後が数字・日本語が先・印の後が英字・記号・全角の英数字・印の後が空・印の前が英語でない）は e36d086 と同じ結果",
+    r73, T73.map(([, want]) => want));
+  ok("T73 その行はどれも足さない（英語が無い・使えない字・訳が無い）", r73.every((p) => !takes(p)), JSON.stringify(r73.filter(takes)));
+
+  // ---- T74 括弧: 後の終わりが閉じ括弧なら両方を外す。そうでなければ開き括弧を訳に残す（括弧の組を壊さない） ----
+  for (const [line, want] of [
+    ["lemon (レモン)", W("lemon", "レモン")],
+    ["lemon（レモン）", W("lemon", "レモン")],
+    ["lemon (レモン）", W("lemon", "レモン")],
+    ["lemon ( レモン )", W("lemon", "レモン")],
+    ["follow up（追って連絡）する", W("follow up", "（追って連絡）する")],
+    ["follow up (追って連絡) する", W("follow up", "(追って連絡) する")],
+    ["follow up (追って連絡", W("follow up", "(追って連絡")],
+    ["lemon (レモン), 果物", W("lemon", "(レモン), 果物")]
+  ]) {
+    const p = parse(line);
+    ok(`T74 括弧: 「${line}」→ 英語「${want.en}」・訳「${want.ja}」`, JSON.stringify(p) === JSON.stringify(want) && takes(p), JSON.stringify(p));
+  }
 }
 
 console.log(`test-my-words: ${passed} passed, ${failed} failed`);
