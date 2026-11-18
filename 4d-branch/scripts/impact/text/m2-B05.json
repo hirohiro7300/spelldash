@@ -121,7 +121,7 @@
   },
   "r.sd_permpro.s.sd_ads.pu10.plan_sd.pu0": {
     "title": "3 年後: 学校は見送られ有料 {pu} 人",
-    "body": "学校への提案はほとんど通らず、SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人。稼ぎの柱は給与 {sal} 倍の会社員のまま。先生に聞いた壁（予算・個人情報・端末）は、2030 年に塾へ売り込む準備になる。"
+    "body": "学校への提案はほとんど通らず、SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人。稼ぎの柱は給与 {sal} 倍の会社員のまま。先生に聞いた壁（予算・個人情報・端末）は、次に塾へ売り込む準備になる。"
   },
   "r.sd_permpro.s.sd_ads.pu10.keep": {
     "title": "広告なしで Pro を続ける",
@@ -293,7 +293,7 @@
   },
   "r.sd_permpro.s.keep.all.keep.pu30": {
     "title": "3 年後: 動かずに有料 {pu} 人まで",
-    "body": "新しい手を足さないまま、SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人まで伸びた。給与 {sal} 倍の本業もそのまま。2030 年はこの売上を元手に、自分で Google・Meta 広告を回して集客を試せる。"
+    "body": "新しい手を足さないまま、SpellDash は遊ぶ人 月 {mau} 人・有料 {pu} 人まで伸びた。給与 {sal} 倍の本業もそのまま。翌年はこの売上を元手に、自分で Google・Meta 広告を回して集客を試せる。"
   },
   "r.sd_permpro.s.keep.all.keep.pu10": {
     "title": "3 年後: 有料 {pu} 人・働き方は同じ",
