@@ -70,8 +70,11 @@ export interface AppContext {
   loadFuture(): void;
   /** 未来の道筋を見せる: 地図にあれば今日に寄る・何もしていないデモか空ならすぐ開く・ほかは読み込む前の確認を開く */
   showFuture(): Promise<void>;
-  /** 文書に入っている未来の道筋だけを、同梱の新しい版に差し替える（確かめてから。無ければ読み込みの確認を開く） */
-  swapFuture(): Promise<void>;
+  /**
+   * 文書に入っている未来の道筋だけを、同梱の新しい版にする（確かめてから。無ければ読み込みの確認を開く）。
+   * how: 頼まれた所（既定はメニュー。button: 「未来の道筋」・notice: 新しい版のお知らせ）
+   */
+  swapFuture(how?: "menu" | "button" | "notice"): Promise<void>;
   newEmptyDoc(): Promise<void>;
   /** 文書を入れ替える（label は元に戻す・安全用バックアップの名前） */
   /** 入れ替えたら true（閲覧のみ・確かめ直して当てはまらなければ入れ替えずに false） */

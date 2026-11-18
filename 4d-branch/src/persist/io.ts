@@ -45,7 +45,7 @@ export function previewImport(text: string): ImportPreview {
 }
 
 /** 同じ名前と見なす鍵（全角半角・大文字小文字・カタカナひらがなをそろえる） */
-const nameKey = (name: string) => normalizeText(name.trim());
+export const nameKey = (name: string) => normalizeText(name.trim());
 
 /**
  * 追加の取り込み: 取り込む側の ID をすべて振り直して足す（今のデータを上書きしない）。

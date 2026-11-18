@@ -169,8 +169,8 @@ describe("未来の道筋の差し替え", () => {
     expect(maps.length).toBe(1);
     expect(maps[0]!.version).toBe("v1");
     expect(maps[0]!.nodes.size).toBe(Object.keys(doc.nodes).length);
-    expect(staleFutureMaps(doc, "v1")).toEqual([]);
-    expect(staleFutureMaps(doc, "v2").length).toBe(1);
+    expect(staleFutureMaps(doc, "v1", 1)).toEqual([]);
+    expect(staleFutureMaps(doc, "v2", 1).length).toBe(1);
     expect(futureMaps(oldFuture())[0]!.version).toBeNull();
     // 同梱の版は入口に残る
     const { pv } = buildFuture(TODAY);
