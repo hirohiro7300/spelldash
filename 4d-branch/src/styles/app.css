@@ -1,4 +1,5 @@
 /* 4D Branch の画面（ダーク基調）。トークンは tokens.css */
+@import "./impact.css";
 
 *,
 *::before,
@@ -1886,6 +1887,8 @@ textarea.input {
 }
 .insight {
   display: grid;
+  /* 長いタイトルでも幅を広げない（狭い画面の引き出しで横にはみ出さない） */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   margin-top: 18px;
 }

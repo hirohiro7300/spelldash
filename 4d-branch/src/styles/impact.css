@@ -1,0 +1,739 @@
+/*
+ * 右のパネルの「3 年の影響」（未来の道筋 v2「3 年の分かれ道」）。src/ui/impactPanel.ts
+ * 差の色（青 = 増える・赤 = 減る・灰 = ほぼ同じ）は src/model/impactFormat.ts の段の色を、要素ごとに style で渡す。
+ * 文字は文字の色（--text-*）。色の付いた塗りの上の文字だけ、段ごとの白・黒（IMPACT_INK）
+ */
+
+.imp-overview {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+.imp-overview[hidden],
+.imp-node[hidden] {
+  display: none;
+}
+.imp-sec {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.imp-sec > .insp-label,
+.imp-node .insp-label {
+  margin-bottom: 2px;
+}
+.imp-title {
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+}
+
+/* ---- 年収 */
+.imp-salary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.imp-salary[hidden],
+.imp-salary-edit[hidden] {
+  display: none;
+}
+.imp-salary-value {
+  color: var(--text-1);
+  font-weight: 650;
+}
+.imp-kari {
+  color: var(--warn);
+}
+.imp-kari[hidden] {
+  display: none;
+}
+.imp-link {
+  display: inline;
+  padding: 2px 2px;
+  margin: -2px 0;
+  border: 0;
+  background: none;
+  color: var(--accent-2);
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.imp-link::before {
+  content: "［";
+  color: var(--text-3);
+  font-weight: 400;
+}
+.imp-link::after {
+  content: "］";
+  color: var(--text-3);
+  font-weight: 400;
+}
+.imp-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.imp-link[hidden] {
+  display: none;
+}
+.imp-salary-edit {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+}
+.imp-salary-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.input.imp-salary-input {
+  width: 92px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.imp-salary-btns {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.imp-salary-hint {
+  font-size: 11px;
+  color: var(--text-2);
+}
+.imp-salary-err {
+  font-size: 12px;
+  color: var(--warn);
+}
+.imp-salary-err:empty {
+  display: none;
+}
+
+/* ---- 見出し */
+.imp-hl-main {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-1);
+}
+.imp-hl-main b {
+  font-size: 19px;
+  font-weight: 760;
+  letter-spacing: 0.01em;
+}
+.imp-hl-sub {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.imp-hl-sub[hidden] {
+  display: none;
+}
+.imp-counts {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+/* ---- 差の札（カードの札と同じ色） */
+.imp-pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.imp-pill.is-neutral {
+  box-shadow: inset 0 0 0 1.5px #6b7280;
+}
+.imp-pill.is-base {
+  color: var(--text-1);
+  background: #383835;
+  box-shadow: inset 0 0 0 1.5px #6b7280;
+  outline: 1.5px dashed #8a94a6;
+  outline-offset: -1.5px;
+}
+.imp-pill.is-none {
+  color: var(--text-2);
+  background: var(--bg-elev-2);
+}
+.imp-pill-sm {
+  min-width: 40px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11.5px;
+}
+.imp-pill-lg {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 15px;
+}
+/* % の札（結果の見込み）: 段の色を薄く塗り、枠をその色に */
+.imp-pill.is-chip {
+  color: #eef1f7;
+  background: color-mix(in srgb, var(--b) 28%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--b);
+}
+
+/* ---- 選択肢の行（今決めること・同じ判断の手） */
+.imp-alt-list {
+  display: grid;
+  gap: 4px;
+}
+.imp-alt-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "mark title delta"
+    "bar bar bar"
+    "meta meta meta";
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 3px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px 6px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel-2);
+  color: var(--text-1);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.imp-alt-row:hover {
+  border-color: var(--line-3);
+  background: var(--bg-elev);
+}
+.imp-alt-row:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 1px;
+}
+.imp-alt-row.is-current {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.imp-alt-row.is-dropped .imp-alt-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-3);
+}
+.imp-alt-row.is-dropped,
+.imp-alt-row.is-off {
+  opacity: 0.55;
+}
+.imp-mark {
+  grid-area: mark;
+  align-self: start;
+  padding-top: 2px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  letter-spacing: -0.05em;
+}
+.imp-mark.is-star {
+  color: #f2c14e;
+}
+.imp-mark.is-picked {
+  color: var(--ok);
+}
+.imp-alt-title {
+  grid-area: title;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 560;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.imp-alt-row > .imp-pill {
+  grid-area: delta;
+  align-self: start;
+}
+.imp-alt-row > .imp-bar {
+  grid-area: bar;
+}
+.imp-alt-meta {
+  grid-area: meta;
+  min-width: 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.imp-meta-part {
+  white-space: nowrap;
+}
+/* 領域の札（プロジェクトの色の点と薄い塗り。文字は文字の色） */
+.imp-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 17px;
+  margin-right: 5px;
+  padding: 0 6px 0 5px;
+  border-radius: 999px;
+  vertical-align: 1px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--c) 15%, transparent);
+}
+.imp-area::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+/* 差の棒: 0 の軸（細い線）から値まで。良くなる手は右・悪くなる手は左。棒の先だけ丸める */
+.imp-bar {
+  position: relative;
+  display: block;
+  height: 6px;
+  min-width: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.028);
+}
+.imp-bar-zero {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  margin-left: -0.5px;
+  background: var(--line-3);
+}
+.imp-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.imp-bar-fill.is-pos {
+  border-radius: 0 3px 3px 0;
+}
+.imp-bar-fill.is-neg {
+  border-radius: 3px 0 0 3px;
+}
+
+.imp-flip {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: var(--bg-panel-2);
+  border: 1px dashed var(--line-2);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.imp-flip svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--accent-2);
+}
+
+/* ---- 3 年後の分布（9 つの段の積み上げ棒。段のあいだは 2px） */
+.imp-dist-row {
+  display: grid;
+  gap: 3px;
+}
+.imp-dist-label {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.imp-dist-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  min-width: 0;
+}
+.imp-dist-seg {
+  flex: 0 1 0;
+  min-width: 2px;
+  border-radius: 1px;
+}
+.imp-dist-seg:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+.imp-dist-seg:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+.imp-scale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.imp-scale-sw {
+  display: inline-flex;
+  gap: 2px;
+}
+.imp-scale-sw i {
+  display: block;
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+}
+.imp-dist-text {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+/* ---- 3 年後の行き先 */
+.imp-end-list {
+  display: grid;
+  gap: 4px;
+}
+.imp-end-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel-2);
+  color: var(--text-1);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.imp-end-row:hover {
+  border-color: var(--line-3);
+  background: var(--bg-elev);
+}
+.imp-end-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 12.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.imp-end-pct {
+  font-size: 12.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 前提・見方 */
+.imp-premises summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.imp-premise-list,
+.imp-legend-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.imp-legend-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.imp-legend-list li {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.imp-legend-list .imp-pill {
+  min-width: 0;
+  width: 46px;
+  padding: 0;
+}
+.imp-legend-key {
+  text-align: center;
+  color: var(--text-1);
+  font-weight: 650;
+}
+.imp-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.imp-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--warn);
+}
+.imp-warn svg {
+  flex: none;
+  margin-top: 3px;
+}
+.imp-actions {
+  margin-top: 0;
+}
+.imp-actions .btn[hidden] {
+  display: none;
+}
+
+/* ---- 選んだノードの詳細 */
+.imp-node {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 9px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: linear-gradient(180deg, var(--bg-elev), var(--bg-panel-2));
+  min-width: 0;
+}
+.imp-node-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.imp-node.is-root .imp-node-body:empty {
+  display: none;
+}
+.imp-hl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+.imp-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-1);
+}
+.imp-badges .imp-mark {
+  padding: 0;
+  font-size: 14px;
+}
+.imp-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.imp-picks .btn.is-on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text-1);
+}
+.imp-facts {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.imp-facts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+}
+.imp-facts b {
+  color: var(--text-1);
+  font-weight: 650;
+}
+.imp-kari-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  color: var(--warn);
+}
+.imp-split,
+.imp-outs,
+.imp-sibs,
+.imp-trail-sec {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.imp-split-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 62px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.imp-split-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.imp-split-val {
+  text-align: right;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.imp-out-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel-2);
+  color: var(--text-1);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.imp-out-row:hover {
+  border-color: var(--line-3);
+}
+.imp-out-pct {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.imp-out-text {
+  display: grid;
+  min-width: 0;
+}
+.imp-out-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.imp-out-line {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+.imp-state {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.imp-state b {
+  color: var(--text-1);
+}
+.imp-trail {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.imp-trail-step {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-left: 2px solid var(--line-2);
+  border-radius: 0 7px 7px 0;
+  background: transparent;
+  color: var(--text-1);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.imp-trail-step:hover {
+  background: var(--bg-hover);
+}
+.imp-trail-step.is-current {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+.imp-trail-when {
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.imp-trail-what {
+  display: grid;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.imp-trail-alt {
+  font-weight: 600;
+}
+.imp-trail-line {
+  color: var(--text-2);
+}
+
+/* 狭い画面（右のパネルは幅 300px の引き出し）: 行の 2 行目が 1 行に収まるよう少し詰める・内訳の名前の列を詰める */
+@media (max-width: 640px) {
+  .imp-alt-row {
+    padding-left: 5px;
+    padding-right: 6px;
+  }
+  .imp-alt-meta {
+    letter-spacing: -0.02em;
+  }
+  .imp-split-row {
+    grid-template-columns: 96px minmax(0, 1fr) 56px;
+    gap: 6px;
+  }
+  .imp-trail-step {
+    grid-template-columns: 66px minmax(0, 1fr);
+  }
+}
