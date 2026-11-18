@@ -896,8 +896,7 @@ export class App implements AppContext {
 
   /** この版への差し替えを、「未来の道筋」から聞いて断った（この端末で。別のタブで断った物も） */
   private futureDeclined(): boolean {
-    const v = futureVersion();
-    return this.ui.prefs.futureDeclined === v || this.ui.storedPrefs().futureDeclined === v;
+    return this.ui.isFutureDeclined(futureVersion());
   }
 
   /** 地図の未来の道筋が、このページより新しい版で作られている: 差し替えずに訳を知らせる（always でなければ、このページを開いている間に 1 回） */
@@ -1147,7 +1146,7 @@ export class App implements AppContext {
     );
     if (!ok) {
       // 「未来の道筋」から聞いて断った: この版ではもう聞かない（お知らせ・メニューからは新しい版にできる。ボタンの「新」の印は残る）
-      if (how === "button") this.ui.setPrefs({ futureDeclined: futureVersion() });
+      if (how === "button") this.ui.declineFuture(futureVersion());
       return;
     }
     if (this.store.readOnly) return;

@@ -2085,6 +2085,60 @@ async function main() {
     await fp.waitForTimeout(300);
   });
 
+  await check("未来の道筋: 断った版は、断る前から開いていた別のタブが設定を書いても忘れない（開き直しても「未来の道筋」からもう聞かない）", async () => {
+    // 断る前の形に戻す（このタブの覚えと、このブラウザの保存の両方）
+    await fp.evaluate(() => {
+      const f = window.__fourD;
+      f.ui.prefs.futureDeclined = "";
+      localStorage.removeItem("4d-branch:futureDeclined");
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      delete p.futureDeclined;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+      document.querySelectorAll(".toast .toast-close").forEach((b) => b.click());
+    });
+    await setMapVersion(fp, "old", 0);
+    await waitSaved(fp);
+    // 断る前から開いていた 2 つ目のタブ（閲覧のみ）
+    const p2 = await fctx.newPage();
+    watch(p2);
+    try {
+      await p2.goto(BASE, { waitUntil: "networkidle" });
+      await p2.waitForFunction(() => window.__fourD?.store.readOnly === true && window.__fourD.app.vm.impactRoots().length === 1, null, { timeout: 10000 });
+      // 1 つ目のタブで「未来の道筋」から聞かれた新しい版を断る
+      await fp.bringToFront();
+      await fp.locator(".zoom-ctl .future-btn").click();
+      const confirm = fp.getByRole("dialog", { name: "未来の道筋を新しい版にしますか？" });
+      await confirm.waitFor();
+      await confirm.getByRole("button", { name: "キャンセル" }).click();
+      await fp.waitForTimeout(400);
+      // 2 つ目のタブがカードを開く（見え方の設定をまるごと書く）
+      await p2.bringToFront();
+      await p2.evaluate(() => {
+        const f = window.__fourD;
+        const root = f.app.vm.impactRoots()[0];
+        const kid = Object.values(f.store.doc.edges).find((e) => e.source === root).target;
+        f.ui.setImpactOpen(root, [root, kid], [kid]);
+        f.ui.flushPrefs();
+      });
+    } finally {
+      await p2.close();
+    }
+    const stored = await fp.evaluate(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").futureDeclined ?? "");
+    assert(stored === "", `2 つ目のタブが設定を書き直していない（確かめの前提）: ${stored}`);
+    await fp.bringToFront();
+    await fp.reload({ waitUntil: "networkidle" });
+    await fp.waitForFunction(() => window.__fourD?.store.readOnly === false && window.__fourD.app.vm.impactRoots().length === 1, null, { timeout: 10000 });
+    await fp.waitForTimeout(2600 + 800);
+    await fp.evaluate(() => document.querySelectorAll(".toast .toast-close").forEach((b) => b.click()));
+    await fp.locator(".zoom-ctl .future-btn").click();
+    await fp.waitForTimeout(800);
+    const again = await fp.evaluate(() => ({ modal: document.querySelectorAll(".modal").length, newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new") }));
+    // 聞いてしまったら閉じておく（後の確かめに確認を残さない）
+    if (again.modal) await fp.getByRole("dialog", { name: "未来の道筋を新しい版にしますか？" }).getByRole("button", { name: "キャンセル" }).click();
+    assert(again.modal === 0, "開き直したら、断った版をまた聞いた");
+    assert(again.newMark === true, `「新」の印が無い ${JSON.stringify(again)}`);
+  });
+
   await check("未来の道筋: お知らせ・確認を出している間に、同期で地図が新しい版になった・無くなったら、差し替えずに知らせる", async () => {
     /** 今の地図を、別の端末が新しい版にして手を足した形（同期で届く内容）にする */
     const docFromOther = (p, mode) =>
