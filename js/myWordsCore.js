@@ -225,10 +225,29 @@ export function parseWordLine(line) {
 //   どちらも英語でなければ断る（「english, 訳」の形を言う）
 // - 片側が空の矢印（行の頭か終わり。「up ->」「→ 何か」）: 矢印を訳にも英語にもしない。残りが英語なら訳なしの語（足すときの確かめが「日本語訳を入力してください」）、
 //   そうでなければ英語なしで断る
-// - 矢印も無い行は前のまま（parseWordLine。使えない字・訳なしは足すときの確かめが理由を言う）。ただし英字の無い行（日本語だけ・数字や記号だけ）は英語なしで断る
+// - 矢印も無い行で、英語の後に区切りの印があれば、そこで英語と訳に分ける（Batch 96。splitAtMark。docs/SPEC_MY_WORDS.md §11.3）
+// - どれでもない行は前のまま（parseWordLine。使えない字・訳なしは足すときの確かめが理由を言う）。ただし英字の無い行（日本語だけ・数字や記号だけ）は英語なしで断る
 export const BULK_FORM_NOTE = "「english, 訳」の形で書く";
 const BULK_ARROW = /^(.+?)\s*(?:→|⇒|=>|->)\s*(.+)$/;
 const BULK_ARROW_EDGE = /^(?:→|⇒|=>|->)\s*|\s*(?:→|⇒|=>|->)$/g; // 行の頭と終わりの矢印（片側が空）
+
+// まとめて足すの区切りの印（Batch 96）: 全角「：＝／；｜（，」・ASCII「: = / ; | (」・「 - 」を行の頭から順に見る。
+// 印より前が英語として使える形（checkEnText）で、印の後（空白は飛ばす）の 1 字目が日本語の字
+// （ASCII でも全角の英数字・記号〔U+FF01〜U+FF5E〕でもない字）のときだけ、そこで分ける。開き括弧の印は、
+// 後の終わりが閉じ括弧なら両方を外し、そうでなければ開き括弧を訳に残す（括弧の組を壊さない）。当たらなければ前の分け方のまま
+const BULK_MARKS = / - |[：＝／；｜（，:=/;|(]/g;
+function splitAtMark(text) {
+  for (const m of text.matchAll(BULK_MARKS)) {
+    const left = text.slice(0, m.index).trim();
+    let right = text.slice(m.index + m[0].length).trim();
+    if (!right || !checkEnText(left).ok) continue;
+    if (!/^[^\x00-\x7f！-～]/.test(right)) continue;
+    if (m[0] === "(" || m[0] === "（") right = /[)）]$/.test(right) ? right.slice(0, -1).trim() : `${m[0]}${right}`;
+    if (right) return { en: left, ja: right };
+  }
+  return null;
+}
+
 export function parseBulkLine(line) {
   const text = String(line ?? "").trim();
   if (text.search(/[,、\t]/) > 0) {
@@ -246,6 +265,8 @@ export function parseBulkLine(line) {
   }
   const rest = text.replace(BULK_ARROW_EDGE, "").trim();
   if (rest !== text) return checkEnText(rest).ok ? { en: rest, ja: "" } : noEn;
+  const marked = splitAtMark(text); // 区切りの印（Batch 96）
+  if (marked) return marked;
   const w = parseWordLine(text);
   return /[a-z]/i.test(cleanEnText(w.en)) ? w : noEn;
 }
