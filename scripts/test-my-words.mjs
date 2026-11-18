@@ -2823,8 +2823,8 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
 }
 
 // ===== Batch 96 T71〜T74: まとめて足すの区切りの印（docs/SPEC_MY_WORDS.md §11.3） =====
-// 英語の後に区切りの印（全角「：＝／；｜（，」・ASCII「: = / ; | (」・「 - 」）を書いた行は、印より前が英語として使える形で、印の後の 1 字目が日本語の字
-// （ASCII でも全角の英数字・記号でもない字）のときだけ、そこで英語と訳に分ける（js/myWordsCore.js parseBulkLine の矢印の段の後の 1 段）。
+// 英語の後に区切りの印（全角「：＝／；｜（，」・ASCII「: = / ; | (」・「 - 」）を書いた行は、印より前が英語として使える形で、印の後の頭の「～」「（」「(」を
+// 飛ばした 1 字目が日本語の字（ASCII でも全角の英数字・記号でもない字）のときだけ、そこで英語と訳に分ける（js/myWordsCore.js parseBulkLine の矢印の段の後の 1 段）。
 // 前の分け方で読める行（カンマ・タブ・読点・英語と日本語の境・矢印・引用符・訳の中の印）と、断る行は e36d086 と同じ結果
 {
   const parse = (line) => C.parseBulkLine(line);
@@ -2857,7 +2857,18 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ["KPI：重要業績評価指標", W("KPI", "重要業績評価指標")],
     ["lemon：レモン：果物", W("lemon", "レモン：果物")],
     ["C:ドライブ", W("C", "ドライブ")],
-    ["anti-：反～", W("anti-", "反～")]
+    ["anti-：反～", W("anti-", "反～")],
+    // 印の後の頭の「～」「（」「(」は飛ばして 1 字目を見る（訳は字のとおり。開き括弧の印なら組の括弧は外す）
+    ["get rid of：～を取り除く", W("get rid of", "～を取り除く")],
+    ["look up to: ～を尊敬する", W("look up to", "～を尊敬する")],
+    ["put off = ～を延期する", W("put off", "～を延期する")],
+    ["don't: ～しない", W("don't", "～しない")],
+    ["take care of: （人を）世話する", W("take care of", "（人を）世話する")],
+    ["follow up: (追って)連絡する", W("follow up", "(追って)連絡する")],
+    ["come up with（～を思いつく）", W("come up with", "～を思いつく")],
+    ["be able to (～できる)", W("be able to", "～できる")],
+    ["lemon: (レモン)", W("lemon", "(レモン)")],
+    ["lemon - (レモン)", W("lemon", "(レモン)")]
   ]) {
     const p = parse(line);
     ok(`T71 区切りの印: 「${line.trim()}」→ 英語「${want.en}」・訳「${want.ja}」（足せる）`, JSON.stringify(p) === JSON.stringify(want) && takes(p), JSON.stringify(p));
@@ -2907,16 +2918,19 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ["締め切り：deadline", W("締め切り：deadline", "")],
     ["締め切り: deadline", noEn("締め切り: deadline")],
     ["lemon: a fruit", W("lemon:", "a fruit")],
-    ["lemon: (レモン)", W("lemon:", "(レモン)")],
     ["lemon：１２３", W("lemon：１２３", "")],
     ["lemon：ＡＢＣ", W("lemon：ＡＢＣ", "")],
+    ["lemon: ～", W("lemon:", "～")],
+    ["lemon: ～ABC", W("lemon:", "～ABC")],
+    ["lemon: (lemon tree)", W("lemon:", "(lemon tree)")],
+    ["lemon：（ＡＢＣ）", W("lemon：（ＡＢＣ）", "")],
     ["lemon:", W("lemon:", "")],
     ["：レモン", noEn("：レモン")],
     ["x+y: 足し算", W("x+y:", "足し算")],
     ["e.g.: 例えば", W("e.g.:", "例えば")]
   ];
   const r73 = T73.map(([line]) => parse(line));
-  eq("T73 断る行（A/B testing・全角の／の英語・and／or・印の後が数字・日本語が先・印の後が英字・記号・全角の英数字・印の後が空・印の前が英語でない）は e36d086 と同じ結果",
+  eq("T73 断る行（A/B testing・全角の／の英語・and／or・印の後が数字・日本語が先・印の後が英字・記号・全角の英数字・「～」や括弧の後が英字か空・印の後が空・印の前が英語でない）は e36d086 と同じ結果",
     r73, T73.map(([, want]) => want));
   ok("T73 その行はどれも足さない（英語が無い・使えない字・訳が無い）", r73.every((p) => !takes(p)), JSON.stringify(r73.filter(takes)));
 
