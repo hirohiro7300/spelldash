@@ -2856,7 +2856,8 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ["don't: しないで", W("don't", "しないで")],
     ["KPI：重要業績評価指標", W("KPI", "重要業績評価指標")],
     ["lemon：レモン：果物", W("lemon", "レモン：果物")],
-    ["C:ドライブ", W("C", "ドライブ")]
+    ["C:ドライブ", W("C", "ドライブ")],
+    ["anti-：反～", W("anti-", "反～")]
   ]) {
     const p = parse(line);
     ok(`T71 区切りの印: 「${line.trim()}」→ 英語「${want.en}」・訳「${want.ja}」（足せる）`, JSON.stringify(p) === JSON.stringify(want) && takes(p), JSON.stringify(p));
@@ -2883,6 +2884,17 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   ];
   eq("T72 前の分け方で読める行（カンマ・タブ・読点・全角の空白・英語と日本語の境・矢印・引用符・訳の中の印・片側が空の矢印）は e36d086 と同じ結果",
     T72.map(([line]) => parse(line)), T72.map(([, want]) => want));
+  // 印より前の英語が空白とハイフンで終わる行は、その印で分けない（英語の鍵の終わりに「 -」を付けない。e36d086 と同じ結果）。
+  // 全角のハイフンも英語の形（NFKC の後）で見る。空白の無いハイフンで終わる語（「anti-：反～」）は T71 のとおり分ける
+  for (const [line, want] of [
+    ["lemon -(レモン)", W("lemon", "-(レモン)")],
+    ["lemon -：レモン", W("lemon", "-：レモン")],
+    ["lemon －：レモン", W("lemon", "－：レモン")],
+    ["run -（動）走る", W("run", "-（動）走る")]
+  ]) {
+    const p = parse(line);
+    ok(`T72 印より前が空白とハイフンで終わる: 「${line}」→ 英語「${want.en}」・訳「${want.ja}」（e36d086 と同じ）`, JSON.stringify(p) === JSON.stringify(want), JSON.stringify(p));
+  }
 
   // ---- T73 断る行は e36d086 と同じ結果で断ったまま（見張り） ----
   const noEn = (line) => ({ error: `英語が無い。${C.BULK_FORM_NOTE}`, line });
