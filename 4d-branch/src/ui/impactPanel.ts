@@ -105,12 +105,7 @@ function goTo(app: AppContext, id: ID, closeDrawer: boolean): void {
 
 /** 「最初の形に戻す」（開いている所を既定に戻す操作）。まだ無ければ null */
 function resetCommand(app: AppContext): ((root: ID | null) => void) | null {
-  const c = app.cmd as unknown as Record<string, unknown>;
-  for (const name of ["resetImpactOpen", "resetImpactView", "resetExpansion"]) {
-    const f = c[name];
-    if (typeof f === "function") return (root) => (f as (r: ID | null) => void).call(app.cmd, root);
-  }
-  return null;
+  return () => app.cmd.resetImpactOpen();
 }
 
 // ------------------------------------------------------------ 部品

@@ -829,7 +829,8 @@ export class App implements AppContext {
     this.futureAutoDeclined = true;
     if (!this.ui.prefs.futureOffered) this.ui.setPrefs({ futureOffered: true });
     if (hasFutureRoot(this.store.doc)) {
-      toast("未来の道筋はもう地図にあります。今日（入口）に寄りました（新しい版に入れ替えるときは、メニューの「未来の道筋だけを新しい版に差し替える…」）", { ms: 6000 });
+      // 古い版（10 年の道筋など）なら、今日に寄ってから差し替えを聞く（showFuture が聞く）
+      if (!staleFutureMaps(this.store.doc, futureVersion()).length) toast("未来の道筋はもう地図にあります。今日（入口）に寄りました", { ms: 5000 });
       void this.showFuture();
       return;
     }
@@ -848,6 +849,8 @@ export class App implements AppContext {
       this.cmd.revealNode(root.id);
       this.ui.select([root.id]);
       this.view.fit(nearFutureRoot(this.store.doc), { minZoom: FUTURE_MIN_ZOOM });
+      // 地図の未来の道筋が同梱より古い版（10 年の道筋など）なら、押したこの時に差し替えるか聞く（お知らせを見逃しても入れ替えられる）
+      if (!this.store.readOnly && staleFutureMaps(this.store.doc, futureVersion()).length) void this.swapFuture();
       return;
     }
     if (this.store.readOnly) {
