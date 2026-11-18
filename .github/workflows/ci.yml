@@ -106,6 +106,9 @@ jobs:
       - name: api の守り（AI の入口は確認済みのメールのログインだけ・入力を確かめてから回数・回数は ai_take で全部のインスタンスに 1 つ〔無ければメモリー〕・同じ人の同時の 2 つ目は busy・カードの自動生成は止めてある。偽の fetch と手元の偽のサーバーで外へ出ない。api/_lib/shared.js・api/explain-word.js・api/generate-cards.js）
         run: node scripts/test-api-guard.mjs
 
+      - name: 認証の部品を自分の配信から出す（固定の版の値は 1 か所・tarball の sha512 と束と答えの sha256 を確かめてから出す・決まった 1 つの URL だけ・作れないときは 503 で保存させない・テストの口は手元の名前だけ。偽の登録所。api/auth-module.js・api/_lib/authModule.js・js/supabase.js）
+        run: node scripts/test-auth-module.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 
