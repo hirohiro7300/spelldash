@@ -2,6 +2,7 @@
 // 打ち方（英小文字だけの語は 1 字ずつ、ほかは全文入力で大文字小文字・空白・ハイフン・アポストロフィを見ない）・マイ単語帳だけの 3 状態（js/learnState.js と同じ決まり）・
 // 学ぶ回の列（これから → あやふや → 覚えた・10 語）・入口 ?learn=my。
 // Batch 81: 複数の単語帳（前からの語は最初の単語帳）・英語は全部の単語帳で 1 つ・単語帳を消すと語も・まとめて消す／移す（1 回の書き込み）・訳の書き直し・150 字
+// Batch 96: 学ぶ回の順（今日出す あやふや を先に・1 セットに これから 3 語・回の始めと終わりの数。T63〜T70）・まとめて足すの区切りの印（T71〜T74）
 // 使い方: node scripts/test-my-words.mjs
 import * as C from "../js/myWordsCore.js";
 import { typeAnswer, answerModeOf } from "../js/judge.js";
@@ -2594,6 +2595,369 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
       JSON.stringify({ wordRead: st.reqs.wordRead - r62.wordRead, range: st.reqs.range - r62.range }));
   } finally {
     globalThis.Date = RealDate;
+  }
+}
+
+// ===== Batch 96 T63〜T70: マイ単語帳の学ぶ順（docs/SPEC_MY_WORDS.md §19） =====
+// 今日出す あやふや（myUnsureDue）を先に・1 セット 10 語のうち これから を 3 語は入れる（MY_SET_NEW_MIN）・回の始めと終わりの数（myMixOf・myDueCount）。
+// today を渡さない呼び手（スラング・前からの呼び方）は前と同じ並び。土台（e36d086）には無い関数は call() で包み、無ければ落ちるだけで投げない
+{
+  const call = (name, ...args) => {
+    try {
+      return typeof C[name] === "function" ? C[name](...args) : undefined;
+    } catch (e) {
+      return { thrown: String(e) };
+    }
+  };
+  const seeded = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  // 前の列（e36d086 の buildMyQueue の本文の写し）: これから → あやふや → 覚えた。これからだけを混ぜる
+  const oldQueue = (list, idOf = (w) => `my-${w.en}`, { shuffle = null } = {}) => {
+    const ORDER = [LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED];
+    const rows = (Array.isArray(list) ? list : [])
+      .map((w, pos) => ({ w, pos }))
+      .filter(({ w }) => C.isWordEntry(w))
+      .map(({ w, pos }) => {
+        const st = C.myStateOf(w);
+        return { id: idOf(w), rank: ORDER.indexOf(st), at: st === LEARN_NEW ? 0 : Number.isFinite(w.lsAt) ? w.lsAt : 0, pos };
+      })
+      .sort((a, b) => a.rank - b.rank || a.at - b.at || a.pos - b.pos);
+    if (typeof shuffle === "function") {
+      let end = 0;
+      while (end < rows.length && rows[end].rank === 0) end++;
+      for (let i = end - 1; i > 0; i--) {
+        const r = Number(shuffle());
+        const j = Number.isFinite(r) ? Math.min(i, Math.max(0, Math.floor(r * (i + 1)))) : 0;
+        [rows[i], rows[j]] = [rows[j], rows[i]];
+      }
+    }
+    return rows.map((x) => x.id);
+  };
+  // 端末の時刻帯の日（learnDayOf と同じ区切り）。基準は 2026-11-13 21 時。at(-3) = 3 日前の 12 時
+  const T = new Date(2026, 10, 13, 21, 0, 0).getTime();
+  const today = learnDayOf(T);
+  const at = (days, hour = 12) => new Date(2026, 10, 13 + days, hour, 0, 0).getTime();
+  const due = (w, day = today) => call("myUnsureDue", w, day);
+
+  // ---- T63 myUnsureDue（今日出す あやふや） ----
+  const U = (extra) => ({ en: "lemon", ja: "レモン", ls: 1, ...extra });
+  ok("T63 あやふや で lsAt が無い（前の版・ほかの端末から）→ 出す", due(U({})) === true, JSON.stringify(due(U({}))));
+  ok("T63 lsAt が読めない（数でない・NaN）→ 出す", due(U({ lsAt: "x" })) === true && due(U({ lsAt: NaN })) === true);
+  ok("T63 最後に答えた日が今日 → 出さない（× でも次の日から）", due(U({ lsAt: at(0, 9) })) === false && due(U({ lsAt: at(0, 0) })) === false);
+  ok("T63 最後に答えた日が未来（時計が戻った）→ 出さない", due(U({ lsAt: at(1) })) === false && due(U({ lsAt: at(30) })) === false);
+  ok("T63 lsd が今日・昨日 → 出さない（中 1 日あける）", due(U({ lsAt: at(-3), lsd: today })) === false && due(U({ lsAt: at(-1), lsd: today - 1 })) === false);
+  ok("T63 lsd が 2 日前・それより前 → 出す", due(U({ lsAt: at(-2), lsd: today - 2 })) === true && due(U({ lsAt: at(-5), lsd: today - 5 })) === true);
+  ok("T63 lsd が無く、前の日に答えた（× の語）→ 出す", due(U({ lsAt: at(-1) })) === true && due(U({ lsAt: at(-1, 23) })) === true && due(U({ lsAt: 3 })) === true);
+  ok("T63 lsd が日番号でない（字・小数）→ lsd が無いのと同じ", due(U({ lsAt: at(-1), lsd: String(today - 1) })) === true && due(U({ lsAt: at(-1), lsd: today - 0.5 })) === true);
+  ok("T63 today が日番号でない（無い・null・字・小数・NaN）→ 出さない",
+    [undefined, null, String(today), today + 0.5, NaN].every((d) => call("myUnsureDue", U({ lsAt: at(-3) }), d) === false));
+  ok("T63 これから・覚えた → 出さない", due({ en: "lemon", ja: "レモン" }) === false && due({ en: "lemon", ja: "レモン", lsAt: at(-3) }) === false && due({ en: "lemon", ja: "レモン", ls: 2, lsAt: at(-9) }) === false);
+  ok("T63 語でない項目（場面カード・訳の無い語・null）→ 出さない",
+    due({ kind: "concept", en: "ssl", q: "q", answer: "SSL", ls: 1, lsAt: at(-3) }) === false && due({ en: "lemon", ls: 1, lsAt: at(-3) }) === false && due(null) === false);
+
+  // ---- T64 buildMyQueue に today: 今日の分（古い順）を各セットの最初の 7 枠、残りの 3 枠に これから。尽きたら他方で埋める。後ろは残りの あやふや → 覚えた ----
+  const L = [
+    { en: "n1", ja: "x" },
+    { en: "u1", ja: "x", ls: 1, lsAt: at(-5) },
+    { en: "l1", ja: "x", ls: 2, lsAt: at(-10) },
+    { en: "u2", ja: "x", ls: 1, lsAt: at(-2), lsd: today - 2 },
+    { en: "n2", ja: "x" },
+    { en: "r1", ja: "x", ls: 1, lsAt: at(0, 9) }, // 今日答えた（今日の分でない）
+    { en: "u3", ja: "x", ls: 1, lsAt: at(-1) },
+    { en: "u4", ja: "x", ls: 1 }, // lsAt が無い（古い順のいちばん前）
+    { en: "r2", ja: "x", ls: 1, lsAt: at(-1), lsd: today - 1 }, // 昨日 1 日目（中 1 日あける）
+    { en: "u5", ja: "x", ls: 1, lsAt: at(-5) }, // u1 と同じ時刻: 足した順
+    { kind: "concept", en: "q1", q: "q", answer: "Q", ls: 1 },
+    { en: "n3", ja: "x" },
+    { en: "r3", ja: "x", ls: 1, lsAt: at(1) }, // 未来（時計が戻った）
+    { en: "u6", ja: "x", ls: 1, lsAt: at(-3, 8) },
+    { en: "u7", ja: "x", ls: 1, lsAt: at(-3, 9) },
+    { en: "u8", ja: "x", ls: 1, lsAt: at(-4, 10) },
+    { en: "u9", ja: "x", ls: 1, lsAt: at(-6) },
+    { en: "u10", ja: "x", ls: 1, lsAt: at(-7) },
+    { en: "u11", ja: "x", ls: 1, lsAt: at(-2, 20), lsd: today - 3 },
+    { en: "u12", ja: "x", ls: 1, lsAt: at(-1, 7) },
+    { en: "n4", ja: "x" },
+    { en: "l2", ja: "x", ls: 2, lsAt: at(-20) },
+    { en: "n5", ja: "x" },
+    { en: "x1", ja: "", ls: 1 } // 訳の無い語（語でない）
+  ];
+  const my = (s) => s.split(" ").map((en) => `my-${en}`);
+  eq("T64 今日の分 12・これから 5: 1 セット目は今日の分 7（古い順）＋これから 3、2 セット目は今日の分の残り 5 の後に これから 2。後ろは残りの あやふや（古い順）→ 覚えた（古い順）",
+    call("buildMyQueue", L, undefined, { today }), my("u4 u10 u9 u1 u5 u8 u6 n1 n2 n3 u7 u2 u11 u12 u3 n4 n5 r2 r1 r3 l2 l1"));
+  const dues = (n) => Array.from({ length: n }, (_, i) => ({ en: `d${i + 1}`, ja: "x", ls: 1, lsAt: at(-2, 0) + i * 60000 }));
+  const news = (n) => Array.from({ length: n }, (_, i) => ({ en: `n${i + 1}`, ja: "x" }));
+  eq("T64 今日の分が少ない（2）: 空いた枠は これから で埋める",
+    call("buildMyQueue", [...news(15), ...dues(2)], undefined, { today }), my("d1 d2 n1 n2 n3 n4 n5 n6 n7 n8 n9 n10 n11 n12 n13 n14 n15"));
+  eq("T64 これから が少ない（1）: 空いた枠は今日の分で埋める",
+    call("buildMyQueue", [...dues(20), ...news(1)], undefined, { today }), my("d1 d2 d3 d4 d5 d6 d7 n1 d8 d9 d10 d11 d12 d13 d14 d15 d16 d17 d18 d19 d20"));
+  eq("T64 今日の分だけ・これから だけ・どちらも無い", [call("buildMyQueue", dues(3), undefined, { today }), call("buildMyQueue", news(3), undefined, { today }), call("buildMyQueue", [L[2], L[5]], undefined, { today })],
+    [my("d1 d2 d3"), my("n1 n2 n3"), my("r1 l1")]);
+  // 決まりの写し（仕様の字から書いた小さな決まり）で、乱数の単語帳を確かめる: どの id もちょうど 1 回・セットの枠・古い順・後ろの並び
+  const dueSpec = (w, day) => C.isWordEntry(w) && w.ls === 1 && (!Number.isFinite(w.lsAt) || (learnDayOf(w.lsAt) < day && (!Number.isInteger(w.lsd) || day - w.lsd >= 2)));
+  const randomBook = (rnd, n) => Array.from({ length: n }, (_, i) => {
+    const r = rnd();
+    const en = `w${i}`;
+    if (r < 0.05) return { kind: "concept", en, q: "q", answer: "A" };
+    if (r < 0.35) return { en, ja: "x" };
+    if (r < 0.5) return { en, ja: "x", ls: 2, lsAt: at(-Math.floor(rnd() * 20), Math.floor(rnd() * 24)) };
+    const w = { en, ja: "x", ls: 1 };
+    if (rnd() > 0.08) w.lsAt = at(1 - Math.floor(rnd() * 9), Math.floor(rnd() * 24));
+    if (rnd() < 0.4) w.lsd = today - Math.floor(rnd() * 4);
+    return w;
+  });
+  const bad64 = [];
+  for (let s = 1; s <= 60; s++) {
+    const rnd = seeded(s);
+    const book = randomBook(rnd, 5 + Math.floor(rnd() * 45));
+    const q = call("buildMyQueue", book, undefined, { today });
+    const rows = book.map((w, pos) => ({ w, pos, id: `my-${w.en}` })).filter((x) => C.isWordEntry(x.w));
+    const byAt = (a, b) => (Number.isFinite(a.w.lsAt) ? a.w.lsAt : 0) - (Number.isFinite(b.w.lsAt) ? b.w.lsAt : 0) || a.pos - b.pos;
+    const D = rows.filter((x) => dueSpec(x.w, today)).sort(byAt).map((x) => x.id);
+    const N = rows.filter((x) => C.myStateOf(x.w) === LEARN_NEW).map((x) => x.id);
+    const R = rows.filter((x) => x.w.ls === 1 && !dueSpec(x.w, today)).sort(byAt).map((x) => x.id);
+    const Ld = rows.filter((x) => x.w.ls === 2).sort(byAt).map((x) => x.id);
+    const want = [];
+    for (let i = 0, j = 0; i < D.length || j < N.length; ) {
+      const dueSlot = want.length % 10 < 7;
+      want.push(dueSlot ? (i < D.length ? D[i++] : N[j++]) : j < N.length ? N[j++] : D[i++]);
+    }
+    want.push(...R, ...Ld);
+    if (!Array.isArray(q) || JSON.stringify(q) !== JSON.stringify(want) || new Set(q).size !== rows.length) bad64.push({ s, q: q?.slice?.(0, 12), want: want.slice(0, 12) });
+  }
+  eq("T64 乱数の単語帳 60 冊: 仕様の決まりの写しと同じ並び（どの id もちょうど 1 回）", bad64.slice(0, 2), []);
+
+  // ---- T65 混ぜるのは これから だけ。today が無い・日番号でない → 前（e36d086）と同じ並び ----
+  let sameOthers = true;
+  let mixedSome = false;
+  for (let s = 1; s <= 20; s++) {
+    const plain = call("buildMyQueue", L, undefined, { today });
+    const mixed = call("buildMyQueue", L, undefined, { today, shuffle: seeded(s) });
+    if (!Array.isArray(plain) || !Array.isArray(mixed) || plain.length !== mixed.length) { sameOthers = false; break; }
+    const isNew = (id) => /^my-n\d/.test(id);
+    plain.forEach((id, k) => { if (isNew(id) !== isNew(mixed[k]) || (!isNew(id) && id !== mixed[k])) sameOthers = false; });
+    if (JSON.stringify(plain.filter(isNew).sort()) !== JSON.stringify(mixed.filter(isNew).sort())) sameOthers = false;
+    if (JSON.stringify(plain.filter(isNew)) !== JSON.stringify(mixed.filter(isNew))) mixedSome = true;
+  }
+  ok("T65 shuffle を渡しても、今日の分・残りの あやふや・覚えた の位置と並びは同じ（これから の枠には これから だけ）", sameOthers);
+  ok("T65 これから は混ざる（種 1〜20 のどれかで足した順と違う）", mixedSome);
+  const bad65 = [];
+  for (let s = 1; s <= 40; s++) {
+    const book = randomBook(seeded(100 + s), 30);
+    for (const t of [undefined, null, String(today), today + 0.5, NaN, Infinity]) {
+      const a = call("buildMyQueue", book, undefined, t === undefined ? {} : { today: t });
+      const b = call("buildMyQueue", book, undefined, { today: t, shuffle: seeded(s) });
+      if (JSON.stringify(a) !== JSON.stringify(oldQueue(book)) || JSON.stringify(b) !== JSON.stringify(oldQueue(book, undefined, { shuffle: seeded(s) }))) bad65.push({ s, t: String(t) });
+    }
+  }
+  eq("T65 today が無い・日番号でない（null・字・小数・NaN・Infinity）→ 前の列（e36d086 の写し）と同じ並び（混ぜても同じ乱数で同じ）", bad65.slice(0, 3), []);
+
+  // ---- T66 スラングの呼び方（idOf を渡し today を渡さない）は前と同じ並び（見張り） ----
+  const bad66 = [];
+  for (let s = 1; s <= 40; s++) {
+    const book = randomBook(seeded(200 + s), 25).map((w, i) => ({ ...w, id: `slang-${i}` }));
+    const idOf = (w) => w.id;
+    if (JSON.stringify(C.buildMyQueue(book, idOf)) !== JSON.stringify(oldQueue(book, idOf)) || JSON.stringify(C.buildMyQueue(book, idOf, undefined)) !== JSON.stringify(oldQueue(book, idOf))) bad66.push(s);
+  }
+  eq("T66 スラングの呼び方（buildMyQueue(list, idOf)）は前の列と同じ（古い lsAt の あやふや も これから の後）", bad66, []);
+
+  // ---- T67 1 セットの これから は 3 語（見張り） ----
+  eq("T67 MY_SET_NEW_MIN は 3・MY_UNSURE_GAP は 2・1 セット 10 語", [C.MY_SET_NEW_MIN, C.MY_UNSURE_GAP, C.MY_SET_SIZE], [3, 2, 10]);
+
+  // ---- T68 myMixOf（このセットの 復習・新しい の数）と myDueCount（その日の今日の分の数） ----
+  eq("T68 myMixOf: これから → fresh・あやふや と 覚えた → review・知らない id と場面カードは数えない・同じ id は 1 回",
+    call("myMixOf", ["my-n1", "my-u1", "my-l1", "my-r1", "my-zz", "my-q1", "my-u1"], L), { review: 3, fresh: 1 });
+  eq("T68 myMixOf: idOf を渡す（スラングと同じ形）・空", [call("myMixOf", ["s-1", "s-2"], [{ id: "s-1", en: "a", ja: "x" }, { id: "s-2", en: "b", ja: "x", ls: 1 }], (w) => w.id), call("myMixOf", [], L)],
+    [{ review: 1, fresh: 1 }, { review: 0, fresh: 0 }]);
+  eq("T68 myDueCount: 今日 12（今日の分）・明日 14（今日答えた r1 と昨日 1 日目の r2 が入り、未来の r3 は入らない）・日番号でない日は 0・list でない値は 0",
+    [call("myDueCount", L, today), call("myDueCount", L, today + 1), call("myDueCount", L, null), call("myDueCount", null, today)], [12, 14, 0, 0]);
+  eq("T68 myDueCount はその日の myUnsureDue の数と同じ（乱数の単語帳 20 冊・3 日）",
+    Array.from({ length: 20 }, (_, s) => randomBook(seeded(300 + s), 30)).flatMap((b) => [0, 1, 2].map((k) => call("myDueCount", b, today + k) === b.filter((w) => call("myUnsureDue", w, today + k) === true).length)).every(Boolean), true);
+
+  // ---- T69 新しい鍵・欄を書かない: 凍らせた list で投げず、list は 1 字も変わらない（見張り） ----
+  const frozen = Object.freeze(L.map((w) => Object.freeze({ ...w })));
+  const before = JSON.stringify(frozen);
+  const r69 = [call("buildMyQueue", frozen, undefined, { today, shuffle: seeded(9) }), call("myMixOf", ["my-u1", "my-n1"], frozen), call("myDueCount", frozen, today + 1)];
+  ok("T69 buildMyQueue・myMixOf・myDueCount は list を書き換えない（凍らせた list で投げない・中身は同じ）", !r69.some((x) => x && typeof x === "object" && "thrown" in x) && JSON.stringify(frozen) === before, JSON.stringify(r69.filter((x) => x?.thrown)));
+
+  // ---- T70 js/game.js の本文: 呼ぶ所は 1 か所ずつ（回の始め・セットの始め・セットの終わり）。答えの道には足さない ----
+  const fs = await import("fs");
+  const game = fs.readFileSync(new URL("../js/game.js", import.meta.url), "utf8");
+  const bodyOf = (src, name) => {
+    const m = new RegExp(`(?:^|\\n)(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
+    if (!m) return null;
+    let depth = 0;
+    let j = m.index + m[0].length - 1;
+    for (; j < src.length; j++) {
+      if (src[j] === "(") depth++;
+      else if (src[j] === ")" && --depth === 0) break;
+    }
+    const open = src.indexOf("{", j);
+    depth = 0;
+    for (let k = open; k < src.length; k++) {
+      if (src[k] === "{") depth++;
+      else if (src[k] === "}" && --depth === 0) return src.slice(open, k + 1);
+    }
+    return null;
+  };
+  const calls = (src, name) => (src?.match(new RegExp(`\\b${name}\\(`, "g")) ?? []).length - (src?.match(new RegExp(`function\\s+${name}\\(`, "g")) ?? []).length;
+  const only = (name, fn) => {
+    const all = calls(game, name);
+    return all >= 1 && all === calls(bodyOf(game, fn), name);
+  };
+  ok("T70 buildMyQueue を呼ぶのは beginMyLearn だけ（回の始めに 1 回）", only("buildMyQueue", "beginMyLearn"), String(calls(game, "buildMyQueue")));
+  ok("T70 mySetMixText を呼ぶのは startGame だけ（セットの始めの 1 行）", only("mySetMixText", "startGame"), String(calls(game, "mySetMixText")));
+  ok("T70 myDueCount を呼ぶのは renderLearnPanel だけ（セットの終わりの 1 行）", only("myDueCount", "renderLearnPanel"), String(calls(game, "myDueCount")));
+  const PATH = ["completeWord", "acceptChar", "advanceNow", "setNewWord", "nextLearnWordId", "noteLearnAnswer", "noteMyAnswer", "submitFreeAnswer", "finishFreeWord", "renderWordMeta", "renderWordNote"];
+  const NEW_NAMES = /\b(buildMyQueue|mySetMixText|myMixOf|myDueCount|myUnsureDue|MY_SET_NEW_MIN|MY_UNSURE_GAP)\b/;
+  const hits70 = PATH.map((fn) => [fn, bodyOf(game, fn)]).filter(([, b]) => b === null || NEW_NAMES.test(b)).map(([fn, b]) => `${fn}:${b === null ? "関数が無い" : NEW_NAMES.exec(b)[0]}`);
+  eq("T70 答えの道（completeWord・acceptChar・advanceNow と語ごとの描画 setNewWord・次の語 nextLearnWordId・答えの受け手）にこれらの名前が無い", hits70, []);
+}
+
+// ===== Batch 96 T71〜T74: まとめて足すの区切りの印（docs/SPEC_MY_WORDS.md §11.3） =====
+// 英語の後に区切りの印（全角「：＝／；｜（，」・ASCII「: = / ; | (」・「 - 」）を書いた行は、印より前が英語として使える形で、印の後の頭の「～」「（」「(」を
+// 飛ばした 1 字目が日本語の字（ASCII でも全角の英数字・記号でもない字）のときだけ、そこで英語と訳に分ける（js/myWordsCore.js parseBulkLine の矢印の段の後の 1 段）。
+// 前の分け方で読める行（カンマ・タブ・読点・英語と日本語の境・矢印・引用符・訳の中の印）と、断る行は e36d086 と同じ結果
+{
+  const parse = (line) => C.parseBulkLine(line);
+  const takes = (p) => !p.error && C.checkEnText(p.en).ok && C.checkJaText(p.ja).ok; // 足すときの確かめ（js/myWords.js validateEntry の字の決まり）
+  const W = (en, ja) => ({ en, ja });
+
+  // ---- T71 区切りの印で英語と訳に分ける（2 語以上の英語・印の前後の空白も） ----
+  for (const [line, want] of [
+    ["lemon：レモン", W("lemon", "レモン")],
+    ["lemon＝レモン", W("lemon", "レモン")],
+    ["lemon／レモン", W("lemon", "レモン")],
+    ["lemon；レモン", W("lemon", "レモン")],
+    ["lemon｜レモン", W("lemon", "レモン")],
+    ["lemon，レモン", W("lemon", "レモン")],
+    ["lemon（レモン）", W("lemon", "レモン")],
+    ["lemon: レモン", W("lemon", "レモン")],
+    ["lemon = レモン", W("lemon", "レモン")],
+    ["lemon / レモン", W("lemon", "レモン")],
+    ["lemon; レモン", W("lemon", "レモン")],
+    ["lemon | レモン", W("lemon", "レモン")],
+    ["lemon - レモン", W("lemon", "レモン")],
+    ["lemon (レモン)", W("lemon", "レモン")],
+    ["follow up：追って連絡する", W("follow up", "追って連絡する")],
+    ["follow up: 追って連絡する", W("follow up", "追って連絡する")],
+    ["follow up - 追って連絡する", W("follow up", "追って連絡する")],
+    ["  lemon  ：  レモン  ", W("lemon", "レモン")],
+    ["e-mail: 電子メール", W("e-mail", "電子メール")],
+    ["up-to-date: 最新の", W("up-to-date", "最新の")],
+    ["don't: しないで", W("don't", "しないで")],
+    ["KPI：重要業績評価指標", W("KPI", "重要業績評価指標")],
+    ["lemon：レモン：果物", W("lemon", "レモン：果物")],
+    ["C:ドライブ", W("C", "ドライブ")],
+    ["anti-：反～", W("anti-", "反～")],
+    // 印の後の頭の「～」「（」「(」は飛ばして 1 字目を見る（訳は字のとおり。開き括弧の印なら組の括弧は外す）
+    ["get rid of：～を取り除く", W("get rid of", "～を取り除く")],
+    ["look up to: ～を尊敬する", W("look up to", "～を尊敬する")],
+    ["put off = ～を延期する", W("put off", "～を延期する")],
+    ["don't: ～しない", W("don't", "～しない")],
+    ["take care of: （人を）世話する", W("take care of", "（人を）世話する")],
+    ["follow up: (追って)連絡する", W("follow up", "(追って)連絡する")],
+    ["come up with（～を思いつく）", W("come up with", "～を思いつく")],
+    ["be able to (～できる)", W("be able to", "～できる")],
+    ["lemon: (レモン)", W("lemon", "(レモン)")],
+    ["lemon - (レモン)", W("lemon", "(レモン)")],
+    ["TV/テレビ", W("TV", "テレビ")]
+  ]) {
+    const p = parse(line);
+    ok(`T71 区切りの印: 「${line.trim()}」→ 英語「${want.en}」・訳「${want.ja}」（足せる）`, JSON.stringify(p) === JSON.stringify(want) && takes(p), JSON.stringify(p));
+  }
+
+  // ---- T72 前の分け方で読める行は e36d086 と同じ結果（見張り） ----
+  const T72 = [
+    ["lemon, レモン", W("lemon", "レモン")],
+    ["lemon\tレモン", W("lemon", "レモン")],
+    ["lemon、レモン", W("lemon", "レモン")],
+    ["lemon　レモン", W("lemon", "レモン")],
+    ["due diligence 適正評価", W("due diligence", "適正評価")],
+    ["follow up 追って連絡する", W("follow up", "追って連絡する")],
+    ["KPI 重要業績評価指標", W("KPI", "重要業績評価指標")],
+    ["e-mail -> 電子メール", W("e-mail", "電子メール")],
+    ["電子メール → e-mail", W("e-mail", "電子メール")],
+    ["agenda => 議題", W("agenda", "議題")],
+    ["lemon ⇒ レモン：果物", W("lemon", "レモン：果物")],
+    ["\"lemon\", \"レモン\"", W("lemon", "レモン")],
+    ["lemon, レモン：果物", W("lemon", "レモン：果物")],
+    ["lemon, 色は黄色 - 酸っぱい", W("lemon", "色は黄色 - 酸っぱい")],
+    ["lemon, (レモン)", W("lemon", "(レモン)")],
+    ["up ->", W("up", "")]
+  ];
+  eq("T72 前の分け方で読める行（カンマ・タブ・読点・全角の空白・英語と日本語の境・矢印・引用符・訳の中の印・片側が空の矢印）は e36d086 と同じ結果",
+    T72.map(([line]) => parse(line)), T72.map(([, want]) => want));
+  // 印より前の英語が空白とハイフンで終わる行は、その印で分けない（英語の鍵の終わりに「 -」を付けない。e36d086 と同じ結果）。
+  // 全角のハイフンも英語の形（NFKC の後）で見る。空白の無いハイフンで終わる語（「anti-：反～」）は T71 のとおり分ける
+  for (const [line, want] of [
+    ["lemon -(レモン)", W("lemon", "-(レモン)")],
+    ["lemon -：レモン", W("lemon", "-：レモン")],
+    ["lemon －：レモン", W("lemon", "－：レモン")],
+    ["run -（動）走る", W("run", "-（動）走る")]
+  ]) {
+    const p = parse(line);
+    ok(`T72 印より前が空白とハイフンで終わる: 「${line}」→ 英語「${want.en}」・訳「${want.ja}」（e36d086 と同じ）`, JSON.stringify(p) === JSON.stringify(want), JSON.stringify(p));
+  }
+
+  // ---- T73 断る行は e36d086 と同じ結果で断ったまま（見張り） ----
+  const noEn = (line) => ({ error: `英語が無い。${C.BULK_FORM_NOTE}`, line });
+  const T73 = [
+    ["A/B testing ABテスト", W("A/B", "testing ABテスト")],
+    ["A／B testing ABテスト", W("A／B", "testing ABテスト")],
+    ["and／or または", W("and／or", "または")],
+    ["and/or または", W("and/or", "または")],
+    ["w/ 〜と一緒に", W("w/", "〜と一緒に")],
+    ["w／ 〜と一緒に", W("w／", "〜と一緒に")],
+    ["deadline: 3日後まで", W("deadline:", "3日後まで")],
+    ["締め切り：deadline", W("締め切り：deadline", "")],
+    ["締め切り: deadline", noEn("締め切り: deadline")],
+    ["lemon: a fruit", W("lemon:", "a fruit")],
+    ["lemon：１２３", W("lemon：１２３", "")],
+    ["lemon：ＡＢＣ", W("lemon：ＡＢＣ", "")],
+    ["lemon: ～", W("lemon:", "～")],
+    ["lemon: ～ABC", W("lemon:", "～ABC")],
+    ["lemon: (lemon tree)", W("lemon:", "(lemon tree)")],
+    ["lemon：（ＡＢＣ）", W("lemon：（ＡＢＣ）", "")],
+    ["lemon:", W("lemon:", "")],
+    ["：レモン", noEn("：レモン")],
+    ["lemon: レモン → 果物", noEn("lemon: レモン → 果物")],
+    ["x+y: 足し算", W("x+y:", "足し算")],
+    ["e.g.: 例えば", W("e.g.:", "例えば")]
+  ];
+  const r73 = T73.map(([line]) => parse(line));
+  eq("T73 断る行（A/B testing・全角の／の英語・and／or・1 字の英語の後の「/」「／」・印の後が数字・日本語が先・印の後が英字・記号・全角の英数字・「～」や括弧の後が英字か空・印の後が空・印の前が英語でない・矢印の行は印の段より先）は e36d086 と同じ結果",
+    r73, T73.map(([, want]) => want));
+  ok("T73 その行はどれも足さない（英語が無い・使えない字・訳が無い）", r73.every((p) => !takes(p)), JSON.stringify(r73.filter(takes)));
+
+  // ---- T74 括弧: 後の終わりの閉じ括弧が印の開き括弧の組なら両方を外す。そうでなければ開き括弧を訳に残す（括弧の組を壊さない） ----
+  // 組は深さで数える（「(」「（」で深く、「)」「）」で浅く）。括弧が 2 組の行・1 組の後に字が続いてもう 1 組の行は e36d086 と同じ訳（全角で空白の無い行は e36d086 では断っていた）
+  for (const [line, want] of [
+    ["lemon (レモン)", W("lemon", "レモン")],
+    ["lemon（レモン）", W("lemon", "レモン")],
+    ["lemon (レモン）", W("lemon", "レモン")],
+    ["lemon ( レモン )", W("lemon", "レモン")],
+    ["follow up（追って連絡）する", W("follow up", "（追って連絡）する")],
+    ["follow up (追って連絡) する", W("follow up", "(追って連絡) する")],
+    ["follow up (追って連絡", W("follow up", "(追って連絡")],
+    ["lemon (レモン), 果物", W("lemon", "(レモン), 果物")],
+    ["bank (銀行) (土手)", W("bank", "(銀行) (土手)")],
+    ["run (走る)(経営する)", W("run", "(走る)(経営する)")],
+    ["lemon （レモン）（果物）", W("lemon", "（レモン）（果物）")],
+    ["right（右）（正しい）", W("right", "（右）（正しい）")],
+    ["lemon (レモン) 果物（黄色）", W("lemon", "(レモン) 果物（黄色）")],
+    ["lemon (レモン (果物))", W("lemon", "レモン (果物)")]
+  ]) {
+    const p = parse(line);
+    ok(`T74 括弧: 「${line}」→ 英語「${want.en}」・訳「${want.ja}」`, JSON.stringify(p) === JSON.stringify(want) && takes(p), JSON.stringify(p));
   }
 }
 

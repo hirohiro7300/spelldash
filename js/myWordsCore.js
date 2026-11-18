@@ -25,7 +25,7 @@
 //   空白・ハイフン・アポストロフィ・数字を含む語は全文入力（Enter で判定。js/judge.js normalizeAnswer: 大文字小文字・空白・ハイフン・アポストロフィを見ない）。
 //   全文入力の語は端末のキーボードで打つ（画面キーボードは a〜z と空白だけで、ハイフン・数字・アポストロフィが無い）
 
-import { LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED, storedState, applyLearnAnswer } from "./learnState.js";
+import { LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED, storedState, applyLearnAnswer, learnDayOf } from "./learnState.js";
 
 export const MY_EN_MAX = 150; // Batch 81（前は 40）
 export const MY_JA_MAX = 150; // Batch 81（前は 40）
@@ -225,10 +225,39 @@ export function parseWordLine(line) {
 //   どちらも英語でなければ断る（「english, 訳」の形を言う）
 // - 片側が空の矢印（行の頭か終わり。「up ->」「→ 何か」）: 矢印を訳にも英語にもしない。残りが英語なら訳なしの語（足すときの確かめが「日本語訳を入力してください」）、
 //   そうでなければ英語なしで断る
-// - 矢印も無い行は前のまま（parseWordLine。使えない字・訳なしは足すときの確かめが理由を言う）。ただし英字の無い行（日本語だけ・数字や記号だけ）は英語なしで断る
+// - 矢印も無い行で、英語の後に区切りの印があれば、そこで英語と訳に分ける（Batch 96。splitAtMark。docs/SPEC_MY_WORDS.md §11.3）
+// - どれでもない行は前のまま（parseWordLine。使えない字・訳なしは足すときの確かめが理由を言う）。ただし英字の無い行（日本語だけ・数字や記号だけ）は英語なしで断る
 export const BULK_FORM_NOTE = "「english, 訳」の形で書く";
 const BULK_ARROW = /^(.+?)\s*(?:→|⇒|=>|->)\s*(.+)$/;
 const BULK_ARROW_EDGE = /^(?:→|⇒|=>|->)\s*|\s*(?:→|⇒|=>|->)$/g; // 行の頭と終わりの矢印（片側が空）
+
+// まとめて足すの区切りの印（Batch 96。docs/SPEC_MY_WORDS.md §11.3）: 全角「：＝／；｜（，」・ASCII「: = / ; | (」・「 - 」を行の頭から順に見て、
+// 印より前が英語の形（checkEnText。空白とハイフンで終わる形・1 字の後の「/」「／」は除く）で、印の後の空白と頭の「～」「（」「(」を飛ばした 1 字目が
+// 日本語の字（ASCII でも U+FF01〜U+FF5E でもない字）のときだけ分ける。開き括弧の印は、終わりの閉じ括弧がその組なら両方を外し、
+// そうでなければ開き括弧を訳に残す（括弧の組を壊さない）。当たらなければ前の分け方のまま
+const BULK_MARKS = / - |[：＝／；｜（，:=/;|(]/g;
+// 開き括弧の印の組の閉じ括弧の位置（深さで数える。無ければ -1）
+function closeOf(s) {
+  let depth = 1;
+  for (let i = 0; i < s.length; i++) {
+    if ("(（".includes(s[i])) depth++;
+    else if (")）".includes(s[i]) && --depth === 0) return i;
+  }
+  return -1;
+}
+function splitAtMark(text) {
+  for (const m of text.matchAll(BULK_MARKS)) {
+    const left = text.slice(0, m.index).trim();
+    const en = checkEnText(left);
+    let right = text.slice(m.index + m[0].length).trim();
+    if (!en.ok || /\s-+$/.test(en.text) || ("/／".includes(m[0]) && en.text.length < 2)) continue;
+    if (!/^[～（(]*[^\x00-\x7f！-～]/.test(right)) continue;
+    if ("(（".includes(m[0])) right = closeOf(right) === right.length - 1 ? right.slice(0, -1).trim() : `${m[0]}${right}`;
+    if (right) return { en: left, ja: right };
+  }
+  return null;
+}
+
 export function parseBulkLine(line) {
   const text = String(line ?? "").trim();
   if (text.search(/[,、\t]/) > 0) {
@@ -246,6 +275,8 @@ export function parseBulkLine(line) {
   }
   const rest = text.replace(BULK_ARROW_EDGE, "").trim();
   if (rest !== text) return checkEnText(rest).ok ? { en: rest, ja: "" } : noEn;
+  const marked = splitAtMark(text); // 区切りの印（Batch 96）
+  if (marked) return marked;
   const w = parseWordLine(text);
   return /[a-z]/i.test(cleanEnText(w.en)) ? w : noEn;
 }
@@ -334,16 +365,33 @@ const ORDER = [LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED];
 // 語 → カードの id（マイ単語帳は my-<鍵>。スラング〔Batch 80。js/slang.js〕は項目の id を渡す）
 const myIdOf = (w) => `${MY_ID_PREFIX}${w.en}`;
 
+// ===== 学ぶ回の順（Batch 96。docs/SPEC_MY_WORDS.md §19。マイ単語帳の回だけ: js/game.js beginMyLearn が今日の日番号を渡す。スラングは渡さない） =====
+export const MY_SET_NEW_MIN = 3; // 1 セット 10 語のうち これから を入れる枠（今日出す あやふや は 1 セット 7 語まで。どちらかが尽きたら他方で埋める）
+export const MY_UNSURE_GAP = 2; // 1 日目を数えた あやふや は lsd から 2 日後から出す（中 1 日あける）
+
+// 今日出す あやふや か（純）: 語の項目の あやふや だけ。today = 今日の日番号（js/learnState.js learnDayOf。端末の時刻帯の 0 時で区切る）。
+// today が日番号でない → 出さない。最後に答えた時刻 lsAt が無い・読めない（前の版・ほかの端末から）→ 出す。最後に答えた日が今日か、それより後（時計が戻った）→ 出さない。
+// 1 日目を数えた日 lsd があれば today − lsd が MY_UNSURE_GAP 以上で出す。無ければ出す（× の語は次の日から）。読むのは ls・lsd・lsAt だけ
+export function myUnsureDue(w, today) {
+  if (!Number.isInteger(today) || !isWordEntry(w) || myStateOf(w) !== LEARN_UNSURE) return false;
+  const day = Number.isFinite(w.lsAt) ? learnDayOf(w.lsAt) : null;
+  if (day === null) return true;
+  if (day >= today) return false;
+  return Number.isInteger(w.lsd) ? today - w.lsd >= MY_UNSURE_GAP : true;
+}
+
 // 学ぶ回の列（カードの id）: これから → あやふや → 覚えた。これからは足した順、あやふや・覚えたは最後に答えた時刻（lsAt）の古い順、同じなら足した順。
 // shuffle（Batch 86。0 以上 1 未満を返す関数。マイ単語帳の回は js/game.js beginMyLearn が Math.random を渡す）: これから の部分だけを混ぜる
 // （答えの同じ行がまとまった単語帳で、位置から答えが分からないように）。渡さなければ前と同じ並び（スラングの回・前からの単体の期待）
-export function buildMyQueue(list, idOf = myIdOf, { shuffle = null } = {}) {
+// today（Batch 96。今日の日番号）: 今日出す あやふや（myUnsureDue。古い順）と これから（混ぜた順）を 10 語ごとに組み（各セットの最初の 7 枠は今日の分、
+// 残りの 3 枠は これから。どちらかが尽きたら他方で埋める）、後ろに残りの あやふや → 覚えた（古い順）。today が無い・日番号でなければ前と同じ並び
+export function buildMyQueue(list, idOf = myIdOf, { shuffle = null, today = null } = {}) {
   const rows = (Array.isArray(list) ? list : [])
     .map((w, pos) => ({ w, pos }))
     .filter(({ w }) => isWordEntry(w))
     .map(({ w, pos }) => {
       const st = myStateOf(w);
-      return { id: idOf(w), rank: ORDER.indexOf(st), at: st === LEARN_NEW ? 0 : Number.isFinite(w.lsAt) ? w.lsAt : 0, pos };
+      return { id: idOf(w), rank: ORDER.indexOf(st), at: st === LEARN_NEW ? 0 : Number.isFinite(w.lsAt) ? w.lsAt : 0, pos, due: myUnsureDue(w, today) };
     })
     .sort((a, b) => a.rank - b.rank || a.at - b.at || a.pos - b.pos);
   if (typeof shuffle === "function") {
@@ -355,7 +403,37 @@ export function buildMyQueue(list, idOf = myIdOf, { shuffle = null } = {}) {
       [rows[i], rows[j]] = [rows[j], rows[i]];
     }
   }
-  return rows.map((x) => x.id);
+  if (!Number.isInteger(today)) return rows.map((x) => x.id);
+  const due = rows.filter((x) => x.due); // 今日の分（あやふや の古い順のまま）
+  const fresh = rows.filter((x) => x.rank === 0); // これから（混ぜた順のまま）
+  const head = [];
+  for (let i = 0, j = 0; i < due.length || j < fresh.length; ) {
+    const dueSlot = head.length % MY_SET_SIZE < MY_SET_SIZE - MY_SET_NEW_MIN;
+    head.push(dueSlot ? (i < due.length ? due[i++] : fresh[j++]) : j < fresh.length ? fresh[j++] : due[i++]);
+  }
+  return [...head, ...rows.filter((x) => x.rank > 0 && !x.due)].map((x) => x.id);
+}
+
+// このセットで出す語の数（Batch 96。回の始めの 1 行「復習 N・新しい M。」: js/game.js mySetMixText）。ids = カードの id（同じ id は 1 回）、list = 今の語の並び。
+// これから → fresh、あやふや・覚えた → review。知らない id（消した語・場面カード）は数えない
+export function myMixOf(ids, list, idOf = myIdOf) {
+  const byId = new Map();
+  for (const w of Array.isArray(list) ? list : []) if (isWordEntry(w)) byId.set(idOf(w), w);
+  const out = { review: 0, fresh: 0 };
+  for (const id of new Set(Array.isArray(ids) ? ids : [])) {
+    const w = byId.get(id);
+    if (!w) continue;
+    if (myStateOf(w) === LEARN_NEW) out.fresh++;
+    else out.review++;
+  }
+  return out;
+}
+
+// その日（日番号）の今日の分の数（Batch 96。回の終わりの「明日の復習 N語。」: js/game.js renderLearnPanel が明日の日番号で呼ぶ）
+export function myDueCount(list, day) {
+  let n = 0;
+  for (const w of Array.isArray(list) ? list : []) if (myUnsureDue(w, day)) n++;
+  return n;
 }
 
 // 次の一手（js/learnQueue.js learnStep と同じ名前の値）: done（出せる語が無い）・set（10 語の終わり）・play

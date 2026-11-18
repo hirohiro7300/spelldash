@@ -1,6 +1,6 @@
 import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord, answersFor, loadPublicWords, publicWord, publicAnswersFor, publicPackWords, refreshMyWords } from "./wordStore.js";
 import { getMyWords, recordMyAnswer, getMyBooks, myWordsRaw } from "./myWords.js";
-import { buildMyQueue, myStateOf, myLearnStep, mySummary, countMyStates, MY_SET_SIZE, bookIdOf } from "./myWordsCore.js";
+import { buildMyQueue, myStateOf, myLearnStep, mySummary, countMyStates, MY_SET_SIZE, bookIdOf, myMixOf, myDueCount } from "./myWordsCore.js";
 import { answerLabel } from "./wordData.js";
 import { jaLooksSame } from "./jaAmbiguity.js";
 import {
@@ -1098,7 +1098,8 @@ function showLearnLoadError() {
 }
 
 // ===== マイ単語帳の学ぶ回（/?learn=my。Batch 79。js/myWordsCore.js・docs/SPEC_MY_WORDS.md） =====
-// 中心の学習と同じ画面と打ち方で、マイ単語帳の英語の語だけを出す: これから（回を始めるたびに混ぜる。Batch 86）→ あやふや → 覚えた の順に 1 回 10 語。答えはその語の 3 状態
+// 中心の学習と同じ画面と打ち方で、マイ単語帳の英語の語だけを出す: 今日出す あやふや と これから（回を始めるたびに混ぜる。Batch 86）を 10 語ごとに組み（Batch 96）→
+// 残りの あやふや → 覚えた の順に 1 回 10 語（js/myWordsCore.js buildMyQueue。docs/SPEC_MY_WORDS.md §19）。答えはその語の 3 状態
 // （spelldash_my_words の語の ls・lsd・lsAt。決まりは公開の語と同じ js/learnState.js applyLearnAnswer）にだけ書く（js/myWords.js recordMyAnswer）。
 // 公開の語の 3 状態・6 つの数・ランク・最高到達ランク・回の続き（spelldash_learn_session）には書かない（finishLearnCounts・persistLearnPoint）。
 // 回の終わりは「続けて学ぶ」と「マイ単語帳へ」。中心の学習の列の決まり（learnQueue.js）のうち、区切り・語数だけをマイ単語帳の決まりに替えて使う。
@@ -1110,6 +1111,7 @@ function beginMyLearn(Q, src, makeChoice = null) {
   stopGame();
   src.prepare?.();
   const choice = makeChoice ? makeChoice() : null;
+  const today = learnDayOf(Date.now()); // 列と回の日に同じ日（Batch 96）
   learnRun = {
     mode: src.kind,
     my: true,
@@ -1117,8 +1119,9 @@ function beginMyLearn(Q, src, makeChoice = null) {
     choice,
     Q: { ...Q, LEARN_SET_SIZE: Object.freeze({ [src.kind]: MY_SET_SIZE }), learnStep: (_mode, step) => myLearnStep(step) },
     epoch: recordsEpoch(),
-    queue: buildMyQueue(src.list(), src.idOf, src.kind === "my" ? { shuffle: Math.random } : undefined), // マイ単語帳は回ごとに これから を混ぜる（Batch 86。スラングは前のまま）
-    day: learnDayOf(Date.now()),
+    // マイ単語帳は回ごとに これから を混ぜ（Batch 86）、今日出す あやふや を先に組む（Batch 96）。スラングは前のまま
+    queue: buildMyQueue(src.list(), src.idOf, src.kind === "my" ? { shuffle: Math.random, today } : undefined),
+    day: today, // 回を始めた日（「続けて学ぶ」で日が替わっていれば新しい回: renderLearnPanel）
     cursor: 0,
     ids: [],
     answered: new Set(),
@@ -1135,6 +1138,19 @@ function beginMyLearn(Q, src, makeChoice = null) {
   };
   startGame();
   elements.input.focus({ preventScroll: true }); // 選ぶ回は入力欄を畳んでいる（css/game.css body.choice-run）ので焦点は移らない
+}
+
+// マイ単語帳の回（打つ回・選択式。Batch 96。docs/SPEC_MY_WORDS.md §19.2）のセットの始めの 1 行: 頭に「復習 N・新しい M。」（このセットでこれから出す語の数。
+// 0 の側は出さない）。打つ回は「分からないときは…」を省く（問いの下の 1 行が言う。320 の幅でも 2 行）。選択式は材料の 1 行のまま後ろに付ける。
+// 数える語が無ければ前の 1 行。startGame がセットの始めに 1 回だけ呼ぶ（答えの道では呼ばない）
+function mySetMixText(r) {
+  const ids = [];
+  const want = r.setSize - r.setAnswered;
+  for (let i = r.cursor; i < r.queue.length && ids.length < want; i++) if (!r.answered.has(r.queue[i]) && r.src.find(r.queue[i])) ids.push(r.queue[i]);
+  const { review, fresh } = myMixOf(ids, r.src.list(), r.src.idOf);
+  const mix = [review > 0 ? `復習 ${review}` : "", fresh > 0 ? `新しい ${fresh}` : ""].filter(Boolean).join("・");
+  if (!mix) return r.src.intro ?? LEARN_INTRO[r.mode];
+  return `${mix}。${r.src.intro ?? "間違えても、あやふやに移るだけ"}`;
 }
 
 // ===== マイ単語帳の選ぶ回（Batch 82。/?learn=my[&book=<id>]&choice=en|ja。js/myWordsChoice.js・docs/SPEC_MY_WORDS.md §12） =====
@@ -1456,7 +1472,13 @@ function renderLearnPanel(step, { summary, counts }) {
   const grid = showCounts
     ? `<div class="result-panel__grid"><div><span>今回 覚えた</span><strong>${summary.learned}</strong></div><div><span>あやふや</span><strong>${summary.unsure}</strong></div></div>`
     : "";
-  const dayOne = showCounts && r.mode === "unsure" && summary.dayOne > 0 ? `<p class="learn-panel__line">今日を1日目に数えた語 ${summary.dayOne}。別の日にもう一度正解すると覚えた。</p>` : "";
+  // マイ単語帳の回（打つ回・選択式。Batch 96。docs/SPEC_MY_WORDS.md §19.2）: 今日 1 日目に数えた語の行（中心の学習の あやふや の回と同じ字）と、
+  // 明日の復習の数（#myTomorrow。保存から数える。0 なら出さない）。区切り・置き換わりでは出さない。スラングと中心の学習は前のまま
+  const myRun = r.my && r.src.kind === "my" && step !== "replaced" && step !== "break";
+  const dayOne = showCounts && (r.mode === "unsure" || myRun) && summary.dayOne > 0 ? `<p class="learn-panel__line">今日を1日目に数えた語 ${summary.dayOne}。別の日にもう一度正解すると覚えた。</p>` : "";
+  const today = myRun ? learnDayOf(Date.now()) : null;
+  const tomorrowN = Number.isInteger(today) ? myDueCount(r.src.list(), today + 1) : 0;
+  const tomorrow = tomorrowN > 0 ? `<p class="learn-panel__line" id="myTomorrow">明日の復習 ${tomorrowN}語。</p>` : "";
   const myCounts = r.my && step !== "replaced" && step !== "break" ? countMyStates(r.src.list()) : null;
   const total = counts
     ? `<p class="learn-panel__line">覚えた ${counts.learned.toLocaleString("ja-JP")} / ${counts.total.toLocaleString("ja-JP")}</p>`
@@ -1490,6 +1512,7 @@ function renderLearnPanel(step, { summary, counts }) {
     ${choiceLine}
     ${grid}
     ${dayOne}
+    ${tomorrow}
     ${total}
     ${failed}
     <div class="result-panel__actions">${actions}</div>
@@ -1507,6 +1530,12 @@ function renderLearnPanel(step, { summary, counts }) {
   });
   document.getElementById("learnNext")?.addEventListener("click", () => {
     if (learnRun !== r) return;
+    // マイ単語帳の回（打つ回・選択式。Batch 96。docs/SPEC_MY_WORDS.md §19.1）: 回を始めた日と今日が違えば、同じ単語帳・同じ向きの新しい回
+    // （入口の URL〔?learn=my・&book=・&choice=〕のまま開き直す: その日の今日の分から列を作る）。同じ日なら同じ列を続ける。スラングと中心の学習は前のまま
+    if (r.src?.kind === "my" && learnDayOf(Date.now()) !== r.day) {
+      location.reload();
+      return;
+    }
     r.setStart = r.ids.length;
     r.setAnswered = 0;
     r.ackBreak = -1;
@@ -1714,7 +1743,8 @@ export function startGame(options = {}) {
   document.body.classList.toggle("placement", mode === "study" && !learn && isPlacementRun());
 
   // 中心の学習: 始めに 1 行（分からないときは答えを見る・間違えても あやふや に移るだけ。依頼 §6）
-  if (learn && isPlaying && currentWord) showMessage(learnRun.src?.intro ?? LEARN_INTRO[learnRun.mode], "revealed"); // 選ぶ回（Batch 82）は材料の 1 行
+  // 選ぶ回（Batch 82）は材料の 1 行。マイ単語帳の回（打つ回・選択式）は頭に「復習 N・新しい M。」（Batch 96）
+  if (learn && isPlaying && currentWord) showMessage(learnRun.src?.kind === "my" ? mySetMixText(learnRun) : learnRun.src?.intro ?? LEARN_INTRO[learnRun.mode], "revealed");
 
   // セットの中身を先に伝える（何をやるか分かってから始める）
   if (mode === "study" && !learn) {
