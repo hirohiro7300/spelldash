@@ -25466,12 +25466,14 @@ console.log("my words (79.1):");
     const pubSeed = {};
     PUB.slice(0, 3).forEach((id) => (pubSeed[id] = { playCount: 2, correctCount: 2, lastPlayed: new Date().toISOString(), ls: 2 }));
     PUB.slice(3, 5).forEach((id) => (pubSeed[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date().toISOString(), ls: 1, lsd: 20000 }));
+    const { learnDayOf } = await import("../js/learnState.js");
+    const NOW = Date.now();
     const words = [
       { en: "deadline", ja: "締め切り", ls: 2, lsAt: 5 }, // 覚えた（最後）
       { en: "kpi", text: "KPI", ja: "重要業績評価指標" },
       { en: "due diligence", ja: "適正評価" },
       { en: "invoice", ja: "請求書" },
-      { en: "agenda", ja: "議題", ls: 1, lsAt: 3 } // あやふや（これからの後）
+      { en: "agenda", ja: "議題", ls: 1, lsAt: NOW, lsd: learnDayOf(NOW) } // あやふや（今日 1 日目を数えた語。今日の復習に入らないので、これからの後）
     ];
     const page = await myPage({ spelldash_word_stats: JSON.stringify(pubSeed), spelldash_my_words: JSON.stringify(words) });
     const before = await statsNumbers(page);
@@ -26236,8 +26238,8 @@ console.log("my word books (81.1):");
   {
     const LONGEN = `${"keep moving ".repeat(12)}keep moving on`.slice(0, 150);
     const LONGJA = "長い訳".repeat(50);
-    // 2 つ目の語は あやふや（列は これから → あやふや。これからの中は回ごとに混ぜる〔Batch 86〕ので、150 字の語を必ず最初に出す）
-    const words = [{ en: LONGEN, ja: LONGJA }, { en: `${"abcdefghij".repeat(4)}x`, ja: "長い 1 語", ls: 1, lsAt: 1 }];
+    // 2 つ目の語は 覚えた（列は これから → 覚えた。これからの中は回ごとに混ぜる〔Batch 86〕ので、150 字の語を必ず最初に出す）
+    const words = [{ en: LONGEN, ja: LONGJA }, { en: `${"abcdefghij".repeat(4)}x`, ja: "長い 1 語", ls: 2, lsAt: 1 }];
     const bad = [];
     for (const theme of [null, "dark"]) {
       const page = await bookPage({ spelldash_my_words: JSON.stringify(words), spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w2", name: "とても長い名前の単語帳をここに二十字" }]) }, { viewport: { width: 320, height: 720 }, mobile: true, theme });
