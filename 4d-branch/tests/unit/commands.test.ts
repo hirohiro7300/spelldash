@@ -155,6 +155,38 @@ describe("3 年の分かれ道: カードから線を引く", () => {
     expect(s.vm.isCollapsed(end)).toBe(false);
     expect(s.vm.node(W).hidden).toBe(false);
   });
+
+  it("相乗効果の線しか出ていないカードは開閉する物が無い: 閉じた選択肢と一緒に選んでも C・メニューは「展開する」で選択肢を開き、カードだけなら何もしない（印・詳細のボタンも同じ決まり）", () => {
+    // スマホの最初の形: 選択肢は閉じている
+    const s = openMap(true);
+    const { W } = ownPair(s);
+    const alt = kidsOf(s, rootId)[0]!;
+    const end = s.vm.impact.ends.map((e) => e.id).find((id) => !(s.vm.index.out.get(id)?.length ?? 0))!;
+    s.cmd.connect([end], W, "supports");
+    s.vm.ensure();
+    expect(s.vm.isOpen(alt)).toBe(false);
+    // 閉じた選択肢と一緒に: 開く向き（メニューは「展開する」）で、C で選択肢が開く。もう一度で閉じる
+    s.cmd.toggleCollapse([alt, end]);
+    expect(s.vm.isOpen(alt)).toBe(true);
+    s.cmd.toggleCollapse([alt, end]);
+    expect(s.vm.isOpen(alt)).toBe(false);
+    expect(s.cmd.collapsedAll([alt, end])).toBe(true);
+    // カードだけ: 出る線はあるが、開く・閉じる物（同じ範囲の子）が無い。メニューは押せず、C でも見え方・文書を変えない
+    expect(s.vm.index.out.get(end)!.length).toBe(1);
+    expect(s.vm.canCollapse(end)).toBe(false);
+    expect(s.cmd.canToggleCollapse([end])).toBe(false);
+    expect(s.cmd.collapsedAll([end])).toBe(false);
+    const open0 = s.ui.prefs.impactOpen[rootId];
+    const rev = s.store.revision;
+    s.cmd.toggleCollapse([end]);
+    expect(s.ui.prefs.impactOpen[rootId]).toBe(open0);
+    expect(s.store.revision).toBe(rev);
+    expect(s.vm.impactBranches()).not.toContain(end);
+    // 先のあるカードと範囲の外の自分のノード（出る線で決める）は今までどおり
+    expect(s.vm.canCollapse(alt)).toBe(true);
+    expect(s.vm.canCollapse(W)).toBe(true);
+    expect(s.cmd.canToggleCollapse([end, W])).toBe(true);
+  });
 });
 
 /** 小さな 3 年の分かれ道: R → A・B、A → X ← B（合流）、A → Y → Z。ほかに自分のノード P → Q */

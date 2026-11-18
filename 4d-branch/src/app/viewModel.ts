@@ -567,6 +567,17 @@ export class ViewModel {
   }
 
   /**
+   * 開く・閉じる物があるか（折りたたみの印・C・右クリックのメニュー・詳細のボタンで同じ決まり）。
+   * 3 年の分かれ道は同じ範囲の子（道の線の先。閉じると隠れる物）があるか。相乗効果などの線や、範囲の外へ出る線だけでは開閉しない。
+   * それ以外のノードは出る線があるか
+   */
+  canCollapse(id: ID): boolean {
+    const info = this.scopeInfo();
+    if (info.owner.has(id)) return this.impactKids(id, info).length > 0;
+    return (this.index.out.get(id)?.length ?? 0) > 0;
+  }
+
+  /**
    * 3 年の分かれ道のノードを開く・閉じる（見え方だけ。文書・履歴・保存・同期は変えない）。範囲の外の ID は無視する。
    * reveal: 開いた子が見える所へキャンバスを寄せる。変えたら true
    */
@@ -611,11 +622,11 @@ export class ViewModel {
     }
   }
 
-  /** 3 年の分かれ道の、先のあるノード（すべて開くとき） */
+  /** 3 年の分かれ道の、先（同じ範囲の子）のあるノード（すべて開くとき。開閉する物は canCollapse と同じ決まり） */
   impactBranches(): ID[] {
     const info = this.scopeInfo();
     const out: ID[] = [];
-    for (const id of info.owner.keys()) if ((this.index.out.get(id)?.length ?? 0) > 0) out.push(id);
+    for (const id of info.owner.keys()) if (this.impactKids(id, info).length > 0) out.push(id);
     return out;
   }
 

@@ -439,7 +439,9 @@ export class App implements AppContext {
         const all = ids.every((id) => store.doc.nodes[id]?.projectIds.includes(pid));
         return { label: p.name, swatch: p.color, checked: all, run: () => cmd.toggleProjectOf(ids, pid) };
       });
-      const collapsed = ids.every((id) => cmd.isCollapsed(id));
+      // 開閉の向きは、開閉する物だけで決める（C と同じ。先の無いカードを混ぜて選んでも、閉じたカードには「展開する」）
+      const collapsed = cmd.collapsedAll(ids);
+      const canCollapse = cmd.canToggleCollapse(ids);
       entries = [
         ...(single
           ? ([
@@ -452,7 +454,7 @@ export class App implements AppContext {
         { label: "種類", icon: single?.type ?? "layers", disabled: ro, submenu: typeSub },
         { label: "状態", icon: "check", disabled: ro, submenu: statusSub },
         { label: "プロジェクト", icon: "folder", disabled: ro || !projSub.length, submenu: projSub },
-        { label: collapsed ? "展開する" : "この先を折りたたむ", icon: collapsed ? "expand" : "collapse", shortcut: "C", disabled: ro && !viewOnly, run: () => cmd.toggleCollapse(ids) },
+        { label: collapsed ? "展開する" : "この先を折りたたむ", icon: collapsed ? "expand" : "collapse", shortcut: "C", disabled: (ro && !viewOnly) || !canCollapse, run: () => cmd.toggleCollapse(ids) },
         "sep",
         { label: "経路をたどって表示", icon: "fit", hint: "上流と下流をまとめて画面に収める", run: () => this.fitPaths(ids) },
         { label: "複製", icon: "copy", shortcut: `${MOD}D`, disabled: ro, run: () => cmd.duplicate(ids) },

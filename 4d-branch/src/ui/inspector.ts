@@ -363,7 +363,8 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const syncCol = () => {
     if (!node()) return;
     const collapsed = cmd.isCollapsed(id);
-    colBtn.disabled = (ro() && !vm.inImpact(id)) || !(vm.index.out.get(id)?.length ?? 0);
+    // 開閉する物が無ければ押せない（3 年の分かれ道は同じ範囲の子のあるカードだけ。印・C・メニューと同じ決まり）
+    colBtn.disabled = (ro() && !vm.inImpact(id)) || !vm.canCollapse(id);
     if (collapsed === colShown) return;
     colShown = collapsed;
     colLabel.textContent = collapsed ? "展開する" : "折りたたむ";
