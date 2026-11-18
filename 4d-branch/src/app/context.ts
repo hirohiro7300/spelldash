@@ -66,7 +66,7 @@ export interface AppContext {
   loadDemo(): Promise<void>;
   /** やりたいことリストを読み込む前の確認を開く */
   loadWishlist(): void;
-  /** 未来の道筋（仕事・10 年）を読み込む前の確認を開く */
+  /** 未来の道筋（仕事・3 年の分かれ道）を読み込む前の確認を開く */
   loadFuture(): void;
   /** 未来の道筋を見せる: 地図にあれば今日に寄る・何もしていないデモか空ならすぐ開く・ほかは読み込む前の確認を開く */
   showFuture(): Promise<void>;

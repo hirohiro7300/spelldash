@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "horizon": 36,
+  "annual": 360,
+  "stages": [
+    {
+      "month": 0,
+      "len": 3,
+      "maxAlts": 10,
+      "maxOuts": 3
+    },
+    {
+      "month": 3,
+      "len": 9,
+      "maxAlts": 4,
+      "maxOuts": 3
+    },
+    {
+      "month": 12,
+      "len": 24,
+      "maxAlts": 3,
+      "maxOuts": 3,
+      "plan": true
+    }
+  ],
+  "cap": {
+    "nodes": 1800
+  },
+  "minOutcomeP": 10,
+  "neutralBand": 3,
+  "today": {
+    "j": "e",
+    "pm": "?",
+    "pro": 0,
+    "mau": 40,
+    "pu": 0,
+    "seats": 0,
+    "cl": 0,
+    "fee": 0,
+    "sal": 1,
+    "cv": 1,
+    "fl": []
+  },
+  "constants": {
+    "net": 0.094,
+    "infra": 0.3,
+    "indOverhead": 3.0,
+    "aprilMonths": [
+      5,
+      17,
+      29
+    ],
+    "aprilRaise": 0.025,
+    "partFactor": 0.8,
+    "partGrowth": 0.02,
+    "sideFee": 5,
+    "indFee": 7,
+    "churn": 0.04,
+    "capEmp": 3,
+    "capPart": 4,
+    "capInd": 6,
+    "g0": 0.08,
+    "gsd": 0.04,
+    "conv": 0.04,
+    "convSd": 0.45,
+    "convPull": 0.35,
+    "minMau": 5,
+    "schoolSeats": 40,
+    "baseHours": 52,
+    "perm": {
+      "a": 0.35,
+      "s": 0.4,
+      "n": 0.25
+    }
+  },
+  "swanson": [
+    [
+      -1.2816,
+      0.3
+    ],
+    [
+      0,
+      0.4
+    ],
+    [
+      1.2816,
+      0.3
+    ]
+  ],
+  "buckets": {
+    "mau": [
+      100,
+      300,
+      1000,
+      3000
+    ],
+    "pu": [
+      1,
+      10,
+      30,
+      100,
+      300
+    ],
+    "cl": [
+      1,
+      2,
+      3,
+      5,
+      8
+    ]
+  },
+  "keyFamilies": [
+    "ind",
+    "part",
+    "pro",
+    "side",
+    "switch"
+  ],
+  "rootMenu": [
+    "keep",
+    "sd_permpro",
+    "sd_grow",
+    "sd_pilot",
+    "fc_switch",
+    "part",
+    "fc_scope",
+    "ad_portfolio",
+    "ad_permside",
+    "ind_quit"
+  ],
+  "kinds": {
+    "keep": {
+      "label": "今のまま",
+      "area": "base",
+      "family": "keep",
+      "scen": [],
+      "hours": 0,
+      "stages": [
+        0,
+        3,
+        12
+      ],
+      "p": {
+        "indLambda": 0.2
+      }
+    },
+    "sd_permpro": {
+      "label": "届け出て Pro を出す",
+      "area": "sd",
+      "family": "pro",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 3,
+      "stages": [
+        0,
+        3
+      ],
+      "p": {
+        "gBump": 0.01
+      }
+    },
+    "sd_grow": {
+      "label": "遊ぶ人を増やす",
+      "area": "sd",
+      "family": "sdgrow",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 3,
+      "stages": [
+        0,
+        3
+      ],
+      "p": {
+        "g": 0.15,
+        "gsd": 0.06
+      }
+    },
+    "sd_pilot": {
+      "label": "学校・塾に無料で試してもらう",
+      "area": "sd",
+      "family": "school",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 3,
+      "stages": [
+        0,
+        3
+      ],
+      "p": {
+        "p": 0.3,
+        "mau": 30
+      }
+    },
+    "sd_pro": {
+      "label": "Pro（月 980 円）を出す",
+      "area": "sd",
+      "family": "pro",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 3,
+      "stages": [],
+      "p": {
+        "gBump": 0.02
+      }
+    },
+    "sd_school": {
+      "label": "学校に導入を提案する",
+      "area": "sd",
+      "family": "school",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 3,
+      "stages": [
+        3
+      ],
+      "p": {
+        "perQuarter": 0.15,
+        "max": 0.45,
+        "pilotMult": 1.5
+      }
+    },
+    "sd_ads": {
+      "label": "広告で遊ぶ人を集める",
+      "area": "sd",
+      "family": "sdads",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 2,
+      "stages": [
+        3
+      ],
+      "p": {
+        "spend": 2,
+        "g": 0.18,
+        "gsd": 0.07,
+        "conv": 0.035
+      }
+    },
+    "sd_retain": {
+      "label": "続ける人を増やす",
+      "area": "sd",
+      "family": "sdretain",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 3,
+      "stages": [
+        3
+      ],
+      "p": {
+        "convMult": 1.3,
+        "g": 0.09
+      }
+    },
+    "fc_scope": {
+      "label": "社内で担当を広げる",
+      "area": "fc",
+      "family": "fcscope",
+      "scen": [
+        "s_balance"
+      ],
+      "hours": 4,
+      "stages": [
+        0,
+        3
+      ],
+      "p": {
+        "gCut": 0.005
+      }
+    },
+    "fc_push": {
+      "label": "4 月の評価で昇格を狙う",
+      "area": "fc",
+      "family": "fcpush",
+      "scen": [
+        "s_balance"
+      ],
+      "hours": 4,
+      "stages": [
+        3
+      ],
+      "p": {
+        "p": 0.35,
+        "pScope": 0.5,
+        "step": 0.1,
+        "gCut": 0.005
+      }
+    },
+    "fc_switch": {
+      "label": "転職活動をする",
+      "area": "fc",
+      "family": "switch",
+      "scen": [
+        "s_balance"
+      ],
+      "hours": 5,
+      "stages": [
+        0,
+        3
+      ],
+      "p": {
+        "pHigh": 0.25,
+        "high": 1.18,
+        "pMid": 0.3,
+        "mid": 1.08,
+        "moveAt": 3
+      }
+    },
+    "part": {
+      "label": "週 4 日勤務を相談する",
+      "area": "fc",
+      "family": "part",
+      "scen": [
+        "s_focus",
+        "s_early"
+      ],
+      "hours": 0,
+      "stages": [
+        0,
+        3,
+        12
+      ],
+      "p": {
+        "p": 0.5,
+        "at": 2
+      }
+    },
+    "ad_portfolio": {
+      "label": "知人の店の広告を無償で手伝う",
+      "area": "ind",
+      "family": "portfolio",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 4,
+      "stages": [
+        0,
+        3
+      ],
+      "p": {
+        "p": 0.8,
+        "gCut": 0.005
+      }
+    },
+    "ad_perm": {
+      "label": "副業を届け出る",
+      "area": "ind",
+      "family": "perm",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 1,
+      "stages": [
+        3
+      ],
+      "p": {}
+    },
+    "ad_permside": {
+      "label": "届け出て副業の 1 社目を探す",
+      "area": "ind",
+      "family": "side",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 4,
+      "stages": [
+        0,
+        3
+      ],
+      "p": {
+        "first": 0.4,
+        "firstPortfolio": 0.5
+      }
+    },
+    "ad_side": {
+      "label": "副業の顧客を 1 社増やす",
+      "area": "ind",
+      "family": "side",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 5,
+      "stages": [
+        3
+      ],
+      "p": {
+        "p": 0.55,
+        "pPortfolio": 0.7
+      }
+    },
+    "ad_more": {
+      "label": "紹介で顧客を増やす",
+      "area": "ind",
+      "family": "side",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 6,
+      "stages": [
+        3
+      ],
+      "p": {
+        "lamEmp": 0.15,
+        "lamPart": 0.25,
+        "lamInd": 0.35
+      }
+    },
+    "ind_quit": {
+      "label": "辞めて独立する",
+      "area": "ind",
+      "family": "ind",
+      "scen": [
+        "s_early"
+      ],
+      "hours": -2,
+      "stages": [
+        0,
+        3,
+        12
+      ],
+      "p": {
+        "lam": 0.35,
+        "at": 1
+      }
+    },
+    "back_emp": {
+      "label": "会社員に戻る",
+      "area": "fc",
+      "family": "back",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 0,
+      "stages": [
+        3
+      ],
+      "p": {
+        "p": 0.6,
+        "at": 3,
+        "sal": 1.0
+      }
+    },
+    "plan_ind": {
+      "label": "副業を 3 社にして独立する",
+      "area": "ind",
+      "family": "ind",
+      "scen": [
+        "s_early"
+      ],
+      "hours": 6,
+      "stages": [
+        12
+      ],
+      "p": {
+        "lamSide": 0.15,
+        "lamPart": 0.25,
+        "portfolioMult": 1.2,
+        "threshold": 3,
+        "lamInd": 0.35,
+        "lamStay": 0.08
+      }
+    },
+    "plan_side": {
+      "label": "副業を 3 社まで広げる",
+      "area": "ind",
+      "family": "side",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 5,
+      "stages": [
+        12
+      ],
+      "p": {
+        "lamSide": 0.15,
+        "lamPart": 0.25,
+        "portfolioMult": 1.2
+      }
+    },
+    "plan_sd": {
+      "label": "SpellDash を学校に広げる",
+      "area": "sd",
+      "family": "pro",
+      "scen": [
+        "s_balance",
+        "s_focus"
+      ],
+      "hours": 3,
+      "stages": [
+        12
+      ],
+      "p": {
+        "pSchool": 0.15,
+        "pilotMult": 1.5,
+        "g": 0.1,
+        "gsd": 0.04
+      }
+    },
+    "plan_fc": {
+      "label": "本業で 2 回の昇格を狙う",
+      "area": "fc",
+      "family": "fcpush",
+      "scen": [
+        "s_balance"
+      ],
+      "hours": 4,
+      "stages": [
+        12
+      ],
+      "p": {
+        "p": 0.35,
+        "pScope": 0.5,
+        "step": 0.1
+      }
+    },
+    "plan_switch": {
+      "label": "条件の良い会社に移る",
+      "area": "fc",
+      "family": "switch",
+      "scen": [
+        "s_balance"
+      ],
+      "hours": 4,
+      "stages": [
+        12
+      ],
+      "p": {
+        "pHigh": 0.25,
+        "high": 1.18,
+        "pMid": 0.3,
+        "mid": 1.08,
+        "moveAt": 4
+      }
+    },
+    "plan_back": {
+      "label": "会社員に戻る",
+      "area": "fc",
+      "family": "back",
+      "scen": [
+        "s_balance",
+        "s_early"
+      ],
+      "hours": 0,
+      "stages": [
+        12
+      ],
+      "p": {
+        "p": 0.6,
+        "at": 3,
+        "sal": 1.0
+      }
+    },
+    "plan_ind_grow": {
+      "label": "独立のまま顧客を増やす",
+      "area": "ind",
+      "family": "ind",
+      "scen": [
+        "s_early"
+      ],
+      "hours": 4,
+      "stages": [
+        12
+      ],
+      "p": {
+        "lam": 0.3,
+        "fee": 8
+      }
+    }
+  },
+  "premises": [
+    "数はすべて税引き前の稼ぎ（給与の額面・広告運用の売上・SpellDash の売上）。税金・貯金・投資は入れていない",
+    "給与は今の年収を 1.0 倍とし、毎年 4 月に 2.5% 上がる。週 4 日勤務は給与 0.8 倍",
+    "独立すると給与は 0。社会保険・道具などの増える負担として月 3 万円を引く",
+    "広告運用の顧客は 1 社あたり月 5 万円（副業）・月 7 万円（独立）。毎月 4% の顧客が離れる。抱えられるのは会社員 3 社・週 4 日 4 社・独立 6 社まで",
+    "SpellDash の Pro は月 980 円（手数料を引いて 1 人 940 円）。遊ぶ人（月）は続けている開発で月 8% ほど増え、その 4% 前後が有料になる。サーバー代は月 3,000 円",
+    "SpellDash が認められている（届け出の答えが『全部可』か『SpellDash だけ可』、または独立）なら、続けている週 10 時間の中で Pro を出す",
+    "副業の届け出の答えは『全部可』35%・『SpellDash だけ可』40%・『どちらも不可』25% と見込む",
+    "見込み（%）は 10%・50%・90% の 3 点（重み 30・40・30）で幅を表して計算した目安"
+  ],
+  "baseRates": [
+    {
+      "id": "perm",
+      "statement": "副業の届け出: 全部可 / SpellDash だけ / 不可",
+      "range": [
+        30,
+        40
+      ],
+      "source": "就業規則で副業を届け出制にしている会社の割合（厚労省モデル就業規則の改定後の調査）を目安にした"
+    },
+    {
+      "id": "firstClient",
+      "statement": "届け出が通った後 3 か月で副業の 1 社目が決まる",
+      "range": [
+        50,
+        65
+      ],
+      "source": "知人・前職のつながりがある広告運用者の目安"
+    },
+    {
+      "id": "switch",
+      "statement": "9 か月以内に給与 15% 以上上がる転職",
+      "range": [
+        15,
+        30
+      ],
+      "source": "転職者の賃金変動（増加 1 割以上）の割合を目安にした"
+    },
+    {
+      "id": "promo",
+      "statement": "4 月の評価での昇格",
+      "range": [
+        25,
+        40
+      ],
+      "source": "中小企業の昇格率の目安"
+    },
+    {
+      "id": "part",
+      "statement": "週 4 日勤務が認められる",
+      "range": [
+        30,
+        60
+      ],
+      "source": "短時間正社員制度の導入率と相談の通りやすさの目安"
+    },
+    {
+      "id": "school",
+      "statement": "学校への提案が 1 期で導入になる",
+      "range": [
+        10,
+        30
+      ],
+      "source": "教育向けアプリの小規模導入の目安"
+    },
+    {
+      "id": "indFee",
+      "statement": "独立した広告運用の 1 社あたりの月額",
+      "range": [
+        5,
+        15
+      ],
+      "source": "小規模事業者向け広告運用代行の相場"
+    }
+  ]
+}

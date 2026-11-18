@@ -168,8 +168,8 @@ export class App implements AppContext {
     const zoomCtl = h(
       "div",
       { class: "zoom-ctl" },
-      // 未来の道筋（仕事・10 年）: どの幅でも見える所に置く（あれば今日に寄る・無ければ開く）
-      h("button", { class: "future-btn", type: "button", title: "未来の道筋（仕事・10 年）: 地図にあれば今日に寄る・無ければ開く", onClick: () => void this.showFuture() }, icon("split", 15), h("span", null, "未来の道筋")),
+      // 未来の道筋（仕事・3 年の分かれ道）: どの幅でも見える所に置く（あれば今日に寄る・無ければ開く）
+      h("button", { class: "future-btn", type: "button", title: "未来の道筋（仕事・3 年の分かれ道）: 地図にあれば今日に寄る・無ければ開く", onClick: () => void this.showFuture() }, icon("split", 15), h("span", null, "未来の道筋")),
       h("span", { class: "zoom-sep" }),
       h("button", { class: "icon-btn", type: "button", title: "縮小（−）", ariaLabel: "縮小", onClick: () => this.view.zoomBy(0.8) }, icon("minus", 16)),
       this.zoomLabel,
@@ -817,7 +817,7 @@ export class App implements AppContext {
     openWishlistDialog(this);
   }
 
-  /** 未来の道筋（仕事・10 年）を、確かめてから読み込む。もう地図にあれば、2 つ目は足さずに今日へ寄る */
+  /** 未来の道筋（仕事・3 年の分かれ道）を、確かめてから読み込む。もう地図にあれば、2 つ目は足さずに今日へ寄る */
   loadFuture(): void {
     if (this.store.readOnly) return;
     // 利用者がここで決める: 突き合わせを待って開くはずだった頼みも、この起動の自動で開くのもやめる（確認を閉じた後に、勝手に入れ替えない）
@@ -947,7 +947,7 @@ export class App implements AppContext {
       // 押したボタン・お知らせの指す地図が見えるように（リストのままでは見えない）
       if (this.ui.prefs.view !== "map") this.ui.setPrefs({ view: "map" });
       const done = await this.replaceDocSafely(pv.doc, FUTURE_OPEN_LABEL, {
-        done: `未来の道筋（仕事・10 年）を開きました: 歩み ${n(stats.steps)}・分かれ道 ${stats.forks}・10 年後の行き先 ${stats.ends}。左の「今日」から右へたどると分かれていきます（前の地図はバックアップに残ります）`,
+        done: `未来の道筋（仕事・3 年の分かれ道）を開きました: 判断 ${n(stats.decisions)}・選択肢 ${n(stats.options)}・3 年後の行き先 ${n(stats.ends)}。カードの色付きの数が、その手の 3 年の影響です（前の地図はバックアップに残ります）`,
         fitTo: (d, ids) => nearFutureRoot(d, ids),
         fitMinZoom: FUTURE_MIN_ZOOM,
         // 待っている間に中身が変わった（同期で別の端末の内容を読み込んだ・書き始めた・ほかで開いた）なら入れ替えない。
@@ -1031,7 +1031,7 @@ export class App implements AppContext {
     const { stats } = built;
     const ok = await confirmDialog({
       title: "未来の道筋を新しい版に差し替えますか？",
-      body: `今の地図にある未来の道筋（ノード ${n(old)} 件）を、新しい版（歩み ${n(stats.steps)} 件・分かれ道 ${n(stats.forks)} 個・行き先 ${stats.ends}・今日から ${stats.shortest}〜${stats.longest} 歩）に入れ替えます。ほかのノードはそのままです。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+      body: `今の地図にある未来の道筋（ノード ${n(old)} 件）を、新しい版「3 年の分かれ道」（判断 ${n(stats.decisions)}・選択肢 ${n(stats.options)}・3 年後の行き先 ${n(stats.ends)}。選択肢ごとに 3 年の稼ぎへの影響が見えます）に入れ替えます。ほかのノードはそのままです。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
       ok: "差し替える",
     });
     if (!ok || this.store.readOnly) return;
@@ -1059,7 +1059,7 @@ export class App implements AppContext {
       if (this.ui.prefs.futureNotified === v || this.ui.storedPrefs().futureNotified === v) return;
       if (!staleFutureMaps(this.store.doc, v).length) return;
       this.ui.setPrefs({ futureNotified: v });
-      toast("未来の道筋の新しい版があります。今の地図の未来の道筋だけを入れ替えられます（ほかのノードはそのまま）", { action: { label: "差し替える", run: () => void this.swapFuture() }, ms: 20000 });
+      toast("未来の道筋が新しくなりました（選択肢ごとに 3 年の影響が見えます）。今の地図の未来の道筋だけを入れ替えます（ほかのノードはそのまま）", { action: { label: "差し替える", run: () => void this.swapFuture() }, ms: 20000 });
     };
     setTimeout(() => {
       if (!this.store.readOnly) return show();
@@ -1089,7 +1089,7 @@ export class App implements AppContext {
       }
       if (this.ui.prefs.futureOffered || stored.futureOffered) return;
       this.ui.setPrefs({ futureOffered: true });
-      toast(`未来の道筋（仕事・10 年）を用意しました。分かれ道ごとの見込みと 10 年後の行き先が見られます（やりたいことリストも ${WISHLIST_SIZE_LABEL} 件になりました）`, { action: { label: "見る", run: () => void this.showFuture() }, ms: 15000 });
+      toast(`未来の道筋（仕事・3 年の分かれ道）を用意しました。選択肢ごとに 3 年の稼ぎへの影響が見られます（やりたいことリストも ${WISHLIST_SIZE_LABEL} 件になりました）`, { action: { label: "見る", run: () => void this.showFuture() }, ms: 15000 });
     };
     setTimeout(() => {
       if (!this.store.readOnly) return show();

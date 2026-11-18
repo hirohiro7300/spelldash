@@ -298,7 +298,7 @@ export function openWishlistDialog(app: AppContext): void {
 /** 確かめの画面を開いている間は、もう 1 枚開かない */
 let futureOpen = false;
 
-/** 未来の道筋（仕事・10 年）を読み込む前の確認。組み立てに失敗したら、そう伝えて閉じる */
+/** 未来の道筋（仕事・3 年の分かれ道）を読み込む前の確認。組み立てに失敗したら、そう伝えて閉じる */
 export function openFutureDialog(app: AppContext): void {
   if (futureOpen) return;
   let built: ReturnType<typeof buildFuture>;
@@ -314,28 +314,28 @@ export function openFutureDialog(app: AppContext): void {
   const lead = h(
     "div",
     { class: "wish-lead" },
-    h("p", { class: "modal-text" }, "SpellDash・FC マーケティング・独立の 3 つの仕事が、今日から 10 年後までどう分かれていくかを予測した地図です。", h("b", null, `1 本の道は今日から ${stats.shortest}〜${stats.longest} 歩`), "続き、", h("b", null, `${stats.ends} の行き先`), "に分かれます。"),
+    h("p", { class: "modal-text" }, "SpellDash・FC マーケティング・独立の 3 つの仕事で、今日から 3 年先までの選択肢と、その手で 3 年の稼ぎがどれだけ変わるかを計算した地図です。", h("b", null, `判断 ${stats.decisions} か所・選択肢 ${stats.options}`), "から、", h("b", null, `${stats.ends.toLocaleString("ja-JP")} の 3 年後`), "に分かれます。"),
     h(
       "ul",
       { class: "wish-howto" },
-      h("li", null, h("b", null, "横"), "は時間。6・12・24・36・60・84 か月目と 10 年後に節目の状態があり、その間を具体的な歩み（やりたいことリストの作業や、起きること）で埋めてあります。"),
-      h("li", null, h("b", null, "分かれ道"), "には判断の線（この数字を越えたらこちら）と見込み % が付いています。線を選ぶと % を直せ、見込みが計算し直されます。"),
-      h("li", null, h("b", null, "右の概要"), "に 10 年後の行き先と、そこに至る見込みが並びます。下のシナリオ（両立・早期独立・SpellDash集中）を選ぶと、その道を選んだ場合の見込みに変わります。"),
-      h("li", null, h("b", null, "ノード"), "を選ぶと、そこに至る見込みと、今日から何歩目かが出ます。"),
+      h("li", null, h("b", null, "今日"), "の 10 の手から始まり、3 か月後・1 年後にまた選び直します。どの道も 3 年後の行き先まで書いてあります。"),
+      h("li", null, h("b", null, "選択肢のカード"), "の色付きの数は、その手で 3 年の稼ぎが「今のまま」よりどれだけ変わるか（青 = 増える・赤 = 減る）。"),
+      h("li", null, h("b", null, "結果"), "には見込み % と判断の線（測れる条件）が付いています。% を直すと、すぐに計算し直します。"),
+      h("li", null, h("b", null, "右の概要"), "に「今決めること」の順位と 3 年後の分布が出ます。年収を入れると本業の数が合います。"),
     ),
   );
   futureOpen = true;
   openImportPreview(app, pv, {
     onClose: () => (futureOpen = false),
     title: "未来の道筋を読み込む",
-    subtitle: `今日から 10 年後まで、${stats.ends} の行き先に分かれる道`,
+    subtitle: `今日から 3 年後まで、${stats.ends.toLocaleString("ja-JP")} の行き先に分かれる道`,
     icon: "split",
     lead,
     stats: [
-      ["歩み", stats.steps],
+      ["判断", stats.decisions],
+      ["選択肢", stats.options],
       ["分かれ道", stats.forks],
-      ["行き先", stats.ends],
-      ["最長の歩数", stats.longest],
+      ["3 年後の行き先", stats.ends],
     ],
     mode: "merge",
     mergeDesc: "今のデータはそのまま。未来の道筋を右側に足します。SpellDash事業など同じ名前のプロジェクトとシナリオはまとめます。",
@@ -343,7 +343,7 @@ export function openFutureDialog(app: AppContext): void {
     label: { merge: "未来の道筋を追加", replace: "未来の道筋に入れ替え" },
     selectAdded: false,
     after: {
-      replaceDone: "未来の道筋に入れ替えました。右の概要に 10 年後の行き先の見込みが出ます",
+      replaceDone: "未来の道筋に入れ替えました。右の概要に今決めることと 3 年後の分布が出ます",
       mergeDone: "未来の道筋: ",
       // 全体は横に長すぎて読めないので、今日から数歩先までに寄る（カードの文字が読める大きさで始める。狭い画面では今日から）
       fitTo: (doc, added) => nearFutureRoot(doc, added),
@@ -426,7 +426,7 @@ export function openWelcome(app: AppContext): void {
         "div",
         null,
         h("b", null, "未来の道筋: "),
-        "仕事の 3 つの道（両立・早期独立・SpellDash集中）が今日から 10 年後まで分かれていく地図です。分かれ道ごとの判断の線と見込み %、10 年後の行き先の見込みが見られます（地図の右下の「未来の道筋」からいつでも開けます）。",
+        "仕事の 3 つの領域で、今日から 3 年先までの選択肢と、その手で 3 年の稼ぎがどれだけ変わるかを計算した地図です。カードの色付きの数で、どの手が効くかがひと目で分かります（地図の右下の「未来の道筋」からいつでも開けます）。",
         h(
           "div",
           { class: "btn-row" },

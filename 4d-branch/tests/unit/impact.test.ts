@@ -1,0 +1,308 @@
+import { describe, expect, it } from "vitest";
+import { computeForecast } from "../../src/model/forecast";
+import { chanceWeights, forkKindOf, impactScope } from "../../src/model/forks";
+import { buildIndex } from "../../src/model/graph";
+import { computeImpact, type ImpactResult } from "../../src/model/impact";
+import { formatMan, formatMonthlyDelta, impactBin } from "../../src/model/impactFormat";
+import { createEmptyDoc, makeEdge, makeNode } from "../../src/model/schema";
+import type { DocData, GEdge, GNode, NodeType } from "../../src/model/types";
+
+type R3 = [number, number, number];
+
+/** 判断 → 選択肢 → 結果 の小さな木を作る */
+function tree(opts: { annual?: number; tail?: number } = {}) {
+  const doc = createEmptyDoc();
+  const node = (id: string, type: NodeType, meta: Record<string, unknown> = {}, extra: Partial<GNode> = {}) => {
+    doc.nodes[id] = makeNode({ id, title: id, type, meta, ...extra });
+    return id;
+  };
+  const edge = (source: string, target: string, opt: { prob?: number; r?: R3; scen?: string[] } = {}): GEdge => {
+    const e = makeEdge({ id: `${source}-${target}`, source, target, relation: opt.prob !== undefined ? "condition" : "leads", scenarioIds: opt.scen ?? [] });
+    e.meta = { ...(opt.prob !== undefined ? { prob: opt.prob } : {}), ...(opt.r ? { r: opt.r } : {}) };
+    doc.edges[e.id] = e;
+    return e;
+  };
+  const impact: Record<string, unknown> = { v: 2, horizon: 36 };
+  if (opts.annual !== undefined) impact.annual = opts.annual;
+  if (opts.tail !== undefined) impact.tail = opts.tail;
+  node("R", "goal", { forecastRoot: true, impact, fork: "decision", m: 0, rr: [1, 0, 0] });
+  // 今のまま: 36 か月ずっと給与
+  node("K", "action", { fork: "chance", m: 0, base: true, ak: "keep", fam: "keep", rank: 3 });
+  node("K1", "result", { m: 36, rr: [1, 0, 0] });
+  edge("R", "K");
+  edge("K", "K1", { prob: 100, r: [36, 0, 0] });
+  // 副業: 60% で +50、40% で −30
+  node("A", "action", { fork: "chance", m: 0, ak: "side", fam: "side", rank: 1 });
+  node("A1", "result", { m: 36, rr: [1, 2, 0] });
+  node("A2", "result", { m: 36, rr: [1, -1, 0] });
+  edge("R", "A", { scen: ["s1"] });
+  edge("A", "A1", { prob: 60, r: [36, 50, 0] });
+  edge("A", "A2", { prob: 40, r: [36, -30, 0] });
+  // 週 4 日: 給与 30 か月分 + 事業 120
+  node("B", "action", { fork: "chance", m: 0, ak: "part", fam: "part", rank: 2 });
+  node("B1", "result", { m: 36, rr: [0.8, 3, 0] });
+  edge("R", "B", { scen: ["s2"] });
+  edge("B", "B1", { prob: 100, r: [30, 120, 0] });
+  doc.scenarios.s1 = { id: "s1", name: "s1", color: "#fff", description: "", createdAt: "", updatedAt: "", meta: {} };
+  doc.scenarios.s2 = { id: "s2", name: "s2", color: "#fff", description: "", createdAt: "", updatedAt: "", meta: {} };
+  doc.scenarioOrder = ["s1", "s2"];
+  return { doc, node, edge };
+}
+
+function run(doc: DocData, scen: string | null = null): ImpactResult {
+  const idx = buildIndex(doc);
+  return computeImpact(doc, idx.out, computeForecast(doc, idx.out, scen), scen);
+}
+
+describe("分かれ道の種類", () => {
+  it("meta.fork が無ければ形で決める", () => {
+    const e = (prob?: number) => {
+      const x = makeEdge({ source: "a", target: "b" });
+      if (prob !== undefined) x.meta = { prob };
+      return x;
+    };
+    expect(forkKindOf(makeNode({ type: "goal" }), [])).toBe("leaf");
+    expect(forkKindOf(makeNode({ type: "goal" }), [e(), e()])).toBe("decision");
+    expect(forkKindOf(makeNode({ type: "branch" }), [e(), e()])).toBe("decision");
+    expect(forkKindOf(makeNode({ type: "action" }), [e(), e()])).toBe("chance");
+    expect(forkKindOf(makeNode({ type: "branch" }), [e(30), e()])).toBe("chance");
+    expect(forkKindOf(makeNode({ type: "action" }), [e()])).toBe("pass");
+    expect(forkKindOf(makeNode({ type: "action", meta: { fork: "decision" } }), [e(30), e(70)])).toBe("decision");
+    expect(forkKindOf(makeNode({ type: "goal", meta: { fork: "chance" } }), [e(), e()])).toBe("chance");
+  });
+
+  it("結果の割合は % の無い線に残りを等分し、どれにも無ければ等分", () => {
+    const e = (prob?: number) => {
+      const x = makeEdge({ source: "a", target: "b" });
+      if (prob !== undefined) x.meta = { prob };
+      return x;
+    };
+    expect(chanceWeights([e(30), e(), e()])).toEqual([0.3, 0.35, 0.35]);
+    expect(chanceWeights([e(), e()])).toEqual([0.5, 0.5]);
+    const w = chanceWeights([e(50), e(100)]);
+    expect(w[0]).toBeCloseTo(1 / 3);
+  });
+
+  it("範囲は v2 の入口からたどれるノードだけ", () => {
+    const { doc, node, edge } = tree();
+    node("Z", "action");
+    node("Y", "action");
+    edge("Z", "Y");
+    const s = impactScope(doc, buildIndex(doc).out);
+    expect(s.has("R") && s.has("A1") && s.has("B1")).toBe(true);
+    expect(s.has("Z")).toBe(false);
+  });
+});
+
+describe("見込み（範囲の中の流し方）", () => {
+  it("行動の結果は % で分け、判断はそのまま渡す", () => {
+    const { doc } = tree();
+    const fc = computeForecast(doc, buildIndex(doc).out);
+    expect(fc.reach.get("A")!.p).toBe(1);
+    expect(fc.reach.get("B")!.p).toBe(1);
+    expect(fc.reach.get("A1")!.p).toBeCloseTo(0.6);
+    expect(fc.reach.get("A2")!.p).toBeCloseTo(0.4);
+    expect(fc.order[0]).toBe("R");
+    expect(fc.impactScope.size).toBe(8);
+  });
+
+  it("v1 の入口（impact なし）では今までどおり行動は分けない", () => {
+    const { doc } = tree();
+    delete doc.nodes.R!.meta.impact;
+    const fc = computeForecast(doc, buildIndex(doc).out);
+    expect(fc.impactScope.size).toBe(0);
+    expect(fc.reach.get("A1")!.p).toBe(1);
+  });
+
+  it("シナリオで絞るのは判断から出る線だけ", () => {
+    const { doc } = tree();
+    doc.edges["A-A1"]!.scenarioIds = ["s2"];
+    const fc = computeForecast(doc, buildIndex(doc).out, "s1");
+    expect(fc.reach.has("B")).toBe(false);
+    expect(fc.reach.get("A1")!.p).toBeCloseTo(0.6);
+  });
+});
+
+describe("3 年の影響", () => {
+  it("今のままとの差・おすすめ・悪くなる見込み", () => {
+    const { doc } = tree({ annual: 360 });
+    const r = run(doc);
+    expect(r.active).toBe(true);
+    expect(r.S).toBe(30);
+    expect(r.annualSet).toBe(true);
+    // K: 36×30 = 1080、A: 1080 + 0.6×50 − 0.4×30 = 1098、B: 900 + 120 = 1020
+    expect(r.value.get("K")).toBeCloseTo(1080);
+    expect(r.value.get("A")).toBeCloseTo(1098);
+    expect(r.value.get("B")).toBeCloseTo(1020);
+    expect(r.vRoot).toBeCloseTo(1098);
+    expect(r.vSQ).toBeCloseTo(1080);
+    const a = r.alt.get("A")!;
+    expect(a.delta).toBeCloseTo(18);
+    expect(a.deltaV![0]).toBeCloseTo(0);
+    expect(a.deltaV![1]).toBeCloseTo(18);
+    expect(a.mark).toBe("star");
+    expect(a.pBad).toBeCloseTo(0.4);
+    expect(a.worst).toBeCloseTo(-30);
+    expect(a.outcomes.map((o) => [o.node, Math.round(o.w * 100), o.u])).toEqual([
+      ["A1", 60, 50],
+      ["A2", 40, -30],
+    ]);
+    // 結果の差の重み付き平均 = 手の差
+    expect(a.outcomes.reduce((s, o) => s + o.w * o.u!, 0)).toBeCloseTo(a.delta!);
+    expect(r.alt.get("K")!.delta).toBe(0);
+    expect(r.alt.get("K")!.isBase).toBe(true);
+    expect(r.alt.get("B")!.delta).toBeCloseTo(-60);
+    expect(r.alt.get("B")!.dR).toBeCloseTo(0.8 * 30 + 3 - 30);
+    const d = r.decision.get("R")!;
+    expect(d.alts).toEqual(["A", "B", "K"]);
+    expect(d.best).toBe("A");
+    expect(d.chosen).toBe("A");
+    expect(d.base).toBe("K");
+    expect(d.stakes).toBeCloseTo(18);
+    expect(d.spread![0]).toBeCloseTo(-60);
+    expect(d.spread![1]).toBeCloseTo(18);
+    expect(r.outcome.get("A2")!.alt).toBe("A");
+    expect(r.counts).toEqual({ nodes: 8, decisions: 1, options: 3, forks: 2, ends: 4 });
+  });
+
+  it("行き先の見込みの合計は 1、入口の値は行き先の合計の平均と同じ", () => {
+    const { doc } = tree({ annual: 360 });
+    const r = run(doc);
+    const total = r.ends.reduce((s, e) => s + e.p, 0);
+    expect(total).toBeCloseTo(1);
+    expect(r.ends.reduce((s, e) => s + e.p * e.tot, 0)).toBeCloseTo(r.vRoot!);
+    expect(r.ends[0]!.id).toBe("A1");
+    expect(r.dist!.mean).toBeCloseTo(1098);
+    expect(r.dist!.pWorse).toBeCloseTo(0.4);
+    expect(r.dist!.bins.reduce((s, x) => s + x, 0)).toBeCloseTo(1);
+    expect(r.dist!.sqBins[4]).toBeCloseTo(1);
+    expect(r.piEdges.has("R-A") && r.piEdges.has("A-A1") && !r.piEdges.has("R-B")).toBe(true);
+  });
+
+  it("自分で選んだ手で計算し、★ は一番良い手のまま", () => {
+    const { doc } = tree({ annual: 360 });
+    doc.nodes.B!.status = "active";
+    const r = run(doc);
+    expect(r.hasPicks).toBe(true);
+    expect(r.decision.get("R")!.chosen).toBe("B");
+    expect(r.vRoot).toBeCloseTo(1020);
+    expect(r.alt.get("A")!.mark).toBe("star");
+    expect(r.pPi.get("B1")).toBeCloseTo(1);
+  });
+
+  it("見送った手は選ばない（全部見送ったら全部から選ぶ）", () => {
+    const { doc } = tree({ annual: 360 });
+    doc.nodes.A!.status = "dropped";
+    let r = run(doc);
+    expect(r.decision.get("R")!.chosen).toBe("K");
+    expect(r.alt.get("K")!.mark).toBe("star");
+    expect(r.alt.get("A")!.dropped).toBe(true);
+    doc.nodes.B!.status = "dropped";
+    doc.nodes.K!.status = "dropped";
+    r = run(doc);
+    expect(r.decision.get("R")!.chosen).toBe("A");
+  });
+
+  it("シナリオ（方針）は選べる手を絞るが、外れた手の差も出す", () => {
+    const { doc } = tree({ annual: 360 });
+    const r = run(doc, "s2");
+    expect(r.decision.get("R")!.chosen).toBe("K");
+    expect(r.vRoot).toBeCloseTo(1080);
+    expect(r.alt.get("A")!.allowed).toBe(false);
+    expect(r.alt.get("A")!.delta).toBeCloseTo(18);
+    expect(r.alt.get("K")!.mark).toBe("star");
+  });
+
+  it("年収が無ければ仮の 360 万円。年収で値が線形に変わる", () => {
+    const { doc } = tree();
+    const r = run(doc);
+    expect(r.annualSet).toBe(false);
+    expect(r.annual).toBe(360);
+    const r2 = run(tree({ annual: 480 }).doc);
+    expect(r2.value.get("K")).toBeCloseTo(36 * 40);
+  });
+
+  it("年収で今日の一番が入れ替わる所を見つける", () => {
+    const { doc } = tree({ annual: 360 });
+    const f = run(doc).salaryFlips();
+    // A − B = 6S − 102 → S = 17（年収 204 万円）より下なら B
+    expect(f.above).toBeNull();
+    expect(f.below!.alt).toBe("B");
+    expect(f.below!.annual).toBe(200);
+  });
+
+  it("その種類の手をずっとやらない場合との差", () => {
+    const { doc } = tree({ annual: 360 });
+    const r = run(doc);
+    const nv = r.never("side");
+    expect(nv.k).toBeCloseTo(18);
+    expect(nv.card.get("A")).toBeCloseTo(18);
+    expect(r.never("part").k).toBeCloseTo(0);
+    expect(r.families().sort()).toEqual(["part", "side"]);
+  });
+
+  it("36 か月より前に終わる行き先は、その月の稼ぎで 36 か月目まで埋める。その後の月も足せる", () => {
+    const { doc, node, edge } = tree({ annual: 360, tail: 12 });
+    node("X", "action", { rank: 9 });
+    edge("R", "X");
+    const r = run(doc);
+    // X は入口の月の稼ぎ（月給 1 倍）を受け継ぎ、36 + 12 か月分
+    expect(r.value.get("X")).toBeCloseTo(30 * 48);
+    // 生成した行き先（36 か月目）は 12 か月分だけ足す
+    expect(r.value.get("K1")).toBeCloseTo(30 * 12);
+    expect(r.alt.get("X")!.delta).toBeCloseTo(30 * 48 - (1080 + 360));
+  });
+
+  it("基準が無い判断では差を出さない。循環があっても止まらない", () => {
+    const { doc, node, edge } = tree({ annual: 360 });
+    delete doc.nodes.K!.meta.base;
+    node("C1", "action");
+    node("C2", "action");
+    edge("A2", "C1");
+    edge("C1", "C2");
+    edge("C2", "C1");
+    const r = run(doc);
+    expect(r.alt.get("A")!.delta).toBeNull();
+    expect(r.alt.get("A")!.bin).toBe(0);
+    expect(r.value.has("C1")).toBe(false);
+    expect(r.partial.has("A")).toBe(true);
+  });
+
+  it("判断の線の % は使わない", () => {
+    const { doc } = tree({ annual: 360 });
+    doc.edges["R-B"]!.meta = { prob: 90 };
+    const r = run(doc);
+    expect(r.decision.get("R")!.chosen).toBe("A");
+    expect(r.alt.get("B")!.delta).toBeCloseTo(-60);
+  });
+
+  it("入口が v2 でなければ出さない", () => {
+    const { doc } = tree();
+    delete doc.nodes.R!.meta.impact;
+    expect(run(doc).active).toBe(false);
+  });
+});
+
+describe("数の書き方と段", () => {
+  it("万円の書き方", () => {
+    expect(formatMan(0.04)).toBe("±0");
+    expect(formatMan(3.14)).toBe("+3.1万");
+    expect(formatMan(-0.44)).toBe("−0.4万");
+    expect(formatMan(3)).toBe("+3万");
+    expect(formatMan(65.4)).toBe("+65万");
+    expect(formatMan(-1240)).toBe("−1,240万");
+    expect(formatMan(12345)).toBe("+1.2億");
+    expect(formatMan(1423, false)).toBe("1,423万");
+    expect(formatMonthlyDelta(2.1)).toBe("月+2.1万");
+  });
+
+  it("段の境目", () => {
+    expect(impactBin(2.99)).toBe(0);
+    expect(impactBin(3)).toBe(1);
+    expect(impactBin(29.9)).toBe(1);
+    expect(impactBin(30)).toBe(2);
+    expect(impactBin(-100)).toBe(-3);
+    expect(impactBin(300)).toBe(4);
+    expect(impactBin(null)).toBe(0);
+  });
+});
