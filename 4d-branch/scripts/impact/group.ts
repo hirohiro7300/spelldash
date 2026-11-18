@@ -272,7 +272,7 @@ export function groupOutcomes(w: World, kind: string, driver: Driver, s0: St, m0
   return groups.map((g, i) => {
     const st = repState(g.samples);
     const r = meanR(g.samples);
-    const { id, lab, line, ln } = describe(driver, g, i, groups.length, salCuts, mEnd, kind, w.kinds.plan_ind?.p.threshold ?? 3);
+    const { id, lab, line, ln } = describe(driver, g, i, groups.length, salCuts, m0, mEnd, kind, w.kinds.plan_ind?.p.threshold ?? 3);
     return { id, p: groups.length === 1 ? 100 : fl[i]!, w: g.w / total, st, r, lab, short: shortOf(driver, g, groups.length, ln, kind), line, ln, sig: g.sig, local: g.local };
   });
 }
@@ -344,7 +344,7 @@ function numText(metric: string, lo: number | null, hi: number | null): { lab: s
   return { lab: `${name} ${fmt(lo)}〜${fmt(hi - 1)} ${unit}`, range: `${fmt(lo)}〜${fmt(hi - 1)} ${unit}` };
 }
 
-function describe(driver: Driver, g: Group, i: number, n: number, salCuts: number[], mEnd: number, kind: string, indAt: number): { id: string; lab: string; line: string; ln: Line } {
+function describe(driver: Driver, g: Group, i: number, n: number, salCuts: number[], m0: number, mEnd: number, kind: string, indAt: number): { id: string; lab: string; line: string; ln: Line } {
   const when = whenText(mEnd);
   if (driver.t === "none" || n === 1) {
     return { id: "all", lab: "—", line: "（どの場合もこの道）", ln: { metric: "none", at: mEnd, lo: null, hi: null, cat: "all" } };
@@ -364,7 +364,8 @@ function describe(driver: Driver, g: Group, i: number, n: number, salCuts: numbe
     const f = (x: number) => x.toFixed(2).replace(/0$/, "");
     const range = lo === null ? `${f(hi!)} 倍未満` : hi === null ? `${f(lo)} 倍以上` : `${f(lo)}〜${f(hi)} 倍`;
     const id = tags.slice().sort().join("_");
-    return { id, lab, line: `${when}の給与が今の ${range}`, ln: { metric: "sal", at: mEnd, lo, hi } };
+    // 倍は期間の初めの給与に対して（今日からの期間なら「今の」）
+    return { id, lab, line: `${when}の給与が${m0 === 0 ? "今" : whenText(m0)}の ${range}`, ln: { metric: "sal", at: mEnd, lo, hi } };
   }
   const keys = g.keys.slice().sort();
   const id = keys.join("_");

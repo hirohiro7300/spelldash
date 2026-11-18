@@ -12,6 +12,8 @@ const man = (x: number) => {
   return Number.isInteger(v) ? `${v}` : v.toFixed(1);
 };
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+/** 顧客の数（見込みの平均なので端数があれば「平均 2.4」。画面の状態の 1 行と同じ書き方） */
+const clN = (cl: number) => (Math.abs(cl - Math.round(cl)) < 0.05 ? n0(cl) : `平均 ${(Math.round(cl * 10) / 10).toFixed(1)}`);
 /** 文章に入れる数（world.json の値から。値を変えても文章が古くならないように） */
 const P = (w: World) => ({
   side: man(w.constants.sideFee),
@@ -165,7 +167,7 @@ const PERM_SHORT: Record<string, string> = { "?": "副業は届け出前", a: "�
 /** 状態を 1 行で（画面でも計算して出すが、本文にも残す） */
 export function stateLine(w: World, s: St): string {
   const job = s.j === "e" ? `会社員（給与 ${f2(s.sal)} 倍）` : s.j === "p" ? `週 4 日勤務（給与 ${f2(s.sal * w.constants.partFactor)} 倍）` : "独立";
-  const cl = s.cl >= 0.5 ? `広告運用の顧客 ${n0(s.cl)} 社（月 ${man(s.cl * s.fee)} 万円）` : "広告運用の顧客なし";
+  const cl = s.cl >= 0.05 ? `広告運用の顧客 ${clN(s.cl)} 社（月 ${man(s.cl * s.fee)} 万円）` : "広告運用の顧客なし";
   const sd = s.pro ? `SpellDash 有料 ${n0(s.pu)} 人・遊ぶ人 月 ${n0(s.mau)} 人` : `SpellDash は無料のまま・遊ぶ人 月 ${n0(s.mau)} 人`;
   return `${job}・${s.j === "i" ? "" : `${PERM_SHORT[s.pm]}・`}${cl}・${sd}`;
 }
@@ -178,7 +180,7 @@ function headline(s: St, prev: St | null): string {
   else if (prev && s.sal / Math.max(1e-9, prev.sal) >= 1.06) parts.push(s.fl.includes("switched") && !prev.fl.includes("switched") ? `転職で給与 ${f2(s.sal)} 倍` : `給与 ${f2(s.sal)} 倍`);
   else parts.push("会社員");
   if (prev && prev.pm === "?" && s.pm !== "?") parts.push(s.pm === "a" ? "副業も可" : s.pm === "s" ? "SpellDash だけ可" : "副業は不可");
-  if (s.cl >= 0.5) parts.push(`顧客 ${n0(s.cl)} 社`);
+  if (s.cl >= 0.05) parts.push(`顧客 ${clN(s.cl)} 社`);
   if (s.pro) parts.push(`有料 ${n0(s.pu)} 人`);
   else if (s.mau >= 100) parts.push(`遊ぶ人 ${n0(s.mau)}`);
   return parts.join("・");

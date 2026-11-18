@@ -617,16 +617,25 @@ function addClient(x: St, fee: number): void {
   x.cl += 1;
 }
 
+/** Pro を出してよい（届け出の答えが『全部可』か『SpellDash だけ可』、または独立） */
+const proAllowed = (x: St): boolean => x.pm === "a" || x.pm === "s" || x.j === "i";
+
+/** 期間の途中で届け出の答えが出る・独立する手（その翌月に Pro を出す） */
+const LATE_PRO_KINDS = new Set(["ad_perm", "ad_permside", "plan_side", "plan_ind", "ind_quit"]);
+
 /**
  * (状態, 手) を m0 か月目から L か月たどる。出来事 × 伸びの幅 × 有料になる割合の幅 × 顧客の来る数を全部数え上げる
  */
 export function simulate(w: World, s0: St, kind: string, m0: number, L: number): Sample[] {
   const c = w.constants;
   const out: Sample[] = [];
-  // 続けている SpellDash の作業: 認められていて Pro がまだなら、期間の 2 か月目に出す（Pro を出す手は自分で出す）
-  const autoPro = s0.pro === 0 && (s0.pm === "a" || s0.pm === "s" || s0.j === "i") && kind !== "sd_permpro" && kind !== "sd_pro" && kind !== "plan_sd";
+  // 続けている SpellDash の作業（前提 9）: 認められていて Pro がまだなら、期間の 2 か月目に出す（Pro を出す手は自分で出す）。
+  // 期間の途中で認められた・独立した場合は、その翌月に出す
+  const selfPro = kind === "sd_permpro" || kind === "sd_pro" || kind === "plan_sd";
+  const autoPro = s0.pro === 0 && proAllowed(s0) && !selfPro;
+  const latePro = s0.pro === 0 && !proAllowed(s0) && !selfPro && LATE_PRO_KINDS.has(kind);
   for (const br0 of branchesOf(w, s0, kind, m0, L)) {
-    let br = autoPro ? { ...br0, convVar: true, at: [...br0.at, [Math.min(2, L), (x: St) => void (x.pro = 1)] as [number, (x: St) => void]] } : br0;
+    let br = autoPro ? { ...br0, convVar: true, at: [...br0.at, [Math.min(2, L), (x: St) => void (x.pro = 1)] as [number, (x: St) => void]] } : latePro ? { ...br0, convVar: true } : br0;
     // 独立していれば、ほかの手を選んでいてもふだんの営業は続ける（顧客を増やす手は自分の来る割合を使う）
     if (s0.j === "i" && !br.windows.length) br = { ...br, windows: [{ from: 1, to: L, lam: (x: St) => (x.j === "i" ? w.kinds.keep!.p.indLambda! : 0), fee: () => c.indFee, onlyInd: true }] };
     for (const [zg, pg] of w.swanson) {
@@ -663,6 +672,8 @@ export function simulate(w: World, s0: St, kind: string, m0: number, L: number):
         const step = (x: St, a: number, b: number, _counts: number[], r: Vec3, arr?: { k: number; from: number; to: number; fee: number; onlyInd: boolean }) => {
           for (let i = a + 1; i <= b; i++) {
             const month = m0 + i;
+            // 前の月までに認められた・独立したなら、この月に Pro を出す
+            if (latePro && x.pro === 0 && proAllowed(x)) x.pro = 1;
             for (const [at, f] of br.cost ?? []) if (at === i) r[0] -= f(x);
             for (const [at, fn] of br.at) if (at === i) fn(x);
             if (c.aprilMonths.includes(month) && (x.j === "e" || x.j === "p")) x.sal *= 1 + c.aprilRaise;

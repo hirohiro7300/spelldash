@@ -168,6 +168,8 @@ export function runChecks(w: World, tree: TNode, b: ImpactBundle, sel: Selection
       const s = n.st;
       if (s.pro === 0 && s.pu > 0.5) fail(`N7 Pro 前に有料会員: ${n.key}`);
       if (s.cl >= 0.5 && !(s.pm === "a" || s.j === "i")) fail(`N7 届け出の無い顧客: ${n.key} ${s.pm} ${s.j}`);
+      // 前提 9: 認められている・独立しているなら Pro を出している（期間の途中で認められた・独立した場合も翌月に出す）
+      if (s.pro === 0 && (s.pm === "a" || s.pm === "s" || s.j === "i")) fail(`N7 認められている・独立しているのに Pro を出していない: ${n.key} ${s.pm} ${s.j}`);
     }
   });
   for (const [id, info] of im.alt) {
