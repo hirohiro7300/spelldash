@@ -2,10 +2,12 @@
 //
 // 折りたたみ:
 //   1. 折りたたんだノードの出る線・折りたたんだ線を「止める線」にする
+//      （3 年の分かれ道の閉じたカードが止めるのは、同じ範囲の子への道の線だけ: stops で絞る）
 //   2. 入口から、止める線を通らずにたどれるノードだけを表示する
 //      入口 = 入る線の無いノード（「フィードバック」の線は数えない。循環を閉じる線なので、戻られる側は根のまま）
 //           ＋ フィードバック以外の線で外から入る線の無い「強連結成分」（循環のかたまり）の中の折りたたみの起点
 //      （起点が無い循環は全員を入口にする）→ 循環だけのかたまりでも、折りたたんだノード自身は消えない
+//      ＋ 必ず入口にするノード（3 年の分かれ道の入口。そこへ入る線は数えない＝戻ってくる線があっても地図ごと消えない）
 //   3. 別の親が見えていれば合流先は消えない（入口からたどれるため）
 //   4. 件数 = その起点の先で、隠れているノードだけをたどって届く数（見えている所で止める＝開くと出てくる物）
 
@@ -87,11 +89,12 @@ function adjacency(doc: DocData, index: GraphIndex, scope: Set<ID>, edgeOk: (e: 
   return outE;
 }
 
-/** 入口を決めるときに数える線（フィードバック＝循環を閉じる線は数えない。たどるときは通る） */
-const countsForEntry = (e: GEdge) => e.relation !== "feedback";
+const NO_ROOTS: ReadonlySet<ID> = new Set();
 
-/** 入口から、止める線を通らずにたどれないノードを求める（折りたたみ・シナリオの推定で共通） */
-function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, blocked: Set<ID>, blocks: Array<Block & { starts: ID[] }>, withCounts: boolean): CollapseResult {
+/** 入口から、止める線を通らずにたどれないノードを求める（折りたたみ・シナリオの推定で共通）。roots は必ず入口にするノード */
+function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, blocked: Set<ID>, blocks: Array<Block & { starts: ID[] }>, withCounts: boolean, roots: ReadonlySet<ID>): CollapseResult {
+  /** 入口を決めるときに数える線（フィードバック＝循環を閉じる線と、必ず入口にするノードへ入る線は数えない。たどるときは通る） */
+  const countsForEntry = (e: GEdge) => e.relation !== "feedback" && !roots.has(e.target);
   const indeg = new Map<ID, number>();
   for (const id of scope) indeg.set(id, 0);
   for (const list of outE.values()) for (const e of list) if (countsForEntry(e)) indeg.set(e.target, indeg.get(e.target)! + 1);
@@ -156,20 +159,29 @@ function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, blocked: Set<ID>,
   return { hidden, counts };
 }
 
+export interface CollapseOpts {
+  /** 折りたたんだノードの出る線のうち、止める線（既定はすべて。3 年の分かれ道の閉じたカードは、同じ範囲の子への道の線だけ） */
+  stops?: (e: GEdge) => boolean;
+  /** 必ず入口にするノード（3 年の分かれ道の入口） */
+  roots?: ReadonlySet<ID>;
+}
+
 /**
  * scope の中で、折りたたみで隠れるノードを求める。
  * edgeOk で数に入れる接続を絞れる（シナリオで「隠す」ときなど）。
  * collapsedOf でノードが折りたたまれているかを決める（既定は文書の collapsed。3 年の分かれ道は見え方の「開いているノード」で決める）
  */
-export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>, edgeOk: (e: GEdge) => boolean = () => true, collapsedOf: (id: ID) => boolean = (id) => !!doc.nodes[id]?.collapsed): CollapseResult {
+export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>, edgeOk: (e: GEdge) => boolean = () => true, collapsedOf: (id: ID) => boolean = (id) => !!doc.nodes[id]?.collapsed, opts: CollapseOpts = {}): CollapseResult {
   const outE = adjacency(doc, index, scope, edgeOk);
+  const stops = opts.stops;
   const blocked = new Set<ID>();
   const blocks: Array<Block & { starts: ID[] }> = [];
   for (const id of scope) {
     const list = outE.get(id)!;
-    if (list.length && collapsedOf(id)) {
-      for (const e of list) blocked.add(e.id);
-      blocks.push({ key: id, node: id, starts: list.map((e) => e.target) });
+    const stopped = list.length && collapsedOf(id) ? (stops ? list.filter(stops) : list) : [];
+    if (stopped.length) {
+      for (const e of stopped) blocked.add(e.id);
+      blocks.push({ key: id, node: id, starts: stopped.map((e) => e.target) });
     }
     for (const e of list) {
       if (e.collapsed && !blocked.has(e.id)) {
@@ -179,14 +191,14 @@ export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>,
     }
   }
   if (blocks.length === 0) return EMPTY;
-  return unreachedCore(scope, outE, blocked, blocks, true);
+  return unreachedCore(scope, outE, blocked, blocks, true, opts.roots ?? NO_ROOTS);
 }
 
 /**
  * シナリオの推定: そのシナリオに入らない接続だけを通って届くノード（選ばれなかった分岐の先）を求める。
- * 入る線の無いノードと、どれか 1 本でもシナリオの道で届くノードは対象外
+ * 入る線の無いノードと、どれか 1 本でもシナリオの道で届くノードは対象外。roots は必ず入口にするノード（3 年の分かれ道の入口）
  */
-export function computeUnreached(doc: DocData, index: GraphIndex, scope: Set<ID>, isActive: (e: GEdge) => boolean): Set<ID> {
+export function computeUnreached(doc: DocData, index: GraphIndex, scope: Set<ID>, isActive: (e: GEdge) => boolean, roots: ReadonlySet<ID> = NO_ROOTS): Set<ID> {
   const outE = adjacency(doc, index, scope, () => true);
   const blocked = new Set<ID>();
   const blocks: Array<Block & { starts: ID[] }> = [];
@@ -199,7 +211,7 @@ export function computeUnreached(doc: DocData, index: GraphIndex, scope: Set<ID>
     }
   }
   if (blocks.length === 0) return new Set();
-  return unreachedCore(scope, outE, blocked, blocks, false).hidden;
+  return unreachedCore(scope, outE, blocked, blocks, false, roots).hidden;
 }
 
 /** 選んだノードの上流（そこへ至る道）と下流（そこから広がる未来）。循環しても止まる */
