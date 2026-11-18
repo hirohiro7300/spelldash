@@ -2465,14 +2465,14 @@ console.log("typing:");
     const head = typingHtml.slice(0, typingHtml.indexOf("</head>"));
     const kindLine = head.match(/<script>\(\(\) => \{ const K = \["en","ja","long"\];[^<]*<\/script>/)?.[0] ?? "";
     const sitemap = fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8");
-    // CSP（Batch 88）: script-src は 'self'・配る HTML の inline の script のハッシュ・https://esm.sh だけ（'unsafe-inline' なし）。この 1 行の本文のハッシュも入っている
+    // CSP（Batch 88・97）: script-src は 'self' と配る HTML の inline の script のハッシュだけ（'unsafe-inline'・外の配信元なし）。この 1 行の本文のハッシュも入っている
     // （1 字でも変えたら vercel.json のハッシュも直す: node scripts/lib/csp.mjs。全部の突き合わせは scripts/test-site-map.mjs の 8）
     const scriptSrc = (cspDirectives(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).find((d) => d.startsWith("script-src ")) ?? "").split(/\s+/);
     const kindBody = kindLine.replace(/^<script>/, "").replace(/<\/script>$/, "");
-    check("typing（P1）: head のインラインの 1 行が ?kind=・#long・spelldash_typing_kind を try の中で読んで html[data-typing-kind] に置く（外の script を足さない）、canonical と og:url は 1 つでパラメータなし、sitemap に ?kind= が無い、CSP の script-src は 'self' と https://esm.sh と inline の script のハッシュで 'unsafe-inline' なし・この 1 行のハッシュがある（Batch 88）",
+    check("typing（P1）: head のインラインの 1 行が ?kind=・#long・spelldash_typing_kind を try の中で読んで html[data-typing-kind] に置く（外の script を足さない）、canonical と og:url は 1 つでパラメータなし、sitemap に ?kind= が無い、CSP の script-src は 'self' と inline の script のハッシュだけで 'unsafe-inline'・外の配信元なし・この 1 行のハッシュがある（Batch 88・97）",
       kindLine.includes('get("kind")') && kindLine.includes('location.hash === "#long"') && kindLine.includes('localStorage.getItem("spelldash_typing_kind")') && kindLine.includes("try {") && kindLine.includes("document.documentElement.dataset.typingKind = k || \"en\"") &&
       (typingHtml.match(/rel="canonical"/g) ?? []).length === 1 && (typingHtml.match(/property="og:url"/g) ?? []).length === 1 && !/canonical"[^>]*\?kind/.test(typingHtml) &&
-      !sitemap.includes("kind=") && !sitemap.includes("#long") && scriptSrc[1] === "'self'" && scriptSrc.at(-1) === "https://esm.sh" && !scriptSrc.includes("'unsafe-inline'") && scriptSrc.includes(scriptHash(kindBody)) && !/<script[^>]+src=(?!"\/js\/areaGuard\.js")/.test(head),
+      !sitemap.includes("kind=") && !sitemap.includes("#long") && scriptSrc[1] === "'self'" && scriptSrc.length > 2 && scriptSrc.slice(2).every((t) => /^'sha256-[A-Za-z0-9+/]{43}='$/.test(t)) && scriptSrc.includes(scriptHash(kindBody)) && !/<script[^>]+src=(?!"\/js\/areaGuard\.js")/.test(head),
       kindLine.slice(0, 120));
   }
   // PR #166 のレビュー 6: 開く種類の読む順と値は head の inline の 1 行（CSP・速さのため残す）と js（typingPage.js の KINDS・KIND_KEY と js/typingKeys.js の
@@ -25236,6 +25236,11 @@ console.log("preview host (78.8):");
         const u = new URL(url);
         // 認証の部品の口は本物（手元のサーバーはスタブに替える）。Preview で部品もクラウドも呼ばないことを本物で見る
         if (u.pathname === "/js/supabase.js") return route.fulfill({ status: 200, contentType: "text/javascript", body: fs.readFileSync(path.join(ROOT, "js", "supabase.js"), "utf8") });
+        // 認証の部品は自分の配信から読む（Batch 97）: Preview はこの口も呼ばない（呼んだら外へ出たのと同じに数える）
+        if (u.pathname === "/api/auth-module") {
+          outside.push(url);
+          return route.abort();
+        }
         const response = await route.fetch({ url: BASE + u.pathname + u.search });
         return route.fulfill({ response });
       }
@@ -28119,6 +28124,11 @@ console.log("journey (86.1):");
       if (url.startsWith(PREVIEW + "/")) {
         const u = new URL(url);
         if (u.pathname === "/js/supabase.js") return route.fulfill({ status: 200, contentType: "text/javascript", body: fs.readFileSync(path.join(ROOT, "js", "supabase.js"), "utf8") });
+        // 認証の部品は自分の配信から読む（Batch 97）: Preview はこの口も呼ばない（呼んだら外へ出たのと同じに数える）
+        if (u.pathname === "/api/auth-module") {
+          outside.push(url);
+          return route.abort();
+        }
         const response = await route.fetch({ url: BASE + u.pathname + u.search });
         return route.fulfill({ response });
       }
@@ -29817,12 +29827,12 @@ console.log("guard (88.1):");
       await page.waitForLoadState("networkidle").catch(() => {});
       const inDoc = await page.evaluate(() => JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]")).catch(() => ["(読めない)"]);
       const src = scriptSrcOf(res?.headers()["content-security-policy"]);
-      rows.push({ p, visited: page.visited, hashOnly: src[0] === "'self'" && src.at(-1) === "https://esm.sh" && src.slice(1, -1).length > 0 && src.slice(1, -1).every((t) => t.startsWith("'sha256-")), csp: [...new Set([...page.csp, ...inDoc])], errs: page.errs });
+      rows.push({ p, visited: page.visited, hashOnly: src[0] === "'self'" && src.slice(1).length > 0 && src.slice(1).every((t) => t.startsWith("'sha256-")), csp: [...new Set([...page.csp, ...inDoc])], errs: page.errs });
       await closeCtx(page);
     }
     const bad = rows.filter((r) => !r.hashOnly || r.csp.length || r.errs.length);
     const moved = rows.filter((r) => r.visited.slice(1).includes("/?from=old")).map((r) => r.p);
-    check(`88.1 (3) 本物のヘッダーで ${PAGES.length} ページ（script-src は 'self'・inline の script のハッシュ・https://esm.sh だけで 'unsafe-inline' なし）: CSP の違反 0・ページのエラー 0（入口の門と案内で移った先も: ${moved.join("・")}）`,
+    check(`88.1 (3) 本物のヘッダーで ${PAGES.length} ページ（script-src は 'self' と inline の script のハッシュだけで 'unsafe-inline'・外の配信元なし。Batch 97）: CSP の違反 0・ページのエラー 0（入口の門と案内で移った先も: ${moved.join("・")}）`,
       bad.length === 0 && moved.includes("/battle.html") && moved.includes("/packs/ngsl01.html"), JSON.stringify(bad.slice(0, 3)));
   }
 
