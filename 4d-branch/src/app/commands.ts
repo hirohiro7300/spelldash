@@ -1,10 +1,11 @@
 // 操作（作成・接続・分岐・合流・削除…）。キャンバス・詳細・キーボード・右クリックはすべてここを呼ぶ
 
 import { NODE_TYPES, PROJECT_COLORS, RELATIONS, SCENARIO_COLORS, STATUSES } from "../model/constants";
+import { flowOuts, isFlowEdge, isImpactRoot } from "../model/forks";
 import { newId } from "../model/ids";
 import { childSpot, findFreeSpot, mergeSpot } from "../model/layout";
 import { makeCondition, makeEdge, makeNode, makeProject, makeScenario, normalizeTag } from "../model/schema";
-import type { GEdge, GNode, ID, NodeStatus, NodeType, Relation } from "../model/types";
+import type { GEdge, GNode, ID, Meta, NodeStatus, NodeType, Relation } from "../model/types";
 import type { Store } from "../store/store";
 import type { UiState } from "./uiState";
 import type { ViewModel } from "./viewModel";
@@ -18,6 +19,19 @@ export interface CommandHooks {
 }
 
 const CHILD_TYPE: Record<NodeType, NodeType> = { goal: "action", action: "result", branch: "action", result: "action" };
+
+/**
+ * 複製の写しに持たせない meta: 未来の道筋の入口・版・鍵・今のまま（base）・作ったときの文（t0・b0）と、線の作ったときの見込み・条件（p0・c0）。
+ * 写しが 2 つ目の入口になったり、版の差し替えで元のカードと取り違えられたりしないように
+ */
+const COPY_DROP_NODE = ["forecastRoot", "impact", "futureVersion", "futureRelease", "key", "base", "t0", "b0"];
+const COPY_DROP_EDGE = ["p0", "c0"];
+
+function without(meta: Meta, keys: string[]): Meta {
+  const out = { ...meta };
+  for (const k of keys) delete out[k];
+  return out;
+}
 
 export class Commands {
   constructor(
@@ -226,10 +240,13 @@ export class Commands {
 
   /**
    * すべての折りたたみを開く。3 年の分かれ道は見え方だけを開く（先のあるノードをすべて）。
-   * それ以外の折りたたんだノード・接続は文書を変える（元に戻せる）
+   * それ以外の折りたたんだノード・接続は文書を変える（元に戻せる）。
+   * 閲覧のみのタブで 3 年の分かれ道があれば、見え方だけを開き、文書には触れない（閲覧のみのお知らせも出さない）
    */
   expandAll(): void {
-    this.vm.setImpactOpen(this.vm.impactBranches());
+    const view = this.vm.impactBranches();
+    this.vm.setImpactOpen(view);
+    if (this.store.readOnly && view.length) return;
     const ns = Object.values(this.doc.nodes).filter((n) => n.collapsed && !this.vm.inImpact(n.id));
     const es = Object.values(this.doc.edges).filter((e) => e.collapsed);
     if (!ns.length && !es.length) return;
@@ -253,18 +270,61 @@ export class Commands {
 
   private fixedNoticeShown = false;
 
+  /**
+   * 消す。3 年の分かれ道のカードを消すときは、その先だけにあるカード（消した後はどの入口からも届かない物）も一緒に消す
+   * （残すと全部開いた形の遠い位置にふつうのカードとして散らばる）。範囲の外のノードは今までどおり。元に戻すと全部戻る
+   */
   deleteNodes(ids: ID[], edges: ID[] = []): void {
     const ns = ids.filter((id) => this.doc.nodes[id]);
     const es = edges.filter((id) => this.doc.edges[id]);
     if (!ns.length && !es.length) return;
-    const label = ns.length ? (ns.length === 1 ? `「${this.doc.nodes[ns[0]!]!.title || "無題"}」を削除` : `${ns.length} 件のノードを削除`) : es.length === 1 ? "接続を削除" : `${es.length} 本の接続を削除`;
-    const ok = this.store.transact(label, (tx) => {
+    const extra = this.impactOrphans(ns, es);
+    const what = ns.length ? (ns.length === 1 ? `「${this.doc.nodes[ns[0]!]!.title || "無題"}」を削除` : `${ns.length} 件のノードを削除`) : es.length === 1 ? "接続を削除" : `${es.length} 本の接続を削除`;
+    const more = extra.length ? `（この先の ${extra.length.toLocaleString("ja-JP")} 件も）` : "";
+    const ok = this.store.transact(what + more, (tx) => {
       es.forEach((id) => tx.deleteEdge(id));
       ns.forEach((id) => tx.deleteNode(id));
+      extra.forEach((id) => tx.deleteNode(id));
     });
     if (!ok) return;
     this.ui.clearSelection();
-    this.hooks.toast(`${label}しました`, { action: this.undoAction() });
+    this.hooks.toast(`${what}しました${more}`, { action: this.undoAction() });
+  }
+
+  /**
+   * 3 年の分かれ道のカード ns（と接続 es）を消すと、どの入口からも届かなくなるカード（ns の先だけにある物。ns は含めない）。
+   * ns に範囲のカードが無ければ空
+   */
+  private impactOrphans(ns: ID[], es: ID[]): ID[] {
+    const seeds = ns.filter((id) => this.vm.inImpact(id));
+    if (!seeds.length) return [];
+    const doc = this.doc;
+    const out = this.vm.index.out;
+    const gone = new Set(ns);
+    // 消すカードの先（道の線でたどれる物）
+    const below = new Set<ID>();
+    const stack = [...seeds];
+    while (stack.length) {
+      for (const e of flowOuts(doc, out, stack.pop()!)) {
+        if (gone.has(e.target) || below.has(e.target)) continue;
+        below.add(e.target);
+        stack.push(e.target);
+      }
+    }
+    if (!below.size) return [];
+    // 消した後も入口から届く物は残す（別の選択肢からも合流する物など）
+    const goneE = new Set(es);
+    const reach = new Set<ID>();
+    const queue: ID[] = [];
+    for (const id in doc.nodes) if (!gone.has(id) && isImpactRoot(doc.nodes[id])) (reach.add(id), queue.push(id));
+    while (queue.length) {
+      for (const e of flowOuts(doc, out, queue.pop()!)) {
+        if (goneE.has(e.id) || gone.has(e.target) || reach.has(e.target)) continue;
+        reach.add(e.target);
+        queue.push(e.target);
+      }
+    }
+    return [...below].filter((id) => !reach.has(id));
   }
 
   deleteSelection(): void {
@@ -281,12 +341,12 @@ export class Commands {
       map.set(n.id, id);
       // 写しは見えている位置の近くに（3 年の分かれ道のカードは重ねる位置。文書の位置は全部開いた形の所で遠い）
       const at = this.vm.hasOverlay(n.id) ? this.vm.posOf(n.id)! : n;
-      return makeNode({ ...n, id, x: at.x + 40, y: at.y + 40, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: { ...n.meta } });
+      return makeNode({ ...n, id, x: at.x + 40, y: at.y + 40, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: without(n.meta, COPY_DROP_NODE) });
     });
     const inner = Object.values(this.doc.edges).filter((e) => map.has(e.source) && map.has(e.target));
     const ok = this.store.transact(nodes.length === 1 ? "複製" : `${nodes.length} 件を複製`, (tx) => {
       copies.forEach((c) => tx.addNode(c));
-      inner.forEach((e) => tx.addEdge(makeEdge({ ...e, id: newId("e"), source: map.get(e.source)!, target: map.get(e.target)!, createdAt: undefined, updatedAt: undefined })));
+      inner.forEach((e) => tx.addEdge(makeEdge({ ...e, id: newId("e"), source: map.get(e.source)!, target: map.get(e.target)!, createdAt: undefined, updatedAt: undefined, meta: without(e.meta, COPY_DROP_EDGE) })));
     });
     if (!ok) return [];
     this.ui.select(copies.map((c) => c.id));
@@ -326,6 +386,8 @@ export class Commands {
 
   /** sources のそれぞれから target へつなぐ（同じ向きがすでにあれば飛ばす） */
   connect(sources: ID[], target: ID, relation?: Relation): ID[] {
+    // 3 年の分かれ道のカードから道の線でつなぐと範囲に入るかもしれないノード（線の先からたどれる、今は範囲の外の物）
+    const outside = this.doc.nodes[target] && !this.vm.inImpact(target) && sources.some((s) => this.vm.inImpact(s)) ? this.flowReach(target).filter((id) => !this.vm.inImpact(id)) : [];
     const created: ID[] = [];
     this.store.transact(sources.length > 1 ? `${sources.length} 本を接続` : "接続", (tx) => {
       for (const s of sources) {
@@ -335,8 +397,31 @@ export class Commands {
       }
     });
     if (created.length === 0) this.hooks.toast("すでにつながっています");
-    else if (created.length === 1) this.ui.select([], created);
+    else {
+      // 3 年の分かれ道のカードから道の線を引いたら、そのカードを見え方で開く（閉じたままだと線とその先が隠れる。文書の collapsed は使わない）。
+      // その線で範囲に入った自分のノードは、文書で開いていた物を見え方でも開く（つないだだけで、見えていた先が隠れないように）
+      const open = created.map((id) => this.doc.edges[id]).filter((e): e is GEdge => !!e && isFlowEdge(e) && this.vm.inImpact(e.source)).map((e) => e.source);
+      for (const id of outside) if (this.vm.inImpact(id) && !this.doc.nodes[id]?.collapsed) open.push(id);
+      if (open.length) this.vm.setImpactOpen(open);
+      if (created.length === 1) this.ui.select([], created);
+    }
     return created;
+  }
+
+  /** id から道の線（進む・条件付き）でたどれるノード（id を含む） */
+  private flowReach(id: ID): ID[] {
+    const doc = this.doc;
+    const out = this.vm.index.out;
+    const seen = new Set<ID>([id]);
+    const stack = [id];
+    while (stack.length) {
+      for (const e of flowOuts(doc, out, stack.pop()!)) {
+        if (seen.has(e.target)) continue;
+        seen.add(e.target);
+        stack.push(e.target);
+      }
+    }
+    return [...seen];
   }
 
   updateEdge(id: ID, patch: Partial<GEdge>, opts: { label?: string; coalesce?: string } = {}): void {
