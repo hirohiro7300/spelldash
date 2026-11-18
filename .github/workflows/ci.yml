@@ -160,13 +160,13 @@ jobs:
       - name: Chromiumインストール
         run: npx playwright-core install --with-deps chromium
 
-      # E2E 78.7 の本物の認証の部品の検査（固定の版 2.118.0）が使う束。リポジトリには入れず、oldtab のジョブと同じ控えから戻し、
+      # E2E 78.7 と 97.1 の本物の認証の部品の検査（固定の版 2.118.0）が使う束。リポジトリには入れず、oldtab のジョブと同じ控えから戻し、
       # tests/oldtab/lib/authLib.mjs が確かめて置く（控えが無ければ登録所から作り、固定の値で確かめる）。組の前に 1 回だけ
       - name: 認証の部品の置き場を控えから戻す（oldtab のジョブと同じ鍵）
         uses: actions/cache/restore@v4
         with:
           path: tests/oldtab/.cache/auth-lib
-          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs') }}
+          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs', 'api/_lib/authModule.js') }}
 
       - name: 認証の部品を置き場に用意する（控えの写しを確かめて使う。無ければ登録所から作る）
         run: node tests/oldtab/lib/authLib.mjs --version 2.118.0
@@ -215,7 +215,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: tests/oldtab/.cache/auth-lib
-          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs') }}
+          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs', 'api/_lib/authModule.js') }}
 
       - name: 認証の部品（固定の版 2.118.0・2.105.0）を登録所から取り直して作り、固定の値と同じか（控えの写しとも 1 バイトも違わないか）
         run: node tests/oldtab/lib/authLib.mjs --check
@@ -230,6 +230,9 @@ jobs:
         with:
           path: tests/oldtab/.cache/auth-lib
           key: ${{ steps.oldtab-auth-lib.outputs.cache-primary-key }}
+
+      - name: 配信の関数の作り方（api/_lib/authModule.js）で本物の登録所から作り、固定の値と同じか・旧タブの証明の写しと束が 1 バイトも違わないか・モジュールとして読めるか
+        run: node scripts/test-auth-module.mjs --live
 
       - name: 漏れと後退の判定の確かめ（作った記録で。ブラウザなし）
         run: node tests/oldtab/test-analyze.mjs
