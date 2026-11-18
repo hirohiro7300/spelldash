@@ -1291,7 +1291,7 @@ export class App implements AppContext {
         // 入れ替える前に見ていた未来の道筋の今日の位置（同じ所にまだあるなら、見ている場所はそのままにする）
         const rootAt = (d: DocData) => {
           const r = Object.values(d.nodes).find((n) => n.meta?.forecastRoot === true);
-          return r ? { x: r.x, y: r.y } : null;
+          return r ? { x: r.x, y: r.y, v: r.meta?.futureVersion } : null;
         };
         const hadRoot = rootAt(this.store.doc);
         const idBefore = this.store.doc.id;
@@ -1323,7 +1323,9 @@ export class App implements AppContext {
         const nowRoot = rootAt(this.store.doc);
         const nowMap = !!nowRoot;
         const sameMap = !!nowRoot && !!hadRoot && (this.store.doc.id === idBefore || (nowRoot.x === hadRoot.x && nowRoot.y === hadRoot.y));
-        if (how !== "remote" || (yielding && !sameMap) || (wasDisposable && !hadRoot && nowMap)) {
+        // 別の端末で未来の道筋が新しい版に差し替わった（版の印が変わった）なら、新しい地図として今日から見せる
+        const newVersion = !!nowRoot && !!hadRoot && nowRoot.v !== hadRoot.v;
+        if (how !== "remote" || (yielding && !sameMap) || (wasDisposable && !hadRoot && nowMap) || newVersion) {
           this.view.fit(nowMap ? nearFutureRoot(this.store.doc) : undefined, { animate: false, minZoom: nowMap ? FUTURE_MIN_ZOOM : undefined });
         }
         void this.refreshLastBackup();
