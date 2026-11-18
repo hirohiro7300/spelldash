@@ -38,6 +38,8 @@ export interface ImpactAltX {
   h: number;
   base?: 1;
   todo?: string[];
+  /** やることの元にした、やりたいことリストの番号 */
+  cites?: string[];
   /** 何か月の期間か */
   len: number;
 }
@@ -194,7 +196,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
         time: { due: monthDate(today, m + ax.len), start: monthDate(today, m) },
         projectIds: area === "base" ? all : [AREAS[area].id],
         conditions: (ax.todo ?? []).map((t, k) => ({ ...makeCondition(t, false), id: `c_${ids[i]!.slice(4)}_${k}` })),
-        meta: { fork: "chance", m, ak: ax.k, fam: kind?.[2] ?? ax.k, h: ax.h, ...(ax.base ? { base: true } : {}), rank: rankOf.get(i) ?? 0, short, key },
+        meta: { fork: "chance", m, ak: ax.k, fam: kind?.[2] ?? ax.k, h: ax.h, ...(ax.base ? { base: true } : {}), ...(ax.cites?.length ? { cites: ax.cites } : {}), rank: rankOf.get(i) ?? 0, short, key },
       });
     } else {
       const ox = x as ImpactOutX;

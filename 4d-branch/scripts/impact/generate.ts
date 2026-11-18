@@ -14,14 +14,14 @@ export interface GenerateResult {
   warnings: string[];
 }
 
-export function generate(world: World, texts: Record<string, Record<string, unknown>>, opts: { annual?: number } = {}): GenerateResult {
+export function generate(world: World, texts: Record<string, import("./bundle").WriterText>, opts: { annual?: number } = {}): GenerateResult {
   const annual = opts.annual ?? world.annual;
   const S = annual / 12;
   const full = expand(world, S);
   const sel = select(world, full, S);
   const tree = prune(full, sel.shown, S);
   const bundle = buildBundle(world, tree, texts, annual);
-  const { failures, warnings, report } = runChecks(world, tree, bundle, sel, full);
+  const { failures, warnings, report } = runChecks(world, tree, bundle, sel, full, texts as Record<string, import("./bundle").WriterText>);
   return { bundle, report, failures, warnings };
 }
 

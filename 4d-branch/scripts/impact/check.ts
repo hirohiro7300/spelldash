@@ -7,20 +7,64 @@ import { computeForecast } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
 import { computeImpact } from "../../src/model/impact";
 import { impactBin } from "../../src/model/impactFormat";
-import { rollback } from "./bundle";
+import { rollback, type WriterText } from "./bundle";
 import { shortWidth } from "./templates";
 import { edgeW, familyOf, select, type Selection, type TNode } from "./tree";
 import type { World } from "./sim";
 
 const len = (s: string) => [...s].length;
 
-export function runChecks(w: World, tree: TNode, b: ImpactBundle, sel: Selection, full: TNode): { failures: string[]; warnings: string[]; report: string } {
+/** 書き手の文章に数字を書いてよい形（それ以外の数字は差し込み {cl} などで入れる） */
+const ALLOWED_NUM = [/980 円/g, /週 10 時間/g, /52 時間/g, /20[2-3]\d ?年/g, /\d{1,2} ?月/g, /[1-9] ?か月/g, /[1-3] ?年/g, /週 4 日/g, /[1-3] ?社目/g, /40 席/g, /GA4/g, /[1-3] ?回/g, /[1-5] ?つ/g, /[1-9] ?件/g, /0 円/g];
+
+/** 書き手の文章の点検（数字・言葉・状態と合わない言い方） */
+export function checkWriterText(w: World, tree: TNode, texts: Record<string, WriterText>): string[] {
+  const out: string[] = [];
+  const byKey = new Map<string, TNode>();
+  const walk = (n: TNode) => {
+    byKey.set(n.key, n);
+    for (const k of n.kids) walk(k);
+  };
+  walk(tree);
+  for (const [key, t] of Object.entries(texts)) {
+    const n = byKey.get(key);
+    if (!n) continue;
+    const parts = [t.title, t.short, t.body, t.label, ...(t.todo ?? []).map((x) => (typeof x === "string" ? x : x[0]))].filter((x): x is string => typeof x === "string");
+    for (const raw of parts) {
+      let rest = raw.replace(/\{(cl|ads|pu|mau|sal|h)\}/g, "");
+      for (const re of ALLOWED_NUM) rest = rest.replace(re, "");
+      if (/[0-9０-９]/.test(rest)) out.push(`T2 数字を直接書いている: ${key}「${raw}」`);
+      if (/[%％Δ]/.test(raw)) out.push(`T2 % や差を書いている: ${key}「${raw}」`);
+      if (/(上|下|右|左)の(カード|選択肢|結果|手)/.test(raw)) out.push(`T2 位置の言葉: ${key}「${raw}」`);
+      if (/(です|ます|ください)[。、」]?$|(です|ます)。/.test(raw)) out.push(`T2 敬語: ${key}「${raw}」`);
+      if (/気持ち/.test(raw)) out.push(`T2 気持ちの言葉: ${key}「${raw}」`);
+    }
+    if (n.role === "s" || n.role === "e") {
+      const st = n.st;
+      const body = `${t.title ?? ""} ${t.body ?? ""}`;
+      const ban: Array<[boolean, RegExp, string]> = [
+        [st.j === "e", /辞めた|退職した|独立した/, "会社員なのに辞めた・独立した"],
+        [st.j === "i", /会社員として|本業で/, "独立しているのに会社員・本業"],
+        [st.pm === "n", /副業の顧客|1 社目が決まった/, "副業不可なのに副業の顧客"],
+        [st.pro === 0, /有料会員|Pro の売上/, "Pro 前なのに有料会員"],
+        [st.cl < 0.5, /顧客から|請求書/, "顧客がいないのに顧客から"],
+        [st.j !== "p", /週 4 日勤務になった|週 4 日で働/, "週 4 日でないのに週 4 日"],
+      ];
+      for (const [cond, re, why] of ban) if (cond && re.test(body)) out.push(`T3 状態と合わない（${why}）: ${key}`);
+    }
+  }
+  void w;
+  return out;
+}
+
+export function runChecks(w: World, tree: TNode, b: ImpactBundle, sel: Selection, full: TNode, texts: Record<string, WriterText> = {}): { failures: string[]; warnings: string[]; report: string } {
   void full;
   void select;
   const failures: string[] = [];
   const warnings: string[] = [];
   const fail = (m: string) => failures.length < 200 && failures.push(m);
   const warn = (m: string) => warnings.length < 200 && warnings.push(m);
+  for (const m of checkWriterText(w, tree, texts)) fail(m);
   const N = b.nodes;
   // ---- 形
   const kids = N.map(() => [] as number[]);

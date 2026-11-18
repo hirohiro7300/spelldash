@@ -8,13 +8,32 @@ import { edgeW, type TNode } from "./tree";
 
 export type { ImpactBundle };
 
-/** 書き手の文章（鍵ごと）: タイトル・短い名前・本文・結果の名前・やること */
+/** 書き手の文章（鍵ごと）: タイトル・短い名前・本文・結果の名前・やること（やりたいことリストの番号つき） */
 export interface WriterText {
   title?: string;
   short?: string;
   body?: string;
   label?: string;
-  todo?: string[];
+  todo?: Array<string | [string, string]>;
+}
+
+/**
+ * 書き手の文章の差し込み（数は状態から入れる。書き手は数を書かない）:
+ * {cl} 顧客の社数・{ads} 広告運用の月の売上（万円）・{pu} 有料会員・{mau} 遊ぶ人（月）・{sal} 給与の倍率・{h} 週の時間の増減
+ */
+export function fillPlaceholders(text: string, s: St, hours: number): string {
+  const n0 = (x: number) => Math.round(x).toLocaleString("ja-JP");
+  const man = (x: number) => {
+    const v = Math.round(x * 10) / 10;
+    return Number.isInteger(v) ? `${v}` : v.toFixed(1);
+  };
+  return text
+    .replace(/\{cl\}/g, n0(s.cl))
+    .replace(/\{ads\}/g, man(s.cl * s.fee))
+    .replace(/\{pu\}/g, n0(s.pu))
+    .replace(/\{mau\}/g, n0(s.mau))
+    .replace(/\{sal\}/g, (Math.round(s.sal * 100) / 100).toFixed(2))
+    .replace(/\{h\}/g, `${hours >= 0 ? "+" : "−"}${Math.abs(hours)}`);
 }
 
 export function stOut(s: St): ImpactSt {
@@ -41,13 +60,26 @@ export function buildBundle(w: World, tree: TNode, texts: Record<string, WriterT
   const visit = (n: TNode, parent: number) => {
     const i = nodes.length;
     const base = textFor(w, n);
-    const t = { ...base, ...(texts[n.key] ?? {}) };
+    const over = texts[n.key] ?? {};
+    const hours = n.role === "a" ? w.kinds[n.kind!]!.hours : 0;
+    const fill = (x: string | undefined) => (x === undefined ? undefined : fillPlaceholders(x, n.st, hours));
+    const todo = over.todo?.map((t) => (typeof t === "string" ? t : t[0]));
+    const cites = over.todo?.flatMap((t) => (typeof t === "string" ? [] : [t[1]]));
+    const t = {
+      ...base,
+      ...(over.title !== undefined ? { title: fill(over.title)! } : {}),
+      ...(over.short !== undefined ? { short: over.short } : {}),
+      ...(over.body !== undefined ? { body: fill(over.body)! } : {}),
+      ...(over.label !== undefined ? { label: over.label } : {}),
+      ...(todo ? { todo } : {}),
+    } as { title: string; short: string; body: string; label?: string; todo?: string[] };
     let x: ImpactRootX | ImpactAltX | ImpactOutX;
     if (n.role === "r") x = { st: stOut(n.st), rr: runRate(w, n.st) };
     else if (n.role === "a") {
       const ax: ImpactAltX = { k: n.kind!, h: w.kinds[n.kind!]!.hours, len: w.stages[n.stage]!.len };
       if (n.kind === "keep") ax.base = 1;
       if (t.todo?.length) ax.todo = t.todo;
+      if (cites?.length) ax.cites = cites;
       x = ax;
     } else {
       const o = n.out!;
