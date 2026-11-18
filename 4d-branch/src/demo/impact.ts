@@ -70,6 +70,8 @@ export interface ImpactBundle {
   horizon: number;
   /** 手の種類: [名前, 領域, まとまり, シナリオ] */
   kinds: Record<string, [string, "sd" | "fc" | "ind" | "base", string, string[]]>;
+  /** まとまり（手の種類の family。カードの meta.fam）の名前。入口の meta.fams に入れ、概要の順位の行に出す（古い同梱データには無い） */
+  fams?: Record<string, string>;
   premises: string[];
   nodes: ImpactBNode[];
   check: {
@@ -218,7 +220,7 @@ export function buildImpactDoc(b: ImpactBundle, today = new Date(), version = ""
         type: "goal",
         time: { due: monthDate(today, 0), start: null },
         projectIds: all,
-        meta: { forecastRoot: true, futureVersion: version, ...(release !== undefined ? { futureRelease: release } : {}), impact: { v: 2, horizon: b.horizon }, fork: "decision", m: 0, short, st: rx.st, rr: rx.rr, key, ...prints },
+        meta: { forecastRoot: true, futureVersion: version, ...(release !== undefined ? { futureRelease: release } : {}), impact: { v: 2, horizon: b.horizon }, fork: "decision", m: 0, short, st: rx.st, rr: rx.rr, key, ...prints, ...(b.fams ? { fams: { ...b.fams } } : {}) },
       });
     } else if (role === "a") {
       const ax = x as ImpactAltX;

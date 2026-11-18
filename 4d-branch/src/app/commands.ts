@@ -21,10 +21,10 @@ export interface CommandHooks {
 const CHILD_TYPE: Record<NodeType, NodeType> = { goal: "action", action: "result", branch: "action", result: "action" };
 
 /**
- * 複製の写しに持たせない meta: 未来の道筋の入口・版・鍵・今のまま（base）・作ったときの文（t0・b0）と、線の作ったときの見込み・条件（p0・c0）。
- * 写しが 2 つ目の入口になったり、版の差し替えで元のカードと取り違えられたりしないように
+ * 複製の写しに持たせない meta: 未来の道筋の入口・版・鍵・今のまま（base）・作ったときの文（t0・b0）・入口の手の種類の名前（fams）と、
+ * 線の作ったときの見込み・条件（p0・c0）。写しが 2 つ目の入口になったり、版の差し替えで元のカードと取り違えられたりしないように
  */
-const COPY_DROP_NODE = ["forecastRoot", "impact", "futureVersion", "futureRelease", "key", "base", "t0", "b0", "k0"];
+const COPY_DROP_NODE = ["forecastRoot", "impact", "futureVersion", "futureRelease", "key", "base", "t0", "b0", "k0", "fams"];
 const COPY_DROP_EDGE = ["p0", "c0"];
 
 function without(meta: Meta, keys: string[]): Meta {

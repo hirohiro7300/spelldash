@@ -307,13 +307,39 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     cmd.updateNode(root.id, { meta: { ...root.meta, impact: { ...(root.meta.impact as object), annual: 540 } } });
     const [dup] = cmd.duplicate([root.id]);
     const d0 = store.doc.nodes[dup!]!;
-    for (const k of ["forecastRoot", "impact", "key", "futureVersion", "futureRelease", "t0", "b0", "k0"]) expect(d0.meta[k]).toBeUndefined();
+    for (const k of ["forecastRoot", "impact", "key", "futureVersion", "futureRelease", "t0", "b0", "k0", "fams"]) expect(d0.meta[k]).toBeUndefined();
     expect(primaryImpactRoot(store.doc)).toBe(root.id);
     const res = swapFutureDoc(store.doc, nextDoc());
     expect(res.doc.nodes[dup!]?.title).toBe(d0.title);
     expect(res.doc.nodes[dup!]!.meta.forecastRoot).toBeUndefined();
     expect(Object.values(res.doc.nodes).filter((n) => n.meta.forecastRoot === true).map((n) => n.id)).toEqual([root.id]);
     expect(annualOf(res.doc.nodes[root.id]!)).toBe(540);
+  });
+
+  it("入口の手の種類の名前（meta.fams）は新しい版の物になる（名前の無い前の版の地図にも入る。年収は残る）", () => {
+    const u = edited();
+    // 名前を持つ前の版で読み込んだ地図（入口に meta.fams が無い）
+    const root0 = u.doc.nodes[u.root]!;
+    const { fams: _f, ...meta0 } = root0.meta;
+    const old: DocData = { ...u.doc, nodes: { ...u.doc.nodes, [u.root]: { ...root0, meta: meta0 } } };
+    const third = nextBundle((b) => {
+      b.fams = { ...b.fams!, side: "広告運用の副業（次の版）" };
+    });
+    const res = swapFutureDoc(old, mapOf(third, "third", futureRelease() + 2));
+    const root = res.doc.nodes[u.root]!;
+    expect(res.inPlace).toBe(true);
+    expect(root.meta.fams).toEqual(third.fams);
+    expect(annualOf(root)).toBe(540);
+    // 名前のある地図も、新しい版の名前に（入口は更新したカードに数える）
+    const again = swapFutureDoc(res.doc, mapOf(next, "next-version", futureRelease() + 3));
+    expect(again.doc.nodes[u.root]!.meta.fams).toEqual(next.fams);
+    expect((again.doc.nodes[u.root]!.meta.fams as Record<string, string>).side).not.toBe(third.fams!.side);
+    // 入れ替え（v1 の地図）でも、新しい版の入口の名前
+    const v1 = createEmptyDoc();
+    v1.nodes.n_f_S0 = makeNode({ id: "n_f_S0", title: "今日", x: 0, y: 0, meta: { forecastRoot: true, futureVersion: "v1" } });
+    const swapped = swapFutureDoc(v1, mapOf(third, "third", futureRelease() + 2));
+    expect(swapped.inPlace).toBe(false);
+    expect(swapped.doc.nodes[swapped.root!]!.meta.fams).toEqual(third.fams);
   });
 
   it("同じ版を当てても何も変わらない（ID も文章も見込みも）", () => {

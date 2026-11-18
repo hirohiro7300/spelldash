@@ -2,6 +2,7 @@
 //   「3 年でやる価値が大きい手」: 手の種類ごとに、その種類の手を 3 年間ずっと使わない場合と比べた差（おすすめの選び方の 3 年の稼ぎ）
 //   「避けたい手」: 出てくる所の差（今のままと比べた差）を、その道で来る見込みで重み付けした平均が −15 万円以下の種類
 //   「この先の大事な判断」: 今日より後の判断を、おすすめの選び方で来る見込み × 一番良い手と今のままの差の順に
+// 手の種類の名前は、同梱の地図の入口の meta.fams（{ 種類: 名前 }。scripts/impact/world.json の familyLabels）
 
 import type { ForecastResult } from "./forecast";
 import type { ImpactResult } from "./impact";
@@ -77,8 +78,13 @@ function instancesByFam(doc: DocData, imp: ImpactResult, fc: ForecastResult | nu
   return by;
 }
 
+export interface WorthRanking {
+  worth: WorthRow[];
+  avoid: AvoidRow[];
+}
+
 /** 「3 年でやる価値が大きい手」と「避けたい手」 */
-export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): { worth: WorthRow[]; avoid: AvoidRow[] } {
+export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): WorthRanking {
   if (!imp.active) return { worth: [], avoid: [] };
   const by = instancesByFam(doc, imp, fc);
   const worth: WorthRow[] = [];
@@ -98,6 +104,45 @@ export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult
   worth.sort((a, b) => b.k - a.k || (a.fam < b.fam ? -1 : 1));
   avoid.sort((a, b) => a.mean - b.mean || (a.fam < b.fam ? -1 : 1));
   return { worth, avoid: avoid.slice(0, 3) };
+}
+
+const worthCache = new WeakMap<ImpactResult, WorthRanking>();
+
+/**
+ * worthRanking を 3 年の影響の結果（imp）ごとに覚えておく（同梱の地図で 20 ms ほど。概要を作り直すたびには計算しない）。
+ * 使う物（手の種類・プロジェクト・つなぎ方・見込み %・方針）が変わると imp が新しくなるので、imp が同じなら結果も同じ。
+ * doc・fc は imp を計算したときの物（題名だけの変更で新しくなった物でもよい）を渡す
+ */
+export function cachedWorthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): WorthRanking {
+  let hit = worthCache.get(imp);
+  if (!hit) {
+    hit = worthRanking(doc, imp, fc);
+    worthCache.set(imp, hit);
+  }
+  return hit;
+}
+
+/** 入口の meta.fams（手の種類 → 名前）。無ければ空 */
+function famLabelsOf(doc: DocData, rootId: ID | null): Record<string, unknown> {
+  const fams = rootId ? doc.nodes[rootId]?.meta?.fams : undefined;
+  return fams && typeof fams === "object" && !Array.isArray(fams) ? (fams as Record<string, unknown>) : {};
+}
+
+/**
+ * 手の種類の名前: 入口（今日）の meta.fams にあればその名前、無ければ出てくる所の最初のカードの題名、それも無ければ種類の ID
+ * （名前を持たない古い版の地図・自分で足した種類でも、何か読める物を出す）
+ */
+export function famLabel(doc: DocData, rootId: ID | null, fam: string, instances: readonly ID[]): string {
+  const named = famLabelsOf(doc, rootId)[fam];
+  if (typeof named === "string" && named.trim()) return named.trim();
+  const title = instances.length ? doc.nodes[instances[0]!]?.title.trim() : "";
+  return title || fam;
+}
+
+/** 手の種類の名前を入口の meta.fams から出したか（false なら、最初のカードの題名か ID） */
+export function hasFamLabel(doc: DocData, rootId: ID | null, fam: string): boolean {
+  const named = famLabelsOf(doc, rootId)[fam];
+  return typeof named === "string" && !!named.trim();
 }
 
 /** 「この先の大事な判断」（今日の判断を除く。おすすめの選び方で来る見込み × 差の大きい順） */

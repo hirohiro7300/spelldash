@@ -116,6 +116,12 @@ export function buildBundle(w: World, tree: TNode, texts: Record<string, WriterT
   const S = annual / 12;
   const kinds: ImpactBundle["kinds"] = {};
   for (const [k, d] of Object.entries(w.kinds)) kinds[k] = [d.label, d.area, d.family, d.scen];
+  // 手の種類（まとまり）の名前: 使っているまとまりだけ（名前の無いまとまりは点検で失敗にする）
+  const fams: Record<string, string> = {};
+  for (const d of Object.values(w.kinds)) {
+    const label = w.familyLabels?.[d.family];
+    if (label && !(d.family in fams)) fams[d.family] = label;
+  }
   const keepQ = rollback(tree.kids.find((a) => a.kind === "keep")!, S, false);
   const rootDelta: Record<string, number> = {};
   for (const a of tree.kids) rootDelta[a.kind!] = Math.round((rollback(a, S, false) - keepQ) * 100) / 100;
@@ -135,6 +141,7 @@ export function buildBundle(w: World, tree: TNode, texts: Record<string, WriterT
     annual,
     horizon: w.horizon,
     kinds,
+    fams,
     premises: w.premises,
     nodes,
     check: { annual, vRoot: Math.round(rollback(tree, S, false) * 100) / 100, vSQ: Math.round(rollback(tree, S, true) * 100) / 100, rootDelta, counts },
