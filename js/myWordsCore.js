@@ -234,15 +234,24 @@ const BULK_ARROW_EDGE = /^(?:→|⇒|=>|->)\s*|\s*(?:→|⇒|=>|->)$/g; // 行�
 // まとめて足すの区切りの印（Batch 96）: 全角「：＝／；｜（，」・ASCII「: = / ; | (」・「 - 」を行の頭から順に見る。
 // 印より前が英語として使える形（checkEnText）で、印の後（空白は飛ばす）の 1 字目が日本語の字
 // （ASCII でも全角の英数字・記号〔U+FF01〜U+FF5E〕でもない字）のときだけ、そこで分ける。開き括弧の印は、
-// 後の終わりが閉じ括弧なら両方を外し、そうでなければ開き括弧を訳に残す（括弧の組を壊さない）。当たらなければ前の分け方のまま
+// 後の終わりの閉じ括弧がその組なら両方を外し、そうでなければ開き括弧を訳に残す（括弧の組を壊さない）。当たらなければ前の分け方のまま
 const BULK_MARKS = / - |[：＝／；｜（，:=/;|(]/g;
+// 開き括弧の印の後で、その組の閉じ括弧の位置（深さで数える。無ければ -1）
+function closeOf(s) {
+  let depth = 1;
+  for (let i = 0; i < s.length; i++) {
+    if ("(（".includes(s[i])) depth++;
+    else if (")）".includes(s[i]) && --depth === 0) return i;
+  }
+  return -1;
+}
 function splitAtMark(text) {
   for (const m of text.matchAll(BULK_MARKS)) {
     const left = text.slice(0, m.index).trim();
     let right = text.slice(m.index + m[0].length).trim();
     if (!right || !checkEnText(left).ok) continue;
     if (!/^[^\x00-\x7f！-～]/.test(right)) continue;
-    if (m[0] === "(" || m[0] === "（") right = /[)）]$/.test(right) ? right.slice(0, -1).trim() : `${m[0]}${right}`;
+    if ("(（".includes(m[0])) right = closeOf(right) === right.length - 1 ? right.slice(0, -1).trim() : `${m[0]}${right}`;
     if (right) return { en: left, ja: right };
   }
   return null;
