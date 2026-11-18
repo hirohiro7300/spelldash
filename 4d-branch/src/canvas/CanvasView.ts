@@ -442,25 +442,18 @@ export class CanvasView {
         if (Math.hypot(w.x - (p.x - HALF_W), w.y - p.y) <= r) return { kind: "port", node: id, side: "in" };
       }
     }
-    if (lod === "full" || lod === "compact") {
-      const k = badgeScale(z);
+    const badges = lod === "full" || lod === "compact";
+    const k = badgeScale(z);
+    // 描いた印（の周り 2px）
+    const hw = (BADGE_W * k) / 2 + 2 / z;
+    const hh = (BADGE_H * k) / 2 + 2 / z;
+    if (badges) {
       for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
         const id = this.vm.drawNodes[i]!;
         if (!this.badgeVisible(id, lod)) continue;
         const p = this.pos(id);
         const c = badgeCenter(p.x, p.y);
-        let hw = (BADGE_W * k) / 2 + 2 / z;
-        let hh = (BADGE_H * k) / 2 + 2 / z;
-        let cy = c.y;
-        if (this.vm.inImpact(id)) {
-          // 指でも押せる大きさ（画面で 44px 以上）。下の縁から下へは、次の行のカードの手前（行の間 32）まで。足りない分は上（カードの中）へ広げる
-          hw = Math.max(hw, BADGE_TOUCH_PX / 2 / z);
-          const half = Math.max(hh, BADGE_TOUCH_PX / 2 / z);
-          const down = Math.min(half, Math.max(hh, IMPACT_ROW - HALF_H * 2));
-          cy = c.y + down - half;
-          hh = half;
-        }
-        if (Math.abs(w.x - c.x) <= hw && Math.abs(w.y - cy) <= hh) return { kind: "badge", node: id };
+        if (Math.abs(w.x - c.x) <= hw && Math.abs(w.y - c.y) <= hh) return { kind: "badge", node: id };
       }
     }
     for (const b of this.stubBoxes) if (w.x >= b.x && w.x <= b.x + b.w && w.y >= b.y && w.y <= b.y + b.h) return { kind: "stub", edge: b.id };
@@ -468,6 +461,19 @@ export class CanvasView {
       const id = this.vm.drawNodes[i]!;
       const p = this.pos(id);
       if (inNode(p.x, p.y, w.x, w.y, lod === "dot" ? 4 / z : 0)) return { kind: "node", node: id };
+    }
+    if (badges) {
+      // 3 年の分かれ道の印は、指でも押せるようにカードの外へ広げる（画面で 44px の幅。下は次の行のカードの手前＝行の間 32 まで、右はカードの外まで）。
+      // カードの中は描いた印の所だけ（カードを押して選ぶのを邪魔しない）。ここへ来た点はどのカードの中でもない
+      const tw = Math.max(hw, BADGE_TOUCH_PX / 2 / z);
+      const down = Math.min(Math.max(hh, BADGE_TOUCH_PX / 2 / z), Math.max(hh, IMPACT_ROW - HALF_H * 2));
+      for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
+        const id = this.vm.drawNodes[i]!;
+        if (!this.vm.inImpact(id) || !this.badgeVisible(id, lod)) continue;
+        const p = this.pos(id);
+        const c = badgeCenter(p.x, p.y);
+        if (Math.abs(w.x - c.x) <= tw && w.y >= c.y - hh && w.y <= c.y + down) return { kind: "badge", node: id };
+      }
     }
     for (let i = this.labelBoxes.length - 1; i >= 0; i--) {
       const b = this.labelBoxes[i]!;

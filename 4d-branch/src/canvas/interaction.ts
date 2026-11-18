@@ -13,7 +13,7 @@ type Mode =
   | { kind: "idle" }
   | { kind: "pan"; sx: number; sy: number; cx: number; cy: number; moved: boolean; clearOnClick: boolean }
   | { kind: "marquee"; base: Set<ID> }
-  | { kind: "drag"; ids: Set<ID>; wx: number; wy: number; sx: number; sy: number; moved: boolean; node: ID; wasSelected: boolean; additive: boolean }
+  | { kind: "drag"; ids: Set<ID>; wx: number; wy: number; sx: number; sy: number; moved: boolean; node: ID; wasSelected: boolean; additive: boolean; fixed: boolean }
   | { kind: "connect"; sx: number; sy: number }
   | { kind: "press"; hit: Hit; sx: number; sy: number }
   | { kind: "pinch"; dist: number; cx: number; cy: number };
@@ -129,11 +129,15 @@ export class Interaction {
       }
       case "node": {
         const wasSelected = this.ui.selection.nodes.has(hit.node);
-        if (additive) this.ui.toggleNode(hit.node);
-        else if (!wasSelected) this.ui.select([hit.node]);
+        // 3 年の分かれ道のカードは押して動かすとパンになる: 選ぶのは動かさずに離したとき（パンで選択・右の概要・薄さが変わらないように）
+        const fixed = this.vm.inImpact(hit.node);
+        if (!fixed) {
+          if (additive) this.ui.toggleNode(hit.node);
+          else if (!wasSelected) this.ui.select([hit.node]);
+        }
         const ids = this.ui.selection.nodes.has(hit.node) ? new Set(this.ui.selection.nodes) : new Set<ID>();
         const w = this.view.camera.toWorld(p.x, p.y);
-        this.mode = { kind: "drag", ids, wx: w.x, wy: w.y, sx: p.x, sy: p.y, moved: false, node: hit.node, wasSelected, additive };
+        this.mode = { kind: "drag", ids, wx: w.x, wy: w.y, sx: p.x, sy: p.y, moved: false, node: hit.node, wasSelected, additive, fixed };
         break;
       }
       case "edge":
@@ -185,7 +189,7 @@ export class Interaction {
       }
       case "drag": {
         // 3 年の分かれ道のカードは自動で並ぶので動かさない: その動きはキャンバスの移動にする（閲覧のみのタブでも。知らせは一度だけ）
-        const fixed = !m.moved && this.vm.inImpact(m.node);
+        const fixed = !m.moved && m.fixed;
         if (this.store.readOnly && !fixed) return;
         if (!m.moved && Math.hypot(p.x - m.sx, p.y - m.sy) < 4) return;
         if (!m.moved) {
@@ -316,6 +320,10 @@ export class Interaction {
         this.view.drag = null;
         if (m.moved && d) {
           this.cmd.moveNodes(d.ids, d.dx, d.dy, d.ids.size > 1 ? `${d.ids.size} 件を移動` : "移動");
+        } else if (!m.moved && m.fixed) {
+          // 3 年の分かれ道のカード: 押したときに選ばなかった分を、動かさずに離したここで選ぶ
+          if (m.additive) this.ui.toggleNode(m.node);
+          else if (!m.wasSelected || this.ui.selection.nodes.size > 1) this.ui.select([m.node]);
         } else if (!m.moved && m.wasSelected && !m.additive && this.ui.selection.nodes.size > 1) {
           this.ui.select([m.node]);
         }
