@@ -170,23 +170,51 @@ export class Commands {
    * それ以外は今までどおり文書の collapsed（元に戻せる）
    */
   toggleCollapse(ids: ID[]): void {
-    const nodes = ids.map((id) => this.doc.nodes[id]).filter((n): n is GNode => !!n);
-    if (!nodes.length) return;
-    // 3 年の分かれ道の先の無いノード（行き先）は開く・閉じる物が無い
-    const view = nodes.filter((n) => this.vm.inImpact(n.id) && (this.vm.index.out.get(n.id)?.length ?? 0) > 0);
-    const docNodes = nodes.filter((n) => !this.vm.inImpact(n.id));
+    const nodes = ids.filter((id) => this.doc.nodes[id]);
+    const { view, docNodes } = this.collapseTargets(nodes);
     if (!view.length && !docNodes.length) return;
-    const collapse = [...view, ...docNodes].some((n) => !this.vm.isCollapsed(n.id));
+    const collapse = !this.collapsedAll(nodes);
     if (view.length) {
-      const list = view.map((n) => n.id);
-      if (collapse) this.vm.setImpactOpen([], list);
-      else this.vm.setImpactOpen(list, [], { reveal: true });
+      if (collapse) this.vm.setImpactOpen([], view);
+      else this.vm.setImpactOpen(view, [], { reveal: true });
     }
-    if (docNodes.length) this.store.transact(collapse ? "折りたたむ" : "展開する", (tx) => docNodes.forEach((n) => tx.updateNode(n.id, { collapsed: collapse })));
-    if (collapse) this.ui.select(nodes.map((n) => n.id));
+    if (docNodes.length) this.store.transact(collapse ? "折りたたむ" : "展開する", (tx) => docNodes.forEach((id) => tx.updateNode(id, { collapsed: collapse })));
+    if (collapse) this.ui.select(nodes);
   }
 
-  /** 折りたたんでいるか（メニューの「展開する／この先を折りたたむ」。3 年の分かれ道は見え方の開閉） */
+  /**
+   * C・右クリックのメニューで開閉する物。3 年の分かれ道は開く・閉じる物（同じ範囲の子）のあるカードだけ（見え方）。
+   * 先の無いカード（行き先）や、相乗効果などの線しか出ていないカードは数えない（混ぜて選んでも、閉じたカードの開閉の向きを変えない）。
+   * それ以外のノードは今までどおりすべて（文書の collapsed）
+   */
+  private collapseTargets(ids: ID[]): { view: ID[]; docNodes: ID[] } {
+    const view: ID[] = [];
+    const docNodes: ID[] = [];
+    for (const id of ids) {
+      if (!this.doc.nodes[id]) continue;
+      if (!this.vm.inImpact(id)) docNodes.push(id);
+      else if (this.vm.canCollapse(id)) view.push(id);
+    }
+    return { view, docNodes };
+  }
+
+  /** C・メニューで開閉できる物があるか（無ければメニューの「この先を折りたたむ」は押せない） */
+  canToggleCollapse(ids: ID[]): boolean {
+    const { view, docNodes } = this.collapseTargets(ids);
+    return view.length > 0 || docNodes.length > 0;
+  }
+
+  /**
+   * 開閉する物がすべて折りたたんであるか（C とメニューの向き。true なら「展開する」）。3 年の分かれ道は見え方の開閉。
+   * 開閉する物が無ければ false
+   */
+  collapsedAll(ids: ID[]): boolean {
+    const { view, docNodes } = this.collapseTargets(ids);
+    const all = [...view, ...docNodes];
+    return all.length > 0 && all.every((id) => this.vm.isCollapsed(id));
+  }
+
+  /** 折りたたんでいるか（詳細の「折りたたむ／展開する」。3 年の分かれ道は見え方の開閉） */
   isCollapsed(id: ID): boolean {
     return this.vm.isCollapsed(id);
   }
@@ -271,8 +299,9 @@ export class Commands {
   private fixedNoticeShown = false;
 
   /**
-   * 消す。3 年の分かれ道のカードを消すときは、その先だけにあるカード（消した後はどの入口からも届かない物）も一緒に消す
-   * （残すと全部開いた形の遠い位置にふつうのカードとして散らばる）。範囲の外のノードは今までどおり。元に戻すと全部戻る
+   * 消す。3 年の分かれ道のカードを消すときは、その先だけにあるカード（消した後はどの入口からも、消す所の外に残るノードからも
+   * 届かない物）も一緒に消す（残すと全部開いた形の遠い位置にふつうのカードとして散らばる）。ほかの親（自分のノードなど）から
+   * つながっている物とその先は残す。範囲の外のノードは今までどおり。元に戻すと全部戻る
    */
   deleteNodes(ids: ID[], edges: ID[] = []): void {
     const ns = ids.filter((id) => this.doc.nodes[id]);
@@ -292,8 +321,8 @@ export class Commands {
   }
 
   /**
-   * 3 年の分かれ道のカード ns（と接続 es）を消すと、どの入口からも届かなくなるカード（ns の先だけにある物。ns は含めない）。
-   * ns に範囲のカードが無ければ空
+   * 3 年の分かれ道のカード ns（と接続 es）を消すと、その先だけに残るカード（ns の先にあり、消した後はどの入口からも、
+   * 消す所の外に残るノードからも届かない物。ns は含めない）。ns に範囲のカードが無ければ空
    */
   private impactOrphans(ns: ID[], es: ID[]): ID[] {
     const seeds = ns.filter((id) => this.vm.inImpact(id));
@@ -301,7 +330,7 @@ export class Commands {
     const doc = this.doc;
     const out = this.vm.index.out;
     const gone = new Set(ns);
-    // 消すカードの先（道の線でたどれる物）
+    // 消すカードの先（道の線でたどれる物）= 一緒に消す候補
     const below = new Set<ID>();
     const stack = [...seeds];
     while (stack.length) {
@@ -312,11 +341,12 @@ export class Commands {
       }
     }
     if (!below.size) return [];
-    // 消した後も入口から届く物は残す（別の選択肢からも合流する物など）
+    // 消した後も残るノードから道の線（消す線は通らない）で届く物は残す。たどり始めは入口と、消すノード・候補のどちらでもないノード
+    // （別の選択肢からも合流する物、自分の親 P → W のある自分のノード W とその先 など）
     const goneE = new Set(es);
     const reach = new Set<ID>();
     const queue: ID[] = [];
-    for (const id in doc.nodes) if (!gone.has(id) && isImpactRoot(doc.nodes[id])) (reach.add(id), queue.push(id));
+    for (const id in doc.nodes) if (!gone.has(id) && (!below.has(id) || isImpactRoot(doc.nodes[id]))) (reach.add(id), queue.push(id));
     while (queue.length) {
       for (const e of flowOuts(doc, out, queue.pop()!)) {
         if (goneE.has(e.id) || gone.has(e.target) || reach.has(e.target)) continue;

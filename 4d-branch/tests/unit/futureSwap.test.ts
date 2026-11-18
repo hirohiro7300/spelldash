@@ -5,7 +5,7 @@ import { ViewModel } from "../../src/app/viewModel";
 import { buildDemoDoc } from "../../src/demo/demo";
 import { buildFuture, futureData, futureRelease, futureVersion } from "../../src/demo/futureBundle";
 import { futureAge, futureMaps, hasEditPrints, hasStaleFuture, inPlaceRoot, newerFutureMaps, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
-import { buildImpactDoc, edgeTextPrint, fnv36, impactDataVersion, nextImpactRelease, type ImpactBundle, type ImpactOutX } from "../../src/demo/impact";
+import { buildImpactDoc, edgeTextPrint, fnv36, impactDataVersion, impactTagsOf, nextImpactRelease, type ImpactBundle, type ImpactOutX } from "../../src/demo/impact";
 import raw from "../../src/demo/impact-data.json?raw";
 import releaseFile from "../../src/demo/impact-release.json";
 import { primaryImpactRoot } from "../../src/model/forks";
@@ -386,6 +386,216 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     expect(Object.values(d.edges).some((e) => e.source === dup)).toBe(false);
     expect(d.nodes[dup!]).toEqual(store.doc.nodes[dup!]);
     expect(Object.keys(d.nodes).length).toBe(Object.keys(store.doc.nodes).length);
+  });
+});
+
+/** 2 つ以上のノードが持つ鍵 */
+const dupKeys = (d: DocData): string[] => {
+  const seen = new Map<string, number>();
+  for (const n of Object.values(d.nodes)) if (typeof n.meta.key === "string") seen.set(n.meta.key, (seen.get(n.meta.key) ?? 0) + 1);
+  return [...seen].filter(([, c]) => c > 1).map(([k]) => k);
+};
+/** 地図（入口から道の線でたどれるノード）に入っているか */
+const inMap = (d: DocData, id: ID) => futureMaps(d).some((m) => m.nodes.has(id));
+/** 数字と概要を出す入口の地図の大きさ（入口から道の線でたどれるノードの数） */
+const mapSize = (d: DocData) => futureMaps(d).find((m) => m.root === primaryImpactRoot(d))!.nodes.size;
+/** 選択肢（鍵）から道の線で出る先の鍵（鍵の無いノードは題名） */
+const flowKids = (d: DocData, key: string) => {
+  const id = byKey(d, key)!.id;
+  return Object.values(d.edges)
+    .filter((e) => e.source === id && (e.relation === "leads" || e.relation === "condition"))
+    .map((e) => (d.nodes[e.target]!.meta.key as string | undefined) ?? `（鍵なし）${d.nodes[e.target]!.title}`)
+    .sort();
+};
+
+/**
+ * 前の版のアプリ（入口からたどれるカードだけを鍵で合わせた）で新しい版にした地図をまねる（doc は変えない）: 地図から外れた鍵のノードは
+ * そのまま残り、入口からたどれるカードに無い鍵のカードは、新しい版（fresh）の物を新しい ID・後の作った時刻（at）で足し、同梱の線でつなぐ
+ */
+function oldAppUpgrade(doc: DocData, fresh: DocData, at: string): DocData {
+  const out = structuredClone(doc);
+  const reach = futureMaps(doc).find((m) => m.root === primaryImpactRoot(doc))!.nodes;
+  const card = new Map<string, ID>();
+  for (const id of reach) {
+    const k = doc.nodes[id]!.meta.key;
+    if (typeof k === "string") card.set(k, id);
+  }
+  const added = new Map<string, ID>();
+  for (const n of Object.values(fresh.nodes)) {
+    const k = n.meta.key as string;
+    if (card.has(k)) continue;
+    const id = `${n.id}_readded`;
+    out.nodes[id] = { ...structuredClone(n), id, createdAt: at, updatedAt: at };
+    added.set(k, id);
+  }
+  const idOf = (k: string) => added.get(k) ?? card.get(k)!;
+  for (const e of Object.values(fresh.edges)) {
+    const tk = fresh.nodes[e.target]!.meta.key as string;
+    if (!added.has(tk)) continue;
+    const id = `${e.id}_readded`;
+    out.edges[id] = { ...structuredClone(e), id, source: idOf(fresh.nodes[e.source]!.meta.key as string), target: idOf(tk), createdAt: at, updatedAt: at };
+  }
+  return out;
+}
+
+describe("地図から外れたカード・同じ鍵のノードも新しい版にする（新しい版にした後、同じ鍵は 1 つだけ）", () => {
+  it("道の線を相乗効果に変えて地図から外れたカード: 足し直さずに、もとのカード（ID・決めたこと・書き換え）を新しい版にし、線は道の線に戻す（2 枚の間は 1 本）", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const opt = byKey(store.doc, "r.sd_pilot")!;
+    const yes = byKey(store.doc, "r.sd_pilot.yes")!;
+    const e = edgeBetween(store.doc, "r.sd_pilot", "r.sd_pilot.yes")!;
+    cmd.setRelation([e.id], "supports");
+    expect(inMap(store.doc, yes.id)).toBe(false);
+    // 外れたカードに手を入れる: 題名を書き換え、その先の手を選ぶ
+    cmd.updateNode(yes.id, { title: "うまくいった（自分の言葉）" });
+    const kid = Object.values(store.doc.edges).find((x) => x.source === yes.id && x.relation === "leads")!.target;
+    cmd.setStatus([kid], "active");
+    const nodes0 = Object.keys(store.doc.nodes).length;
+    const res = swapFutureDoc(store.doc, nextDoc());
+    const d = res.doc;
+    expect(dupKeys(d)).toEqual([]);
+    // 足したのは新しい版で増えたカードだけ（外れたカードは足し直さない）
+    expect([res.added, res.removed]).toEqual([1, 1]);
+    expect(Object.keys(d.nodes).length).toBe(nodes0);
+    expect(byKey(d, "r.sd_pilot.yes")!.id).toBe(yes.id);
+    expect(d.nodes[yes.id]!.title).toBe("うまくいった（自分の言葉）");
+    expect(d.nodes[kid]!.status).toBe("active");
+    const between = Object.values(d.edges).filter((x) => x.source === opt.id && x.target === yes.id);
+    expect(between.map((x) => [x.id, x.relation])).toEqual([[e.id, "condition"]]);
+    expect(inMap(d, yes.id) && inMap(d, kid)).toBe(true);
+    // 同じ版を当て直しても変わらない
+    const again = swapFutureDoc(d, mapOf(next, "next-version", futureRelease() + 1));
+    expect([again.updated, again.added, again.removed]).toEqual([0, 0, 0]);
+  });
+
+  it("前の版のアプリで選択肢だけを消した（その先は地図から外れたまま）: その先のカードは足し直さずに新しい版にし、消した選択肢は足し直してつなぐ", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const opt = byKey(store.doc, "r.sd_pilot")!;
+    const kids = Object.values(store.doc.edges).filter((x) => x.source === opt.id).map((x) => x.target);
+    expect(kids.length).toBeGreaterThan(1);
+    const nodes0 = Object.keys(store.doc.nodes).length;
+    // 前の版のアプリの削除: 選択肢だけを消す（その先は残る）
+    store.transact("削除", (tx) => tx.deleteNode(opt.id));
+    cmd.setStatus([kids[0]!], "active");
+    expect(kids.some((k) => inMap(store.doc, k))).toBe(false);
+    const keys = kids.map((k) => store.doc.nodes[k]!.meta.key);
+    const res = swapFutureDoc(store.doc, nextDoc());
+    const d = res.doc;
+    expect(dupKeys(d)).toEqual([]);
+    // 足し直したのは消した選択肢と、新しい版で増えたカード
+    expect(res.added).toBe(2);
+    expect(Object.keys(d.nodes).length).toBe(nodes0);
+    const back = byKey(d, "r.sd_pilot")!;
+    kids.forEach((k, i) => {
+      expect(d.nodes[k]?.meta.key).toBe(keys[i]);
+      expect(Object.values(d.edges).filter((x) => x.source === back.id && x.target === k).length).toBe(1);
+      expect(inMap(d, k)).toBe(true);
+    });
+    expect(d.nodes[kids[0]!]!.status).toBe("active");
+  });
+
+  it("同梱の線を消して同じ向きに相乗効果の線を引き直した 2 枚: 自分の線を残し、同梱の線は足さない（同じ向きの線は 1 本）。外れたままのカードは足し直さず、位置も動かさない", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const e = edgeBetween(store.doc, "r.sd_pilot", "r.sd_pilot.no")!;
+    cmd.deleteNodes([], [e.id]);
+    const [own] = cmd.connect([e.source], e.target, "supports");
+    const at = { x: store.doc.nodes[e.target]!.x, y: store.doc.nodes[e.target]!.y };
+    const res = swapFutureDoc(store.doc, nextDoc());
+    const d = res.doc;
+    expect(dupKeys(d)).toEqual([]);
+    expect(res.added).toBe(1);
+    expect(Object.values(d.edges).filter((x) => x.source === e.source && x.target === e.target)).toEqual([store.doc.edges[own!]]);
+    expect([d.nodes[e.target]!.x, d.nodes[e.target]!.y]).toEqual([at.x, at.y]);
+  });
+
+  it("同じ鍵のノードが 2 つ（別の地図を足して、そのカードへ自分でつないだ）: 先に作った方だけをカードにし、もう 1 つは鍵を外した自分のノードとして残す", () => {
+    const a = buildFuture(TODAY).pv.doc;
+    for (const [id, n] of Object.entries(a.nodes)) a.nodes[id] = { ...n, createdAt: "2026-01-01T00:00:00.000Z" };
+    const { store, cmd } = setup(mergeDocs(a, buildFuture(TODAY).pv.doc).doc);
+    const p = primaryImpactRoot(store.doc)!;
+    const other = futureMaps(store.doc).find((m) => m.root !== p)!;
+    const from = Object.values(store.doc.nodes).find((n) => n.meta.key === "r.fc_switch" && !other.nodes.has(n.id))!;
+    const to = Object.values(store.doc.nodes).find((n) => n.meta.key === "r.part.p" && other.nodes.has(n.id))!;
+    cmd.connect([from.id], to.id);
+    expect(dupKeys(store.doc).length).toBeGreaterThan(100);
+    const res = swapFutureDoc(store.doc, nextDoc());
+    const d = res.doc;
+    expect(dupKeys(d)).toEqual([]);
+    expect(Object.values(d.nodes).filter((n) => n.meta.forecastRoot === true).map((n) => n.id)).toEqual([p]);
+    // つないだ先は残り、鍵だけが外れる（文章・つながりはそのまま）
+    const kept = d.nodes[to.id]!;
+    expect(kept.meta.key).toBeUndefined();
+    expect([kept.title, kept.body]).toEqual([to.title, to.body]);
+    expect(Object.values(d.edges).some((x) => x.source === from.id && x.target === to.id)).toBe(true);
+    expect(inMap(d, to.id)).toBe(true);
+    expect(res.userKept).toBeGreaterThan(0);
+  });
+
+  // 前の版のアプリは、外れたカードをそのまま残して同じ鍵のカードを後から足し直し、地図につないだ（同じ鍵が 2 つ）。
+  // 先に作った外れた方をカードに選ぶと、つないだ方も利用者の線で地図に残り、同じカードが 2 度出る
+  const cutEdge = (store: Store, cmd: Commands) => cmd.deleteNodes([], [edgeBetween(store.doc, "r.sd_pilot", "r.sd_pilot.yes")!.id]);
+  const cutOption = (store: Store) => store.transact("削除", (tx) => tx.deleteNode(byKey(store.doc, "r.sd_pilot")!.id));
+  it.each([
+    ["同梱の線を 1 本消した（「接続を削除」）", "edge"],
+    ["前の版のアプリで選択肢だけを消した", "option"],
+  ] as const)("前の版のアプリで新しい版にした地図（%s → 外れたカードと、足し直してつないだカードで同じ鍵が 2 つ）: つないだ方をカードにし、外れた方は鍵を外して外れたまま残す（同じカードを地図に 2 度出さない）", (_, cut) => {
+    const T0 = "2026-11-01T00:00:00.000Z";
+    const first = buildFuture(TODAY).pv.doc;
+    for (const [id, n] of Object.entries(first.nodes)) first.nodes[id] = { ...n, createdAt: T0 };
+    const { store, cmd } = setup(first);
+    const yes0 = byKey(store.doc, "r.sd_pilot.yes")!;
+    if (cut === "edge") cutEdge(store, cmd);
+    else cutOption(store);
+    expect(inMap(store.doc, yes0.id)).toBe(false);
+    const old = oldAppUpgrade(store.doc, buildFuture(TODAY).pv.doc, "2026-12-01T00:00:00.000Z");
+    const copy = Object.values(old.nodes).find((n) => n.meta.key === "r.sd_pilot.yes" && n.id !== yes0.id)!;
+    expect(inMap(old, copy.id)).toBe(true);
+    expect(dupKeys(old).length).toBeGreaterThan(10);
+    const res = swapFutureDoc(old, nextDoc());
+    const d = res.doc;
+    expect(dupKeys(d)).toEqual([]);
+    expect(byKey(d, "r.sd_pilot.yes")!.id).toBe(copy.id);
+    expect(d.nodes[yes0.id]!.meta.key).toBeUndefined();
+    expect(inMap(d, yes0.id)).toBe(false);
+    // 地図は新しい版と同じ形（選択肢の先は 2 枚。鍵の無い写しはつながらない）。地図に残った利用者のノードは無い
+    expect(flowKids(d, "r.sd_pilot")).toEqual(flowKids(nextDoc(), "r.sd_pilot"));
+    expect(mapSize(d)).toBe(mapSize(nextDoc()));
+    expect(res.userKept).toBe(0);
+    // 同じ版を当て直しても変わらない
+    const again = swapFutureDoc(d, mapOf(next, "next-version", futureRelease() + 1));
+    expect([again.updated, again.added, again.removed, again.userKept]).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe("タグを新しい版にする", () => {
+  it("月が変わった版では、前の版で付いた役割のタグ（3か月後）を外して新しい版のタグにし、自分で付けたタグは残す（新しい版のほかのカードで使うタグでも）", () => {
+    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const states = Object.values(store.doc.nodes).filter((n) => n.tags.includes("3か月後"));
+    expect(states.length).toBeGreaterThan(5);
+    const card = states[0]!;
+    cmd.updateNode(card.id, { tags: [...card.tags, "自分のタグ", "1年後"] });
+    // 次の版: 3 か月後の状態をすべて 4 か月後にする
+    const nb = nextBundle((b) => {
+      for (const n of b.nodes) if (n[2] === "s" && n[3] === 3) n[3] = 4;
+    });
+    const fresh = mapOf(nb, "tags-next", futureRelease() + 1);
+    const res = swapFutureDoc(store.doc, fresh);
+    const d = res.doc;
+    expect(Object.values(d.nodes).filter((n) => n.tags.includes("3か月後")).length).toBe(0);
+    expect(d.nodes[card.id]!.tags).toEqual(["未来の道筋", "3年", "4か月後", "自分のタグ", "1年後"]);
+    // ほかのカードは新しい版の地図と同じタグ（積み重ならない）
+    for (const n of Object.values(d.nodes)) if (n.id !== card.id) expect(n.tags, n.title).toEqual(fresh.nodes[n.id]!.tags);
+    expect(res.updated).toBeGreaterThanOrEqual(states.length);
+    // 同じ版を当て直しても変わらない
+    const again = swapFutureDoc(d, mapOf(nb, "tags-next", futureRelease() + 1));
+    expect(again.updated).toBe(0);
+    expect(again.doc.nodes[card.id]!.tags).toEqual(d.nodes[card.id]!.tags);
+  });
+
+  it("カードの役割と月から、同梱データで付くタグが分かる（地図を作るときと同じ）", () => {
+    const doc = buildFuture(TODAY).pv.doc;
+    for (const n of Object.values(doc.nodes)) expect(impactTagsOf(n.meta), n.title).toEqual(n.tags);
+    expect(impactTagsOf({ fork: "decision" })).toEqual(["未来の道筋", "3年"]);
   });
 });
 

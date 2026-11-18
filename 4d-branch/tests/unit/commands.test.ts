@@ -155,6 +155,38 @@ describe("3 年の分かれ道: カードから線を引く", () => {
     expect(s.vm.isCollapsed(end)).toBe(false);
     expect(s.vm.node(W).hidden).toBe(false);
   });
+
+  it("相乗効果の線しか出ていないカードは開閉する物が無い: 閉じた選択肢と一緒に選んでも C・メニューは「展開する」で選択肢を開き、カードだけなら何もしない（印・詳細のボタンも同じ決まり）", () => {
+    // スマホの最初の形: 選択肢は閉じている
+    const s = openMap(true);
+    const { W } = ownPair(s);
+    const alt = kidsOf(s, rootId)[0]!;
+    const end = s.vm.impact.ends.map((e) => e.id).find((id) => !(s.vm.index.out.get(id)?.length ?? 0))!;
+    s.cmd.connect([end], W, "supports");
+    s.vm.ensure();
+    expect(s.vm.isOpen(alt)).toBe(false);
+    // 閉じた選択肢と一緒に: 開く向き（メニューは「展開する」）で、C で選択肢が開く。もう一度で閉じる
+    s.cmd.toggleCollapse([alt, end]);
+    expect(s.vm.isOpen(alt)).toBe(true);
+    s.cmd.toggleCollapse([alt, end]);
+    expect(s.vm.isOpen(alt)).toBe(false);
+    expect(s.cmd.collapsedAll([alt, end])).toBe(true);
+    // カードだけ: 出る線はあるが、開く・閉じる物（同じ範囲の子）が無い。メニューは押せず、C でも見え方・文書を変えない
+    expect(s.vm.index.out.get(end)!.length).toBe(1);
+    expect(s.vm.canCollapse(end)).toBe(false);
+    expect(s.cmd.canToggleCollapse([end])).toBe(false);
+    expect(s.cmd.collapsedAll([end])).toBe(false);
+    const open0 = s.ui.prefs.impactOpen[rootId];
+    const rev = s.store.revision;
+    s.cmd.toggleCollapse([end]);
+    expect(s.ui.prefs.impactOpen[rootId]).toBe(open0);
+    expect(s.store.revision).toBe(rev);
+    expect(s.vm.impactBranches()).not.toContain(end);
+    // 先のあるカードと範囲の外の自分のノード（出る線で決める）は今までどおり
+    expect(s.vm.canCollapse(alt)).toBe(true);
+    expect(s.vm.canCollapse(W)).toBe(true);
+    expect(s.cmd.canToggleCollapse([end, W])).toBe(true);
+  });
 });
 
 /** 小さな 3 年の分かれ道: R → A・B、A → X ← B（合流）、A → Y → Z。ほかに自分のノード P → Q */
@@ -223,6 +255,58 @@ describe("3 年の分かれ道: カードを消す", () => {
     s.cmd.deleteNodes([], ["RB"]);
     expect(s.store.doc.nodes.B).toBeDefined();
     expect(s.toasts.at(-1)).toBe("接続を削除しました");
+  });
+
+  it("消す所の外に残るノード（範囲の外の自分の親 P → Q）からもつながるノードとその先は残し、数に入れない。その線も一緒に消せば先だけの物になる", () => {
+    // 小さな地図の Y の先に、自分のノード Q（自分の親 P → Q がある）とその先 Q2 をつなぐ
+    const doc = smallMap();
+    doc.nodes.Q2 = makeNode({ id: "Q2", title: "Q2", x: 9000, y: 0 });
+    for (const [a, b] of [["Y", "Q"], ["Q", "Q2"]] as const) doc.edges[`${a}${b}`] = makeEdge({ id: `${a}${b}`, source: a, target: b });
+    const s = setup(doc);
+    expect(s.vm.inImpact("Q") && s.vm.inImpact("Q2") && !s.vm.inImpact("P")).toBe(true);
+    s.cmd.deleteNodes(["A"]);
+    expect(Object.keys(s.store.doc.nodes).sort()).toEqual(["B", "P", "Q", "Q2", "R", "X"]);
+    expect(s.store.doc.edges.PQ && s.store.doc.edges.QQ2).toBeDefined();
+    expect(s.toasts.at(-1)).toBe("「A」を削除しました（この先の 2 件も）");
+    expect(s.store.history.undoStack.at(-1)!.label).toBe("「A」を削除（この先の 2 件も）");
+    s.cmd.undo();
+    expect(Object.keys(s.store.doc.nodes).length).toBe(Object.keys(doc.nodes).length);
+    expect(Object.keys(s.store.doc.edges).length).toBe(Object.keys(doc.edges).length);
+    // 自分の親からの線も一緒に消す: Q とその先も A の先だけの物になる
+    s.cmd.deleteNodes(["A"], ["PQ"]);
+    expect(Object.keys(s.store.doc.nodes).sort()).toEqual(["B", "P", "R", "X"]);
+    expect(s.toasts.at(-1)).toBe("「A」を削除しました（この先の 4 件も）");
+  });
+
+  it("同梱の地図: 3 年後の結果から自分のノード W へつないでいても、W に自分の親 P があれば、選択肢を消しても W とその先は残る（元に戻すと全部戻る）", () => {
+    const s = openMap();
+    const P = s.cmd.createNode("goal", { x: -3000, y: 500 }, { exact: true, title: "P" })!;
+    const W = s.cmd.createNode("action", { x: -2700, y: 500 }, { exact: true, title: "W", from: [P] })!;
+    const W2 = s.cmd.createNode("result", { x: -2400, y: 500 }, { exact: true, title: "W2", from: [W] })!;
+    const alt = kidsOf(s, rootId)[3]!;
+    s.cmd.connect([kidsOf(s, alt)[0]!], W);
+    s.vm.ensure();
+    expect(s.vm.inImpact(W) && s.vm.inImpact(W2) && !s.vm.inImpact(P)).toBe(true);
+    const doc0 = s.store.doc;
+    const before = { nodes: Object.keys(doc0.nodes).length, edges: Object.keys(doc0.edges).length };
+    const title = doc0.nodes[alt]!.title;
+    // 期待: alt の先のうち、alt を通らずに今日からも P からも届かない物
+    const reach = new Set<ID>([rootId, P]);
+    const q = [rootId, P];
+    while (q.length) for (const e of flowOuts(doc0, s.vm.index.out, q.pop()!)) if (e.target !== alt && !reach.has(e.target)) (reach.add(e.target), q.push(e.target));
+    const only = Object.keys(doc0.nodes).filter((id) => id !== alt && !reach.has(id));
+    expect(only.length).toBeGreaterThan(10);
+    s.cmd.deleteNodes([alt]);
+    const doc = s.store.doc;
+    expect([P, W, W2].every((id) => doc.nodes[id])).toBe(true);
+    expect(Object.values(doc.edges).some((e) => e.source === P && e.target === W)).toBe(true);
+    expect(Object.values(doc.edges).some((e) => e.source === W && e.target === W2)).toBe(true);
+    expect(only.some((id) => doc.nodes[id])).toBe(false);
+    expect(Object.keys(doc.nodes).length).toBe(before.nodes - 1 - only.length);
+    expect(s.toasts.at(-1)).toBe(`「${title}」を削除しました（この先の ${only.length.toLocaleString("ja-JP")} 件も）`);
+    s.cmd.undo();
+    expect(Object.keys(s.store.doc.nodes).length).toBe(before.nodes);
+    expect(Object.keys(s.store.doc.edges).length).toBe(before.edges);
   });
 });
 

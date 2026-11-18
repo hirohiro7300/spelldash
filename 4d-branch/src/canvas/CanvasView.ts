@@ -412,8 +412,8 @@ export class CanvasView {
 
   /**
    * 折りたたみの印を描くか。描画と当たり判定はこれだけで決める（描かれていない印は押せない）。
-   * 折りたたみ中は full・compact で描く。出る線のあるノードのホバー・選択中の「−」は full だけ。low・dot では描かない。
-   * 3 年の分かれ道は、選んでいるノードの「−」を compact でも描く（スマホで開いた所を閉じられるように）
+   * 折りたたみ中は full・compact で描く。開閉する物のあるノード（vm.canCollapse。C・メニューと同じ決まり）のホバー・選択中の「−」は full だけ。
+   * low・dot では描かない。3 年の分かれ道は、選んでいるノードの「−」を compact でも描く（スマホで開いた所を閉じられるように）
    */
   private badgeVisible(id: ID, lod: Lod): boolean {
     if (lod !== "full" && lod !== "compact") return false;
@@ -423,8 +423,7 @@ export class CanvasView {
     if (nv?.collapsed || (nv?.collapsedCount ?? 0) > 0) return true;
     const selected = this.ui.selection.nodes.has(id);
     if (lod !== "full" && !(selected && this.vm.inImpact(id))) return false;
-    const hasOut = (this.vm.index.out.get(id)?.length ?? 0) > 0;
-    return hasOut && (this.ui.hover.node === id || selected);
+    return (this.ui.hover.node === id || selected) && this.vm.canCollapse(id);
   }
 
   // ------------------------------------------------------------ 当たり判定

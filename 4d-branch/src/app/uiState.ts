@@ -41,7 +41,10 @@ export interface Prefs {
   futureOffered: boolean;
   /** 「未来の道筋の新しい版があります」を知らせた版（同じ版では二度知らせない） */
   futureNotified: string;
-  /** 「未来の道筋」を押して聞かれた新しい版への差し替えを断った版（この端末で。同じ版ではボタンからもう聞かない） */
+  /**
+   * 「未来の道筋」を押して聞かれた新しい版への差し替えを断った版（この端末で。同じ版ではボタンからもう聞かない）。
+   * このタブで断った物。保存は設定とは別の場所（UiState.declineFuture・isFutureDeclined）。設定の中の値は前の版から移すときだけ読む
+   */
   futureDeclined: string;
   /** 何もしていないデモ・空の地図を、開いたときに未来の道筋へ入れ替えた（このブラウザで 1 回だけ。元に戻した人に何度も出さない） */
   futureAutoOpened: boolean;
@@ -137,6 +140,30 @@ function futureOpenedMark(): boolean {
   }
 }
 
+/**
+ * 「未来の道筋」から聞かれた新しい版を断った版（futureDeclined）も別の場所に書く。設定をまるごと書く別のタブ（断ったことを
+ * 知らないタブ。カードを開く・閉じるだけでも書く）に消されて、開き直したときにまた聞かないように
+ */
+const FUTURE_DECLINED_KEY = "4d-branch:futureDeclined";
+
+/** 保存してある断った版（無い・読めなければ null） */
+function storedDeclined(): string | null {
+  try {
+    const v = globalThis.localStorage?.getItem(FUTURE_DECLINED_KEY);
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDeclined(version: string): void {
+  try {
+    globalThis.localStorage?.setItem(FUTURE_DECLINED_KEY, version);
+  } catch {
+    /* 保存できなくても動く（このタブの間は覚えている） */
+  }
+}
+
 function loadPrefs(): Prefs {
   const mark = futureOpenedMark();
   try {
@@ -148,6 +175,8 @@ function loadPrefs(): Prefs {
     const prefs: Prefs = { ...structuredClone(DEFAULT_PREFS), ...p, sections: { ...DEFAULT_PREFS.sections, ...(p.sections ?? {}) }, listSort: { ...DEFAULT_PREFS.listSort, ...(p.listSort ?? {}) } };
     prefs.impactOpen = cleanImpactOpen(p.impactOpen);
     if (mark) prefs.futureAutoOpened = true;
+    // 前の版が設定の中に書いた断った版は、別の場所がまだ無ければ一度だけ移す
+    if (typeof p.futureDeclined === "string" && p.futureDeclined && storedDeclined() === null) writeDeclined(p.futureDeclined);
     return prefs;
   } catch {
     return { ...structuredClone(DEFAULT_PREFS), futureAutoOpened: mark };
@@ -203,6 +232,21 @@ export class UiState {
     if (!this.persistPrefs) return;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.writePrefs(), 200);
+  }
+
+  /**
+   * その版への差し替えを、「未来の道筋」から聞いて断ったか（このタブで・このブラウザのほかのタブで。
+   * 前の版のタブが設定の中に書いた物も）
+   */
+  isFutureDeclined(version: string): boolean {
+    if (!version) return false;
+    return this.prefs.futureDeclined === version || storedDeclined() === version || this.storedPrefs().futureDeclined === version;
+  }
+
+  /** 断った版を覚える（設定とは別の場所にも書く。設定をまるごと書く別のタブに消されない） */
+  declineFuture(version: string): void {
+    this.setPrefs({ futureDeclined: version });
+    if (this.persistPrefs) writeDeclined(version);
   }
 
   /** このブラウザに保存されている設定（別のタブが書いた物も含む。読めなければ空） */

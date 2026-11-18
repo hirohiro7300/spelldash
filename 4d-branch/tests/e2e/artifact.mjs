@@ -945,6 +945,69 @@ await check("同期が止まっている・機能の返事が遅れて使えな�
   }
 });
 
+await check("古い版の地図のまま開き直した端末: 新しい版を勧めるお知らせの後に、アカウントの内容（別の端末で新しい版にした地図）を読み込んだら、そのお知らせを下げる", async () => {
+  const uid = "u_stalenote";
+  const rootMeta = (p) => p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).find((n) => n.meta?.forecastRoot === true)?.meta ?? null);
+  // 端末 R: 未来の道筋を読み込み、古い版の印にして送る
+  const R = await newDevice({ uid });
+  await R.page.getByRole("dialog", { name: "4D Branch へようこそ" }).waitFor();
+  await R.page.getByRole("button", { name: "すぐに使う" }).click();
+  await R.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  await R.page.evaluate(() => window.__fourD.app.loadFuture());
+  const dlg = R.page.getByRole("dialog", { name: "未来の道筋を読み込む" });
+  await dlg.waitFor();
+  await dlg.getByRole("button", { name: "読み込む" }).click();
+  await R.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true));
+  const now = await rootMeta(R.page);
+  const ver = { version: now.futureVersion, release: now.futureRelease };
+  assert(typeof ver.release === "number", `入口に版の順番が無い ${JSON.stringify(ver)}`);
+  const setVer = (p, v) =>
+    p.evaluate((x) => {
+      const f = window.__fourD;
+      const r = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
+      f.app.cmd.updateNode(r.id, { meta: { ...r.meta, futureVersion: x.version, futureRelease: x.release } });
+    }, v);
+  await setVer(R.page, { version: "old", release: 0 });
+  await R.page.evaluate(() => window.__fourD.app.cloud.flush());
+  await R.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  // 別の端末が書く間、R は閉じていたことにする（見張りで取り込ませない）
+  await R.page.evaluate(() => window.__fourD.app.cloud?.stop());
+  // 端末 S: アカウントの地図を新しい版（このページの版）にして送る
+  const S = await newDevice({ uid });
+  await S.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced" && Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), null, { timeout: 20000 });
+  const welcome = S.page.getByRole("dialog", { name: "4D Branch へようこそ" });
+  if (await welcome.isVisible()) await S.page.getByRole("button", { name: "すぐに使う" }).click();
+  await setVer(S.page, ver);
+  await S.page.evaluate(() => window.__fourD.app.cloud.flush());
+  await S.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  await S.ctx.close();
+  // R を開き直す: db の返事を遅くし（読み書きのたびに 3 秒。古い版の手元が先に出る）、この版を知らせた印を消す（前に別の版を知らせた端末）
+  await R.ctx.addInitScript(() => {
+    if (window.__fakeFlags) window.__fakeFlags.dbDelayMs = 3000;
+  });
+  await R.page.evaluate(() => {
+    window.__fourD.ui.prefs.futureNotified = "";
+    const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+    delete p.futureNotified;
+    localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+  });
+  await R.page.reload({ waitUntil: "load" });
+  await R.page.waitForFunction(() => !!window.__fourD);
+  const note = R.page.locator(".toast:not(.closing)", { hasText: "未来の道筋の新しい版があります" });
+  await note.waitFor({ timeout: 10000 });
+  assert((await rootMeta(R.page))?.futureVersion === "old", "お知らせより先にアカウントの内容を読み込んだ（確かめの前提）");
+  // アカウントの内容（新しい版の地図）を読み込む: もう新しい版にすることは無いので、お知らせを下げる
+  await R.page.waitForFunction((v) => Object.values(window.__fourD.store.doc.nodes).find((n) => n.meta?.forecastRoot === true)?.meta.futureVersion === v, ver.version, { timeout: 40000 });
+  await R.page.waitForTimeout(500);
+  const after = await R.page.evaluate(() => ({
+    notes: [...document.querySelectorAll(".toast:not(.closing) .toast-text")].filter((t) => t.textContent.includes("未来の道筋の新しい版があります")).length,
+    newMark: document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new"),
+  }));
+  await R.ctx.close();
+  assert(after.notes === 0, "アカウントの内容を読み込んで新しい版になったのに、新しい版を勧めるお知らせが残っている");
+  assert(after.newMark === false, "新しい版になったのに「新」の印が残っている");
+});
+
 await check("ページのエラーが無い", async () => {
   assert(errors.length === 0, errors.join("\n"));
 });
