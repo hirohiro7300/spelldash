@@ -30357,6 +30357,265 @@ console.log("two devices send (95.1):");
   check("95.1 (3) どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
+// ===== 96.1 マイ単語帳の学ぶ順（Batch 96。js/myWordsCore.js buildMyQueue の today・myUnsureDue・myMixOf・myDueCount・js/game.js beginMyLearn・startGame・renderLearnPanel・続けて学ぶ。docs/SPEC_MY_WORDS.md §19）: (1) 打つ回の始めは今日の分 7 語（古い順）と これから 3 語・始めの行 (2) セットの終わりの「明日の復習 N語。」と 1 日目の行 (3) 同じ日の続けて学ぶ (4) 次の日の新しいページ (5) 選択式 (6) 320・390 の指の端末 × 昼夜 (7) スラングは前のまま (8) 学習状況の数・ランク・2,858 (9) 誤り 0 (10) 日をまたいだ続けて学ぶ =====
+// 時計（page.clock）は 2026-11-13 21 時（端末の時刻帯）に置く（そこから流れる。今の時刻で種を作ると、0 時台に流れたとき「今日 ×」が昨日になる）。
+// 期待は節の中の小さな決まり（保存から、その日の今日の分を数える）で出す。種は 1 回だけ入れる（開き直しでは種に戻さない）。Service Worker は止める
+console.log("my words learn order (96.1):");
+{
+  const { learnDayOf } = await import("../js/learnState.js");
+  const vocab = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const PUB = vocab.order;
+  const SD = await import("../js/slangData.js").catch(() => null);
+  const SLANG = SD?.SLANG ?? [];
+  const T0 = new Date(2026, 10, 13, 21, 0, 0).getTime();
+  const at = (days, hour) => new Date(2026, 10, 13 + days, hour, 0, 0).getTime();
+  const D0 = learnDayOf(T0);
+  const allErrors = [];
+  async function lpPage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null, time = T0 } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    page.on("console", (m) => { if (m.type() === "error") page.errors.push(`console: ${m.text()}`); });
+    await page.clock.setSystemTime(new Date(time));
+    await page.addInitScript(([seed, th]) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closePage = async (page) => { allErrors.push(...page.errors); const ctx = page.context(); await page.close(); await ctx.close(); };
+  const nShown = (page) => page.evaluate(() => window.__words.length);
+  const lastShown = (page) => page.evaluate(() => window.__words.at(-1) ?? null);
+  const panelUp = (page) => page.evaluate(() => !document.getElementById("resultPanel")?.hidden);
+  const waitPanel = (page) => page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+  const msg = (page) => page.evaluate(() => document.getElementById("message")?.textContent.trim() ?? "");
+  const stored = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
+  const typeKeys = async (page, keys) => { for (const ch of keys) await page.press("#input", ch); };
+  const publicNumbers = async (page) => {
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.getElementById("learnStatus")?.classList.contains("is-unavailable") && document.querySelectorAll("#learnCards .learn-card[data-count]").length === 3, null, { timeout: 10000 }).catch(() => {});
+    return page.evaluate(() => ({
+      learned: document.getElementById("learnCount")?.textContent ?? null, total: document.getElementById("learnTotal")?.textContent ?? null, rank: document.getElementById("learnRank")?.textContent ?? null,
+      next: document.getElementById("learnNextN")?.textContent ?? null,
+      cards: [...document.querySelectorAll("#learnCards .learn-card")].map((c) => `${c.dataset.state}:${c.dataset.count}`).join(","),
+      peak: localStorage.getItem("spelldash_rank_peak")
+    }));
+  };
+  // 種: 英小文字だけの語（1 字ずつ打てる）。これから 20・前の日までに × の あやふや 9（2〜6 日前）・今日 × 2・昨日 1 日目 2・3 日前に 1 日目 2・覚えた 6（41 語。今日の分は 11 語）
+  const makeBook = () => {
+    const fresh = "anchor basket candle desert engine forest garden harbor island jacket kettle ladder meadow needle otter pillow quiet ribbon saddle timber".split(" ").map((en) => ({ en }));
+    const unsure = [
+      ...[["uncle", -6, 10], ["valley", -5, 10], ["walnut", -5, 11], ["wagon", -4, 10], ["yogurt", -4, 11], ["bridge", -3, 10], ["castle", -3, 11], ["dinner", -2, 10], ["finger", -2, 11]].map(([en, d, h]) => ({ en, ls: 1, lsAt: at(d, h) })),
+      ...[["ginger", 9], ["hammer", 10]].map(([en, h]) => ({ en, ls: 1, lsAt: at(0, h) })), // 今日 ×（明日から）
+      ...[["insect", 10], ["jungle", 11]].map(([en, h]) => ({ en, ls: 1, lsAt: at(-1, h), lsd: D0 - 1 })), // 昨日 1 日目（中 1 日あけて明日から）
+      ...[["kitten", 12], ["lantern", 13]].map(([en, h]) => ({ en, ls: 1, lsAt: at(-3, h), lsd: D0 - 3 })) // 3 日前に 1 日目（今日の分）
+    ];
+    const learned = "mirror nickel oyster pepper rabbit silver".split(" ").map((en, i) => ({ en, ls: 2, lsAt: at(-10 + i, 9) }));
+    const out = [];
+    const lists = [fresh, unsure, learned]; // 足した順は状態ごとにまとめない
+    while (lists.some((l) => l.length)) for (const l of lists) if (l.length) out.push(l.shift());
+    return out.map((w, i) => ({ ...w, ja: `試しの訳 ${i + 1}`, addedAt: new Date(at(-20, 9) + i * 60000).toISOString() }));
+  };
+  // 期待の決まり（docs/SPEC_MY_WORDS.md §19.1 の字から）: 語の項目の あやふや で、最後に答えた日がその日より前、かつ lsd があればその日 − lsd ≥ 2。
+  // lsAt の無い あやふや は出す。並びは古い順（lsAt、同じなら足した順）
+  const dueOn = (list, day) => list.map((w, pos) => ({ w, pos }))
+    .filter(({ w }) => w.kind !== "concept" && typeof w.en === "string" && !!w.ja && w.ls === 1
+      && (!Number.isFinite(w.lsAt) || (learnDayOf(w.lsAt) < day && (!Number.isInteger(w.lsd) || day - w.lsd >= 2))))
+    .sort((a, b) => (Number.isFinite(a.w.lsAt) ? a.w.lsAt : 0) - (Number.isFinite(b.w.lsAt) ? b.w.lsAt : 0) || a.pos - b.pos)
+    .map(({ w }) => `my-${w.en}`);
+  const newIds = (list) => new Set(list.filter((w) => w.kind !== "concept" && !!w.ja && w.ls === undefined).map((w) => `my-${w.en}`));
+  // 1 セット 10 語の組み方（各セットの最初の 7 枠は今日の分、残りの 3 枠は これから。尽きたら他方で埋める）: そのセットの 復習 と 新しい の数
+  const setMix = (due, fresh) => {
+    let d = 0;
+    let n = 0;
+    for (let s = 0; s < 10; s++) {
+      const wantDue = s < 7 ? d < due : n >= fresh;
+      if (wantDue && d < due) d++;
+      else if (!wantDue && n < fresh) n++;
+    }
+    return { d, n };
+  };
+  const mixLine = ({ d, n }, tail) => `${[d ? `復習 ${d}` : "", n ? `新しい ${n}` : ""].filter(Boolean).join("・")}。${tail}`;
+  const TYPED_TAIL = "間違えても、あやふやに移るだけ";
+  const CHOICE_TAIL = "分からないときは「分からない」。間違えても、あやふやに移るだけ";
+  // 出た語に答える（打つ回）: 種で これから の語は 1 打ミス（× → あやふや。明日の分に入る）の後に打ち直し、ほかの語は打って正解。n 語に答え、出た順の id を返す
+  const playTyped = async (page, n, fresh) => {
+    const ids = [];
+    for (let i = 0; i < n; i++) {
+      const k = await nShown(page);
+      const id = await lastShown(page);
+      if (!id) break;
+      ids.push(id);
+      const en = String(id).slice(3);
+      if (fresh.has(id)) {
+        await typeKeys(page, en.startsWith("q") ? "z" : "q");
+        await page.waitForTimeout(150);
+      }
+      await typeKeys(page, en);
+      await waitUntil(async () => (await nShown(page)) > k || (await panelUp(page)), 8000);
+    }
+    return ids;
+  };
+  const seed = makeBook();
+  const FRESH = newIds(seed);
+  const due0 = dueOn(seed, D0);
+  const pubSeed = {};
+  PUB.slice(0, 3).forEach((id) => (pubSeed[id] = { playCount: 2, correctCount: 2, lastPlayed: new Date(at(-2, 9)).toISOString(), ls: 2 }));
+  PUB.slice(3, 5).forEach((id) => (pubSeed[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date(at(-2, 9)).toISOString(), lastRecallFailAt: new Date(at(-2, 9)).toISOString(), ls: 1, lsd: D0 - 5 }));
+  const SEED = { spelldash_my_words: JSON.stringify(seed), spelldash_word_stats: JSON.stringify(pubSeed) };
+  let s2 = null;
+
+  // (1)(2)(3)(10)(8): 1200×900 の打つ回（/?learn=my）。夜（T0）に 2 セット、同じページで次の日の 8 時に「続けて学ぶ」
+  {
+    const page = await lpPage(SEED);
+    const before = await publicNumbers(page);
+    await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    const line1 = await msg(page);
+    const set1 = await playTyped(page, 10, FRESH);
+    await waitPanel(page);
+    check("96.1 (1) 打つ回の始め（1200×900）: 最初の 10 語のうち前の 7 語は今日の分（古い順）・後の 3 語は これから・始めの行は「復習 7・新しい 3。間違えても、あやふやに移るだけ」",
+      due0.length === 11 && JSON.stringify(set1.slice(0, 7)) === JSON.stringify(due0.slice(0, 7)) && set1.length === 10 && set1.slice(7).every((id) => FRESH.has(id))
+        && line1 === mixLine(setMix(due0.length, FRESH.size), TYPED_TAIL) && line1 === `復習 7・新しい 3。${TYPED_TAIL}`,
+      JSON.stringify({ set1, due: due0.slice(0, 7), line1 }));
+    const s1 = await stored(page);
+    const p1 = await page.evaluate(() => ({ text: document.getElementById("resultPanel")?.innerText.replace(/\s+/g, " ").trim() ?? "", tomorrow: document.getElementById("myTomorrow")?.textContent.trim() ?? null }));
+    const t1 = dueOn(s1, D0 + 1).length;
+    check("96.1 (2) セットの終わり: 「明日の復習 N語。」（#myTomorrow）の N は保存から数えた明日の分・「今日を1日目に数えた語 N。別の日にもう一度正解すると覚えた。」が出る",
+      t1 > 0 && p1.tomorrow === `明日の復習 ${t1}語。` && /今日を1日目に数えた語 [1-9]\d*。別の日にもう一度正解すると覚えた。/.test(p1.text), JSON.stringify({ t1, p1 }));
+    // (3) 同じ日の続けて学ぶ: 同じ列の続き（今日の分の残り 4 語・これから 6 語）
+    const rest = dueOn(s1, D0);
+    const k1 = await nShown(page);
+    await page.click("#learnNext");
+    await waitUntil(async () => (await nShown(page)) > k1, 8000);
+    const line2 = await msg(page);
+    const set2 = await playTyped(page, 10, FRESH);
+    await waitPanel(page);
+    check("96.1 (3) 続けて学ぶ（同じ日）: 次のセットの行は「復習 4・新しい 6。…」・最初の 4 語は今日の分の残り（古い順）",
+      rest.length === 4 && line2 === mixLine(setMix(rest.length, newIds(s1).size), TYPED_TAIL) && line2 === `復習 4・新しい 6。${TYPED_TAIL}` && JSON.stringify(set2.slice(0, 4)) === JSON.stringify(rest),
+      JSON.stringify({ line2, set2: set2.slice(0, 5), rest }));
+    // (10) 日をまたいだ続けて学ぶ: 夜にセットを終えたページのまま、時計を次の日の 8 時へ進めて「続けて学ぶ」→ その日の今日の分から
+    s2 = await stored(page);
+    const T1 = at(1, 8);
+    const due1 = dueOn(s2, learnDayOf(T1));
+    const m10 = setMix(due1.length, newIds(s2).size);
+    await page.clock.setSystemTime(new Date(T1));
+    const k2 = await nShown(page);
+    await page.evaluate(() => { window.__before96 = true; });
+    await page.click("#learnNext");
+    // 開き直したページ（印が消える）か、同じページの次のセット（出た語が増える）を待つ
+    await waitUntil(() => page.evaluate((k) => (window.__before96 ? window.__words.length > k : window.__words.length >= 1), k2).catch(() => false), 10000);
+    const line10 = await msg(page);
+    const set10 = await playTyped(page, m10.d, FRESH);
+    check("96.1 (10) 日をまたいだ続けて学ぶ（夜に 1 セット → 同じページで次の日の 8 時に「続けて学ぶ」）: 始めの行は「復習 N・新しい M。」（N はその日の保存から数えた今日の分と 7 の小さい方）・最初の N 語はその日の今日の分（古い順）",
+      due1.length >= 7 && m10.d === 7 && line10 === mixLine(m10, TYPED_TAIL) && JSON.stringify(set10) === JSON.stringify(due1.slice(0, m10.d)),
+      JSON.stringify({ line10, set10, due: due1.slice(0, m10.d) }));
+    const after = await publicNumbers(page);
+    check("96.1 (8) 学習状況の数（覚えた・総数・ランク・次のランクまで・3 つの札）と最高到達ランクは、マイ単語帳の回の前後で同じ・総数は 2,858",
+      before.learned !== null && before.cards.split(",").length === 3 && JSON.stringify(after) === JSON.stringify(before) && before.total === vocab.total.toLocaleString("ja-JP") && vocab.total === 2858,
+      JSON.stringify({ before, after }));
+    await closePage(page);
+  }
+
+  // (4) 次の日（同じ保存で、時計を T0 + 1 日にした新しいページ）: 最初の 7 語はその日の保存から数えた今日の分の古い 7 語、後の 3 語は これから
+  {
+    const T4 = T0 + 24 * 3600 * 1000;
+    const list = s2 ?? seed;
+    const due4 = dueOn(list, learnDayOf(T4));
+    const fresh4 = newIds(list);
+    const m4 = setMix(due4.length, fresh4.size);
+    const page = await lpPage({ ...SEED, spelldash_my_words: JSON.stringify(list) }, { time: T4 });
+    await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    const line4 = await msg(page);
+    const ids = await playTyped(page, 9, FRESH);
+    ids.push(await lastShown(page));
+    check("96.1 (4) 次の日（同じ保存・時計を T0 + 1 日にした新しいページ）: 最初の 7 語はその日の保存から数えた今日の分の古い 7 語・後の 3 語は これから",
+      m4.d === 7 && JSON.stringify(ids.slice(0, 7)) === JSON.stringify(due4.slice(0, 7)) && ids.slice(7, 10).every((id) => fresh4.has(id)) && line4 === mixLine(m4, TYPED_TAIL),
+      JSON.stringify({ ids, due: due4.slice(0, 7), line4 }));
+    await closePage(page);
+  }
+
+  // (5) 選択式（/?learn=my&choice=en）: 始めの行・最初の語は今日の分・セットの終わりに「明日の復習 N語。」
+  {
+    const page = await lpPage(SEED);
+    await page.goto(BASE + "/?learn=my&choice=en", { waitUntil: "networkidle" });
+    const optsReady = () => page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt:not([aria-disabled])").length >= 2);
+    await waitUntil(async () => (await nShown(page)) >= 1 && (await optsReady()), 8000);
+    const line5 = await msg(page);
+    const first = await lastShown(page);
+    for (let i = 0; i < 10; i++) {
+      const k = await nShown(page);
+      const en = String(await lastShown(page)).slice(3);
+      const idx = await page.evaluate((t) => [...document.querySelectorAll("#choiceOpts .choice__opt")].findIndex((b) => b.querySelector(".choice__text")?.textContent === t), en);
+      if (idx < 0) break;
+      await page.click(`#choiceOpts .choice__opt[data-i="${idx}"]`);
+      await waitUntil(async () => ((await nShown(page)) > k && (await optsReady())) || (await panelUp(page)), 8000);
+    }
+    await waitPanel(page);
+    const tomorrow = await page.evaluate(() => document.getElementById("myTomorrow")?.textContent.trim() ?? null);
+    const n5 = dueOn(await stored(page), D0 + 1).length;
+    check("96.1 (5) 選択式（/?learn=my&choice=en）: 始めの行は「復習 7・新しい 3。分からないときは「分からない」。間違えても、あやふやに移るだけ」・最初の語は今日の分（いちばん古い語）・セットの終わりに「明日の復習 N語。」（保存から数えた明日の分）",
+      line5 === `復習 7・新しい 3。${CHOICE_TAIL}` && first === due0[0] && n5 > 0 && tomorrow === `明日の復習 ${n5}語。`, JSON.stringify({ line5, first, due: due0[0], tomorrow, n5 }));
+    await closePage(page);
+  }
+
+  // (6) 指の端末 320×640・390×844 × 昼夜: 打つ回と選択式の始めで横スクロール 0。打つ回の始めの行は 2 行まで
+  {
+    const bad = [];
+    for (const viewport of [{ width: 320, height: 640 }, { width: 390, height: 844 }]) {
+      for (const theme of [null, "dark"]) {
+        const page = await lpPage(SEED, { viewport, mobile: true, theme });
+        await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
+        await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+        const typed = await page.evaluate(() => {
+          const el = document.getElementById("message");
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const lines = new Set([...range.getClientRects()].filter((x) => x.width > 0 && x.height > 0).map((x) => Math.round(x.top))).size;
+          return { hx: document.documentElement.scrollWidth - document.documentElement.clientWidth, lines, text: el.textContent.trim() };
+        });
+        await page.goto(BASE + "/?learn=my&choice=en", { waitUntil: "networkidle" });
+        await waitUntil(() => page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt").length >= 2), 8000);
+        const choiceHx = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        if (typed.hx > 0 || typed.lines < 1 || typed.lines > 2 || choiceHx > 0) bad.push({ w: viewport.width, theme, typed, choiceHx });
+        await closePage(page);
+      }
+    }
+    check("96.1 (6) 320×640 と 390×844（指の端末）× 昼夜: 打つ回と選択式の始めで横スクロール 0・打つ回の始めの行は 2 行まで", bad.length === 0, JSON.stringify(bad));
+  }
+
+  // (7) スラングの回（/?learn=slang）は前のまま: 始めの行・古い lsAt の あやふや を種に入れても最初の語は これから（一覧の最初）・セットの終わりに「明日の復習」が無い
+  {
+    const old = { [SLANG[2]?.id]: { ls: 1, lsAt: at(-5, 10) }, [SLANG[5]?.id]: { ls: 1, lsAt: at(-3, 10) } };
+    const page = await lpPage({ spelldash_slang: JSON.stringify(old) });
+    await page.goto(BASE + "/?learn=slang", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    const line7 = await msg(page);
+    const first = await lastShown(page);
+    // 答えを見る（Enter）→ 次へ（Enter）を、セットの終わりまで
+    for (let i = 0; i < 30 && !(await panelUp(page)); i++) {
+      const k = await nShown(page);
+      await page.waitForTimeout(ADVANCE_GUARD_MS + 50);
+      await page.press("#input", "Enter");
+      await page.waitForTimeout(80);
+      await page.press("#input", "Enter");
+      await waitUntil(async () => (await nShown(page)) > k || (await panelUp(page)), 3000);
+    }
+    const p7 = await page.evaluate(() => ({ panel: !document.getElementById("resultPanel")?.hidden, tomorrow: !!document.getElementById("myTomorrow"), title: document.getElementById("resultTitle")?.textContent.trim() ?? null }));
+    check("96.1 (7) スラングの回は前のまま: 始めの行は「分からないときは答えを見る。間違えても、あやふやに移るだけ」・古い lsAt の あやふや を種に入れても最初の語は これから（一覧の最初）・セットの終わりに「明日の復習」の行が無い",
+      SLANG.length > 5 && line7 === "分からないときは答えを見る。間違えても、あやふやに移るだけ" && first === SLANG[0].id && p7.panel && p7.title === "10語 終わり" && !p7.tomorrow, JSON.stringify({ line7, first, p7 }));
+    await closePage(page);
+  }
+
+  check("96.1 (9) どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
 // ===== 92.1 ショートカットキー（Batch 92。shortcuts.html・js/shortcutsPage.js・js/shortcutsCore.js・js/shortcutsArt.js・js/shortcutsData.js・入口は index.html・stats.html・js/statsView.js。docs/SPEC_SHORTCUTS.md）: 入口（ホームの「スラング」の下のボタン・学習状況のスラングの行の下の 1 行と練習のページと同じ 覚えた の数・2,858 と学習状況の今の数は動かない）・ページ（ナビ 4 つ・フッター・noindex・sitemap に無い・CSP の違反 0・320／390／1200 × 昼夜で横スクロール 0）・キーボードを選ばずに練習 → 選ぶ所へ・押す組を全部本物のキーで（Ctrl は Control、⌘ は Meta）・止める・取り違えと近い組・ほかの項目の組・repeat・⌘ の keyup の欠け・Esc と Tab・届かなかった組（1 回目と 2 回目）・戻る・進む・再読み込みの守り・指の端末・絵（2 問目の前と後・字の大きさ・動き・光るキー・⌘ の日本語の並び）・キーボードだけで 10 問・日本語入力・保存と領域とバックアップ・アプリの状態 =====
 // Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来・読み込み直しでは種に戻さない）
 console.log("shortcuts (92.1):");
