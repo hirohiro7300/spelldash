@@ -299,8 +299,9 @@ export class Commands {
   private fixedNoticeShown = false;
 
   /**
-   * 消す。3 年の分かれ道のカードを消すときは、その先だけにあるカード（消した後はどの入口からも届かない物）も一緒に消す
-   * （残すと全部開いた形の遠い位置にふつうのカードとして散らばる）。範囲の外のノードは今までどおり。元に戻すと全部戻る
+   * 消す。3 年の分かれ道のカードを消すときは、その先だけにあるカード（消した後はどの入口からも、消す所の外に残るノードからも
+   * 届かない物）も一緒に消す（残すと全部開いた形の遠い位置にふつうのカードとして散らばる）。ほかの親（自分のノードなど）から
+   * つながっている物とその先は残す。範囲の外のノードは今までどおり。元に戻すと全部戻る
    */
   deleteNodes(ids: ID[], edges: ID[] = []): void {
     const ns = ids.filter((id) => this.doc.nodes[id]);
@@ -320,8 +321,8 @@ export class Commands {
   }
 
   /**
-   * 3 年の分かれ道のカード ns（と接続 es）を消すと、どの入口からも届かなくなるカード（ns の先だけにある物。ns は含めない）。
-   * ns に範囲のカードが無ければ空
+   * 3 年の分かれ道のカード ns（と接続 es）を消すと、その先だけに残るカード（ns の先にあり、消した後はどの入口からも、
+   * 消す所の外に残るノードからも届かない物。ns は含めない）。ns に範囲のカードが無ければ空
    */
   private impactOrphans(ns: ID[], es: ID[]): ID[] {
     const seeds = ns.filter((id) => this.vm.inImpact(id));
@@ -329,7 +330,7 @@ export class Commands {
     const doc = this.doc;
     const out = this.vm.index.out;
     const gone = new Set(ns);
-    // 消すカードの先（道の線でたどれる物）
+    // 消すカードの先（道の線でたどれる物）= 一緒に消す候補
     const below = new Set<ID>();
     const stack = [...seeds];
     while (stack.length) {
@@ -340,11 +341,12 @@ export class Commands {
       }
     }
     if (!below.size) return [];
-    // 消した後も入口から届く物は残す（別の選択肢からも合流する物など）
+    // 消した後も残るノードから道の線（消す線は通らない）で届く物は残す。たどり始めは入口と、消すノード・候補のどちらでもないノード
+    // （別の選択肢からも合流する物、自分の親 P → W のある自分のノード W とその先 など）
     const goneE = new Set(es);
     const reach = new Set<ID>();
     const queue: ID[] = [];
-    for (const id in doc.nodes) if (!gone.has(id) && isImpactRoot(doc.nodes[id])) (reach.add(id), queue.push(id));
+    for (const id in doc.nodes) if (!gone.has(id) && (!below.has(id) || isImpactRoot(doc.nodes[id]))) (reach.add(id), queue.push(id));
     while (queue.length) {
       for (const e of flowOuts(doc, out, queue.pop()!)) {
         if (goneE.has(e.id) || gone.has(e.target) || reach.has(e.target)) continue;
