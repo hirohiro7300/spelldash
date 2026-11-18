@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeForecast } from "../../src/model/forecast";
-import { chanceWeights, forkKindOf, impactScope } from "../../src/model/forks";
+import { chanceWeights, forkKindOf, impactScope, primaryImpactRoot } from "../../src/model/forks";
 import { buildIndex } from "../../src/model/graph";
 import { computeImpact, type ImpactResult } from "../../src/model/impact";
 import { formatMan, formatMonthlyDelta, impactBin } from "../../src/model/impactFormat";
@@ -378,5 +378,25 @@ describe("数の書き方と段", () => {
     expect(impactBin(-100)).toBe(-3);
     expect(impactBin(300)).toBe(4);
     expect(impactBin(null)).toBe(0);
+  });
+});
+
+describe("入口が 2 つ以上あるとき", () => {
+  it("先へ進む線のある入口 → 早く作った物 → ID の順で 1 つに決める", () => {
+    const { doc } = tree();
+    // 今日の複製（線なし・ID が先に来る）
+    doc.nodes["0copy"] = { ...doc.nodes.R!, id: "0copy", meta: { ...doc.nodes.R!.meta } };
+    expect(primaryImpactRoot(doc)).toBe("R");
+    expect(primaryImpactRoot(doc, buildIndex(doc).out)).toBe("R");
+    // 線のある入口がもう 1 つ（後から作った）
+    doc.nodes["0map"] = { ...doc.nodes.R!, id: "0map", createdAt: "2999-01-01T00:00:00.000Z", meta: { ...doc.nodes.R!.meta } };
+    const e = makeEdge({ id: "0map-K", source: "0map", target: "K", relation: "leads" });
+    doc.edges[e.id] = e;
+    expect(primaryImpactRoot(doc)).toBe("R");
+    expect(primaryImpactRoot(doc, buildIndex(doc).out)).toBe("R");
+    // 同じ時刻なら ID の順
+    doc.nodes["0map"]!.createdAt = doc.nodes.R!.createdAt;
+    expect(primaryImpactRoot(doc)).toBe("0map");
+    expect(primaryImpactRoot(createEmptyDoc())).toBeNull();
   });
 });

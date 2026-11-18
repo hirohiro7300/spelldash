@@ -37,6 +37,41 @@ export function impactConfigOf(n: GNode | undefined): ImpactConfig | null {
 
 export const isImpactRoot = (n: GNode | undefined): boolean => !!n && n.meta?.forecastRoot === true && impactConfigOf(n) !== null;
 
+/**
+ * 数字と概要を出す入口を 1 つに決める（今日の複製や、別の地図の追加の読み込みで入口が 2 つ以上あるとき）。
+ * 先へ進む線のある入口 → 早く作った物 → ID の順。入口が無ければ null。out が無ければ線をなめて調べる
+ */
+export function primaryImpactRoot(doc: DocData, out?: Map<ID, ID[]>): ID | null {
+  let flowFrom: Set<ID> | null = null;
+  const hasFlow = (id: ID): boolean => {
+    if (out) return flowOuts(doc, out, id).length > 0;
+    if (!flowFrom) {
+      flowFrom = new Set<ID>();
+      for (const e of Object.values(doc.edges)) if (isFlowEdge(e) && e.source !== e.target && doc.nodes[e.target]) flowFrom.add(e.source);
+    }
+    return flowFrom.has(id);
+  };
+  let best: ID | null = null;
+  let bestFlow = false;
+  for (const id of Object.keys(doc.nodes)) {
+    const n = doc.nodes[id]!;
+    if (!isImpactRoot(n)) continue;
+    const f = hasFlow(id);
+    if (best === null) {
+      best = id;
+      bestFlow = f;
+      continue;
+    }
+    const b = doc.nodes[best]!;
+    const better = f !== bestFlow ? f : n.createdAt !== b.createdAt ? n.createdAt < b.createdAt : id < best;
+    if (better) {
+      best = id;
+      bestFlow = f;
+    }
+  }
+  return best;
+}
+
 /** 線の見込み（%）。数でなければ null */
 export function probOf(e: GEdge): number | null {
   const v = e.meta?.prob;
