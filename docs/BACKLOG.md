@@ -449,8 +449,8 @@
     - 1 台目で棚からコースに無い本（例: 不動産 実務）を選ぶと（js/main.js `pickBook`）、spelldash_category をその本にしてパックを読み込む。spelldash_course は触らない（コースの函は棚に残り、机の本がその巻でないので効いていないだけ）
     - 学習記録の無い 2 台目が同期すると selected_category を採る（js/sync.js）。その本を含むコースがあれば COURSES の順の最初のコースで始め（1 台目のコースと違うことがある）、無ければ spelldash_course を消してパックを足す。学習記録のある端末は採らない
     - 食い違い: 1 台目はコースを持ったまま非コースの本を机に置けるが、2 台目は同じ机でコースの鍵が消え、函も来ない。直すなら別の Batch（棚を同期するか、コースを送るか。SQL が要るかを先に見る）
-- **Batch 78（英単語の学習に絞る）** 🔧 2026-10-28: 段 1〜6 は WIP の控えのブランチ（未公開。docs/CHANGELOG.md 2026-10-28）。残り:
-  - ⚠ **アカウントの切り替え**（2026-10-28 の決定 2・2026-10-29 の確認と必須修正）: 設計は決まった（人ごとの鍵 `sd2.<領域>.*`・使っていない人は IndexedDB・退避を確かめられなければ切り替えない・認証のセッションの鍵の世代を分ける・旧タブは実物の直前の本番版で証明する）。作っている途中（WIP のブランチ）。単体と E2E の新しい節を CI に入れ、20 の「持ち主が別人」の検査と test-learn-state の「別のアカウントに置き換え」を書き直す。Preview で iPhone の Safari を手で確かめる。**これと旧タブの証明が済むまで公開しない**
+- **Batch 78（英単語の学習に絞る）** ✅ 2026-11-03 に main へ入れて公開した（11-04 から本番。docs/CHANGELOG.md 2026-10-28）。残り:
+  - ✅ **アカウントの切り替え**（2026-10-28 の決定 2・2026-10-29 の確認と必須修正）: 設計は決まった（人ごとの鍵 `sd2.<領域>.*`・使っていない人は IndexedDB・退避を確かめられなければ切り替えない・認証のセッションの鍵の世代を分ける・旧タブは実物の直前の本番版で証明する）。作って CI に入れた（E2E 78.7・単体 test-areas・20 の「持ち主が別人」の書き直し）。残りは電話の実機での手の確かめだけ（docs/FOUNDER_TODO.md の 15 の「受け入れの残り」）
   - ⚠ **2 台で 3 状態と最高到達ランクをそろえる**: SQL が要る（docs/FOUNDER_TODO.md E。案だけ・未実行・許可が要る）。流してもらってから js/sync.js の statToRow／rowToStat と user_progress に列を足す（逆の順だと送信が失敗し続ける）。マージは語ごとに learn_state_at の新しい方、rank_peak は大きい方
   - ☐ **保留の E2E 28 節**（docs/E2E_CLASSIFICATION.md に節ごとの 4 つの理由と、同じ仕様を CI で守る検査。scripts/e2e-shard.mjs の HOLD）: 英単語の学習に絞った形で利用者が届かない面だけ。3 Daily Dash・4 ストリークカード・5 Challenge・6 モバイル（Challenge の結果と道）・8.6 わたしの本棚・8.6 窓の表紙・9 難易度ゲート・9.3 Challenge の手触り・9.4 今日のセット・study 60s・9.5 学習データ（カテゴリ別の行）・9.5 覚えた瞬間 v2・9.6 マイ単語帳・9.8 初回体験と継続・9.955 学習のランク（21 段）・9.97 概念カード・9.98 単語帳・9.99 Batch 5a・9.995 Batch 5b・9.999 Batch 6・9.9995 Batch 7a・9.9996 Batch 8・日本語の答え・12・12.5・13（コースと道）と目印 2 つ（Batch 58 ここまで・10.）。旗（js/focus.js FOCUS_ENGLISH）を外して前の面を戻すときは、その面の節を HOLD から外して直す。消すかは前の面のコードを消す Batch で決める
   - ✅ 週間レポート・今月の行・推移・カレンダーの「覚えた」を学習状況の 3 状態の 覚えた（公開の語）の増えにした（Batch 90。成長ログの端末だけの欄 core・core0・cb・nf。js/growthLog.js・js/weeklyReport.js・js/calendarView.js・js/statsView.js。docs/SPEC_LEARN_STATE.md §12.1）
@@ -472,7 +472,7 @@
   - ✅ 段 3 の回の終わりは、回の始めに見せた段も最高到達ランクに書く（js/game.js `raiseRankPeak(Math.max(r.rankShown, reached))`。統合のときに直した）
   - ☐ js/rank.js parseRankPeak は Number() で読む（" 4"・"08" も通る。書くのは String(段) だけなので普段は起きない）
   - ☐ 初めての人の最初の自力正解の後、チュートリアルの T3 の札で次の語まで約 1.5 秒待つ（一度だけ・Enter で進める）。決定 §6 の「待たせない」と比べて決める
-  - ☐ js/publicVocab.js makePublicVocab が packs を返さないので、中心の学習を始めるときに data/public/english.json を 2 回取る
+  - ✅（済み: js/publicVocab.js が packs を返し、公開の表は 1 ページに 1 回だけ取る）js/publicVocab.js makePublicVocab が packs を返さないので、中心の学習を始めるときに data/public/english.json を 2 回取る
   - ☐ 11 の「静的ページ: ログイン済みは「設定」と連続日数のチップ」は hidden 属性だけを見る（CSS で隠しても通る）。静的な頁のログイン中は右端の「設定」とナビの「設定」が 2 つ並ぶ
   - ☐ 綴りで引く別解の索引の 5月の守り（might を混ぜない）は単体だけ。旗を外す前に Study（旗を外したページ）の E2E を 1 件足す
   - ☐ 前の書斎の本棚の絵の札（scripts/room-art/shelves.mjs:48「2,857語」）。直すと絵を焼き直す。旗の間は出ない

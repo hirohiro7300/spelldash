@@ -4,7 +4,7 @@
 > 創業者の決定（2026-10-28・2026-10-29・2026-10-30。§0）を、作った形に直したもの。設計の版 2（2026-10-29）に、実装と反証で決めた違いを入れてある。
 > 作ったもの: 見張り js/areaGuard.js・控え js/areaStore.js・切り替えの画面 switch.html と js/areaSwitch.js・js/auth.js・js/sync.js・js/supabase.js・js/backup.js・js/profileView.js・js/funnelLog.js・sw.js・privacy.html。
 > 検査: 単体 scripts/test-areas.mjs（CI の checks）・E2E 78.7・旧タブの証明 tests/oldtab（CI のジョブ oldtab）。§9。
-> **公開前の関門**: 旧いコードのタブの書き込みを、A に戻ったときに A の記録へ 1 回だけ取り込む形を実装した（§0.3 の 1・§6・§11）。受け入れ基準と旧タブの実機検査が全部通るまで公開しない。
+> **公開の関門**: 旧いコードのタブの書き込みを、A に戻ったときに A の記録へ 1 回だけ取り込む形を実装した（§0.3 の 1・§6・§11）。2026-11-03 に創業者が main へマージし、11-04 から本番に出ている。電話の実機での手の確かめは docs/FOUNDER_TODO.md の 15 の「受け入れの残り」
 > 3 状態の欄・同期の初めの埋め・バックアップの中身は docs/SPEC_LEARN_STATE.md。サーバー側の書き込みの門の案は docs/SQL_CLIENT_GATE.md（未実行）。
 
 ## 0. 創業者の決定（要点）
