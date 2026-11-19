@@ -1,0 +1,9 @@
+{
+  "//": "生成の入口（node で動かす scripts/impact と scripts/impact/q）の型の点検。アプリの tsconfig を引き継ぎ、vite の型の代わりに node の最小の宣言（node-shim.d.ts）を読む。npm run typecheck が tsc -p scripts/impact で呼ぶ",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["*.ts", "q/*.ts"]
+}

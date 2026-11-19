@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p scripts/impact",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node tests/e2e/run.mjs",
@@ -16,7 +16,8 @@
     "build:artifact": "npm run build && node scripts/build-artifact.mjs",
     "e2e:artifact": "node tests/e2e/artifact.mjs",
     "build:preview": "node scripts/build-preview.mjs",
-    "e2e:preview": "node tests/e2e/preview.mjs"
+    "e2e:preview": "node tests/e2e/preview.mjs",
+    "impact:q": "node scripts/impact/q/run.mjs"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.6",
