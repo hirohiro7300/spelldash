@@ -10,6 +10,8 @@ import { isDisposableDoc } from "./demo";
 import { edgeTextPrint, fnv36, impactTagsOf } from "./impact";
 import type { Condition, DocData, GEdge, GNode, ID, Project, Scenario } from "../model/types";
 import { mergeDocs, nameKey } from "../persist/io";
+// 同じ鍵のカードの選び方（入口からたどれる物 → 先に作った物 → 入口に近い物 → ID の順）は、薄い形の保存と同じ決まりを使う
+import { madeFirst } from "../persist/keyedCards";
 
 export interface FutureMap {
   /** 予測の入口（「今日」）のノード */
@@ -424,18 +426,6 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
 
 /** 線の（元・先）。鍵どうしでも ID どうしでも使う */
 const pairKey = (source: string, target: string): string => `${source}\u0000${target}`;
-
-/**
- * 同じ鍵のカードのうち、a を b より先の物（同梱のカード）とみるか: 入口からたどれる物（地図から外れた物は、たどれる物が無いときだけ。
- * 作った時刻より先に見る）、その中で先に作った物、同じ時刻なら入口に近い物、それも同じなら ID の順
- */
-function madeFirst(a: GNode, b: GNode, depth: Map<ID, number>): boolean {
-  const da = depth.get(a.id) ?? Infinity;
-  const db = depth.get(b.id) ?? Infinity;
-  if ((da === Infinity) !== (db === Infinity)) return da !== Infinity;
-  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt;
-  return da !== db ? da < db : a.id < b.id;
-}
 
 /** 鍵を外したノード（同じ鍵の 2 つ目を利用者のノードとして残すとき。新しい版でも同梱のカードと取り違えない） */
 function withoutKey(n: GNode): GNode {

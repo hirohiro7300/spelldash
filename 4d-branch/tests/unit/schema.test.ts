@@ -63,6 +63,25 @@ describe("normalizeDoc", () => {
     expect(Number.isFinite(doc.nodes.b!.x)).toBe(true);
   });
 
+  it("外にあると渡されたノード（薄い形で省いた地図のカード）への接続は残す。渡さなければ今までどおり捨てる", () => {
+    const doc = createEmptyDoc();
+    const a = makeNode({ title: "自分のカード" });
+    doc.nodes[a.id] = a;
+    const e1 = makeEdge({ source: a.id, target: "n_i_0123456789abcd" });
+    const e2 = makeEdge({ source: "n_i_0123456789abcd", target: "n_i_zzzzzzzzzzzzzz" });
+    const e3 = makeEdge({ source: a.id, target: "n_unknown" });
+    doc.edges[e1.id] = e1;
+    doc.edges[e2.id] = e2;
+    doc.edges[e3.id] = e3;
+    const raw = JSON.parse(JSON.stringify(doc));
+    expect(Object.keys(normalizeDoc(raw).doc.edges)).toEqual([]);
+    const ext = (id: string) => id.startsWith("n_i_");
+    const { doc: out, report } = normalizeDoc(raw, { externalNodeIds: ext });
+    expect(Object.keys(out.edges)).toEqual([e1.id, e2.id]);
+    expect(out.edges[e1.id]).toEqual(e1);
+    expect(report.dropped.edges).toBe(1);
+  });
+
   it("循環（A→B→A）は捨てない", () => {
     const { doc } = normalizeDoc({ schema: "4d-branch", nodes: [{ id: "a", x: 0, y: 0 }, { id: "b", x: 0, y: 0 }], edges: [{ source: "a", target: "b" }, { source: "b", target: "a" }] });
     expect(Object.keys(doc.edges)).toHaveLength(2);
