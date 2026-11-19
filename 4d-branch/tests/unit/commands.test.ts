@@ -4,6 +4,9 @@ import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
 import { r6Bundle } from "./helpers/r6";
 import { buildImpactDoc } from "../../src/demo/impact";
+import { buildQuarterDoc, quarterRootId } from "../../src/demo/quarterDoc";
+import { fromDevTree } from "../../src/deepmap/dev/fromTree";
+import { handTree } from "./deepmapFixtures";
 import { flowOuts, isFlowEdge } from "../../src/model/forks";
 import { createEmptyDoc, makeEdge, makeNode } from "../../src/model/schema";
 import type { DocData, ID, Relation } from "../../src/model/types";
@@ -326,6 +329,21 @@ describe("3 年の分かれ道: 複製", () => {
     const y0 = s.store.doc.nodes[copy!]!.y;
     s.cmd.moveNodes([copy!], 0, 300);
     expect(s.store.doc.nodes[copy!]!.y).toBe(y0 + 300);
+  });
+
+  it("3 か月ごとの地図（buildQuarterDoc）の今日を複製しても、写しは入口だけの印（地図の年月・文の型の版・never）を持たない（見直し compat-4）", () => {
+    const m = fromDevTree(handTree());
+    const root = quarterRootId(m);
+    const s = setup(buildQuarterDoc(m, { version: m.header.hash, release: m.header.release, at: Date.UTC(2026, 10, 19) }));
+    const orig = s.store.doc.nodes[root]!.meta;
+    for (const k of ["anchor", "textVersion", "never"]) expect(k in orig, k).toBe(true);
+    const [copy] = s.cmd.duplicate([root]);
+    const meta = s.store.doc.nodes[copy!]!.meta;
+    for (const k of ["forecastRoot", "impact", "futureVersion", "futureRelease", "key", "anchor", "textVersion", "never", "fams", "t0", "b0"]) expect(k in meta, k).toBe(false);
+    // 元の今日はそのまま（入口は 1 つ）
+    expect(s.store.doc.nodes[root]!.meta).toMatchObject({ forecastRoot: true, anchor: m.header.anchor, textVersion: m.header.textVersion });
+    expect(s.vm.impactRoots()).toEqual([root]);
+    expect(s.vm.inImpact(copy!)).toBe(false);
   });
 
   it("すべて選んで複製しても、写しは 3 年の分かれ道に入らず動かせる。写しは作ったときの印（鍵・今のまま・元の文・元の見込み）を持たない", () => {

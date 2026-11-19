@@ -42,6 +42,11 @@ jobs:
       - name: 単体テスト（データモデル・ストア・保存・同期・地図の計算。8 万枚の木は遅いテストで）
         run: npm test
 
+      # 3 か月ごとの地図の組み立てと基準の文書の指紋を、時差の違う 2 つのプロセス（America/Los_Angeles・Asia/Tokyo）で。
+      # 読み込んだ時に 1 度だけ時差を読む作りは、同じプロセスの中で時差を変えるテスト（npm test）では見つからない（見直し found-4・safety-14）
+      - name: 時差の違う 2 つのプロセスでの確かめ
+        run: npm run test:tz
+
       - name: ビルド
         run: npm run build
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
 import { buildWishlist } from "../../src/demo/wishlistBundle";
@@ -11,6 +11,7 @@ import { CloudError, CloudNewerError, CloudRepo, CloudSync, baseCovered, decodeD
 import { editLocked } from "../../src/app/editLock";
 import { mergeDocs } from "../../src/persist/io";
 import { Store } from "../../src/store/store";
+import vitestConfigSrc from "../../vitest.config.ts?raw";
 
 const LIMIT = 256 * 1024;
 const bytesOf = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).length;
@@ -18,16 +19,37 @@ const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 /** 本物の setTimeout（偽の時計を入れる前に取っておく。偽の時計を入れても、この参照は本物のまま） */
 const realSetTimeout = globalThis.setTimeout;
-/** settle が待つ上限（本当の時間） */
-const SETTLE_LIMIT_MS = 60_000;
+/**
+ * settle が待つ上限（本当の時間）。テストの時間切れより短くする（vitest.config.ts の testTimeout は 30 秒。settle を使うテストは SETTLE_TEST_MS）:
+ * 時間切れが先だと「Test timed out」だけになり、どの段で止まったかが出ない（見直し found-3）
+ */
+const SETTLE_LIMIT_MS = 20_000;
+/** settle を使うテスト（C9・E12）の時間切れ。1 つのテストの settle（4 回まで）がどれも上限まで待っても、settle の文で落ちる長さ */
+const SETTLE_TEST_MS = 120_000;
+/** 1 つのテストで settle を呼ぶ一番多い回数（C9 の始め + 3 回の送信） */
+const SETTLE_MAX_CALLS = 4;
+
+/** テストが終わるたびに 1 つ進める（afterEach）。settle は始めた時の値と違えば、終わったテストに取り残された物なので止まる */
+let settleGen = 0;
+/**
+ * どのテストの後も: 偽の時計を本当の時計に戻し、取り残された settle を止める。時間切れになったテストは finally まで行かないので、
+ * 偽の時計が次のテストに残り、取り残された settle がその時計を進め続けた（見直し found-3）
+ */
+function endOfTest(): void {
+  settleGen++;
+  vi.useRealTimers();
+}
+afterEach(endOfTest);
 
 /**
  * 偽の時計（vi.useFakeTimers）の下で、p が済むまで待つ。時計は 10 ms ずつ進める（貸し出し・やり直し・入れ替えの間の待ちは偽の時計で進む）。
  * 送る・読むの途中の圧縮と指紋は本当の非同期の仕事で、偽の時計を進めても速くならないので、1 歩ごとに本当の時間も 1 ms あける
  * （CPU が混んでいても、偽の時計の進みが混んでいない時と同じくらいに収まる）。歩数では打ち切らず、p が済んだかで決める
- * （前は 200 歩で黙って先へ進み、CPU が混むと済んでいない同期の上で確かめて落ちた）。本当の時間で SETTLE_LIMIT_MS たっても済まなければ落とす
+ * （前は 200 歩で黙って先へ進み、CPU が混むと済んでいない同期の上で確かめて落ちた）。本当の時間で limitMs たっても済まなければ、段の名前を付けて落とす。
+ * テストが終わった後（afterEach）に残っていれば、偽の時計を進めずに止まる
  */
-async function settle(p: Promise<unknown>, what: string): Promise<void> {
+async function settle(p: Promise<unknown>, what: string, limitMs = SETTLE_LIMIT_MS): Promise<void> {
+  const gen = settleGen;
   let done = false;
   let failed = false;
   let error: unknown;
@@ -39,8 +61,12 @@ async function settle(p: Promise<unknown>, what: string): Promise<void> {
     },
   );
   const t0 = performance.now();
+  const left = () => {
+    if (gen !== settleGen) throw new Error(`${what} の settle が、テストの終わった後に残っていた（偽の時計を進めずに止める）`);
+  };
   while (!done) {
-    if (performance.now() - t0 > SETTLE_LIMIT_MS) throw new Error(`${what} が、本当の時間で ${SETTLE_LIMIT_MS / 1000} 秒たっても済まない`);
+    left();
+    if (performance.now() - t0 > limitMs) throw new Error(`${what} が、本当の時間で ${limitMs / 1000} 秒たっても済まない`);
     await vi.advanceTimersByTimeAsync(10);
     if (!done) await new Promise((r) => realSetTimeout(r, 1));
   }
@@ -269,6 +295,53 @@ function realDoc(title: string): DocData {
   d.nodes[n.id] = n;
   return d;
 }
+
+describe("テストの待ち方 settle（偽の時計の下で同期が済むまで待つ。見直し found-3）", () => {
+  it("上限は vitest の時間切れより短く、settle を使うテストの時間切れは、settle がどれも上限まで待っても足りる", () => {
+    const m = /testTimeout:\s*([\d_]+)/.exec(vitestConfigSrc);
+    expect(m).not.toBeNull();
+    expect(SETTLE_LIMIT_MS).toBeLessThan(Number(m![1]!.replace(/_/g, "")));
+    expect(SETTLE_LIMIT_MS * SETTLE_MAX_CALLS).toBeLessThan(SETTLE_TEST_MS);
+  });
+
+  it("済まない約束は、テストの時間切れより先に、段の名前を付けて落ちる", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const t0 = performance.now();
+    await expect(settle(new Promise(() => undefined), "返事の来ない送信", 200)).rejects.toThrow("返事の来ない送信 が、本当の時間で 0.2 秒たっても済まない");
+    expect(performance.now() - t0).toBeLessThan(5_000);
+  });
+
+  it("（準備）偽の時計を入れたまま、戻さずに終わる（時間切れで finally まで行かなかったテストのふり）", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    expect(vi.isFakeTimers()).toBe(true);
+  });
+
+  it("前のテストの偽の時計は、次のテストの前に本当の時計に戻っている（afterEach）", async () => {
+    expect(vi.isFakeTimers()).toBe(false);
+    const t0 = performance.now();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(performance.now() - t0).toBeGreaterThanOrEqual(25);
+  });
+
+  it("終わったテストに取り残された settle は、次のテストの偽の時計を進めずに止まる", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const caught = settle(new Promise(() => undefined), "取り残された待ち").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    // 取り残される前は、偽の時計を進めている
+    const before = Date.now();
+    await new Promise((r) => realSetTimeout(r, 30));
+    expect(Date.now()).toBeGreaterThan(before);
+    // テストの終わり（afterEach と同じ）の後に、次のテストが偽の時計を入れた
+    endOfTest();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const now = Date.now();
+    await new Promise((r) => realSetTimeout(r, 50));
+    expect(Date.now()).toBe(now);
+    expect(String(await caught)).toContain("取り残された待ち の settle が、テストの終わった後に残っていた");
+  });
+});
 
 describe("符号化と保存先", () => {
   it("gzip + base64 で往復でき、2,000 ノードでも分割の 1 つずつが 256 KiB（バイト）に収まる", async () => {
@@ -1187,7 +1260,7 @@ describe("同期の決まり: 再レビューの指摘", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
+  }, SETTLE_TEST_MS);
 
   it("ノードが無くても、プロジェクト・シナリオ・名前のあるドキュメントは捨ててよい物と見なさない（C10）", () => {
     const empty = createEmptyDoc();
@@ -2005,7 +2078,7 @@ describe("同期の決まり: 修正の再レビューの指摘", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
+  }, SETTLE_TEST_MS);
 
   it("確かめられなかった送信は、別のタブが基準を進めた後には当てはめない（E11）", async () => {
     const { be } = memoryBackend();

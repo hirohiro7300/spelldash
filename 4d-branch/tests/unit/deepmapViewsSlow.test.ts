@@ -5,10 +5,10 @@
 // どの画面の文字にも英字の鍵が出ない・見取り図と 10 の手の詳しい画面を全部作る時間（3 回の一番速い物）
 
 import { describe, expect, it } from "vitest";
-import { analyze, compileMap, fallbackText, type Analysis } from "../../src/deepmap/core";
+import { analyze, compileMap, fallbackText, worthOf, type Analysis } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../src/deepmap/mapData";
-import { moveDetailVM, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, type PathVM } from "../../src/deepmap/views";
+import { moveDetailVM, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, WORTH_NOISE, type PathVM } from "../../src/deepmap/views";
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const SLOW = env.DEEPMAP_SLOW === "1";
@@ -248,10 +248,17 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
       expect([annual, kind, d.kind]).toEqual([annual, kind, k]);
       expect("note" in d ? d.note : null).toBe(SMALL_DELTA_TEXT);
     }
-    // 学校・塾（−5.1 万円）など、マイナスの「3 年やらない場合との差」は誤差として「ほぼ差なし」（作業メモ truth-4）
-    const vm = overviewVM(analyze(cm, 360));
+    // 学校・塾など、マイナスの「3 年やらない場合との差」は誤差として「ほぼ差なし」（作業メモ truth-4）
+    const a360 = analyze(cm, 360);
+    const vm = overviewVM(a360);
     expect(vm.rows.find((r) => r.kind === "sd_pilot")!.worth?.text).toBe("ほぼ差なし");
-    expect(vm.worthNoise).toBeGreaterThan(5);
+    // 誤差の幅は 4 と、一番小さい（マイナスの）差の大きさの、大きい方。学校の席の値段の直し（37c8d9d）の後は、学校・塾は −1.14 万円で
+    // 4 より小さいので、幅は 4（直しの前は −5.1 で、幅は 5 より大きかった。見直し found-2）
+    const school = worthOf(a360, "school");
+    expect(school).not.toBeNull();
+    expect(school!).toBeLessThan(0);
+    expect(-school!).toBeLessThan(WORTH_NOISE);
+    expect(vm.worthNoise).toBe(WORTH_NOISE);
   }, 240_000);
 
   it("前提を直した木（あれば）: まとめた手を通る道は「この道の見込み」と書かず、標準の続きは見積もりの印の行から（作業メモ truth-1・code-1）", async () => {
