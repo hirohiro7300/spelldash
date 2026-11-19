@@ -23,7 +23,7 @@ import wishData from "../../src/demo/wishlist-data.json";
 
 // ---- 点検の名前
 
-export type TextCheckId = "C1" | "C1b" | "C2" | "C3" | "C4" | "C4b" | "C5" | "C5b" | "C6" | "C7" | "C8" | "C9" | "C10" | "C11" | "C12" | "C13" | "T4" | "D1" | "D2";
+export type TextCheckId = "C1" | "C1b" | "C2" | "C3" | "C4" | "C4b" | "C5" | "C5b" | "C6" | "C7" | "C8" | "C9" | "C10" | "C11" | "C12" | "C13" | "C14" | "T4" | "D1" | "D2";
 
 export interface TextCheckDef {
   id: TextCheckId;
@@ -49,6 +49,7 @@ export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う・まとめた手と行き先が言う出来事の月（会社員に戻る月など）が標準の続きの出来事の月と合う", block: true },
   { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果・次の判断に無い手を勧めない）", block: true },
   { id: "C13", name: "本文の「おすすめ」が画面のおすすめ（その年収の一番良い選び方の手）と同じ手で、おすすめより多いと言い切らない・状態は次の判断のおすすめの手（選べる手が無ければその訳）を言う", block: true },
+  { id: "C14", name: "状態と行き先の本文の差（3 か月前・選んだ手の見込み・別の結果・ずっと今のまま）が、画面に出る合計どうしの差と合う", block: true },
   { id: "T4", name: "兄弟の題が違う（手も結果も）", block: true },
   { id: "D1", name: "『どちらも不可』なのに Pro が続く（データ。計算の側へ返す）", block: false },
   { id: "D2", name: "本当の状態の顧客の数が整数でない（データ。計算の側へ返す）", block: false },
@@ -98,6 +99,26 @@ const WARI = "# (?:割(?: # 分)?|分)";
 /** 3 年の見込みの差に添える月の稼ぎの違い（「（年収で # 万円の差）」） */
 const NOTE = "(?:（[^）]*）)?";
 const L = "『[^』]*』";
+/** 3 年の見込みの動きの言い方（0.9・R1: おすすめの手を選んだ道は 3 か月前の見込み、ほかは選んだ手の見込みの数とおすすめとの差） */
+const MW = "(?:より # 万円(?:上がった|下がった)|とほぼ同じ)";
+const CHG = `(?:# か月前の見込み${MW}|# か月前に選んだ(?:${L}|手)の見込み −?# 万円${MW}(?:（おすすめの手なら # 万円多かった）)?)`;
+/** S3 同じ手の別の結果との 3 年の見込みの差（7 つの言い方を位置と兄弟の並びで回す。rep-4）。兄弟の比べる文の枠の報告（cmpFrameOf）もこれで見分ける */
+export const CONTRAST_FRAMES: readonly RegExp[] = [
+  new RegExp(`^同じ手で${L}だった場合より、# 年の見込みが # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^# 年の見込みを${L}の場合と比べると、# 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^${L}だった道と比べて、# 年の見込みは # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^この結果の # 年の見込みは、${L}の場合より # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^${L}の場合なら、# 年の見込みは # 万円(?:少なかった|多かった)${NOTE}$`),
+  // 0.9（R10）: 「…と比べた 3 年の見込みは −56 万円」を、多い・少ないの言い方に
+  new RegExp(`^${L}の場合と比べると、この結果の # 年の見込みは # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^# 年の見込みで見ると、この結果は${L}の場合より # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^同じ手で${L}だった場合と、# 年の見込みはほとんど変わらない${NOTE}$`),
+  new RegExp(`^# 年の見込みは、${L}の場合とほぼ同じ${NOTE}$`),
+  new RegExp(`^${L}と比べても、この結果の # 年の見込みはほぼ同じ${NOTE}$`),
+  new RegExp(`^# 年の見込みは、${L}の場合より # 万円少なく、${L}の場合より # 万円多い$`),
+  new RegExp(`^この結果の # 年の見込みは、${L}だった場合に # 万円届かず、${L}だった場合を # 万円上回る$`),
+  new RegExp(`^同じ手の結果と比べると、# 年の見込みは${L}の場合の # 万円下で、${L}の場合の # 万円上$`),
+];
 export const STRUCTURAL: readonly RegExp[] = [
   // 0.8（W2）: 状態の数の枠（L2: どれも 3 つ以上の言い方を道の上の位置で回す。言い方ごとに 1 つの枠として数える）
   // S1 この結果の見込みと、この 3 か月の月の稼ぎの動き
@@ -107,26 +128,15 @@ export const STRUCTURAL: readonly RegExp[] = [
   new RegExp(`^この結果になる見込みは ${WARI}だった$`),
   new RegExp(`^${WARI}の見込みで起きた結果$`),
   new RegExp(`^見込み ${WARI}の結果$`),
-  // S2 今日からの 3 年の見込み（ここまで + この先）と、3 か月前からの動き・ずっと今のままとの差（L1・L4）
-  /^今日からの # 年の見込みは −?# 万円（ここまで −?# 万円＋この先 −?# 万円）(?:で、(?:今日|# か月前)の見込み(?:より # 万円(?:上がった|下がった)|とほぼ同じ))?$/,
-  /^この先は、(?:毎回おすすめの手を選んだ場合|おすすめの手の後を標準の選び方で続けた場合)(?:で、ずっと今のままなら # 年で −?# 万円)?$/,
-  /^# 年の見込みは、ここまでの −?# 万円とこの先の −?# 万円で −?# 万円(?:になり、# か月前(?:より # 万円(?:上がった|下がった)|とほぼ同じ))?$/,
-  /^ここまでの −?# 万円にこの先の −?# 万円を足した # 年の見込みは −?# 万円(?:で、# か月前(?:より # 万円(?:上がった|下がった)|とほぼ同じ))?$/,
+  // S2 今日からの 3 年の見込み（ここまで + この先）と、選んだ手の見込みからの動き・ずっと今のままとの差（L1・L4）。0.9（R1・R10・R5）: 最初の状態は
+  //   今日の手を選んだ時の見込みと比べ、見積もり方の文とずっと今のままの 3 年の文を分ける
+  new RegExp(`^今日からの # 年の見込みは −?# 万円（ここまで −?# 万円＋この先 −?# 万円）(?:で、(?:今日${L}を選んだ時の見込み −?# 万円${MW}|${CHG}))?$`),
+  /^この先は、(?:毎回おすすめの手を選んだ場合の見込み(?:（手のカードの数と手の差は、その後を標準の選び方で続けた見積もり）)?|おすすめの手の後を標準の選び方で続けた場合の見込み)$/,
+  /^何も変えずに # 年続ける（ずっと今のまま）と −?# 万円$/,
+  new RegExp(`^# 年の見込みは、ここまでの −?# 万円とこの先の −?# 万円で −?# 万円(?:になり、${CHG})?$`),
+  new RegExp(`^ここまでの −?# 万円にこの先の −?# 万円を足した # 年の見込みは −?# 万円(?:で、${CHG})?$`),
   /^ずっと今のままの # 年(?:より # 万円(?:多い|少ない)|とほぼ同じ)$/,
-  // S3 同じ手の別の結果との 3 年の見込みの差（7 つの言い方を位置と兄弟の並びで回す。rep-4）
-  new RegExp(`^同じ手で${L}だった場合より、# 年の見込みが # 万円(?:多い|少ない)${NOTE}$`),
-  new RegExp(`^# 年の見込みを${L}の場合と比べると、# 万円(?:多い|少ない)${NOTE}$`),
-  new RegExp(`^${L}だった道と比べて、# 年の見込みは # 万円(?:多い|少ない)${NOTE}$`),
-  new RegExp(`^この結果の # 年の見込みは、${L}の場合より # 万円(?:多い|少ない)${NOTE}$`),
-  new RegExp(`^${L}の場合なら、# 年の見込みは # 万円(?:少なかった|多かった)${NOTE}$`),
-  new RegExp(`^${L}の場合と比べた # 年の見込みは [+−]# 万円${NOTE}$`),
-  new RegExp(`^# 年の見込みで見ると、この結果は${L}の場合より # 万円(?:多い|少ない)${NOTE}$`),
-  new RegExp(`^同じ手で${L}だった場合と、# 年の見込みはほとんど変わらない${NOTE}$`),
-  new RegExp(`^# 年の見込みは、${L}の場合とほぼ同じ${NOTE}$`),
-  new RegExp(`^${L}と比べても、この結果の # 年の見込みはほぼ同じ${NOTE}$`),
-  new RegExp(`^# 年の見込みは、${L}の場合より # 万円少なく、${L}の場合より # 万円多い$`),
-  new RegExp(`^この結果の # 年の見込みは、${L}だった場合に # 万円届かず、${L}だった場合を # 万円上回る$`),
-  new RegExp(`^同じ手の結果と比べると、# 年の見込みは${L}の場合の # 万円下で、${L}の場合の # 万円上$`),
+  ...CONTRAST_FRAMES,
   // S3 の続き: 別の結果と比べた次の手の並び
   new RegExp(`^${L}の場合に次に並んだ.+は、この結果では選べ(?:ず、代わりに.+が並ぶ|ない)$`),
   new RegExp(`^この結果では.+が選べる代わりに、${L}の場合にある.+は並ばない$`),
@@ -142,6 +152,10 @@ export const STRUCTURAL: readonly RegExp[] = [
   new RegExp(`^今日の(?:${L}|手)の先の(?: # の分かれ道のうち、ここから残るのは #|分かれ道 #（判断 #・出来事の分かれ #）は、どれもこの結果から続く)$`),
   new RegExp(`^今日の(?:${L}|手)から数え(?:て # ある分かれ道は、この結果の先に # が残る|た分かれ道 #（判断 #・出来事の分かれ #）が、そのままこの先に残る)$`),
   new RegExp(`^この先に続く分かれ道は、今日の(?:${L}|手)の後の(?: # のうち #|（判断 #・出来事の分かれ #）の全部| #（判断 #・出来事の分かれ #）の全部)$`),
+  // 0.9（R11）: ここで選べるほかの手の先が開いていない（今のままだけを広げた地図）
+  /^ここで選べるほかの手の先は、この地図では開かずに見積もりでまとめてある$/,
+  /^今のまま以外の手の先は、この地図では開かずに見積もりにしてある$/,
+  /^ほかの手を選んだ先は開いておらず、この地図では見積もりで数えている$/,
   // 出来事の後の数の枠: 持てる顧客の上限・次の顧客の見込みの動き・今のままの期と残る判断
   /^(?:会社員|週 # 日勤務|独立)で持てる顧客は # 社まで(?:（あと # 社）)?$/,
   /^(?:あと # 社で、(?:会社員|週 # 日勤務|独立)で持てる # 社の上限に届く|(?:会社員|週 # 日勤務|独立)のうちに持てる顧客の上限は # 社)$/,
@@ -155,16 +169,20 @@ export const STRUCTURAL: readonly RegExp[] = [
   // S5 次の手の数・おすすめの手（見込み）・ほかの手との差（rep-8）
   new RegExp(`^# 年 # 月までの手は # つで、(?:おすすめは|地図を作った年収の見積もりで一番の手は)${L}(?:（[^）]*）)?$`),
   new RegExp(`^次の # か月に選べる # つの手のうち、(?:おすすめは|地図を作った年収の見積もりで一番の手は)${L}(?:（[^）]*）)?$`),
-  new RegExp(`^ここで選べる手は # つあり、(?:# 年の稼ぎが一番多いのは|地図を作った年収の見積もりで一番の手は)${L}(?:（[^）]*）)?$`),
+  new RegExp(`^ここで選べる手は # つあり、(?:# 年の稼ぎが一番多いのは|おすすめは|地図を作った年収の見積もりで一番の手は)${L}(?:（[^）]*）)?$`),
+  // 0.9（F8）: おすすめの手のカードの数（標準の選び方で続けた見積もり）と、この先の見込みの差の訳
+  new RegExp(`^${L}のカードの # 万円は、その後を標準の選び方で続けた見積もりで、この先の見込みより # 万円低い$`),
   /^次の # か月に選べる手は今のままだけ（[^）]*）$/,
   /^ほかの手は、『/,
   /^おすすめとの差は、『/,
-  /^残りの手は、おすすめ(?:より|と)『/,
+  /^残りの手は、(?:おすすめと)?『/,
   /^ほかに選べるのは、『/,
   // 今日の手とその答えが、この状態をまだ決めている（L4・rep-14）
   new RegExp(`^.+のは、今日の${L}(?:の結果が${L}だった|があった)から$`),
   new RegExp(`^今日の${L}(?:が${L}だったので|で)、`),
   new RegExp(`^# 年 # 月(?:の${L}（今日の${L}の結果）|までの${L}（今日の手）)がまだ効いていて、`),
+  // 0.9（R6）: 行き先の、今日からこの道の 3 年の稼ぎと、ずっと今のままとの差
+  /^(?:今日からこの道の|標準の続きを入れた今日からの) # 年の稼ぎは −?# 万円(?:で、ずっと今のまま(?:より # 万円(?:多い|少ない)|とほぼ同じ))?$/,
   // 1 つの結果の見込み（手）
   /^# 年 # 月の見込みは、/,
   /^# 年 # 月には、.*見込み$/,
@@ -207,7 +225,7 @@ export function skeleton(sentence: string): string | null {
 /** 文の型に差し込む言葉のうち、日本語で始まることがある物（前に空白を置くと「は 年収」になる） */
 const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "salBack", "partLoss", "job", "jobName", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
 /** 日本語で終わる物（後ろに空白を置くと「社 の」になる） */
-const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "sharePrev", "growth", "conv", "hz", "jobName", "hiX", "midX", "hiYen", "midYen"]);
+const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "sharePrev", "growth", "conv", "convOne", "convNote", "hz", "jobName", "hiX", "midX", "hiYen", "midYen"]);
 
 /** 束の言い換えの、差し込みの隣の空白（間は組み立てが空ける。R2 の C8） */
 export function bankSpacing(banks: Banks): string[] {
@@ -341,6 +359,8 @@ export interface Siblings {
   /** 結果が 3 つ以上で、どれも別の結果と比べる文を持つ組と、そのうち比べる文の枠がどれも同じ組（報告だけ。rep-4・L6） */
   cmpGroups: number;
   cmpSame: number;
+  /** 結果が 3 つ以上の組のうち、長さの目安で比べる文を落とした結果がある組（cmpGroups には数えない。0.9・code-3） */
+  cmpDropped: number;
 }
 
 /** 判断ごとの繰り返し: 続く 2 つの判断に並ぶ同じ種類の手（道で選ばなかった方）どうしが同じ骨組みで言う構造でない文の数 */
@@ -527,6 +547,8 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
       if (!xs.length) stateRec.named++;
     }
   }
+  // C14（0.9・R4）: 状態と行き先が言う差は、見せる合計どうしの差と合う
+  for (const x of tieIssues(map, fin)) tally.add(`C14 ${x.msg}`, map.role(x.i), map.key(x.i));
   // 標準の続きの期（1 枚ごとの点検と言葉の間）
   let contRows = 0;
   for (const [i, rows] of contMarked) {
@@ -596,6 +618,85 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
     stateRec,
     ms: { compose: Math.round(tCompose), perCardUs: Math.round((tCompose / Math.max(1, n)) * 10000) / 10, cardChecks: Math.round(tCards), paths: Math.round(tPaths), siblings: Math.round(tSibs) },
   };
+}
+
+const numOf = (x: string): number => Number(x.replace(/,/g, "").replace("−", "-"));
+/** 状態の本文の今日からの 3 年の見込み（見せた数）。無ければ null */
+export function shownTotal(body: string): number | null {
+  const m =
+    /今日からの 3 年の見込みは (−?[0-9,.]+) 万円（ここまで/.exec(body) ??
+    /3 年の見込みは、ここまでの −?[0-9,.]+ 万円とこの先の −?[0-9,.]+ 万円で (−?[0-9,.]+) 万円/.exec(body) ??
+    /ここまでの −?[0-9,.]+ 万円にこの先の −?[0-9,.]+ 万円を足した 3 年の見込みは (−?[0-9,.]+) 万円/.exec(body);
+  return m ? numOf(m[1]!) : null;
+}
+/** 「より N 万円上がった・多い」「とほぼ同じ」を符号つきの数に（下がった・少ないは負） */
+const signed = (n: string | undefined, word: string | undefined): number => (n === undefined ? 0 : (/上がった|多い|多かった|上回る|上$/.test(word ?? "") ? 1 : -1) * numOf(n));
+
+/**
+ * C14（0.9・R4）: 状態と行き先が言う差が、画面に出る合計どうしの差と合うか（1 万円以上ずれたら止める）:
+ * - 3 か月前の見込みとの差 = この状態の合計 − 1 つ前の状態の合計（どちらもカードに出る）
+ * - 選んだ手の見込みとの差 = この状態の合計 − 文に書いた見込み
+ * - ずっと今のままとの差 = この状態の合計 − 道の最初の状態に書いたずっと今のままの 3 年
+ * - 別の結果との差 = この状態の合計 − その結果のカードの合計（3 年の見込みで比べる文の、名前を言う結果）
+ */
+export function tieIssues(map: MapData, fin: readonly Card[]): Array<{ i: number; msg: string }> {
+  const out: Array<{ i: number; msg: string }> = [];
+  const tol = (x: number): number => (Math.abs(x) >= 9.95 ? 0.5 : 0.15);
+  const keepOf = (i: number): number | null => {
+    let x = i;
+    while (map.month(x) > 3 && map.parent(x) > 0) x = map.parent(map.parent(x));
+    const m = /ずっと今のまま）と (−?[0-9,.]+) 万円/.exec(fin[x]?.body ?? "");
+    return m ? numOf(m[1]!) : null;
+  };
+  for (let i = 0; i < map.n; i++) {
+    const role = map.role(i);
+    if (role !== "s" && role !== "e") continue;
+    const b = fin[i]!.body;
+    const bad = (what: string, said: number, want: number): void => void (Math.abs(said - want) > tol(want) + 1e-9 && out.push({ i, msg: `${what}: 文は ${said}、見せる数の差は ${Math.round(want * 10) / 10}` }));
+    if (role === "e") {
+      const m = /(?:今日からこの道の|標準の続きを入れた今日からの) 3 年の稼ぎは (−?[0-9,.]+) 万円で、ずっと今のまま(?:より ([0-9,.]+) 万円(多い|少ない)|とほぼ同じ)/.exec(b);
+      const k = keepOf(map.parent(map.parent(i)));
+      if (m && k !== null) bad("ずっと今のままとの差", signed(m[2], m[3]), numOf(m[1]!) - k);
+      continue;
+    }
+    const X = shownTotal(b);
+    if (X === null) continue;
+    const own = /(?:今日『[^』]*』を選んだ時の見込み|3 か月前に選んだ(?:『[^』]*』|手)の見込み) (−?[0-9,.]+) 万円(?:より ([0-9,.]+) 万円(上がった|下がった)|とほぼ同じ)/.exec(b);
+    if (own) bad("選んだ手の見込みとの差", signed(own[2], own[3]), X - numOf(own[1]!));
+    const prev = /3 か月前の見込み(?:より ([0-9,.]+) 万円(上がった|下がった)|とほぼ同じ)/.exec(b);
+    if (prev) {
+      const up = map.parent(map.parent(i));
+      const xp = shownTotal(fin[up]?.body ?? "");
+      if (xp !== null) bad("3 か月前の見込みとの差", signed(prev[1], prev[2]), X - xp);
+    }
+    const keep = /ずっと今のままの 3 年(?:より ([0-9,.]+) 万円(多い|少ない)|とほぼ同じ)/.exec(b);
+    const k = keepOf(i);
+    if (keep && k !== null) bad("ずっと今のままとの差", signed(keep[1], keep[2]), X - k);
+    // 別の結果との差: 名前 → その結果のカードの合計
+    const sibs = new Map<string, number>();
+    const mv = map.parent(i);
+    for (let c = 0; c < map.childCount(mv); c++) {
+      const o = map.child(mv, c);
+      if (o === i) continue;
+      const t = shownTotal(fin[o]!.body);
+      if (t !== null) sibs.set(map.label(o), t);
+    }
+    for (const sent of b.split("。")) {
+      if (!/3 年の見込み/.test(sent) || !/『/.test(sent) || /^今日からの|^ここまでの|選んだ時の見込み|3 か月前に選んだ/.test(sent)) continue;
+      const pairs: Array<[string, number]> = [];
+      let m: RegExpExecArray | null;
+      if ((m = /『([^』]*)』の場合なら、3 年の見込みは ([0-9,.]+) 万円(少なかった|多かった)/.exec(sent))) pairs.push([m[1]!, (m[3] === "少なかった" ? 1 : -1) * numOf(m[2]!)]);
+      else if ((m = /『([^』]*)』(?:の場合より|だった場合に) ([0-9,.]+) 万円(?:少なく|届かず)、『([^』]*)』(?:の場合より|だった場合を) ([0-9,.]+) 万円(?:多い|上回る)/.exec(sent))) pairs.push([m[1]!, -numOf(m[2]!)], [m[3]!, numOf(m[4]!)]);
+      else if ((m = /『([^』]*)』の場合の ([0-9,.]+) 万円下で、『([^』]*)』の場合の ([0-9,.]+) 万円上/.exec(sent))) pairs.push([m[1]!, -numOf(m[2]!)], [m[3]!, numOf(m[4]!)]);
+      else if ((m = /『([^』]*)』[^。]*?([0-9,.]+) 万円(多い|少ない)/.exec(sent))) pairs.push([m[1]!, (m[3] === "多い" ? 1 : -1) * numOf(m[2]!)]);
+      else if ((m = /『([^』]*)』[^。]*(?:ほとんど変わらない|ほぼ同じ)/.exec(sent))) pairs.push([m[1]!, 0]);
+      for (const [lab, d] of pairs) {
+        const t = sibs.get(lab);
+        if (t !== undefined) bad(`『${lab}』との差`, d, X - t);
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -932,17 +1033,8 @@ function repeatsByDecision(map: MapData, marked: readonly Card[], gates: TextGat
  * 束に無い種類どうし（どちらも「別の手」と書く）の組は比べない
  */
 function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: number, fail: (msg: string, role: string, key: string) => void): Siblings {
-  const r: Siblings = { movePairs: 0, moveSame: 0, outPairs: 0, outSame: 0, titlePairs: 0, titleSame: 0, titleSameByRole: {}, openerSame: 0, cmpGroups: 0, cmpSame: 0 };
+  const r: Siblings = { movePairs: 0, moveSame: 0, outPairs: 0, outSame: 0, titlePairs: 0, titleSame: 0, titleSameByRole: {}, openerSame: 0, cmpGroups: 0, cmpSame: 0, cmpDropped: 0 };
   const known = (i: number): boolean => !!banks.title[map.kind(i) ?? ""];
-  // 別の結果と比べる文の枠: 比べ方の言い方（「同じ手で『…』だった場合より、」「（同じ手で『…』だった場合と比べて）」など。数字と『』の中は伏せる。
-  // 差の中身は兄弟で違うので見ない。報告だけ。rep-4・L6）
-  const cmpFrame = (body: string): string | null => {
-    const x = sentencesOf(body).find((t) => /だった場合|と比べ|の場合に比べ|の場合より|の場合とも|場合と、数字/.test(t));
-    if (x === undefined) return null;
-    const t = mask(x).replace(/『[^』]*』/g, "『』");
-    const m = /（[^）]*比べて）$/.exec(t) ?? /^[^、]*?(?:場合より|と比べると|と比べて|に比べ|この結果は)/.exec(t);
-    return m ? m[0] : t;
-  };
   for (let p = 0; p < map.n; p++) {
     const kc = map.childCount(p);
     if (kc < 2) continue;
@@ -950,11 +1042,11 @@ function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: 
     for (let c = 0; c < kc; c++) ks.push(map.child(p, c));
     const sk = ks.map((x) => mask(fin[x]!.body));
     if (kc >= 3 && map.role(ks[0]!) === "s") {
-      const fr = ks.map((x) => cmpFrame(fin[x]!.body));
+      const fr = ks.map((x) => cmpFrameOf(fin[x]!.body));
       if (fr.every((x) => x !== null)) {
         r.cmpGroups++;
         if (fr.every((x) => x === fr[0])) r.cmpSame++;
-      }
+      } else if (ks.some((x) => fin[x]!.trace.includes("state:drop:cmp"))) r.cmpDropped++;
     }
     for (let a = 0; a < ks.length; a++)
       for (let b = a + 1; b < ks.length; b++) {
@@ -983,6 +1075,25 @@ function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: 
       }
   }
   return r;
+}
+
+/**
+ * 別の結果と比べる文の枠（報告だけ。rep-4・L6）。0.9（code-3）: 状態の 3 年の見込みで比べる文は構造の文の S3 の枠（CONTRAST_FRAMES）の番号で
+ * 見分ける（言葉で探すと、この 3 か月の月の稼ぎの文「3 か月前と比べた…」を拾い、新しい言い方の枠を見逃した）。3 年の見込みが出せない地図の
+ * 月の稼ぎで比べる文（「同じ手で『…』だった場合より、…」）は、比べ方の言い方で見る
+ */
+export function cmpFrameOf(body: string): string | null {
+  const sents = sentencesOf(body);
+  for (const x of sents) {
+    const k = mask(x).replace(/^(?:# 年 # 月|今月)、/, "");
+    const at = CONTRAST_FRAMES.findIndex((re) => re.test(k));
+    if (at >= 0) return `枠 ${at}`;
+  }
+  const x = sents.find((t) => /^(?:同じ手で『|『[^』]*』だった場合|別の結果の『|『[^』]*』の場合に比べ|『[^』]*』と比べると|この結果は、『|数字は、同じ手で|この結果と『)|（同じ手で『[^』]*』だった場合と比べて）$/.test(t));
+  if (x === undefined) return null;
+  const t = mask(x).replace(/『[^』]*』/g, "『』");
+  const m = /（[^）]*比べて）$/.exec(t) ?? /^[^、]*?(?:場合より|と比べると|と比べて|に比べ|この結果は)/.exec(t);
+  return m ? m[0] : t;
 }
 
 /** まとめた行き先の中身（幅・続き。幅が無ければ平均の状態）の鍵 */
@@ -1273,7 +1384,7 @@ export function reportMarkdown(rep: TextCheckReport): string {
       .join(" / ")}`);
     const s = r.siblings;
     L.push(`- 兄弟: 手 ${f(s.movePairs)} 組で骨組みが同じ ${f(s.moveSame)}・結果 ${f(s.outPairs)} 組で ${f(s.outSame)}・題が同じ ${f(s.titleSame)} 組（${f(s.titlePairs)} 組のうち）`);
-    L.push(`  - 参考（止めない）: 手の書き出し（最初の 14 字）が同じ組 ${f(s.openerSame)}（${pct(s.openerSame / Math.max(1, s.movePairs))}）・結果が 3 つ以上でどれも別の結果と比べる組 ${f(s.cmpGroups)} のうち、比べる文の枠がどれも同じ組 ${f(s.cmpSame)}`);
+    L.push(`  - 参考（止めない）: 手の書き出し（最初の 14 字）が同じ組 ${f(s.openerSame)}（${pct(s.openerSame / Math.max(1, s.movePairs))}）・結果が 3 つ以上でどれも別の結果と比べる組 ${f(s.cmpGroups)} のうち、比べる文の枠がどれも同じ組 ${f(s.cmpSame)}（長さの目安で比べる文を落とした結果がある組 ${f(s.cmpDropped)} は数えない）`);
     L.push(`- 状態の本文が次の判断のおすすめの手（選べる手が無ければその訳）を言う: ${f(r.stateRec.named)} / ${f(r.stateRec.states)}（${pct(r.stateRec.named / Math.max(1, r.stateRec.states))}。言わない物は C13）`);
     L.push(`- いとこ（参考）: ${f(r.cousins.pairs)} 組で文が同じ ${pct(r.cousins.same / Math.max(1, r.cousins.pairs))}・骨組みが同じ ${pct(r.cousins.skeleton / Math.max(1, r.cousins.pairs))}。本文が完全に同じカード ${pct(r.identical)}・状態の本文がほかのカードと同じ ${f(r.identicalState.same)} / ${f(r.identicalState.states)}（${pct(r.identicalState.same / Math.max(1, r.identicalState.states))}）`);
     L.push("");

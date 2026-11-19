@@ -88,7 +88,7 @@ describe("生成 v2 の見直しの直し（文章）", () => {
         if (map.isBase(f)) continue;
         const body = composeCard(map, f, { annual, rt }).body;
         const c = countsOf(a, f, a.pi.reachIn);
-        expect(body).toContain(`地図にある行き先は ${n0(c.ends)}（うち標準の続きの見積もり ${n0(c.sumEnds)}）で、一番良い選び方で着くのは ${n0(c.reachEnds)}（そのうち見込み 1 分以上は ${n0(c.reachEnds1)}）`);
+        expect(body).toContain(`地図にある行き先は ${n0(c.ends)}（うち標準の続きの見積もり ${n0(c.sumEnds)}）で、一番良い選び方で着くのは ${n0(c.reachEnds)}（そのうち見込みが 100 回に 1 回以上の物は ${n0(c.reachEnds1)}）`);
         const d = moveDetailVM(a, f);
         expect(d.facts).toContain(`2029 年 11 月の行き先: 地図にある ${num(c.ends)}（うち標準の続きの見積もり ${num(c.sumEnds)}）・一番良い選び方で着く ${num(c.reachEnds)}（見込み 1% 以上 ${num(c.reachEnds1)}）`);
         // 3 年の合計: 本文は見積もり方を言い、一番良い選び方の平均は手の詳しい画面と同じ数
@@ -219,7 +219,8 @@ describe("生成 v2 の見直しの直し（文章）", () => {
       // おすすめは画面のおすすめと同じ手で、ほかの手は次の文が全部言う（名前は地図の名前か短い名前）
       const rec = rt.recommended(i);
       expect(sents[head], `${map.key(i)}`).toContain(`『${rec >= 0 && map.isBase(rec) ? "この 3 か月は今のまま" : (map.header.kinds[map.kind(rec)!]?.[0] ?? "")}』`);
-      const rest = sents[head + 1] ?? "";
+      // 0.9: おすすめの手のカードの数の訳（F8）が間に入ることがある
+      const rest = sents.slice(head + 1).find((x) => /^(?:ほかの手は|おすすめとの差は|残りの手は|ほかに選べるのは)/.test(x)) ?? "";
       for (const x of kids) {
         if (x === rec) continue;
         const names = map.isBase(x) ? ["今のまま"] : [map.header.kinds[map.kind(x)!]![0], BANKS.short[map.kind(x)!]!];

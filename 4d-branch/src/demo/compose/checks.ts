@@ -36,9 +36,18 @@ export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /�
  *   （truth-4・reader-4。画面と同じ数。届け出て副業の本文は年収 360 で 604 字ほど）
  *   660 → 700（0.7・W1 で測り直した）: 届け出の結果の意味を、結果ごとの 1 文でその月と額まで言うようにした（rep-7）。届け出て副業の本文は
  *   年収 360 で 652 字・540 で 650 字（前は 621）。手の上と同じにして、W2 が今日の手に足す分の余白を残す
+ *   0.9（R6）: 行き先に今日からの 3 年の稼ぎとずっと今のままとの差の 1 文を足した。行き先の上 560 → 620（年収 360 で 583 字・540 で 587 字。
+ *   中身の同じ兄弟を言うまとめた行き先）。状態の上 480 → 500（R1: おすすめでない手を選んだ道は、その手の見込みの数を言う。長さの目安 460 で
+ *   落とせる文を落とした後の最大が、計算の芯つきで 477 字（年収 240〜1200）・計算の芯なしの組み立てで 493 字）。今日の手は 0.9 で測り直して
+ *   660（360）・662（540）なので 700 のまま
  */
-export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 480 }, e: { title: 24, min: 80, max: 560 }, r: { title: 40, min: 0, max: 600 } } as const;
+export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 500 }, e: { title: 24, min: 80, max: 620 }, r: { title: 40, min: 0, max: 600 } } as const;
 export const FIRST_MOVE_MAX = 700;
+/**
+ * 0.9: 道の最初の状態（今日の手の結果）の本文の上。3 年の見込みの見積もり方とずっと今のままの 3 年を道でここだけが言う（組み立ての
+ * FIRST_STATE_BUDGET 600 の後に、落とせない文の分の余白）
+ */
+export const FIRST_STATE_MAX = 650;
 export const TODO_MAX = 24;
 
 const SLOT_SPAN = new RegExp(`${MS}[^${ME}]*${ME}`, "g");
@@ -120,6 +129,14 @@ export function numberWording(text: string): string[] {
   return out;
 }
 
+/**
+ * 0.9（R7）: 割の後でない「N 分」（見込みや割合を「8 分」とだけ書くと、8 分間とも八分（8 割）とも読める）。手引きの文（「日曜 60 分」などの時間）は
+ * 見ないので、手引きの印を落とした文で見る
+ */
+export function bareBuIssues(text: string): string[] {
+  return [...text.matchAll(/(?<!割 ?)(?<![0-9,.])[0-9]+ ?分(?!の)/g)].map((m) => `割の後でない「${m[0]}」（見込みや割合は 1 割弱・1 割未満・N 人に 1 人で言う）`);
+}
+
 /** 数の行の数を、今日・状態・行き先の本文に書いていないか（SPEC §4.2・user-9b） */
 const ROW_IN_PROSE: readonly RegExp[] = [/年収 (?:平均 )?[0-9,]+ ?万円/, /月にならして [0-9.]+ ?万円/, /月に遊んだ人 (?:平均 )?[0-9,]+ ?人/, /有料 (?:平均 )?[0-9,]+ 人(?:か [0-9,]+ 人)?（/, /週 [0-9]+ 時間/, /広告運用 (?:平均 )?[0-9〜]+ ?社（売上/];
 
@@ -187,15 +204,31 @@ export function eventMonthIssues(map: MapData, i: number, text: string): string[
   else if (role === "a" && map.stub(i)) for (let k = 0; k < map.childCount(i); k++) if (map.sum(map.child(i, k))) ends.push(map.child(i, k));
   if (!ends.length) return [];
   const cal = calOf(map);
-  const ok = new Map<string, Set<number>>();
-  for (const o of ends)
-    for (const st of map.cont(o) ?? []) {
-      if (!st.ev) continue;
-      const code = st.ev.startsWith("SWITCH_") ? "SWITCH" : st.ev;
-      let set = ok.get(code);
-      if (!set) ok.set(code, (set = new Set()));
-      set.add(eventMonth(cal, st.kind, st.m));
-    }
+  /** 結果ごとの出来事の月（0.9・code-6: 文が名前を言う結果の月で見る。どの結果かの月でも通すと、別の結果の月を言っても見逃す） */
+  const monthsOf = (os: readonly number[]): Map<string, Set<number>> => {
+    const ok = new Map<string, Set<number>>();
+    for (const o of os)
+      for (const st of map.cont(o) ?? []) {
+        if (!st.ev) continue;
+        const code = st.ev.startsWith("SWITCH_") ? "SWITCH" : st.ev;
+        let set = ok.get(code);
+        if (!set) ok.set(code, (set = new Set()));
+        set.add(eventMonth(cal, st.kind, st.m));
+      }
+    return ok;
+  };
+  const all = monthsOf(ends);
+  const byLabel = new Map<string, number>();
+  for (const o of ends) {
+    const lab = shownLabel(map, o);
+    if (lab) byLabel.set(lab, o);
+  }
+  /** k 文字目の言い方が入る文（句点の後から）が名前を言う結果の月。名前が無ければ、どの結果の月でもよい */
+  const okAt = (k: number): Map<string, Set<number>> => {
+    const from = text.lastIndexOf("。", k) + 1;
+    const os = [...text.slice(from, k).matchAll(/『([^』]*)』/g)].map((m) => byLabel.get(m[1]!)).filter((o): o is number => o !== undefined);
+    return os.length ? monthsOf(os) : all;
+  };
   const years = [...text.matchAll(/(\d{4}) 年/g)].map((m) => [m.index ?? 0, Number(m[1])] as const);
   const yearAt = (k: number): number | null => {
     let y: number | null = null;
@@ -208,7 +241,7 @@ export function eventMonthIssues(map: MapData, i: number, text: string): string[
       const y = m[1] ? Number(m[1]) : yearAt(m.index ?? 0);
       if (y === null) continue;
       const at = cal.monthOf(y, Number(m[2]));
-      const want = ok.get(code);
+      const want = okAt(m.index ?? 0).get(code);
       if (!want?.has(at)) out.push(`まとめた見積もりの出来事の月「${m[0]}」が、標準の続きの出来事の月（${want ? [...want].map((x) => cal.parts(x).join("-")).join("・") : "無し"}）と違う`);
     }
   return out;
@@ -266,6 +299,7 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
   if (ascii.length) out.push(`C4b 英数字の名前: ${ascii.join(",")}`);
   // C10: 数の言い方
   for (const x of numberWording(all)) out.push(`C10 ${x}`);
+  for (const x of bareBuIssues([spaceJa(strip(t.body.replace(PB_SPAN, ""))), title, spaceJa(strip(t.short)), ...nums].join("\n"))) out.push(`C10 ${x}`);
   if (role !== "a") for (const re of ROW_IN_PROSE) if (re.test(plain)) out.push(`C10 数の行の数を本文に書いている（${re.source}）`);
   // C2: この地図の前提を、事実や会社の決まりとして言い過ぎない（fact-2〜11・fact-23）
   for (const x of overclaimIssues(map, i, plain)) out.push(`C2 ${x}`);
@@ -281,6 +315,8 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
   if (role === "a") for (const x of ordinalIssues(map, map.parent(i), `${plain}。${title}`)) out.push(`C2 ${x}`);
   // C12: 状態の助言が勧める手は、その状態の次の判断に並ぶ（応募を続ける助言は、転職活動の続きが並ぶときだけ。reader-3）
   if (role === "s") for (const x of adviceKindIssues(map, i, plain)) out.push(`C12 ${x}`);
+  // C2（0.9）: 状態と次の判断の並びが支えない言い方（F3）・前の期の顧客探しの見込み（code-1）・無償の広告運用の手伝いの一言（F5）
+  for (const x of claimIssues(map, i, plain)) out.push(`C2 ${x}`);
   // C2: 状態と食い違わない（結果・行き先だけ。同じ手の別の結果を言う文は除く）。まとめた行き先は中身の幅と比べる（truth-5）
   if (role === "s" || role === "e") {
     const s = map.st(i);
@@ -344,7 +380,7 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
   const len = [...plain].length;
   if ([...title].length > L.title) out.push(`C3 題が長い ${[...title].length}`);
   if (!title) out.push("C3 題が無い");
-  const max = role === "a" && map.month(i) === 0 ? FIRST_MOVE_MAX : L.max;
+  const max = role === "a" && map.month(i) === 0 ? FIRST_MOVE_MAX : role === "s" && map.role(map.parent(map.parent(i))) === "r" ? FIRST_STATE_MAX : L.max;
   if (len < L.min || len > max) out.push(`C3 本文の長さ ${len}（${L.min}〜${max}）`);
   for (const td of t.todo) if ([...td.text].length > TODO_MAX) out.push(`C3 やることが長い: ${td.text}`);
   if (role === "a" && t.todo.length < 3) out.push(`C3 やることが ${t.todo.length} つ`);
@@ -410,6 +446,36 @@ export function ordinalIssues(map: MapData, d: number, text: string): string[] {
     const n = Number(m[1]);
     if (lo !== hi) out.push(`「${m[0]}」と言うが、判断の顧客は ${lo}〜${hi} 社の幅`);
     else if (lo !== n - 1) out.push(`「${m[0]}」と言うが、判断の顧客は ${lo} 社`);
+  }
+  return out;
+}
+
+/**
+ * 0.9: 状態・次の判断の並び・1 つ前の期と食い違う言い方（C2）
+ * - F3: 「広告運用の顧客と Pro の両方から稼げる」は顧客がいて Pro を出しているときだけ。「顧客探しの手と Pro の手が…どちらも並ぶ」は次の判断に
+ *   顧客探し（副業の顧客を 1 社増やす・紹介で顧客を増やす）と Pro の手（SpellDash の手）が並ぶときだけ
+ * - code-1: 「N 社目…前の期」の見込みの動きは、1 つ前の期の顧客探しが N 社目を探した（1 つ前の判断の顧客の数が N − 1〜N 社の幅）ときだけ
+ * - F5: 届け出の答えがまだか『SpellDash だけ可』の会社員の、知人の店の広告を無償で手伝う手は、就業規則か会社に確かめる一言を持つ（fact-13）
+ */
+export function claimIssues(map: MapData, i: number, text: string): string[] {
+  const out: string[] = [];
+  const role = map.role(i);
+  if (role === "s") {
+    const s = map.st(i);
+    const kinds: string[] = [];
+    for (let k = 0; k < map.childCount(i); k++) kinds.push(map.kind(map.child(i, k)) ?? "");
+    if (/広告運用の顧客と Pro の両方から稼げる/.test(text) && (s.cl < 0.5 || !s.pro)) out.push("顧客がいないか Pro が無いのに、広告運用の顧客と Pro の両方から稼げると言う");
+    if (/顧客探しの手と Pro の手が[^。]*どちらも並ぶ/.test(text) && !(kinds.some((k) => k === "ad_side" || k === "ad_more") && kinds.some((k) => k.startsWith("sd_")))) out.push(`次の判断に顧客探しと Pro の手が並ばないのに、どちらも並ぶと言う（${kinds.join("・")}）`);
+    const up = map.parent(map.parent(i));
+    for (const m of text.matchAll(/([0-9]+) 社目が決まる見込みは、前の期の|前の期に [^。]*だった ([0-9]+) 社目の見込みは|([0-9]+) 社目の見込みは [^。、]*から [^。、]*へ/g)) {
+      const n = Number(m[1] ?? m[2] ?? m[3]);
+      const [lo, hi] = up >= 0 ? clBand(map, up) : [-1, -1];
+      if (lo !== n - 1 || hi !== n) out.push(`「${m[0]}」と言うが、1 つ前の期は ${n} 社目を探した期でない（顧客 ${lo}〜${hi} 社）`);
+    }
+  }
+  if (role === "a" && map.kind(i) === "ad_portfolio") {
+    const s0 = map.st(map.parent(i));
+    if (s0.j !== "i" && (s0.pm === "?" || s0.pm === "s") && !/就業規則|会社に確かめ/.test(text)) out.push("届け出の答えがまだか SpellDash だけ可なのに、無償の広告運用の手伝いの前に確かめる一言が無い");
   }
   return out;
 }
