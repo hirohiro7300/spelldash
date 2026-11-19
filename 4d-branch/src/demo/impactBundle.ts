@@ -178,7 +178,7 @@ function readCol(r: Reader, want: number, what: string): Int32Array {
   return out;
 }
 
-/** 文字列の表（全部を 1 つの文字列にして、問われたら切り出す） */
+/** 文字列の表（全部を 1 つの文字列にして、問われたら切り出す。同じ番号は同じ文字列を返す） */
 interface StrTable {
   n: number;
   get(k: number): string;
@@ -194,11 +194,16 @@ function readStrTable(r: Reader, what: string): StrTable {
   const blob = utf8(bytes.b.subarray(bytes.p, bytes.end));
   c.done(what);
   if (blob.length !== off[n]) bad(`${what} の文字列の長さが合いません`);
+  // 切り出した文字列は番号ごとに覚える（8 万枚の組み立てが題名・線の文・やることを問うたびに新しい文字列を作らない。
+  // 同じ文字列なので、組み立ての「同じ文字は 1 つ」の引きも速い。見直し perf-3）
+  const memo = new Array<string | undefined>(n);
   return {
     n,
     get: (k) => {
       if (!(k >= 0 && k < n)) bad(`${what} の番号 ${k} が表の外です`);
-      return blob.substring(off[k]!, off[k + 1]!);
+      let s = memo[k];
+      if (s === undefined) memo[k] = s = blob.substring(off[k]!, off[k + 1]!);
+      return s;
     },
   };
 }
@@ -243,7 +248,8 @@ const copyBand = (b: MapBand): MapBand => {
 
 /**
  * 決まった並びのバイト列（gzip を伸ばした後）から、読むだけの地図を作る（同期・型付きの配列。ノードごとの物は問われたときに作る）。
- * どの accessor も、同じ木（作る側が丸めた開発用の木）の fromDevTree() と同じ答えを返す。食い違いは ImpactBundleError
+ * どの accessor も、同じ木（作る側が丸めた開発用の木）の fromDevTree() と同じ答えを返す。食い違いは ImpactBundleError。
+ * 文字列は表の番号ごとに同じ物、やることは同じ並びごとに同じ凍らせた配列を返す（ほかの配列と物は、問うたびに新しい物）
  */
 export function decodeBundleBytes(bytes: Uint8Array): MapData {
   const r = new Reader(bytes, 0, bytes.length);
@@ -453,6 +459,44 @@ export function decodeBundleBytes(bytes: Uint8Array): MapData {
     const k = kind[sub[i]!]!;
     return k === 0 ? null : T.kinds[k - 1]!;
   };
+  // やること: 同じ並び（文と元の番号の表の番号の並び）の手には、同じ凍らせた配列を返す（項目も (文, 元) ごとに 1 つの凍らせた物）。
+  // 8 万枚の組み立てが手ごとに配列と項目を作り直さず、組み立ては配列ごとに 1 回だけ数える（見直し perf-1・perf-3。I-map の todo は readonly）
+  const todoArr = new Array<readonly MapTodo[] | undefined>(nTodo);
+  /** 並びの指紋 → その並びの最初の手（やることの番号）と配列 */
+  const todoLists = new Map<number, Array<{ k: number; arr: readonly MapTodo[] }>>();
+  /** (文の番号 × 元の表の数 + 元の番号) → 項目（どちらの表も塊のバイト数より小さいので、積は 2^53 に届かない） */
+  const todoItems = new Map<number, MapTodo>();
+  const sameTodo = (a: number, b: number): boolean => {
+    const len = todoOff[a + 1]! - todoOff[a]!;
+    if (len !== todoOff[b + 1]! - todoOff[b]!) return false;
+    for (let t = 0; t < len; t++) if (todoT[todoOff[a]! + t] !== todoT[todoOff[b]! + t] || todoC[todoOff[a]! + t] !== todoC[todoOff[b]! + t]) return false;
+    return true;
+  };
+  const todoOf = (k: number): readonly MapTodo[] => {
+    const hit = todoArr[k];
+    if (hit !== undefined) return hit;
+    let h = 0x811c9dc5;
+    for (let t = todoOff[k]!; t < todoOff[k + 1]!; t++) h = Math.imul(Math.imul(h ^ todoT[t]!, 0x01000193) ^ todoC[t]!, 0x01000193);
+    const bucket = todoLists.get(h);
+    if (bucket)
+      for (const x of bucket)
+        if (sameTodo(x.k, k)) {
+          todoArr[k] = x.arr;
+          return x.arr;
+        }
+    const out: MapTodo[] = [];
+    for (let t = todoOff[k]!; t < todoOff[k + 1]!; t++) {
+      const ik = todoT[t]! * S.cite.n + todoC[t]!;
+      let item = todoItems.get(ik);
+      if (item === undefined) todoItems.set(ik, (item = Object.freeze({ text: S.todo.get(todoT[t]!), cite: S.cite.get(todoC[t]!) })));
+      out.push(item);
+    }
+    const arr = Object.freeze(out);
+    if (bucket) bucket.push({ k, arr });
+    else todoLists.set(h, [{ k, arr }]);
+    todoArr[k] = arr;
+    return arr;
+  };
 
   return {
     header,
@@ -491,13 +535,7 @@ export function decodeBundleBytes(bytes: Uint8Array): MapData {
     why: (i) => (isA(i) && flags[i]! & FLAG.whyMask ? WHYS[(flags[i]! & FLAG.whyMask) - 1]! : null),
     stub: (i) => isA(i) && (flags[i]! & FLAG.stub) !== 0,
     q: (i) => (isA(i) && qPos[i]! >= 0 ? r3(q, qPos[i]!, SCALE.q) : null),
-    todo: (i): readonly MapTodo[] => {
-      if (!isA(i) || todoPos[i]! < 0) return NO_TODO;
-      const k = todoPos[i]!;
-      const out: MapTodo[] = [];
-      for (let t = todoOff[k]!; t < todoOff[k + 1]!; t++) out.push({ text: S.todo.get(todoT[t]!), cite: S.cite.get(todoC[t]!) });
-      return out;
-    },
+    todo: (i): readonly MapTodo[] => (!isA(i) || todoPos[i]! < 0 ? NO_TODO : todoOf(todoPos[i]!)),
     outId: (i) => (isOut(i) ? S.seg.get(outIdPos[i]! >= 0 ? outId[outIdPos[i]!]! : seg[i]!) : ""),
     p: (i) => (isOut(i) ? p[sub[i]!]! : 0),
     label: (i) => (isOut(i) ? S.lab.get(lab[sub[i]!]!) : ""),

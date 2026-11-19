@@ -4,7 +4,9 @@
 //   時差に依らない・同じ入力なら同じ文書・ID の重なりと食い違いで止まる・共有する部品は凍っている（テストの組み立て）・やること。
 // 基準の文書の指紋は quarterDigest.test.ts、8 万枚の木（時間とメモリ）は quarterDocFull.test.ts（環境変数があるときだけ）
 import { beforeAll, describe, expect, it } from "vitest";
-import { edgeTextPrint, fnv36, impactEdgeId64, impactNodeId64, impactTagsOf, IMPACT_AREAS, IMPACT_SCENARIOS } from "../../src/demo/impact";
+import { canonicalizeDevTree, encodeMap } from "../../scripts/impact/q/bundle";
+import { edgeTextPrint, fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf, IMPACT_AREAS, IMPACT_SCENARIOS } from "../../src/demo/impact";
+import { decodeBundleBytes } from "../../src/demo/impactBundle";
 import { anchorMonthEnd, anchorMonthStart, buildQuarterDoc, quarterColumnX, QuarterDocError, quarterRootId, type QuarterLayout } from "../../src/demo/quarterDoc";
 import quarterDocSrc from "../../src/demo/quarterDoc.ts?raw";
 import { analyze, compileMap, scenarioMask, ymAt } from "../../src/deepmap/core";
@@ -303,6 +305,55 @@ describe("やること（地図の todo）", () => {
     expect([sum.meta.end, sum.meta.sum, sum.meta.band]).toEqual([true, true, { cl: [1, 2] }]);
     expect(doc.edges[impactEdgeId64("r.ad_permside.a.1as.all")]!.label).toBe("");
     expect(normalizeDoc(doc)).toEqual({ doc, report: { warnings: [], dropped: { nodes: 0, edges: 0, projects: 0, scenarios: 0 } } });
+  });
+
+  it("同梱データの読み手を通した地図: 同じ並びの手には同じ凍らせた配列・項目は (文, 元) ごとに 1 つ。組み立ては開発用の木と同じ文書で、元の番号と文の指紋の並びは共有（見直し perf-1・perf-3）", () => {
+    // やることの多い手: 同じ並び（別の配列）の 2 つの手・1 項目の手・12 項目（番号 10・11 は 2 桁）の手。同じ文でも元が違えば別の項目
+    const tree = todoTree();
+    const opts = new Map<string, DevTreeNode>();
+    const walk = (n: DevTreeNode): void => {
+      if (n.r === "a") opts.set(n.k, n);
+      for (const c of n.kids ?? []) walk(c);
+    };
+    walk(tree.root);
+    const texts = ["会社の副業の決まりを読む", "届け出の紙を出す", "顧客に 1 社連絡する"];
+    const twelve = Array.from({ length: 12 }, (_, k) => ({ text: texts[k % 3]!, cite: k === 0 ? "ind-side-d05" : `ind-side-x${k}` }));
+    opts.get("r.sd_grow")!.todo = opts.get("r.ad_permside")!.todo!.map((t) => ({ ...t }));
+    opts.get("r.keep")!.todo = twelve;
+    tree.header.counts.nodes = fromDevTree(tree).n;
+    const m = decodeBundleBytes(encodeMap(fromDevTree(tree)));
+    const at = (k: string) => m.indexOfKey(k);
+    // 読み手: 同じ並びは同じ配列（何度問うても）・凍っている・項目は (文, 元) ごとに 1 つ・違う並びは別の配列
+    const a = m.todo(at("r.ad_permside"));
+    expect(a).toEqual(opts.get("r.ad_permside")!.todo);
+    expect(m.todo(at("r.sd_grow"))).toBe(a);
+    expect(m.todo(at("r.ad_permside"))).toBe(a);
+    expect([Object.isFrozen(a), a.every((x) => Object.isFrozen(x))]).toEqual([true, true]);
+    const one = m.todo(at("r.ad_permside.a.1as"));
+    expect(one).toEqual([{ text: "届け出の紙を出す", cite: "ind-side-d22" }]);
+    expect(one[0]).toBe(a[1]);
+    const t12 = m.todo(at("r.keep"));
+    expect(t12).toEqual(twelve);
+    expect(t12[0]).toBe(a[0]);
+    expect(t12[3]).not.toBe(a[0]);
+    expect(m.todo(at("r.sd_grow.all"))).toEqual([]);
+    // 組み立て: 開発用の木（手ごとに別の配列。丸めは同梱データと同じにした写し）と JSON までまったく同じ文書
+    const canon = canonicalizeDevTree(tree);
+    canon.header.hash = m.header.hash;
+    const viaBundle = build(m, { layout: "columns" });
+    expect(JSON.stringify(viaBundle)).toBe(JSON.stringify(build(fromDevTree(canon), { layout: "columns" })));
+    // 同じやることの手は、元の番号と文の指紋の並びを共有（テストの組み立てでは凍っている）。項目は手ごと
+    const card = (k: string) => viaBundle.nodes[impactNodeId64(k)]!;
+    expect(card("r.sd_grow").meta.cites).toBe(card("r.ad_permside").meta.cites);
+    expect(card("r.sd_grow").meta.k0).toBe(card("r.ad_permside").meta.k0);
+    expect([Object.isFrozen(card("r.ad_permside").meta.cites), Object.isFrozen(card("r.ad_permside").meta.k0)]).toEqual([true, true]);
+    expect(card("r.sd_grow").conditions).not.toBe(card("r.ad_permside").conditions);
+    // 項目の ID は c_ + 鍵の 64 ビットの指紋 + _ + 番号（2 桁の番号も）。文と文の指紋は枠の順
+    const keep = card("r.keep");
+    expect(keep.conditions.map((c) => c.id)).toEqual(twelve.map((_, k) => `c_${fnv64x36("r.keep")}_${k}`));
+    expect(keep.conditions.map((c) => [c.text, c.met])).toEqual(twelve.map((t) => [t.text, false]));
+    expect([keep.meta.cites, keep.meta.k0]).toEqual([twelve.map((t) => t.cite), twelve.map((t) => fnv36(t.text))]);
+    expect(normalizeDoc(viaBundle).report).toEqual({ warnings: [], dropped: { nodes: 0, edges: 0, projects: 0, scenarios: 0 } });
   });
 });
 

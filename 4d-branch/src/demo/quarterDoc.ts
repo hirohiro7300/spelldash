@@ -1,5 +1,6 @@
 // 3 か月ごと 12 段の「3 年の分かれ道」（版 7 から。読むだけの地図 MapData）を 4D Branch の文書に組み立てる、軽い組み立て（lean builder）。
-// 設計: 作業メモ SPEC v1 §3.4・D9・§6（見直し perf-6・perf-7・safety-4・safety-6・safety-11・safety-14・gaps-2）
+// 設計: 作業メモ SPEC v1 §3.4・D9・§6（見直し perf-6・perf-7・safety-4・safety-6・safety-11・safety-14・gaps-2）。SPEC §3.4 の組み立ての口
+// （buildImpactDoc(map, {version, release, at, layout}) と書いてある物）はこの buildQuarterDoc。
 // 版 6 の地図（同梱の impact-data.json）は今までどおり ./impact.ts の buildImpactDoc。こちらはまだアプリの読み込みにつないでいない。
 //
 // 決まり（同じ地図と同じ opts なら、どの端末・どの時差でも同じ文書）:
@@ -21,11 +22,16 @@
 // 軽さ（perf-6・perf-7）: 1 枚ごとに物を広げて写さない（{...x} を使わない）。同じ中身の部品（期限・タグ・プロジェクト・シナリオ・状態・月の稼ぎ・
 //   判断の線・事実・幅・元の番号・やることの指紋・空の配列）は 1 つを共有し、開発とテストの組み立てでは凍らせる（書き換える所があればすぐ止まる）。
 //   同じ中身かは数の指紋（数のビットと文字から）で引き、同じ指紋の中だけ中身で比べる（鍵の文字を作らない）。題名・短い名前・線の説明と条件も、
-//   同じ文字は 1 つの文字列にする（地図の問いは呼ぶたびに新しい文字列を返す）。題名の指紋 t0 は題名ごとに 1 回だけ数える。
+//   同じ文字は 1 つの文字列にする（開発用の木は、同じ文字でもカードごとに別の文字列のことがある）。題名の指紋 t0 は題名ごとに 1 回だけ数える。
+//   やること（手ごとに 3 項目・8 万枚で約 10 万項目）は、地図の todo(i) が返す配列ごとに 1 回だけ数える（同梱データの読み手は同じ並びの手に
+//   同じ凍らせた配列を返す: ./impactBundle.ts）: 文は同じ文字を 1 つ・元の番号の並び（cites）と文の指紋の並び（k0）は共有・文の指紋は文ごとに 1 回。
+//   ID（ノード・線・やることの項目）は鍵の指紋の 36 進の文字の番号から 1 つの文字列で作る（つないだ文字列にしない。見直し perf-1・perf-3）。
 //   共有する部品は書き換えない約束（ストアは新しい物に入れ替える: store.ts の updateNode）。カードと線と meta は 1 枚ごとの物。
 //   normalizeDoc を通すと共有が外れて重くなるので、組み立てた文書は通さずに使う（通しても何も変わらないことはテストで確かめる）。
-//   測った値（node・開発の組み立て・版 7 の候補 72,402 枚・毎回読み直した地図から・3 回のうち一番良い値）: 組み立て 約 300〜340 ms・文書のヒープ 約 62〜68 MB
-//   （tests/unit/quarterDocFull.test.ts。目標は 400 ms・100 MB）
+//   測った値（毎回読み直した地図から。tests/unit/quarterDocFull.test.ts の目標は 400 ms・100 MB。どちらも 3 回のうち一番良い値）:
+//     node・開発の組み立て（凍らせる）: 文を入れた版 7 の候補（77,735 枚・やること 105,825 項目）で 組み立て 約 300〜340 ms・文書のヒープ 約 75 MB
+//     （直す前は 420〜530 ms・90 MB）、文の無い候補（72,402 枚）で 約 260〜335 ms・約 60 MB。
+//     Chrome（本番の組み立て）: 文を入れた候補で 冷えた 1 回目 約 300〜400 ms・ヒープ 約 48 MB、CPU 4 倍遅くして 約 1.6〜1.8 秒
 //
 // meta（アプリの src/model/**（forecast・impact・forks・impactRank・impactText・impactLayout）が今の地図で読む名前と同じ。
 // SPEC §9 I-doc の変更つき: impact.v は 2 のまま・入口に anchor・手に q・まとめた行き先は sum。行き先の mix と cont は写さず、地図から引く）:
@@ -38,7 +44,7 @@
 //   指紋（新しい版にしたとき、利用者が書き換えた所を見分ける: futureSwap.ts と同じ作り）: t0 = fnv36(題名)・b0 = fnv36(本文)・k0 = やることの文ごとの fnv36・
 //   p0 = 元の見込み・c0 = edgeTextPrint(線の説明, 条件)
 
-import type { MapBand, MapData, MapRole } from "../deepmap/mapData";
+import type { MapBand, MapData, MapRole, MapTodo } from "../deepmap/mapData";
 import { isDateStr } from "../model/dates";
 import { SCHEMA, SCHEMA_VERSION } from "../model/schema";
 import type { Condition, DocData, GEdge, GNode, ID, Meta, NodeTime, NodeType, Project, Scenario } from "../model/types";
@@ -198,6 +204,35 @@ const OFF1 = 0x811c9dc5;
 const OFF2 = 0x9e3779b9;
 const b36x7 = (h: number): string => (h >>> 0).toString(36).padStart(7, "0");
 
+/** 36 進の数字（0〜9・a〜z）の文字の番号 */
+const D36 = new Uint8Array(36);
+for (let d = 0; d < 36; d++) D36[d] = (d < 10 ? 48 : 87) + d;
+/** 32 ビットの指紋を、36 進 7 桁（b36x7 と同じ文字）の文字の番号で out[at..at+6] に書く（最初の割り算の後は 31 ビットに入るので、整数の計算） */
+function lane36(h: number, out: Uint8Array, at: number): void {
+  const x = h >>> 0;
+  let y = Math.floor(x / 36);
+  out[at + 6] = D36[x - y * 36]!;
+  for (let k = 5; k >= 0; k--) {
+    const z = (y / 36) | 0;
+    out[at + k] = D36[y - z * 36]!;
+    y = z;
+  }
+}
+/**
+ * 鍵の指紋 14 文字（L[o..o+13]）に前と後ろの文字を付けた ID を、初めから 1 つの文字列で作る（つないだ文字列は、名前に使うときと
+ * 書き出すときに 1 つにし直すので、時間とメモリを食う。見直し perf-1）: 頭の 4 文字（n_i_・e_i_）+ 指紋、または c_ + 指紋 + _ + 番号
+ */
+const laneId = (a: number, b: number, c: number, L: Uint8Array, o: number): string =>
+  String.fromCharCode(a, b, c, 95, L[o]!, L[o + 1]!, L[o + 2]!, L[o + 3]!, L[o + 4]!, L[o + 5]!, L[o + 6]!, L[o + 7]!, L[o + 8]!, L[o + 9]!, L[o + 10]!, L[o + 11]!, L[o + 12]!, L[o + 13]!);
+function condId(L: Uint8Array, o: number, t: number): string {
+  if (t < 10) return String.fromCharCode(99, 95, L[o]!, L[o + 1]!, L[o + 2]!, L[o + 3]!, L[o + 4]!, L[o + 5]!, L[o + 6]!, L[o + 7]!, L[o + 8]!, L[o + 9]!, L[o + 10]!, L[o + 11]!, L[o + 12]!, L[o + 13]!, 95, 48 + t);
+  const codes = [99, 95];
+  for (let k = 0; k < 14; k++) codes.push(L[o + k]!);
+  codes.push(95);
+  for (const ch of String(t)) codes.push(ch.charCodeAt(0));
+  return String.fromCharCode(...codes);
+}
+
 /** 線の説明と条件の指紋（./impact.ts の edgeTextPrint と同じ値。つないだ文字を作らずに数える） */
 function textPrint(label: string, condition: string): string {
   let h = SEED;
@@ -268,7 +303,9 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
   for (const [k, a] of Object.entries(IMPACT_AREAS)) AREA_IDS[k] = fz([a.id]);
   const B0 = fnv36("");
   const C0_NONE = edgeTextPrint("", "");
-  const stPool = new Pool<ImpactSt>(sameSt, (s) => fz({ j: s.j, pm: s.pm, pro: s.pro, mau: s.mau, pu: s.pu, seats: s.seats, cl: s.cl, fee: s.fee, sal: s.sal, cv: s.cv, fl: s.fl.length ? fz(s.fl.slice()) : EMPTY }));
+  const listPool = new Pool<string[]>(sameStrs, (xs) => fz(xs.slice()));
+  // 状態の印の並び fl も、同じ並びは 1 つ（状態ごとに写さない）
+  const stPool = new Pool<ImpactSt>(sameSt, (s) => fz({ j: s.j, pm: s.pm, pro: s.pro, mau: s.mau, pu: s.pu, seats: s.seats, cl: s.cl, fee: s.fee, sal: s.sal, cv: s.cv, fl: s.fl.length ? listPool.of(hashStrs(s.fl), s.fl) : EMPTY }));
   const r3Pool = new Pool<R3>(sameR3, (r) => fz([r[0], r[1], r[2]]));
   const lnPool = new Pool<ImpactLine>(sameLn, (l) => fz(l.length > 4 ? [l[0], l[1], l[2], l[3], l[4]] : [l[0], l[1], l[2], l[3]]));
   const rvPool = new Pool<[string, string]>(
@@ -284,7 +321,6 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       return fz(o);
     },
   );
-  const listPool = new Pool<string[]>(sameStrs, (xs) => fz(xs.slice()));
   // 期限とタグ（役割と月ごと）
   const optTime = new Map<number, NodeTime>();
   const outTime = new Map<number, NodeTime>();
@@ -327,7 +363,8 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
   // 鍵 → 64 ビットの指紋（./impact.ts の fnv64x36 と同じ計算）と ID。重なれば止める（違う鍵が同じ指紋・同じ鍵が 2 回）。
   // 重なりは 1 つ目の 32 ビットで引き、同じなら 2 つ目も比べる（文字の鍵の表を作らない）。役割と、兄弟の中の順番（深さ優先の番号では、兄弟は並べる順に出てくる）
   const keys = new Array<string>(n);
-  const hashes = new Array<string>(n);
+  /** 鍵の指紋 14 文字の文字の番号（カード i は LN[14i..14i+13]。ノード・線・やることの項目の ID はここから作る） */
+  const LN = new Uint8Array(n * 14);
   const ids = new Array<ID>(n);
   const H2 = new Int32Array(n);
   const roles = new Int8Array(n);
@@ -373,9 +410,9 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
     }
     H2[i] = h2;
     keys[i] = key;
-    const hx = b36x7(h1) + b36x7(h2);
-    hashes[i] = hx;
-    ids[i] = `n_i_${hx}`;
+    lane36(h1, LN, i * 14);
+    lane36(h2, LN, i * 14 + 7);
+    ids[i] = laneId(110, 95, 105, LN, i * 14);
   }
   for (let i = 0; i < n; i++) {
     if (fill[i] !== map.childCount(i)) throw new QuarterDocError(`子の数が合いません（深さ優先の並びでない）: ${keys[i]}`);
@@ -390,6 +427,39 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
     if (hit !== undefined) return hit;
     strs.set(x, x);
     return x;
+  };
+  // やること: 地図の todo(i) が返す配列ごとに、文（同じ文字は 1 つ）・元の番号の並び（meta.cites）・文の指紋の並び（meta.k0）を 1 回だけ作る。
+  // 同梱データの読み手は同じ並びの手に同じ配列を返すので（./impactBundle.ts）、手ごとに数え直さない。文の指紋は文ごとに 1 回（見直し perf-1・perf-3）。
+  // 開発用の木（fromDevTree）は手ごとに別の配列なので、手ごとに作る（答えは同じ）
+  const todoMemo = new Map<readonly MapTodo[], { texts: string[]; cites: string[]; k0: string[] }>();
+  const textPrints = new Map<string, string>();
+  const todoOf = (todo: readonly MapTodo[]): { texts: string[]; cites: string[]; k0: string[] } => {
+    let x = todoMemo.get(todo);
+    if (x !== undefined) return x;
+    const texts = new Array<string>(todo.length);
+    const cites = new Array<string>(todo.length);
+    const prints = new Array<string>(todo.length);
+    for (let t = 0; t < todo.length; t++) {
+      const item = todo[t]!;
+      const text = str(item.text);
+      let pr = textPrints.get(text);
+      if (pr === undefined) textPrints.set(text, (pr = fnv36(text)));
+      texts[t] = text;
+      cites[t] = item.cite;
+      prints[t] = pr;
+    }
+    x = { texts, cites: listPool.of(hashStrs(cites), cites), k0: listPool.of(hashStrs(prints), prints) };
+    todoMemo.set(todo, x);
+    return x;
+  };
+  /** 線の説明と条件の指紋 c0（説明 → 条件 → 指紋。同じ組は 1 回だけ数える） */
+  const c0Memo = new Map<string, Map<string, string>>();
+  const c0Of = (label: string, condition: string): string => {
+    let byLine = c0Memo.get(label);
+    if (byLine === undefined) c0Memo.set(label, (byLine = new Map<string, string>()));
+    let c0 = byLine.get(condition);
+    if (c0 === undefined) byLine.set(condition, (c0 = textPrint(label, condition)));
+    return c0;
   };
 
   const nodes = doc.nodes;
@@ -425,17 +495,11 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       const todo = map.todo(i);
       let k0: string[] | null = null;
       if (todo.length) {
+        const td = todoOf(todo);
         conditions = new Array<Condition>(todo.length);
-        const cites = new Array<string>(todo.length);
-        const prints = new Array<string>(todo.length);
-        for (let t = 0; t < todo.length; t++) {
-          const item = todo[t]!;
-          conditions[t] = { id: `c_${hashes[i]}_${t}`, text: item.text, met: false };
-          cites[t] = item.cite;
-          prints[t] = fnv36(item.text);
-        }
-        meta.cites = listPool.of(hashStrs(cites), cites);
-        k0 = listPool.of(hashStrs(prints), prints);
+        for (let t = 0; t < todo.length; t++) conditions[t] = { id: condId(LN, i * 14, t), text: td.texts[t]!, met: false };
+        meta.cites = td.cites;
+        k0 = td.k0;
       }
       meta.rank = rank[i]!;
       meta.short = short;
@@ -506,7 +570,7 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
     nodes[id] = node;
     if (code === 0) continue;
     // 親からの線（子の鍵の指紋。ノードの ID が重ならないので線も重ならない）
-    const eid = `e_i_${hashes[i]}`;
+    const eid = laneId(101, 95, 105, LN, i * 14);
     const source = ids[map.parent(i)]!;
     let edge: GEdge;
     if (code === 1) {
@@ -520,7 +584,7 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       const l = map.ln(i);
       const x = map.rv(i);
       const r: R3 = [e[0], e[1], e[2]];
-      const c0 = textPrint(label, condition);
+      const c0 = c0Of(label, condition);
       let emeta: Meta;
       if (l && x) emeta = { prob, r, ln: lnPool.of(hashLn(l), l), rv: rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x), p0: prob, c0 };
       else if (l) emeta = { prob, r, ln: lnPool.of(hashLn(l), l), p0: prob, c0 };
