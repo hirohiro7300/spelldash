@@ -3,7 +3,7 @@ import { Commands } from "../../src/app/commands";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
 import { buildImpactDoc } from "../../src/demo/impact";
-import { futureData } from "../../src/demo/futureBundle";
+import { r6Bundle } from "./helpers/r6";
 import { IMPACT_GROUP_GAP, IMPACT_ROW, IMPACT_X, compareImpactKids, impactColX, outlineLayout } from "../../src/model/impactLayout";
 import { NODE_H, NODE_W } from "../../src/model/constants";
 import { makeNode } from "../../src/model/schema";
@@ -11,7 +11,7 @@ import type { DocData, ID } from "../../src/model/types";
 import { Store } from "../../src/store/store";
 
 const TODAY = new Date(2026, 10, 18);
-const data = futureData();
+const data = r6Bundle();
 const doc = buildImpactDoc(data, TODAY, "t");
 
 // 同梱データの木（親 → 子。並びは作ったときの順位）
@@ -89,7 +89,7 @@ describe("3 年の分かれ道の並べ方（目次の形）", () => {
     const pos = layout(allOpen);
     expect(pos.size).toBe(ids.length);
     const leafRows = new Set([...pos.entries()].filter(([id]) => kidsOf.get(id)!.length === 0).map(([, p]) => p.y));
-    expect(leafRows.size).toBe(futureData().check.counts.ends);
+    expect(leafRows.size).toBe(r6Bundle().check.counts.ends);
   });
 
   it("開く・閉じるで、そのノード自身と、それより上のカードは動かない", () => {

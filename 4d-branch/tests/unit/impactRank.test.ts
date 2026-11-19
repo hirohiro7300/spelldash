@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildImpactDoc } from "../../src/demo/impact";
-import { futureData } from "../../src/demo/futureBundle";
+import { r6Bundle } from "./helpers/r6";
 import { computeForecast } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
 import { computeImpact } from "../../src/model/impact";
@@ -9,7 +9,7 @@ import { projectArea } from "../../src/model/impactText";
 import type { DocData } from "../../src/model/types";
 
 function bundled() {
-  const doc = buildImpactDoc(futureData(), new Date(2026, 10, 18), "test");
+  const doc = buildImpactDoc(r6Bundle(), new Date(2026, 10, 18), "test");
   const idx = buildIndex(doc);
   const fc = computeForecast(doc, idx.out);
   return { doc, fc, im: computeImpact(doc, idx.out, fc, null) };
@@ -98,7 +98,7 @@ describe("手の種類の名前", () => {
   it("同梱の地図: 入口の meta.fams に、カードが使う手の種類の名前が全部ある（12 文字まで）", () => {
     const { doc, im } = bundled();
     const fams = doc.nodes[im.root!]!.meta.fams as Record<string, string>;
-    expect(fams).toEqual(futureData().fams);
+    expect(fams).toEqual(r6Bundle().fams);
     const used = new Set(Object.values(doc.nodes).map((n) => (typeof n.meta.fam === "string" ? n.meta.fam : "")).filter(Boolean));
     expect(used.size).toBeGreaterThan(5);
     for (const f of used) {
@@ -129,7 +129,7 @@ describe("手の種類の名前", () => {
     expect(famLabel(blank, root, "side", side.instances)).toBe("side");
     expect(famLabel(old, root, "side", ["n_無い"])).toBe("side");
     // 名前があれば、出てくる所に関わらず名前
-    expect(famLabel(doc, root, "side", ["n_無い"])).toBe(futureData().fams!.side);
+    expect(famLabel(doc, root, "side", ["n_無い"])).toBe(r6Bundle().fams!.side);
   });
 
   it("手の種類の行の領域の札は、選択肢の行と同じ名前と色（分からないプロジェクトは札なし）", () => {

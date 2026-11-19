@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Commands } from "../../src/app/commands";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
-import { futureData } from "../../src/demo/futureBundle";
+import { r6Bundle } from "./helpers/r6";
 import { buildImpactDoc } from "../../src/demo/impact";
 import { flowOuts, isFlowEdge } from "../../src/model/forks";
 import { createEmptyDoc, makeEdge, makeNode } from "../../src/model/schema";
@@ -31,7 +31,7 @@ function setup(doc: DocData, narrow = false) {
 type S = ReturnType<typeof setup>;
 
 const TODAY = new Date(2026, 10, 18);
-const base = buildImpactDoc(futureData(), TODAY, "t");
+const base = buildImpactDoc(r6Bundle(), TODAY, "t");
 const rootId = Object.values(base.nodes).find((n) => n.meta.forecastRoot === true)!.id;
 
 /** 3 年の分かれ道（同梱の地図）。narrow: スマホの最初の形（今日だけ開く） */

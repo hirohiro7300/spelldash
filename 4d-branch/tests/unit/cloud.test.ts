@@ -16,6 +16,37 @@ const LIMIT = 256 * 1024;
 const bytesOf = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).length;
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
+/** 本物の setTimeout（偽の時計を入れる前に取っておく。偽の時計を入れても、この参照は本物のまま） */
+const realSetTimeout = globalThis.setTimeout;
+/** settle が待つ上限（本当の時間） */
+const SETTLE_LIMIT_MS = 60_000;
+
+/**
+ * 偽の時計（vi.useFakeTimers）の下で、p が済むまで待つ。時計は 10 ms ずつ進める（貸し出し・やり直し・入れ替えの間の待ちは偽の時計で進む）。
+ * 送る・読むの途中の圧縮と指紋は本当の非同期の仕事で、偽の時計を進めても速くならないので、1 歩ごとに本当の時間も 1 ms あける
+ * （CPU が混んでいても、偽の時計の進みが混んでいない時と同じくらいに収まる）。歩数では打ち切らず、p が済んだかで決める
+ * （前は 200 歩で黙って先へ進み、CPU が混むと済んでいない同期の上で確かめて落ちた）。本当の時間で SETTLE_LIMIT_MS たっても済まなければ落とす
+ */
+async function settle(p: Promise<unknown>, what: string): Promise<void> {
+  let done = false;
+  let failed = false;
+  let error: unknown;
+  p.then(
+    () => (done = true),
+    (e: unknown) => {
+      done = failed = true;
+      error = e;
+    },
+  );
+  const t0 = performance.now();
+  while (!done) {
+    if (performance.now() - t0 > SETTLE_LIMIT_MS) throw new Error(`${what} が、本当の時間で ${SETTLE_LIMIT_MS / 1000} 秒たっても済まない`);
+    await vi.advanceTimersByTimeAsync(10);
+    if (!done) await new Promise((r) => realSetTimeout(r, 1));
+  }
+  if (failed) throw error;
+}
+
 /** db の代わり（256 KiB の上限は UTF-8 のバイトで数える・購読・貸し出し・一覧を真似る） */
 function memoryBackend() {
   const docs = new Map<string, Record<string, unknown>>();
@@ -1142,17 +1173,10 @@ describe("同期の決まり: 再レビューの指摘", () => {
     try {
       const { be, partGens } = memoryBackend();
       const a = device(be, "A", buildDemoDoc());
-      const run = async (p: Promise<unknown>) => {
-        const done = p.then(() => true);
-        for (let i = 0; i < 200; i++) {
-          await vi.advanceTimersByTimeAsync(10);
-          if (await Promise.race([done, Promise.resolve(false)])) return;
-        }
-      };
-      await run(a.sync.start());
+      await settle(a.sync.start(), "始め");
       for (let i = 0; i < 3; i++) {
         a.edit(`変更 ${i}`);
-        await run(a.sync.flush());
+        await settle(a.sync.flush(), `${i + 1} 回目の送信`);
       }
       expect(partGens().size).toBeGreaterThan(1);
       await vi.advanceTimersByTimeAsync(3 * 60_000);
@@ -1961,17 +1985,10 @@ describe("同期の決まり: 修正の再レビューの指摘", () => {
         },
       };
       const a = device(flaky, "A", realDoc("最初"));
-      const run = async (p: Promise<unknown>) => {
-        const done = p.then(() => true);
-        for (let i = 0; i < 200; i++) {
-          await vi.advanceTimersByTimeAsync(10);
-          if (await Promise.race([done, Promise.resolve(false)])) return;
-        }
-      };
-      await run(a.sync.start());
+      await settle(a.sync.start(), "始め");
       reject = true;
       a.edit("届かなかった変更");
-      await run(a.sync.flush());
+      await settle(a.sync.flush(), "返事の届かない送信");
       const live = async () => {
         const m = (await a.repo.readManifest())!;
         return new Set([m.gen, ...m.stale.map((x) => x.gen)]);
@@ -1979,6 +1996,9 @@ describe("同期の決まり: 修正の再レビューの指摘", () => {
       const l1 = await live();
       expect([...partGens()].filter((g) => !l1.has(g))).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(11 * 60_000);
+      // 15 秒後のやり直しの送信は本当の圧縮を挟むので、CPU が混んでいると、時計を進め終えた後もまだ分割を書いている途中のことがある
+      // （確定の前の分割は、どのマニフェストからも指されていない）。走っている同期が済むのを待ってから数える
+      await settle(a.sync.flush(), "やり直しの送信");
       const l2 = await live();
       expect([...partGens()].filter((g) => !l2.has(g))).toEqual([]);
       a.sync.stop();

@@ -28,21 +28,10 @@ import {
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, MapData } from "../../src/deepmap/mapData";
 import { appImpact, bundleToDevTree, close, compare, handTree, randomStatus, randomTree, statusArray, toBundle, type AppRun } from "./deepmapFixtures";
+import { r6Bundle } from "./helpers/r6";
 
-/**
- * 今日の同梱データ（1,533 枚の地図・v2）。凍結した写し（tests/fixtures/impact-r6.json）を先に使い、無ければ今の同梱データ。
- * どちらも無いか v2 でなければ飛ばす（同梱が新しい形に替わっても止まらない）
- */
-const r6Files = import.meta.glob(["../fixtures/impact-r6.json", "../../src/demo/impact-data.json"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
-const r6 = ((): ImpactBundle | null => {
-  for (const path of ["../fixtures/impact-r6.json", "../../src/demo/impact-data.json"]) {
-    const raw = r6Files[path];
-    if (!raw) continue;
-    const b = JSON.parse(raw) as Partial<ImpactBundle>;
-    if (b.v === 2 && Array.isArray(b.nodes) && b.check) return b as ImpactBundle;
-  }
-  return null;
-})();
+/** 版 6 の同梱データ（1,533 枚の地図・v2）。凍結した写し（tests/fixtures/impact-r6.json。今の同梱データが替わっても版 6 のまま） */
+const r6: ImpactBundle | null = r6Bundle();
 
 describe("計算の芯: 地図を組み直す", () => {
   const map = fromDevTree(handTree());
