@@ -11,6 +11,8 @@
 //   N10 Pro を出していれば、届け出の答えが『全部可』か『SpellDash だけ可』、または独立（まとめた行き先は数えるだけ）
 //   C1  顧客の社数: 幅の無い状態は整数の社数、幅は整数で小さい順
 //   K1  暦: 入口の年月と 4 月の月の番号（(anchorMonth + a) mod 12 = 4）
+//   Q1  その 3 か月の給与の式（文章の組み立ての quarterSal）が、広げた手（転職・昇格・週 4 日・会社員に戻る）のどの結果の給与とも合う。
+//       まとめた手の結果の文は、この式で移る先・昇格の給与を言う（3 年後の平均を言わない。作業メモ reader-1）ので、式がずれると両方が食い違う
 //   R1  一貫性（年収 360・540 のどちらも）: 最初の手ごとのおすすめの道で、アプリの一番良い手がまとめた手になる判断が 0
 //   R2  アプリと同じ値: 読んだ地図からアプリの文書を組み立て、computeImpact の今日の値・ずっと今のまま・すべての手の差が、
 //       読んだ値から直接出した値と |差| ≤ 1e-9（年収 360・540）。一番良い手も同じ
@@ -24,6 +26,8 @@ import { calendarCheck } from "./calendar";
 import { DEFAULTS } from "./gen";
 import { buildImpactDoc, impactEdgeId64, impactNodeId, impactNodeId64, type ImpactAltX, type ImpactBNode, type ImpactBundle, type ImpactOutX, type ImpactRootX } from "../../../src/demo/impact";
 import type { MapData } from "../../../src/deepmap/mapData";
+import { BANKS } from "../../../src/demo/compose";
+import { calendarOf, quarterSal } from "../../../src/demo/compose/path";
 import { computeForecast } from "../../../src/model/forecast";
 import { buildIndex } from "../../../src/model/graph";
 import { computeImpact } from "../../../src/model/impact";
@@ -266,6 +270,25 @@ export function checkClients(map: MapData): string[] {
     if (mx && (b ? !(mx.cl[0] === b[0] && mx.cl[2] === b[1]) : mx.cl[0] !== mx.cl[2])) fail(`C1 mix の顧客の幅が band と違う: ${map.key(i)}`);
   }
   return fails;
+}
+
+/** Q1: その 3 か月の給与の式（quarterSal）が、広げた手の結果の給与（rr[0]）と合う（丸めの幅 0.0051 まで）。合わせた結果の数も返す */
+export function checkQuarterSal(map: MapData, C = BANKS.C): { fails: string[]; checked: number } {
+  const { fails, fail } = collector();
+  const cal = calendarOf(map.header);
+  let checked = 0;
+  for (let a = 0; a < map.n; a++) {
+    if (map.role(a) !== "a" || map.stub(a)) continue;
+    for (let k = 0; k < map.childCount(a); k++) {
+      const o = map.child(a, k);
+      if (map.sum(o)) continue;
+      const q = quarterSal(map, C, cal, a, map.outId(o));
+      if (q === null) continue;
+      checked++;
+      if (Math.abs(q - map.rr(o)[0]) > 0.0051) fail(`Q1 その 3 か月の給与の式 ${q.toFixed(4)} が、結果の給与 ${map.rr(o)[0].toFixed(4)} と違う: ${map.key(o)}`);
+    }
+  }
+  return { fails, checked };
 }
 
 /** K1: 入口の年月が生成の年月と同じで、4 月の月の番号が暦どおり */

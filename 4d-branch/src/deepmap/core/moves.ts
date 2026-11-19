@@ -2,7 +2,7 @@
 // 今日の手ごとに 1 行: その手を選んだ後おすすめの選び方で進んだ 3 年の分布・今やる vs 3 か月待つ・この種類を 3 年やらない場合との差・
 // その手で分かること・今のままの先との違い・分かれ道と行き先の数。どれもその手の部分木を 1 回なめるだけ（O(N)）。
 
-import { baseOf, F_BASE, F_STUB, F_SUM, famKey, kindKey, quarterOf, ROLE_E, ROLE_R, ROLE_S } from "./compile";
+import { baseOf, F_BASE, F_STUB, F_SUM, famKey, kindKey, quarterOf, ROLE_A, ROLE_E, ROLE_R, ROLE_S } from "./compile";
 import { assertFresh, deltaBetween, likeValue, optionValue, type Analysis, type Delta, type DeltaBasis } from "./passes";
 import { distOf, Weighted, type Dist } from "./stats";
 
@@ -14,6 +14,11 @@ export const SMALL_DELTA = 5;
 export const WORTH_NOISE = 4;
 /** 行き先を「見込みのある物」と数える見込み */
 export const END_P_MIN = 0.01;
+/**
+ * 地図の深さを確かめた年収（万円。生成の一貫性の点検 R1 の 2 つの年収: scripts/impact/q/gen.ts の DEFAULTS.annuals）。この間の年収なら、
+ * どの今日の手の一番良い道も 3 か月ごとに 36 か月目まで広げてある（標準の続きの見積もりに入らない）。外の年収では入ることがある（作業メモ truth-5）
+ */
+export const CHECKED_ANNUALS: readonly [number, number] = [360, 540];
 
 export interface MoveCounts {
   /** 部分木のカードの数 */
@@ -294,11 +299,11 @@ function tvBetween(x: Profile, y: Profile, K: number): number | null {
   return cnt ? sum / cnt : null;
 }
 
-/** 結果の名前の束ね方（「全部可・1 社目」「全部可・まだ」→「全部可」。頭がそろわなければ「／」でつなぐ） */
+/** 結果の名前の束ね方（「全部可（1 社目あり）」「全部可（顧客まだ）」→「全部可」。頭（かっこと「・」の前）がそろわなければ「／」でつなぐ） */
 export function groupLabel(labels: readonly string[]): string {
   const uniq = [...new Set(labels.filter((x) => x))];
   if (uniq.length <= 1) return uniq[0] ?? "";
-  const heads = uniq.map((l) => l.split("・")[0]!.trim());
+  const heads = uniq.map((l) => l.split(/[・（]/)[0]!.trim());
   if (heads[0] && heads.every((h) => h === heads[0])) return heads[0];
   return uniq.join("／");
 }
@@ -408,4 +413,40 @@ function distInKeep(a: Analysis): Dist | null {
     if (flags[i]! & F_SUM) sum += m;
   }
   return distOf(items, a.vSQ, sum);
+}
+
+/**
+ * 文章の組み立て（src/demo/compose の composeCard の rt）に渡す、今の年収の計算の芯の答え。画面と本文で同じ「おすすめ」と同じ数を
+ * 書くため（作業メモ truth-1・reader-4・reader-8・truth-4）。どれも番号は MapData と同じ
+ *   recommended(d)  判断 d で一番良い選び方が選ぶ手（画面の「おすすめ」の印。決まらなければ −1）
+ *   treeValue(a)    手 a を選んで、その後を一番良い選び方で進んだ、その判断から 36 か月目までの稼ぎ（数が出せなければ null）
+ *   reach(f)        今日の手 f の先で、一番良い選び方で着く本当の行き先の数（見込みのある物）と、そのうち見込み 1% 以上（見取り図と同じ数）
+ */
+export interface TextRuntime {
+  recommended(d: number): number;
+  treeValue(a: number): number | null;
+  reach(f: number): { ends: number; ends1: number } | null;
+}
+
+export function textRuntime(a: Analysis): TextRuntime {
+  assertFresh(a);
+  const { cm } = a;
+  const memo = new Map<number, { ends: number; ends1: number }>();
+  return {
+    recommended: (d) => (d >= 0 && d < cm.n && a.pi.def[d] ? a.pi.pi[d]! : -1),
+    treeValue: (j) => {
+      if (j < 0 || j >= cm.n || cm.role[j] !== ROLE_A) return null;
+      const v = optionValue(a.pi, j);
+      return Number.isFinite(v) ? v : null;
+    },
+    reach: (f) => {
+      if (f < 0 || f >= cm.n || cm.parent[f] !== 0 || cm.role[f] !== ROLE_A) return null;
+      let r = memo.get(f);
+      if (!r) {
+        const c = countsOf(a, f, a.pi.reachIn);
+        memo.set(f, (r = { ends: c.reachEnds, ends1: c.reachEnds1 }));
+      }
+      return r;
+    },
+  };
 }

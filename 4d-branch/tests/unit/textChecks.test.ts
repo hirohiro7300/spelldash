@@ -37,8 +37,8 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     }
   });
 
-  it("点検の名前は SPEC §4.6 の C1〜C10 と C4b・T4、見直しで足した C11（手が言う額と数）・C12（道の歩み）。D はデータの指摘で止めない", () => {
-    expect(TEXT_CHECKS.map((c) => c.id)).toEqual(["C1", "C1b", "C2", "C3", "C4", "C4b", "C5", "C5b", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "T4", "D1", "D2"]);
+  it("点検の名前は SPEC §4.6 の C1〜C10 と C4b・T4、見直しで足した C11（手が言う額と数）・C12（道の歩み）・C13（本文のおすすめ）。D はデータの指摘で止めない", () => {
+    expect(TEXT_CHECKS.map((c) => c.id)).toEqual(["C1", "C1b", "C2", "C3", "C4", "C4b", "C5", "C5b", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "T4", "D1", "D2"]);
     expect(TEXT_CHECKS.filter((c) => !c.block).map((c) => c.id)).toEqual(["D1", "D2"]);
     expect(TEXT_GATES).toEqual({ pathRepeats: 4, siblingSame: 0, decisionRepeats: 1 });
   });
@@ -253,7 +253,9 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     const end = [...Array(still.n).keys()].find((i) => still.role(i) === "e")!;
     const card = { title: "", short: "", body: "", numbers: [], todo: [], trace: [] };
     expect(pathContext(still, end, "この道で月の稼ぎを一番大きく動かしたのは、2029 年 5 月までの『据え置き』で、月 +3.7 万円。", card)).toHaveLength(1);
-    expect(pathContext(still, end, "この道で月の稼ぎを一番大きく動かしたのは、2029 年 5 月までの『昇格を狙う』の 3 か月で、月 +3.7 万円。", card)).toEqual([]);
+    // 据え置きだった 3 か月は、手の名前で言っても一番の動きと言わない（reader-11）。何かを変えた 3 か月なら言える
+    expect(pathContext(still, end, "この道で月の稼ぎを一番大きく動かしたのは、2029 年 5 月までの『昇格を狙う』の 3 か月で、月 +3.7 万円。", card)).toHaveLength(1);
+    expect(pathContext(still, end, "この道で月の稼ぎを一番大きく動かしたのは、2027 年 2 月までの『届け出て Pro を出す』の 3 か月で、月 +1.2 万円（主に SpellDash の稼ぎ）。", card)).toEqual([]);
     expect(stillOutcome(still, still.parent(still.parent(end)))).toBe(false);
     const scope = fromDevTree(F_SCOPE);
     const moved = scope.indexOfKey("r.0fc_scope.all.1fc_push.up.2fc_switch.high.3fc_scope");

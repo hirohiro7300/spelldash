@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { analyze, compileMap, fallbackText, overview, type Analysis } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../src/deepmap/mapData";
-import { manDelta, moveDetailVM, NEAR_KEEP_NOTE, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, type PathVM } from "../../src/deepmap/views";
+import { manDelta, moveDetailVM, NEAR_KEEP_NOTE, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, WORTH_NONE, type PathVM } from "../../src/deepmap/views";
 import { composedText } from "../../src/preview/composeText";
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
@@ -94,8 +94,9 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(vm.rows.filter((r) => !r.isBase).every((r) => r.waitText === "3 か月待っても +41〜+282 万円")).toBe(true);
     const ap = vm.rows[0]!;
     expect(ap.isPi).toBe(true);
-    expect(ap.countsText).toBe("判断 1,452 回・出来事の分かれ 586 → 2029 年 11 月の行き先 383（見込み 1% 以上 9）・標準の続きの見積もり 2,131");
-    expect(ap.decides.text).toBe("会社の答え: 全部可 20%・SpellDash だけ 45%・どちらも不可 35%");
+    // 行き先は 2 つの数に名前を付け（作業メモ reader-4）、結果の並びは「、」（reader-5）
+    expect(ap.countsText).toBe("判断 1,452 回・出来事の分かれ 586 → 2029 年 11 月の行き先: 地図にある 2,844（うち標準の続きの見積もり 2,131）・一番良い選び方で着く 383（見込み 1% 以上 9）");
+    expect(ap.decides.text).toBe("会社の答え: 全部可 20%、SpellDash だけ 45%、どちらも不可 35%");
     expect(ap.rangeText).toBe("3 年の合計 1,159〜1,452 万円（10〜90%・真ん中 1,269 万円）");
     expect(ap.vsKeepText).toBe("ずっと今のままより +35〜+328 万円");
     expect(ap.forksText).toBe("この先の分かれ道 2,038");
@@ -114,7 +115,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(d.plan[1]!.ym).toBe("2027 年 2 月");
     expect(d.plan[1]!.moves[0]!.shareText).toBe("80%");
     // 進め方の理由は、その月の手どうしを分ける結果（作業メモ truth-5）
-    expect(d.plan[1]!.moves.map((m) => m.cond)).toEqual(["2027 年 2 月に SpellDash だけ・どちらも不可なら", "2027 年 2 月に全部可なら"]);
+    expect(d.plan[1]!.moves.map((m) => m.cond)).toEqual(["2027 年 2 月に SpellDash だけかどちらも不可なら", "2027 年 2 月に全部可なら"]);
     // 平均の内訳（作業メモ user-1）
     expect(d.facts[1]).toBe("ずっと今のままより平均 +166 万円 ＝ この手の分 +22 万円 ＋ 3 か月待っても出る分 +145 万円");
     const bad = allTexts(a).filter((s) => ID_RE.test(s) || /NaN|Infinity|undefined/.test(s));
@@ -138,7 +139,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(p.end.cls).toBe("会社員・SpellDash だけ可・副業なし・有料 30〜99 人");
     expect(p.steps.map((st) => st.ym)).toEqual(["2026 年 11 月", "2027 年 2 月", "2027 年 5 月", "2027 年 8 月", "2027 年 11 月", "2028 年 2 月", "2028 年 5 月", "2028 年 8 月", "2028 年 11 月", "2029 年 2 月", "2029 年 5 月", "2029 年 8 月"]);
     expect(p.steps[0]!.outcomeText).toBe("SpellDash だけ 45%");
-    expect(p.steps[0]!.altOutcomesText).toBe("全部可 20%・どちらも不可 35%");
+    expect(p.steps[0]!.altOutcomesText).toBe("全部可 20%、どちらも不可 35%");
     expect(p.steps[1]!.move).toBe("4 月の評価で昇格を狙う");
     expect(p.steps[1]!.span).toBe("3 月〜5 月の手");
     expect(p.steps[11]!.runningText).toBe("ここまでの稼ぎ 1,159 万円");
@@ -265,7 +266,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
         const mv = ov.moves.find((m) => m.node === r.node)!;
         if (mv.isBase || mv.worth === null) continue;
         if (mv.worth < noise) {
-          expect([annual, r.kind, r.worth?.text, r.worth?.bin]).toEqual([annual, r.kind, "ほぼ差なし", 0]);
+          expect([annual, r.kind, r.worth?.text, r.worth?.bin]).toEqual([annual, r.kind, WORTH_NONE, 0]);
           if (mv.worth < 0) negative++;
         } else {
           expect([annual, r.kind, r.worth?.text]).toEqual([annual, r.kind, manDelta(mv.worth)]);
@@ -285,7 +286,8 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     const baked = !!t.header.textVersion && t.header.textVersion !== "dev";
     for (const annual of [360, 540]) {
       const a = analyze(cm, annual);
-      const text = composedText(cm.map, annual);
+      // 試し版と同じ作り手（その年収の計算の芯の答えを本文に渡す。作業メモ truth-1）
+      const text = composedText(cm.map, annual, a);
       expect(text.provisional).toBeFalsy();
       const out: string[] = [];
       let steps = 0;

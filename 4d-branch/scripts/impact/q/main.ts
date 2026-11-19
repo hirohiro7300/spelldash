@@ -39,12 +39,13 @@ import { fromDevTree } from "../../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../../src/deepmap/mapData";
 import { IMPACT_STAR_LEAD } from "../../../src/model/impact";
 import type { World } from "../sim";
-import { goldenMarkdown, goldenPaths, reportMarkdown } from "../textChecks";
+import { goldenMarkdown, goldenPaths, reportMarkdown, runtimeOf } from "../textChecks";
 import { bundleHash, bytesToBase64, canonicalizeDevTree, encodeMap, roundingReport } from "./bundle";
 import {
   appParity,
   checkCalendar,
   checkClients,
+  checkQuarterSal,
   checkDeterminism,
   checkForks,
   checkIds,
@@ -475,6 +476,8 @@ export async function main(root: string, args: string[]): Promise<number> {
   add("N10 Pro と届け出の答え", n10.fails, `まとめた行き先の代表の状態（数えるだけ）${n10.sumCount} 枚`);
   add("C1 顧客は整数の社数（幅は整数）", checkClients(map));
   add("K1 暦", checkCalendar(map, w.anchor, w.constants.aprilMonths), `${map.header.anchor}・4 月 ${w.constants.aprilMonths.join(",")} か月目`);
+  const qs = checkQuarterSal(map);
+  add("Q1 その 3 か月の給与の式（まとめた手の結果の文が言う給与）が、広げた手の結果の給与と同じ", qs.fails, `結果 ${qs.checked}`);
   // 一貫性はアプリが確かめる年収のどれでも（SPEC v1 §2.8: 360 と 540）
   for (const annual of [w.annual, ...opts.params.annuals.filter((a) => a !== w.annual)]) {
     const con = consistencyOfMap(map, annual);
@@ -584,7 +587,7 @@ export async function main(root: string, args: string[]): Promise<number> {
     // 道の見本（今日の手ごとに一番ありそうな道・決まった種の道・どの手も同じ重みの道。年収 360・540。SPEC v1 §4.7）
     const gd = path.resolve(opts.golden);
     fs.mkdirSync(gd, { recursive: true });
-    for (const annual of [360, 540]) fs.writeFileSync(path.join(gd, `golden-${annual}.md`), goldenMarkdown(map, goldenPaths(map, { annual }), annual));
+    for (const annual of [360, 540]) fs.writeFileSync(path.join(gd, `golden-${annual}.md`), goldenMarkdown(map, goldenPaths(map, { annual, rt: runtimeOf(map, annual) }), annual));
     console.log(`道の見本: ${gd}/golden-{360,540}.md`);
   }
   if (opts.record) {

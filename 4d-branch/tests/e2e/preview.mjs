@@ -240,6 +240,8 @@ for (const [vp, mobile, tag] of [
     assert(MAP && MAP.format === FORMAT, `埋め込んだ形と読んだ形が違う: ${JSON.stringify(MAP)} / ${FORMAT}`);
     assert(info.text && info.text.provisional === false, "文章が仮のまま（文章の組み立てがつながっていない）");
     assert(info.text.composed.cards === 0 && info.text.composed.cont === 0, `起動でカードを組み立てた: ${JSON.stringify(info.text.composed)}`);
+    // 焼き込んだ文章の文の型の版と、ページの中の組み立ての版が同じ（作業メモ code-1: 題とやることが古い言い方のまま本文だけ新しくならない）
+    if (todoBaked()) assert(info.text.composed.banks === MAP.textVersion, `文の型の版が違う: 地図 ${MAP.textVersion}・組み立て ${info.text.composed.banks}`);
     await shot(s.page, `overview-${tag}-top`, false);
     await shot(s.page, `overview-${tag}`);
   });
@@ -358,6 +360,30 @@ for (const [vp, mobile, tag] of [
     }, before.steps[1].key);
     // 開いた次の行はまとめの中でも見える（まとめも開く）
     assert(await page.locator(".dm-tl-item.is-step.is-open > .dm-tl-head").first().isVisible(), "次の行が見えない");
+  });
+  await check(`${tag}: 手の詳しい画面と今日の手の本文が、同じ行き先の数と 3 年の合計を言う（作業メモ reader-4・truth-4）`, async () => {
+    await goOverview(page);
+    await page.locator(".dm-row").first().click();
+    await page.waitForFunction(() => location.hash.startsWith("#move-"));
+    await page.locator(".dm-fan-svg").waitFor();
+    const head = await page.locator(".dm-move-head").innerText();
+    const numOf = (x) => Number(x.replace(/,/g, ""));
+    const pf = /行き先: 地図にある ([\d,]+)（うち標準の続きの見積もり ([\d,]+)）・一番良い選び方で着く ([\d,]+)（見込み 1% 以上 ([\d,]+)）/.exec(head);
+    assert(pf, `手の詳しい画面に行き先の 2 つの数が無い: ${head.slice(0, 300)}`);
+    const pm = /平均 ([\d,]+) 万円/.exec(head);
+    await page.locator(".dm-btn.is-primary").first().click();
+    await page.waitForFunction(() => location.hash.startsWith("#path-"));
+    await page.locator(".dm-tl-end").waitFor();
+    const li = await openRow(page, 0);
+    const body = await li.locator(":scope > .dm-tl-body .dm-tl-card.is-move .dm-tl-text").innerText();
+    const bf = /地図にある行き先は ([\d,]+)（うち標準の続きの見積もり ([\d,]+)）で、一番良い選び方で着くのは ([\d,]+)（そのうち見込み 1 分以上は ([\d,]+)）/.exec(body);
+    assert(bf, `今日の手の本文に行き先の 2 つの数が無い: ${body}`);
+    for (let j = 1; j <= 4; j++) assert(numOf(pf[j]) === numOf(bf[j]), `行き先の数が違う（${j} 番目）: 画面 ${pf[0]} / 本文 ${bf[0]}`);
+    assert(numOf(pf[1]) > numOf(pf[3]), `地図にある行き先が着く行き先より多くない: ${pf[0]}`);
+    // 3 年の合計: 本文は見積もり方を言い、一番良い選び方の平均は画面と同じ数
+    assert(body.includes("その後を標準の選び方で続けた見積もりで"), `今日の手の本文が見積もり方を言わない: ${body}`);
+    const bm = /その後を一番良い選び方で進めば、平均 ([\d,]+) 万円/.exec(body);
+    assert(pm && bm && pm[1] === bm[1], `3 年の合計の平均が画面と本文で違う: 画面 ${pm?.[0]} / 本文 ${bm?.[0]}`);
   });
   await check(`${tag}: 一番ありそうな道を「次の 3 か月へ」で最後まで読む（どの行も組み立てた文章・手の本文 150 字より長い・やること 3 つ）`, async () => {
     await goChain(page);
@@ -578,6 +604,65 @@ for (const [vp, mobile, tag] of [
     assert((await page.locator(".pv-annual-msg").innerText()).includes("100〜3,000"), "読めない年収の知らせが出ない");
     await page.fill("#pv-annual", "360");
     await page.press("#pv-annual", "Enter");
+  });
+  await check(`${tag}: 年収 540 でも、道の行の「おすすめ」の印と本文のおすすめが同じ手（作業メモ truth-1・reader-8）`, async () => {
+    await goOverview(page);
+    await page.fill("#pv-annual", "540");
+    await page.press("#pv-annual", "Enter");
+    await page.waitForFunction(() => document.querySelector(".pv-annual-msg")?.textContent?.includes("540"));
+    let rows = 0;
+    // 届け出て副業・届け出て Pro・遊ぶ人を増やすの一番ありそうな道（年収 540 で生成の年収の一番の手と画面のおすすめが違う判断を通る道）
+    for (const slug of ["ad-permside", "sd-permpro", "sd-grow"]) {
+      await page.evaluate((x) => (location.hash = `#move-${x}`), slug);
+      await page.locator(".dm-fan-svg").waitFor();
+      await page.locator(".dm-btn.is-primary").first().click();
+      await page.waitForFunction(() => location.hash.startsWith("#path-"));
+      await page.locator(".dm-tl-end").waitFor();
+      const n = await page.locator(".dm-tl > .dm-tl-item.is-step").count();
+      for (let k = 1; k < n; k++) {
+        // 行を開く（開いた行が積み重なると、下の行の見出しは追いかける欄の下になることがあるので、要素のクリックで開く）
+        const li = page.locator(".dm-tl > .dm-tl-item.is-step").nth(k);
+        const head = li.locator(":scope > .dm-tl-head");
+        if ((await head.getAttribute("aria-expanded")) !== "true") await head.evaluate((el) => el.click());
+        await li.locator(":scope > .dm-tl-body").waitFor();
+        const r = await li.evaluate((el) => {
+          const body = el.querySelector(":scope > .dm-tl-body");
+          const items = [...(body?.querySelectorAll(".dm-alts li") ?? [])];
+          const pi = items.find((x) => x.querySelector(".dm-alt-tag.is-pi"));
+          return {
+            body: body?.querySelector(".dm-tl-card.is-move .dm-tl-text")?.textContent ?? "",
+            pi: pi?.querySelector(".dm-alt-name")?.textContent?.trim() ?? null,
+            piCurrent: !!pi?.querySelector(".dm-alt.is-current"),
+          };
+        });
+        if (!r.pi) continue;
+        rows++;
+        if (r.piCurrent) assert(r.body.includes("おすすめの手"), `${slug} ${k + 1} 行目: おすすめの手の本文がおすすめと言わない: ${r.body}`);
+        for (const m of r.body.matchAll(/おすすめの『([^』]*)』/g)) assert(m[1] === r.pi, `${slug} ${k + 1} 行目: 本文のおすすめ『${m[1]}』と印の『${r.pi}』が違う`);
+        const more = /(?<!見積もりでは)おすすめの『[^』]*』より [\d.,]+ 万円多い/.exec(r.body);
+        assert(!more, `${slug} ${k + 1} 行目: おすすめより多いと言い切る: ${more?.[0]}`);
+      }
+    }
+    assert(rows >= 10, `確かめた行が少ない（${rows}）`);
+    await page.fill("#pv-annual", "360");
+    await page.press("#pv-annual", "Enter");
+    await page.waitForFunction(() => document.querySelector(".pv-annual-msg")?.textContent?.includes("360"));
+  });
+  await check(`${tag}: 地図の深さを確かめた年収（360〜540 万円）の外では、そう知らせる（作業メモ truth-5）`, async () => {
+    await goOverview(page);
+    await page.fill("#pv-annual", "600");
+    await page.press("#pv-annual", "Enter");
+    await page.waitForFunction(() => document.querySelector(".pv-annual-msg")?.textContent?.includes("600"));
+    const out = await page.locator(".pv-annual-msg").innerText();
+    assert(/360〜540 万円の外/.test(out), `範囲の外の知らせが無い: ${out}`);
+    await page.fill("#pv-annual", "360");
+    await page.press("#pv-annual", "Enter");
+    await page.waitForFunction(() => document.querySelector(".pv-annual-msg")?.textContent?.includes("360"));
+    const back = await page.locator(".pv-annual-msg").innerText();
+    assert(!/の外/.test(back), `範囲の中に戻しても知らせが残る: ${back}`);
+    // 画面の外の見方は描くのを後回しにする（content-visibility）ので、文字は textContent で読む
+    const notes = (await page.locator(".pv-notes").textContent()) ?? "";
+    assert(/地図の深さは年収 360〜540 万円で確かめた/.test(notes), "見方に地図の深さを確かめた年収が無い");
   });
   await check(`${tag}: 直接ひらく（#move-… と、道の名前の #path-t…。今の地図に無い道は知らせて見取り図）`, async () => {
     const p2 = await s.ctx.newPage();

@@ -157,21 +157,30 @@ export function basisNote(b: DeltaBasis): string {
 }
 
 export const DELTA_LABEL = "今やる vs 3 か月待つ";
-export const WORTH_LABEL = "3 年やらない場合との差";
+/**
+ * k(fam) の札の名前: 何の（この種類の手）・どちら向きの（使える分だけ多い）差かを言う（作業メモ reader-12: 「3 年やらない場合との差」だと
+ * 「この手をやらない場合」と読め、隣の「今やる vs 3 か月待つ」と食い違って見える）
+ */
+export const WORTH_LABEL = "この種類が使えることの値打ち";
+/** 値打ちが誤差の範囲（マイナスも）のときの言葉 */
+export const WORTH_NONE = "ほぼ無し";
 /** 「この種類を 3 年やらない場合との差」をほぼ差なしと書く差の下限（万円。地図の誤差が大きければ overview の worthNoise） */
 export const WORTH_NOISE = 4;
 
 /**
- * この種類を 3 年やらない場合との差の言葉。noise 万円未満（マイナスも）は見積もりの誤差の範囲なので「ほぼ差なし」（作業メモ truth-4）。
+ * この種類が使えることの値打ちの言葉。noise 万円未満（マイナスも）は見積もりの誤差の範囲なので「ほぼ無し」（作業メモ truth-4）。
  * その種類を除いて 3 年の値が上がることは無いので、マイナスの差を損のように書かない
  */
 export function worthText(k: number, noise = WORTH_NOISE): string {
-  return k < noise ? "ほぼ差なし" : manDelta(k);
+  return k < noise ? WORTH_NONE : manDelta(k);
 }
 
-/** 今日の手の分かれ道と行き先の数の 1 行の区切り（作業メモ truth-18・user-13 の言い方。折り返しは区切りの間で） */
+/**
+ * 今日の手の分かれ道と行き先の数の 1 行の区切り（作業メモ truth-18・user-13 の言い方。折り返しは区切りの間で）。行き先は 2 つの数を名前を付けて言う:
+ * 地図にある行き先（まとめた物を含む全部）と、一番良い選び方で着く本当の行き先（今日の手の本文と同じ数・同じ言い方。作業メモ reader-4・truth-4）
+ */
 export function countsParts(c: MoveCounts, endYm: string): string[] {
-  return [`判断 ${num(c.decisions)} 回・出来事の分かれ ${num(c.splits)} `, `→ ${endYm}の行き先 ${num(c.reachEnds)}`, `（見込み 1% 以上 ${num(c.reachEnds1)}）・`, `標準の続きの見積もり ${num(c.sumEnds)}`];
+  return [`判断 ${num(c.decisions)} 回・出来事の分かれ ${num(c.splits)} `, `→ ${endYm}の行き先: 地図にある ${num(c.ends)}`, `（うち標準の続きの見積もり ${num(c.sumEnds)}）・`, `一番良い選び方で着く ${num(c.reachEnds)}`, `（見込み 1% 以上 ${num(c.reachEnds1)}）`];
 }
 
 /** 今日の手の分かれ道と行き先の数の 1 行 */
@@ -196,9 +205,9 @@ export function baseText(b: DeltaBasis): string {
 /** 3 年の合計の幅の読み方（見取り図の最初・手の詳しい画面の見出し。作業メモ user-1） */
 export const FRAME_TEXT = "3 年後の幅は、この手より、この先の分かれ道での選び方と運で決まる";
 
-/** 見込みの割合を「名前 20%」でつなぐ（「全部可 20%・SpellDash だけ 45%・どちらも不可 35%」） */
+/** 見込みの割合を「名前 20%」でつなぐ（「全部可 20%、SpellDash だけ 45%、どちらも不可 35%」。名前の中の「・」と混ざらないように「、」。作業メモ reader-5） */
 export function shareList(parts: readonly { label: string; share: number }[]): string {
-  return parts.map((p) => `${p.label} ${pct(p.share)}`).join("・");
+  return parts.map((p) => `${p.label} ${pct(p.share)}`).join("、");
 }
 
 /**

@@ -9,7 +9,7 @@
 
 import type { ImpactSt } from "../../demo/impact";
 import type { MapData, MapMix, MapTodo } from "../mapData";
-import { destClassOf, destLabel } from "./dest";
+import { destClassOf, destLabel, mixLabel } from "./dest";
 import { ymText } from "./time";
 
 /** まとめた行き先の後の標準の続きの 1 期の文章（その期の標準の手と一番ありそうな出来事。見積もりの代表の 1 本） */
@@ -153,7 +153,10 @@ export function fallbackText(map: MapData, opts: { annual: number }): TextSource
     const lab = map.label(i);
     // 組み立てた題名（結果の名前をそのまま写しただけの物は除く）
     if (t && !ascii(t) && t !== lab) return t;
-    if (r === "e") return destLabel(destClassOf(map.st(i), map.sum(i) ? map.mix(i) : null, map.band(i)));
+    if (r === "e") {
+      const mix = map.sum(i) ? map.mix(i) : null;
+      return mix ? mixLabel(mix) : destLabel(destClassOf(map.st(i), null, map.band(i)));
+    }
     return lab && !ascii(lab) && lab !== "—" && !single(i) ? lab : `${at(map.month(i))}の状態`;
   };
   /** 手: 結果ごとの 3 か月後の月の稼ぎ（判断の月の稼ぎと並べる）。まとめた手は、結果ごとの 2029 年 11 月の月の稼ぎ（多くの道の平均） */

@@ -112,7 +112,7 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
           "options": 2536,
           "sumEnds": 1530,
         },
-        "fingerprint": "19qac9y0vpakkj",
+        "fingerprint": "0s46wyq1oiqk3l",
         "guards": 80,
         "rootQ": [
           [
@@ -368,7 +368,8 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
       ["ad_permside", true, false],
     ]);
     const a1 = qByKey.get("r.ad_permside.a1")!;
-    expect([a1.out!.p, a1.out!.lab, a1.out!.fine]).toEqual([8, "全部可・1 社目", true]);
+    // 名前の中に「・」を使わない（並びの中で 2 つの結果に読める。作業メモ reader-5）
+    expect([a1.out!.p, a1.out!.lab, a1.out!.fine]).toEqual([8, "全部可（1 社目あり）", true]);
     expect(qByKey.get("r.ad_permside.a0")!.out!.p).toBe(12);
     expect(qByKey.has("r.ad_permside.a0_a1")).toBe(false);
     const fine = qAll.filter((n) => n.out?.fine);

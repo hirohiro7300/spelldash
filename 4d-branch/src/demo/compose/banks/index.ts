@@ -14,9 +14,12 @@ import { SENTENCES } from "./sentences";
  * 0.5 は最後の点検の指摘（F1〜F6）を当てた版: 続く判断に並ぶ手の組はどれも言い換えを 2 つ以上（会社員に戻る手など）・3 年後の見通しは顧客の数か
  * 幅で言い分ける（2 社目を決めて言わない）・同じ節目の 2 回目の名前（eventShortAgain）・前の会社の手の続きと言わない・昇格の結果で次の機会を
  * 2 回言わない・事例と状態の題の言い方。
+ * 0.6 は生成 v2 の見直し（reader-*・truth-*）を当てた版: まとめた手の結果の給与はその 3 か月の給与で言う（上げ幅をまとめた結果は 2 つ）・
+ * 前の期がまとめた幅で社数が 1 つに決まった結果の文と題（CLIENT_EXACT）・社数の幅の判断では何社目と言わない手の題と書き出し・
+ * 『全部可』を 1 社目で分けた結果の題と文・応募を続ける助言は次の判断に転職活動の続きが並ぶときだけ。
  * 組み立ては束ごとに道の覚えを持つので、書き換えない（凍らせてある。別の束は写して作る） */
 export const BANKS: Banks = deepFreeze({
-  version: "0.5",
+  version: "0.6",
   // 文が言う計算の前提の数（scripts/impact/world.json の constants・kinds と同じ値。副業の月額の段は 3 か月ごとの世界の値。tests/unit/compose.test.ts で確かめる）
   C: {
     feeFirst: 3,
@@ -42,6 +45,7 @@ export const BANKS: Banks = deepFreeze({
     sidePPortfolio: 0.7,
     switchHigh: 1.18,
     switchMid: 1.08,
+    backSal: 1,
     seatYen: 300,
     partFactor: 0.8,
     schoolSeats: 40,

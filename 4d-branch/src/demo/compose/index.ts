@@ -5,13 +5,13 @@
 // 初めての 1 枚は道の長さぶん（と兄弟の題）、後は引くだけ。段取りと題は年収で変わらないので、年収を替えても作り直さない
 import type { MapData } from "../../deepmap/mapData";
 import { BANKS } from "./banks";
-import { composeContMarked, composeMarked, type ContCard } from "./compose";
-import { ctxOf } from "./path";
+import { composeContMarked, composeMarked, contCardsMarked, type ContCard } from "./compose";
+import { ctxOf, type ComposeRuntime } from "./path";
 import { spaceJa, strip } from "./text";
 import type { Banks, Card } from "./types";
 
 export { BANKS } from "./banks";
-export { optionValue, recommended, ripple, type Ripple } from "./path";
+export { optionValue, quarterSal, recommended, ripple, type ComposeRuntime, type Ripple } from "./path";
 export type { ContCard } from "./compose";
 export type { Banks, Card, CardTodo, Consts, Step, Variant } from "./types";
 
@@ -20,6 +20,11 @@ export interface ComposeOpts {
   annual: number;
   /** 文の型の束（省けば BANKS） */
   banks?: Banks;
+  /**
+   * 計算の芯（今の年収）の答え: おすすめの手・一番良い選び方の値・着く行き先の数。本文だけに使う（題・短い名前・やることは変わらない）。
+   * 試し版とアプリは画面と同じ物を渡す（画面の「おすすめ」と本文の「おすすめ」を同じ手にする。truth-1）。省けば地図に書いた物で書く
+   */
+  rt?: ComposeRuntime;
 }
 
 function check(map: MapData, i: number, annual: number): void {
@@ -30,7 +35,7 @@ function check(map: MapData, i: number, annual: number): void {
 /** 差し込みの印つきのまま組み立てる（点検用。印の外に数字が無いこと・手引きの数字が引いた項目にあることを確かめる） */
 export function composeMarkedCard(map: MapData, i: number, opts: ComposeOpts): Card {
   check(map, i, opts.annual);
-  return composeMarked(ctxOf(map, opts.banks ?? BANKS, opts.annual), i);
+  return composeMarked(ctxOf(map, opts.banks ?? BANKS, opts.annual, opts.rt ?? null), i);
 }
 
 /** 印を消して、言葉の間を地図のほかの文とそろえる */
@@ -50,14 +55,20 @@ export function composeCard(map: MapData, i: number, opts: ComposeOpts): Card {
  */
 export function composeCont(map: MapData, i: number, k: number, opts: ComposeOpts): ContCard | null {
   check(map, i, opts.annual);
-  const c = composeContMarked(ctxOf(map, opts.banks ?? BANKS, opts.annual), i, k);
+  const c = composeContMarked(ctxOf(map, opts.banks ?? BANKS, opts.annual, opts.rt ?? null), i, k);
   if (!c) return null;
   const fin = (s: string): string => spaceJa(strip(s));
   return { m: c.m, kind: c.kind, title: fin(c.title), body: fin(c.body), todo: c.todo.map((t) => ({ text: t.text, cite: t.cite })) };
 }
 
+/** まとめた行き先 i の標準の続きの期の文章を全部、差し込みの印つきのまま（点検用。道の画面は composeCont で 1 期ずつ） */
+export function composeMarkedConts(map: MapData, i: number, opts: ComposeOpts): ContCard[] {
+  check(map, i, opts.annual);
+  return contCardsMarked(ctxOf(map, opts.banks ?? BANKS, opts.annual, opts.rt ?? null), i);
+}
+
 /** 写し（複製・コピー）に入れる文章: 数の行（1 行）と本文。写しは地図の外のカードになるので、その時の年収で文にして残す */
-export function materializeBody(map: MapData, i: number, annual: number): string {
-  const c = composeCard(map, i, { annual });
+export function materializeBody(map: MapData, i: number, annual: number, rt?: ComposeRuntime): string {
+  const c = composeCard(map, i, { annual, ...(rt ? { rt } : {}) });
   return [c.numbers.join("・"), c.body].filter((x) => x.length > 0).join("\n");
 }

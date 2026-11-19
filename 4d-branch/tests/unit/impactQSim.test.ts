@@ -481,7 +481,7 @@ describe("結果のまとめ方", () => {
     ]);
   });
 
-  it("『全部可』の 1 社目（8%）は『全部可・まだ』とまとめ、社数の幅（0〜1 社）を持つ", () => {
+  it("『全部可』の 1 社目（8%）は『全部可（顧客まだ）』とまとめ、社数の幅（0〜1 社）を持つ", () => {
     const os = quarterOutcomes(w, st(), "ad_permside", 0, "split", S);
     expect(os.map((o) => [o.id, o.p, o.lab])).toEqual([
       ["a0_a1", 20, "全部可"],
@@ -523,7 +523,7 @@ describe("結果のまとめ方", () => {
     const fine = quarterOutcomes(w, st(), "ad_permside", 0, "split", S, true);
     expect(labelClients(fine.find((o) => o.id === "a1")!.lab)).toEqual({ lo: 1, hi: Infinity });
     // 社数を書かない名前は読まない
-    for (const lab of ["全部可・まだ", "SpellDash だけ", "転職せず", "有料 10〜29 人", "—"]) expect(labelClients(lab)).toBeNull();
+    for (const lab of ["全部可（顧客まだ）", "SpellDash だけ", "転職せず", "有料 10〜29 人", "—"]) expect(labelClients(lab)).toBeNull();
   });
 
   it("数の結果は fact・lean で 1 つにまとめ、昇格の結果は lean だけでまとめる", () => {
@@ -699,11 +699,11 @@ describe("入口の引数", () => {
 });
 
 describe("予算の使い道 1: 事実の小さい組も分ける（fine。SPEC v1 D1・§2.2・truth-1）", () => {
-  it("『全部可』で 1 社目が決まる 8% を『全部可・まだ』にまとめない（社数は整数で、幅は無い）", () => {
+  it("『全部可』で 1 社目が決まる 8% を『全部可（顧客まだ）』にまとめない（社数は整数で、幅は無い）", () => {
     const os = quarterOutcomes(w, st(), "ad_permside", 0, "split", S, true);
     expect(os.map((o) => [o.id, o.p, o.lab])).toEqual([
-      ["a1", 8, "全部可・1 社目"],
-      ["a0", 12, "全部可・まだ"],
+      ["a1", 8, "全部可（1 社目あり）"],
+      ["a0", 12, "全部可（顧客まだ）"],
       ["s", 45, "SpellDash だけ"],
       ["n", 35, "どちらも不可"],
     ]);
