@@ -1,4 +1,5 @@
 // 起動: 保存先を開く → 編集できるタブか確かめる → 読み込む（無ければデモ）→ 画面を組み立てる → （Artifact の中なら）アカウントと同期
+// 保存してあったのがこのページより新しい版なら、読み込みの所で止める（画面・設定・同期を組み立てず、何も書かない）
 
 import "./styles/tokens.css";
 import "./styles/app.css";
@@ -10,6 +11,7 @@ import type { DocData } from "./model/types";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
 import { isNarrowScreen } from "./ui/breakpoints";
+import { showNewerScreen } from "./ui/newerScreen";
 
 /** 表示の切り替え。claude.ai の Artifact ではクエリ文字列が渡らないので #stress-2000 ・ #demo も受ける */
 function readMode(): { stress: number; demo: boolean } {
@@ -29,10 +31,6 @@ async function boot(): Promise<void> {
     const next = readMode();
     if (next.stress !== mode.stress || next.demo !== mode.demo) location.reload();
   });
-  const ui = new UiState();
-  if (ephemeral) ui.persistPrefs = false;
-  // 狭い画面では左右のパネルを閉じて始める（キャンバスを広く）。重ねて出す CSS と同じ判定（860px ちょうども狭い側）
-  if (isNarrowScreen()) ui.prefs = { ...ui.prefs, leftOpen: false, rightOpen: false };
   const persistence = new Persistence({ mode: ephemeral ? "memory" : "auto" });
   await persistence.open();
 
@@ -46,6 +44,13 @@ async function boot(): Promise<void> {
   else {
     await persistence.acquireWriter();
     const loaded = await persistence.loadInitial();
+    if (loaded.blocked) {
+      // このページより新しい版で保存されたデータ: 壊れたのではない。バックアップやデモで始めず、ストア・画面・設定・
+      // アカウントの同期を作らずに止める（どれも作らなければ、本体・緊急コピー・バックアップ・設定のどれにも書かない）
+      showNewerScreen(mount);
+      (window as unknown as { __fourD: unknown }).__fourD = { persistence, blocked: true };
+      return;
+    }
     doc = loaded.doc;
     notices = loaded.notices;
     bootFallback = loaded.recovered;
@@ -56,6 +61,11 @@ async function boot(): Promise<void> {
     }
   }
 
+  // 表示の設定は、止めずに始めると決まってから読む（読むときに前の版の値を移して書くことがある）
+  const ui = new UiState();
+  if (ephemeral) ui.persistPrefs = false;
+  // 狭い画面では左右のパネルを閉じて始める（キャンバスを広く）。重ねて出す CSS と同じ判定（860px ちょうども狭い側）
+  if (isNarrowScreen()) ui.prefs = { ...ui.prefs, leftOpen: false, rightOpen: false };
   const store = new Store(doc);
   store.readOnly = !persistence.writer;
   const app = new App({ store, ui, persistence, ephemeral, firstRun, bootFallback, notices, mount });

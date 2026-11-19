@@ -2811,6 +2811,289 @@ async function main() {
   });
   await actx.close();
 
+  // ---- このページより新しい版で保存されたデータ（読まずに止める。壊れたデータとは分ける）
+  const NEWER_TITLE = "新しい版のページで保存されたデータです";
+  /** 新しい版のページが保存した本体（版 2 の薄い形）。このページでは読めない */
+  const newerDocOf = (title) => {
+    const at = new Date().toISOString();
+    return { schema: "4d-branch", version: 2, id: "d_newer", title, createdAt: at, updatedAt: at, meta: {}, thin: { v: 1, patches: { k1: { title: "書き換えたカード" } } } };
+  };
+  /** 新しい版のページが書いた物を、保存先にそのまま置く（what: 本体・版の記録・バックアップ・緊急コピーのどれを置くか） */
+  const putNewer = (p, what) =>
+    p.evaluate(
+      async ({ what, doc }) => {
+        const db = await new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch", 1);
+          r.onupgradeneeded = () => {
+            const d = r.result;
+            if (!d.objectStoreNames.contains("kv")) d.createObjectStore("kv");
+            if (!d.objectStoreNames.contains("backupMeta")) d.createObjectStore("backupMeta", { keyPath: "id" });
+            if (!d.objectStoreNames.contains("backupData")) d.createObjectStore("backupData", { keyPath: "id" });
+          };
+          r.onsuccess = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+        });
+        await new Promise((resolve, reject) => {
+          const t = db.transaction(["kv", "backupMeta", "backupData"], "readwrite");
+          const kv = t.objectStore("kv");
+          if (what.includes("doc")) {
+            kv.put(doc, "doc");
+            const g = kv.get("meta");
+            g.onsuccess = () => kv.put({ rev: (g.result?.rev ?? 0) + 1, savedAt: doc.updatedAt, writer: "t_newer", docVersion: 2 }, "meta");
+          }
+          if (what.includes("backup")) {
+            const counts = { nodes: 0, edges: 0, projects: 0, scenarios: 0 };
+            t.objectStore("backupMeta").put({ id: "b_newer", kind: "auto", label: "新しい版のバックアップ", createdAt: new Date(Date.now() + 60_000).toISOString(), docTitle: doc.title, counts, docVersion: 2 });
+            t.objectStore("backupData").put({ id: "b_newer", doc });
+          }
+          t.oncomplete = () => resolve();
+          t.onerror = () => reject(t.error);
+        });
+        db.close();
+        if (what.includes("emergency")) localStorage.setItem("4d-branch:emergency:t_newer", JSON.stringify({ v: 1, baseRev: 1, at: doc.updatedAt, tabId: "t_newer", doc: { ...doc, title: "閉じる直前" } }));
+      },
+      { what, doc: newerDocOf("新しい版で保存した内容") },
+    );
+  /** 保存先（IndexedDB の全部・localStorage の全部）をそのまま文字にする（何も書き換えていないことを確かめる）。stores: 見る所 */
+  const dumpStorage = (p, stores = null) =>
+    p.evaluate(async (stores) => {
+      const db = await new Promise((resolve, reject) => {
+        const r = indexedDB.open("4d-branch");
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      const out = { version: db.version };
+      for (const name of stores ?? [...db.objectStoreNames]) {
+        out[name] = await new Promise((resolve, reject) => {
+          const t = db.transaction(name, "readonly");
+          const keys = t.objectStore(name).getAllKeys();
+          const vals = t.objectStore(name).getAll();
+          t.oncomplete = () => resolve(keys.result.map((k, i) => [k, vals.result[i]]));
+          t.onerror = () => reject(t.error);
+        });
+      }
+      db.close();
+      if (!stores) out.ls = Object.keys(localStorage).sort().map((k) => [k, localStorage.getItem(k)]);
+      return JSON.stringify(out);
+    }, stores);
+
+  for (const [label, viewport, mobile] of [
+    ["スマホ 390×844", { width: 390, height: 844 }, true],
+    ["パソコン 1440×900", { width: 1440, height: 900 }, false],
+  ]) {
+    await check(`新しい版のデータ（${label}）: 保存してある本体が新しい版なら、編集の画面を作らずに止める画面を出し、本体・版の記録・緊急コピー・バックアップ・設定のどれにも書かない。「ページを開き直す」で開き直す`, async () => {
+      const c = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
+      // アプリを動かさずに置く: 同じ場所（origin）のアプリの無いページを開いて、保存先に直接書く
+      // （アイコンは要らないと書く。書かないとブラウザが /favicon.ico を読みに行き、404 がページのエラーに出る）
+      await c.route(`${BASE}__seed.html`, (r) => r.fulfill({ contentType: "text/html; charset=utf-8", body: '<!doctype html><meta charset="utf-8"><title>seed</title><link rel="icon" href="data:,">' }));
+      const p = await c.newPage();
+      watch(p);
+      await p.goto(`${BASE}__seed.html`);
+      await putNewer(p, ["doc", "backup", "emergency"]);
+      const before = await dumpStorage(p);
+      await p.goto(BASE, { waitUntil: "networkidle" });
+      await p.getByRole("heading", { name: NEWER_TITLE }).waitFor();
+      const s = await p.evaluate(() => ({
+        shell: !!document.querySelector(".app-shell"),
+        fourD: window.__fourD ? { blocked: window.__fourD.blocked, app: !!window.__fourD.app, writer: window.__fourD.persistence.writer } : null,
+        text: document.querySelector(".newer-card")?.textContent ?? "",
+        overflowX: document.documentElement.scrollWidth - window.innerWidth,
+        focus: document.activeElement?.textContent ?? "",
+      }));
+      assert(!s.shell, "編集の画面を作った");
+      assert(s.fourD && s.fourD.blocked === true && !s.fourD.app && s.fourD.writer === false, JSON.stringify(s.fourD));
+      for (const t of ["このページより新しい版で保存されています", "新しい版のデータには触れていません", "ページを開き直すと、新しい版で開きます", "最新の版のページを開いてください"]) assert(s.text.includes(t), `「${t}」が無い: ${s.text}`);
+      assert(s.overflowX <= 0, `横にはみ出す: ${s.overflowX}px`);
+      assert(s.focus.includes("ページを開き直す"), `フォーカスが開き直すボタンに無い: ${s.focus}`);
+      const btn = p.getByRole("button", { name: "ページを開き直す" });
+      const box = await btn.boundingBox();
+      assert(box && box.x >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height && box.height >= 44, `ボタンが画面に収まらない・小さい: ${JSON.stringify(box)}`);
+      await shot(`e2e-newer-${viewport.width}`, p);
+      // 日次バックアップ・同期・自動保存が動く時間を待っても、何も書いていない
+      await p.waitForTimeout(1500);
+      assert((await dumpStorage(p)) === before, "保存先が書き換わった");
+      // 開き直す（同じ版のページなら、また止まる。書かない）
+      await Promise.all([p.waitForEvent("load"), btn.click()]);
+      await p.getByRole("heading", { name: NEWER_TITLE }).waitFor();
+      await p.waitForTimeout(800);
+      assert((await dumpStorage(p)) === before, "開き直した後に保存先が書き換わった");
+      await c.close();
+    });
+  }
+
+  const nctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await nctx.addInitScript(() => {
+    try {
+      const k = "4d-branch:prefs";
+      if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, futureAutoOpened: true, wishlistOffered: true, futureOffered: true }));
+    } catch {
+      /* about:blank など */
+    }
+  });
+  const np = await nctx.newPage();
+  watch(np);
+  await np.goto(BASE, { waitUntil: "networkidle" });
+  await np.waitForFunction(() => !!window.__fourD?.app);
+
+  await check("新しい版のデータ: 新しい版のファイルの取り込みは、今までと同じ文で断る", async () => {
+    const file = path.join(os.tmpdir(), `4d-e2e-newer-${Date.now()}.json`);
+    fs.writeFileSync(file, JSON.stringify({ ...newerDocOf("新しい版の書き出し"), exportedAt: new Date().toISOString(), app: { name: "4D Branch", version: "9.9.9" } }, null, 2));
+    const before = await np.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
+    const chooser = np.waitForEvent("filechooser");
+    await np.evaluate(() => window.__fourD.app.pickImport());
+    await (await chooser).setFiles(file);
+    const dlg = np.getByRole("dialog", { name: "読み込めませんでした" });
+    await dlg.waitFor();
+    const text = await dlg.textContent();
+    assert(text.includes("このファイルは新しい版（スキーマ 2）の 4D Branch で作られています。アプリを新しくしてから読み込んでください。"), text);
+    await dlg.getByRole("button", { name: "閉じる" }).first().click();
+    assert((await np.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length)) === before, "取り込んでしまった");
+    fs.rmSync(file, { force: true });
+  });
+
+  await check("新しい版のデータ: 新しい版のバックアップは一覧に印付きで出し、復元を押すと訳を出して断る（今の内容はそのまま）", async () => {
+    await waitSaved(np);
+    await putNewer(np, ["backup"]);
+    const before = await np.evaluate(() => JSON.stringify(window.__fourD.store.doc));
+    await np.evaluate(() => window.__fourD.app.openBackups());
+    const dlg = np.getByRole("dialog", { name: "バックアップと復元" });
+    await dlg.waitFor();
+    const row = dlg.locator(".backup-row", { hasText: "新しい版のバックアップ" });
+    await row.locator(".backup-newer", { hasText: "このページより新しい版" }).waitFor();
+    assert(await row.getByRole("button", { name: "ダウンロード" }).isDisabled(), "新しい版のバックアップを書き出せる");
+    assert(await row.getByRole("button", { name: "削除" }).isDisabled(), "新しい版のバックアップを消せる");
+    await row.getByRole("button", { name: "復元" }).click();
+    await np.locator(".toast-text", { hasText: "この版では復元できません" }).waitFor();
+    assert((await np.getByRole("dialog", { name: "このバックアップに戻しますか？" }).count()) === 0, "復元の確認を出した");
+    await np.keyboard.press("Escape");
+    assert((await np.evaluate(() => JSON.stringify(window.__fourD.store.doc))) === before, "今の内容が変わった");
+  });
+
+  await check("新しい版のデータ: 開いている間に別のタブの新しい版のページが保存したら、閲覧のみのタブは知らせで、編集中のタブは次の保存で気づき、どちらも止める画面に替わり新しい版を上書きしない", async () => {
+    await waitSaved(np);
+    const reader = await nctx.newPage();
+    watch(reader);
+    await reader.goto(BASE, { waitUntil: "networkidle" });
+    await reader.waitForFunction(() => window.__fourD?.store.readOnly === true);
+    // 閲覧のみのタブでは操作ガイドを開いている（止めた後に、ガイドのキーの見張りが残って Enter を横取りしないか確かめる）
+    await reader.evaluate(() => window.__fourD.app.startTour());
+    await reader.locator(".tour").waitFor();
+    // 新しい版のページ（別のタブ）が保存した: 本体と版の記録を書き、保存したと知らせる
+    await putNewer(np, ["doc"]);
+    const before = await dumpStorage(np, ["kv"]);
+    await np.evaluate(() => {
+      const bc = new BroadcastChannel("4d-branch");
+      bc.postMessage({ type: "saved", rev: 99, tabId: "t_newer" });
+      bc.close();
+    });
+    await reader.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    assert((await reader.locator(".app-shell, .tour").count()) === 0, "閲覧のみのタブに編集の画面かガイドが残った");
+    assert(!(await reader.locator(".newer-card").textContent()).includes("まだ保存されていなかった変更"), "閲覧のみのタブで、残した変更があると言った");
+    // 止めた後に動いた知らせ（ここでは閲覧のみで「未来の道筋」を押したときの訳）は出さない（止める画面の下に見えないお知らせを作らない）
+    await reader.evaluate(() => void window.__fourD.app.showFuture());
+    await reader.waitForTimeout(300);
+    assert((await reader.evaluate(() => document.querySelectorAll("#toast-stack, .toast, .modal-backdrop").length)) === 0, "止めた後にお知らせ・ダイアログを出した");
+    // 「ページを開き直す」は Enter でも押せる（ガイドのキーの見張りに横取りされない）
+    await reader.waitForFunction(() => document.activeElement?.textContent?.includes("ページを開き直す"));
+    await Promise.all([reader.waitForEvent("load", { timeout: 5000 }), reader.keyboard.press("Enter")]);
+    await reader.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    // 編集中のタブ: 次の保存で気づく（手元の変更は「退避」に残し、画面でそう伝える）
+    await np.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1600 }, { title: "気づく前の変更", exact: true }));
+    await np.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    assert((await np.locator(".app-shell").count()) === 0, "編集中のタブに編集の画面が残った");
+    assert((await np.evaluate(() => window.__fourD.persistence.blocked)) === true, "止まっていない");
+    const npText = await np.locator(".newer-card").textContent();
+    assert(npText.includes("まだ保存されていなかった変更は、「退避」のバックアップに残しました"), `退避に残したと伝えていない: ${npText}`);
+    // 止めた後に隠れても・閉じかけても書かない
+    await np.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    await np.waitForTimeout(600);
+    assert((await dumpStorage(np, ["kv"])) === before, "新しい版の本体・版の記録が書き換わった");
+    const kept = await np.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch");
+          r.onerror = () => reject(r.error);
+          r.onsuccess = () => {
+            const t = r.result.transaction(["backupMeta", "backupData"], "readonly");
+            const metas = t.objectStore("backupMeta").getAll();
+            const datas = t.objectStore("backupData").getAll();
+            t.oncomplete = () => {
+              r.result.close();
+              const conflict = metas.result.filter((m) => m.kind === "conflict").map((m) => datas.result.find((d) => d.id === m.id)?.doc);
+              resolve(conflict.some((d) => Object.values(d?.nodes ?? {}).some((n) => n.title === "気づく前の変更")));
+            };
+          };
+        }),
+    );
+    assert(kept === true, "手元の変更が退避に残っていない");
+    assert((await np.evaluate(() => Object.keys(localStorage).filter((k) => k.includes(":emergency:")).length)) === 0, "止めた後に緊急コピーを書いた");
+    await reader.close();
+  });
+  await nctx.close();
+
+  await check("新しい版のデータ: 開いている間に新しい版のページが保存先の版を上げたら、編集中のタブも止める画面に替わり、書き手のロックを手放して以後は書かない（まだ保存していない変更は緊急コピーに残して伝える）", async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await c.addInitScript(() => {
+      try {
+        const k = "4d-branch:prefs";
+        if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, futureAutoOpened: true, wishlistOffered: true, futureOffered: true }));
+      } catch {
+        /* about:blank など */
+      }
+    });
+    await c.route(`${BASE}__seed.html`, (r) => r.fulfill({ contentType: "text/html; charset=utf-8", body: '<!doctype html><meta charset="utf-8"><title>seed</title><link rel="icon" href="data:,">' }));
+    const a = await c.newPage();
+    watch(a);
+    await a.goto(BASE, { waitUntil: "networkidle" });
+    await a.waitForFunction(() => window.__fourD?.persistence.writer === true);
+    await waitSaved(a);
+    const b = await c.newPage();
+    watch(b);
+    await b.goto(`${BASE}__seed.html`);
+    // 保存を待つ間（0.3 秒）に、新しい版のページ（b）が保存先の版を 2 に上げ、新しい版の本体を書く
+    await a.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1800 }, { title: "版が上がる直前の変更", exact: true }));
+    await b.evaluate(
+      (doc) =>
+        new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch", 2);
+          r.onupgradeneeded = () => {
+            const s = r.transaction.objectStore("kv");
+            s.put(doc, "doc");
+            s.put({ rev: 99, savedAt: doc.updatedAt, writer: "t_newer", docVersion: 2 }, "meta");
+          };
+          r.onsuccess = () => (r.result.close(), resolve());
+          r.onerror = () => reject(r.error);
+        }),
+      newerDocOf("新しい版で保存した内容"),
+    );
+    await a.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    assert((await a.locator(".app-shell").count()) === 0, "編集の画面が残った");
+    assert((await a.evaluate(() => [window.__fourD.persistence.blocked, window.__fourD.persistence.writer].join())) === "true,false", "止まっていない・書き手のまま");
+    // 新しい版のページのタブが、引き継がずに書き手のロックを取れる
+    assert((await b.evaluate(() => navigator.locks.request("4d-branch:writer", { ifAvailable: true }, (lock) => !!lock))) === true, "書き手のロックを手放していない");
+    // 保存の前に版が上がったなら、その変更はこのタブの緊急コピーにあり、画面でそう伝える（保存が先なら、その変更は本体に入っていた）
+    const s = await a.evaluate(() => ({
+      text: document.querySelector(".newer-card")?.textContent ?? "",
+      copies: Object.keys(localStorage)
+        .filter((k) => k.includes(":emergency:"))
+        .map((k) => localStorage.getItem(k)),
+    }));
+    const inCopy = s.copies.some((t) => t.includes("版が上がる直前の変更"));
+    assert(inCopy === s.text.includes("このブラウザの緊急コピーに残しました"), `緊急コピーと画面の知らせが合わない: ${JSON.stringify(s)}`);
+    // 以後は何も書かない（隠れても・閉じかけても）
+    const before = await dumpStorage(a);
+    await a.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    await a.waitForTimeout(800);
+    assert((await dumpStorage(a)) === before, "止めた後に保存先が書き換わった");
+    await c.close();
+  });
+
   await check("ページのエラーが無い", async () => {
     assert(errors.length === 0, errors.join("\n"));
   });

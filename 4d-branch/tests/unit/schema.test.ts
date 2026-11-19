@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addMonths, dayNumber, fromDayNumber, normalizeDateStr } from "../../src/model/dates";
 import { buildIndex } from "../../src/model/graph";
-import { DocFormatError, SCHEMA_VERSION, createEmptyDoc, makeEdge, makeNode, makeProject, normalizeDoc, parseDocText, serializeDoc } from "../../src/model/schema";
+import { DocFormatError, NewerDocError, SCHEMA_VERSION, createEmptyDoc, isNewerDocRaw, isNewerVersion, makeEdge, makeNode, makeProject, migrate, normalizeDoc, parseDocText, serializeDoc } from "../../src/model/schema";
 
 describe("normalizeDoc", () => {
   it("書き出した JSON をそのまま読み戻せる（往復で変わらない）", () => {
@@ -73,6 +73,69 @@ describe("normalizeDoc", () => {
     expect(() => normalizeDoc({ schema: "other", nodes: {} })).toThrow(DocFormatError);
     expect(() => parseDocText("{not json")).toThrow(DocFormatError);
     expect(() => normalizeDoc([1, 2])).toThrow(DocFormatError);
+  });
+
+  it("新しすぎる版は NewerDocError（DocFormatError の一種・文は今までどおり）で、壊れた・別の形式のデータとは分かれる", () => {
+    const caught = (f: () => unknown): unknown => {
+      try {
+        f();
+      } catch (e) {
+        return e;
+      }
+      return null;
+    };
+    const v = SCHEMA_VERSION + 1;
+    // 今の形のままの新しい版・ノードを持たない薄い形・版が小数でも
+    for (const raw of [{ schema: "4d-branch", version: v, nodes: {} }, { schema: "4d-branch", version: v, thin: { v: 1 } }, { schema: "4d-branch", version: v + 0.5, nodes: {} }]) {
+      const e = caught(() => normalizeDoc(raw));
+      expect(e).toBeInstanceOf(NewerDocError);
+      expect(e).toBeInstanceOf(DocFormatError);
+      expect((e as NewerDocError).version).toBe(v);
+      expect((e as Error).message).toBe(`このファイルは新しい版（スキーマ ${v}）の 4D Branch で作られています。アプリを新しくしてから読み込んでください。`);
+    }
+    expect(caught(() => migrate({ version: v }))).toBeInstanceOf(NewerDocError);
+    // 壊れた・別の形式のデータは、今までどおり DocFormatError だけ（新しい版とは見なさない）
+    for (const f of [() => normalizeDoc({ schema: "other", version: v, nodes: {} }), () => normalizeDoc({ version: v, title: "nodes の無い物" }), () => normalizeDoc([1, 2]), () => normalizeDoc("文字"), () => normalizeDoc(null), () => parseDocText("{not json")]) {
+      const e = caught(f);
+      expect(e).toBeInstanceOf(DocFormatError);
+      expect(e).not.toBeInstanceOf(NewerDocError);
+    }
+    // 今の版・版の無い物・数でない版は今の版として読む
+    for (const version of [SCHEMA_VERSION, undefined, "2", Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(normalizeDoc({ schema: "4d-branch", version, nodes: {} }).doc.version).toBe(SCHEMA_VERSION);
+    }
+    expect([v, v + 0.5, SCHEMA_VERSION, SCHEMA_VERSION + 0.5, "2", undefined, null, Number.NaN, Number.POSITIVE_INFINITY].map(isNewerVersion)).toEqual([true, true, false, false, false, false, false, false, false]);
+  });
+
+  it("整えずに見る isNewerDocRaw は、normalizeDoc が NewerDocError を出す物とちょうど同じ物を新しい版と見る", () => {
+    const v = SCHEMA_VERSION + 1;
+    const inputs: unknown[] = [
+      { schema: "4d-branch", version: v, nodes: {} },
+      { schema: "4d-branch", version: v, thin: { v: 1 } },
+      { schema: "4d-branch", version: v + 0.5 },
+      { version: v, nodes: {} },
+      { version: v, title: "nodes の無い物" },
+      { schema: "other", version: v, nodes: {} },
+      { schema: "4d-branch", version: SCHEMA_VERSION, nodes: {} },
+      { schema: "4d-branch", version: "2", nodes: {} },
+      { schema: "4d-branch", nodes: {} },
+      { schema: "4d-branch", version: Number.POSITIVE_INFINITY, nodes: {} },
+      [1, 2],
+      "文字",
+      null,
+      undefined,
+      42,
+    ];
+    for (const input of inputs) {
+      let newer = false;
+      try {
+        normalizeDoc(input);
+      } catch (e) {
+        newer = e instanceof NewerDocError;
+      }
+      expect(isNewerDocRaw(input), JSON.stringify(input)).toBe(newer);
+    }
+    expect(inputs.filter(isNewerDocRaw)).toHaveLength(4);
   });
 
   it("__proto__ を含むファイルでプロトタイプを汚さない", () => {

@@ -7,13 +7,13 @@ import { Interaction } from "../canvas/interaction";
 import { Minimap } from "../canvas/minimap";
 import { buildDemoDoc } from "../demo/demo";
 import { APP_VERSION, NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
-import { createEmptyDoc } from "../model/schema";
+import { NewerDocError, createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
 import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
 import { isDisposableDoc } from "../demo/demo";
 import { CloudRepo, CloudSync, baseCovered, dbBackend, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
-import type { BackupKind, Persistence } from "../persist/persistence";
+import type { BackupKind, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
 import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
@@ -26,6 +26,7 @@ import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
 import { closeMenus, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
+import { showNewerScreen } from "../ui/newerScreen";
 import { Commands } from "./commands";
 import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
 import type { UiState } from "./uiState";
@@ -135,6 +136,9 @@ export class App implements AppContext {
   /** 起動したときの手元を記録し終えた（同期を始める前に待つ） */
   private readonly bootRecorded: Promise<void>;
 
+  private readonly mount: HTMLElement;
+  /** このページより新しい版で保存されたデータに気づいて、編集をやめた（画面は開き直すよう伝える物に差し替えた） */
+  private newerShown = false;
   private readonly shell: HTMLElement;
   private readonly banner: HTMLElement;
   private readonly listEl: HTMLElement;
@@ -148,6 +152,7 @@ export class App implements AppContext {
     this.ui = opts.ui;
     this.persistence = opts.persistence;
     this.ephemeral = opts.ephemeral;
+    this.mount = opts.mount;
     const d0 = this.store.doc;
     this.bootDoc = { id: d0.id, updatedAt: d0.updatedAt, fallback: !!opts.bootFallback && !opts.ephemeral };
     this.bootRecorded = this.recordBootDoc();
@@ -255,6 +260,8 @@ export class App implements AppContext {
     this.persistence.on("notice", (n) => toast(n.text, { tone: n.level === "error" ? "error" : n.level === "warn" ? "warn" : "info", ms: 7000 }));
 
     this.persistence.on("remote", () => this.scheduleRemoteReload());
+    // 開いている間に、別のタブの新しい版のページが保存した（保存の競合・引き継ぎ・読み直し・保存先の版が上がったことで気づく）: 編集をやめる
+    this.persistence.on("blocked", (e) => this.showNewer(e.kept));
     this.bindKeys();
     this.bindLifecycle();
     this.bindDrop();
@@ -384,6 +391,8 @@ export class App implements AppContext {
 
   private async takeOver(): Promise<void> {
     const doc = await this.persistence.takeOver();
+    // 保存されているのがこのページより新しい版だった: 引き継がずに止めた（画面は "blocked" の知らせで差し替わる）
+    if (this.persistence.blocked) return;
     if (doc) this.store.load(doc, "load");
     this.store.readOnly = false;
     this.cloud?.resync();
@@ -404,6 +413,8 @@ export class App implements AppContext {
       if (saved) void this.refreshLastBackup();
     }
     const doc = await this.persistence.resolveConflict(choice);
+    // 保存されているのがこのページより新しい版だった: 開きも上書きもせずに止めた（画面は "blocked" の知らせで差し替わる）
+    if (this.persistence.blocked) return;
     if (doc) this.store.load(doc, "load");
     if (choice === "reload" && doc) toast("保存されている最新を開きました。このタブの内容はバックアップに残してあります（メニュー →「バックアップと復元」）。", { ms: 6000 });
     this.renderBanner();
@@ -412,9 +423,35 @@ export class App implements AppContext {
   private scheduleRemoteReload(): void {
     if (this.remoteTimer) clearTimeout(this.remoteTimer);
     this.remoteTimer = setTimeout(async () => {
-      const s = await this.persistence.readStored().catch(() => null);
+      if (this.persistence.blocked) return;
+      let s: Awaited<ReturnType<Persistence["readStored"]>> = null;
+      try {
+        s = await this.persistence.readStored();
+      } catch (e) {
+        // 別のタブの新しい版のページが保存した: 読めないのは壊れたからではない。このタブの編集をやめ、開き直してもらう
+        if (e instanceof NewerDocError) return this.persistence.blockNewer();
+        s = null;
+      }
       if (s && !this.persistence.writer) this.store.load(s.doc, "remote");
     }, 400);
+  }
+
+  /**
+   * このページより新しい版で保存されたデータに気づいた（保存の競合・引き継ぎ・別のタブの保存の読み直し・保存先の版が上がった）。
+   * 保存は Persistence が止めている。ここでは同期を止め、編集と設定の保存をやめ、画面を開き直すよう伝える物に差し替える
+   * （kept: このタブのまだどこにも無い変更を残した所。画面で伝える）。待っている自動の表示（未来の道筋を開くなど）も、以後は動かない
+   */
+  private showNewer(kept: KeptAside): void {
+    if (this.newerShown) return;
+    this.newerShown = true;
+    this.cloud?.stop();
+    this.store.readOnly = true;
+    this.ui.persistPrefs = false;
+    if (this.remoteTimer) clearTimeout(this.remoteTimer);
+    if (this.cameraSaveTimer) clearTimeout(this.cameraSaveTimer);
+    this.editor.cancel();
+    closeMenus();
+    showNewerScreen(this.mount, { kept });
   }
 
   // ------------------------------------------------------------ メニュー
@@ -506,7 +543,7 @@ export class App implements AppContext {
 
   private bindKeys(): void {
     document.addEventListener("keydown", (ev) => {
-      if (document.querySelector(".modal-backdrop:not(.closing), .tour")) return;
+      if (this.newerShown || document.querySelector(".modal-backdrop:not(.closing), .tour")) return;
       const typing = isTypingTarget(ev.target);
       const mod = ev.metaKey || ev.ctrlKey;
       const key = ev.key;
@@ -964,8 +1001,8 @@ export class App implements AppContext {
     const me = (this.futureWait = ++this.futureWaitSeq);
     const started = Date.now();
     const retry = (): void => {
-      // 取り消された（利用者が自分で読み込みの確認を開いた など）・新しい頼みに替わった
-      if (this.futureWait !== me) return;
+      // 取り消された（利用者が自分で読み込みの確認を開いた など）・新しい頼みに替わった・新しい版のデータで止めた
+      if (this.futureWait !== me || this.newerShown) return;
       // 入力・メニュー・確認・操作ガイドの途中なら待つ（自動で開くときと同じ。書きかけを消さない・閉じた後に勝手に入れ替えない）
       const busy = this.futureBusy();
       // 待つ間に同期が止まった（利用者が直す・決めるまで進まない）: もう待たない（showFuture が訳を知らせて確認を出す）
@@ -1057,6 +1094,8 @@ export class App implements AppContext {
     const started = Date.now();
     let toldReadOnly = false;
     const tick = (): void => {
+      // 新しい版のデータで止めた: 閲覧のみの訳などを知らせ続けない（止める画面と食い違う）
+      if (this.newerShown) return;
       if (this.futureAutoDeclined || this.ui.prefs.futureAutoOpened || this.ui.storedPrefs().futureAutoOpened === true) return;
       if (this.store.doc.meta?.[NO_AUTO_FUTURE] === true) return;
       if (hasFutureRoot(this.store.doc)) return;
@@ -1323,7 +1362,7 @@ export class App implements AppContext {
 
   /** claude.ai の Artifact の中で、サインインしていて自分の場所に書けるなら、アカウントにも写しを置く */
   async startCloud(late?: { db: DbApi; user: UserApi }): Promise<void> {
-    if (this.ephemeral || !inArtifactHost() || this.cloud || this.cloudStarting) return;
+    if (this.ephemeral || !inArtifactHost() || this.cloud || this.cloudStarting || this.persistence.blocked) return;
     this.cloudStarting = true;
     try {
       await this.startCloudInner(late);
@@ -1386,6 +1425,8 @@ export class App implements AppContext {
     }
     // 起動したときの手元の記録を書き終えてから始める（記録より先に読まない）
     await this.bootRecorded;
+    // 待つ間に、このページより新しい版のデータに気づいて止めた: 同期も始めない（アカウントへも書かない）
+    if (this.persistence.blocked) return;
     /** 手元にまだ保存できていない間の基準（保存できたら書く。基準が手元より先に残らないように） */
     let pendingBase: SyncBase | null = null;
     const writeBaseNow = async (b: SyncBase) => {

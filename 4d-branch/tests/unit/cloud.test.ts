@@ -7,7 +7,7 @@ import { FRESH_FUTURE, NO_AUTO_FUTURE, isFreshFuture, yieldsToRemote } from "../
 import { nextStamp } from "../../src/model/ids";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
-import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
+import { CloudError, CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
 import { mergeDocs } from "../../src/persist/io";
 import { Store } from "../../src/store/store";
 
@@ -886,6 +886,60 @@ describe("同期の決まり: ふだんの同期", () => {
     expect(a.sync.state).toBe("paused");
     expect(a.sync.message).toContain("開き直して");
     expect((await repo.readManifest())!.gen).toBe(before);
+    a.sync.stop();
+  });
+
+  it("新しい版の中身（ノードを持たない薄い形でも）は format として読まない（壊れた写しの corrupt とは分ける: 書き直さない）", async () => {
+    const t = new Date().toISOString();
+    const thin = { schema: "4d-branch", version: SCHEMA_VERSION + 1, id: "d_thin", title: "新しい版の地図", createdAt: t, updatedAt: t, meta: {}, thin: { v: 1, patches: {} } };
+    for (const doc of [thin, { ...realDoc("今の形のまま"), version: SCHEMA_VERSION + 1 }]) {
+      const e = await encodeDoc(doc as unknown as DocData);
+      const err = await decodeDoc(e.enc, e.payload).then(
+        () => null,
+        (x: unknown) => x,
+      );
+      expect(err).toBeInstanceOf(CloudError);
+      expect((err as CloudError).code).toBe("format");
+      expect((err as CloudError).message).toContain(`新しい版（スキーマ ${SCHEMA_VERSION + 1}）`);
+    }
+    // 壊れた写し（JSON として読めない）は今までどおり corrupt
+    const bad = await decodeDoc("json", "{壊れた").then(
+      () => null,
+      (x: unknown) => x,
+    );
+    expect((bad as CloudError).code).toBe("corrupt");
+  });
+
+  it("同期していた端末に新しい版の写しが届いたら、手元を編集しても・「同期をやり直す」を押しても、書き直さずに止めたまま", async () => {
+    const { be, state } = memoryBackend();
+    const a = device(be, "A", realDoc("この版の内容"));
+    await a.sync.start();
+    expect(a.sync.state).toBe("synced");
+    // 新しい版のページ（別の端末）が、新しい版の形で確定した
+    const newerRepo = new CloudRepo(be, "user1", "newer");
+    const t = new Date(Date.now() + 60_000).toISOString();
+    const thin = { ...realDoc("新しい版の内容"), version: SCHEMA_VERSION + 1, updatedAt: t, thin: { v: 1, patches: {} } } as DocData;
+    await newerRepo.write(thin, await newerRepo.readManifest());
+    const gen = (await newerRepo.readManifest())!.gen;
+    const writes = state.writes;
+    // 見張りで気づいて読みに行き、止まる
+    for (let i = 0; i < 100 && a.sync.state !== "paused"; i++) await tick(10);
+    expect(a.sync.state).toBe("paused");
+    expect(a.sync.message).toContain("新しい版");
+    // 手元を編集して送ろうとしても送らない
+    a.edit("この版での変更");
+    await a.sync.flush();
+    await tick(60);
+    expect(a.sync.state).toBe("paused");
+    // 利用者が「同期をやり直す」を押しても、読めない新しい版の写しを、この端末の内容で書き直さない
+    a.sync.resync({ userAsked: true });
+    for (let i = 0; i < 100 && a.sync.state !== "paused"; i++) await tick(10);
+    await tick(60);
+    expect(a.sync.state).toBe("paused");
+    expect(state.writes).toBe(writes);
+    expect((await newerRepo.readManifest())!.gen).toBe(gen);
+    expect(a.local.adopted).toEqual([]);
+    expect(a.local.backups).toEqual([]);
     a.sync.stop();
   });
 });
