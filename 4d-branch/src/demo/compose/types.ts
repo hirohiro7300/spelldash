@@ -55,7 +55,7 @@ export interface Banks {
   /** 文の型の版（直したら上げる。同梱データの header.textVersion に書く） */
   version: string;
   C: Consts;
-  /** 文に入る決まった言葉（確定申告の期間など） */
+  /** 文に入る決まった言葉（taxLine: 確定申告が要る副業の所得の線（万円））。確定申告の期間は年ごとに暦から出す */
   facts: Record<string, string>;
   /** 手引き: 手の種類ごとの歩み（_generic は使い切ったときの残り） */
   playbook: Record<string, Step[]>;
@@ -67,21 +67,25 @@ export interface Banks {
   cost: Record<string, Variant[]>;
   /** 手の結果ごとの意味: 手の種類 → 結果の分類 → 組 */
   branch: Record<string, Record<string, Variant[]>>;
-  /** 状態の出来事の文 */
+  /** 状態の出来事の文（できごとだけ。同じ出来事が道で何回も起きるときは、何回目かで言い換えを選ぶ） */
   event: Record<string, Variant[]>;
+  /** 出来事に添える助言（組ごとに道で 1 回だけ） */
+  tip: Record<string, Variant[]>;
   /** 出来事の短い名前（節目・短い名前） */
   eventShort: Record<string, string>;
+  /** 節目からの月の言い方（{n} は月の数）。無い出来事は短い名前に「から {n} か月」 */
+  since: Record<string, string>;
   /** 状態の題 */
   eventTitle: Record<string, Variant[]>;
   /** 次の手を問う言い方 */
   nextPhrase: Record<string, string[]>;
-  /** 暦の文（確定申告・住民税・4 月・辞める前） */
+  /** 暦の文（確定申告・住民税・4 月・辞める前）。どれも道で 1 回だけ（確定申告はその年分ごとに 1 回） */
   cal: Record<string, Variant[]>;
   /** 3 年後の行き先の、この先の見通し */
   after: Variant[];
-  /** 静かな 3 か月の一言 */
+  /** 静かな 3 か月の一言（組ごとに道で 1 回だけ） */
   hint: Variant[];
-  /** 避けたい手の訳（お金で） */
+  /** 避けたい手の訳（お金で。組ごとに道で 1 回だけ） */
   avoid: Record<string, Variant[]>;
   /** 手の短い名前 */
   short: Record<string, string>;
@@ -101,7 +105,7 @@ export interface Card {
   short: string;
   /** 本文（体の文） */
   body: string;
-  /** カードの上の決まった数の行（年収・広告運用・有料・遊ぶ人・週の時間） */
+  /** カードの上の決まった数の行（年収・広告運用・有料・遊ぶ人・週の時間。今日・状態・行き先の本文にはこれらの数を書かない） */
   numbers: string[];
   todo: CardTodo[];
   /** 使った文の型（節.種類#組.言い換え）と、文の型を使わない節の名前 */

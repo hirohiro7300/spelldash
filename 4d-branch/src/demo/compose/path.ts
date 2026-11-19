@@ -1,9 +1,10 @@
-// 文章の組み立ての、地図ごとの覚え（地図の物を鍵にした WeakMap。地図が要らなくなれば一緒に消える）。設計: 作業メモ SPEC v1 §4.1
-// - 暦: 0 か月目の年月（header.anchor）から、どの月も年月にする。4 月（昇給・評価）の月もここから出す
+// 文章の組み立ての、地図ごとの覚え（地図の物を鍵にした WeakMap。地図が要らなくなれば一緒に消える）。設計: 作業メモ SPEC v1 §4.1・§4.2
+// - 暦: 0 か月目の年月（header.anchor）から、どの月も年月にする。4 月（昇給・評価）の月・確定申告の期間（年ごと）もここから出す
 // - 道の覚え（Link）: 判断（今日・状態）ごとに 1 つ。作るのは組み立てたカードの道の上だけで、1 つ前の判断の覚えを指し、
 //   その間の手（種類・使った手引き）とこの状態で起きたこと・副業の稼ぎだけを持つ。初めの 1 回は道の長さぶん、その後は引くだけ
 // - 先の数え上げ: 判断・出来事の分かれ・行き先を下から 1 回で数える（今日の手の「この手の先」の文）。初めて要るときに 1 回だけ
-// 元: 試作（R2）の compose.ts の pathOf・eventsOf・stepsFor（何を数え、何を出来事とするかは変えていない）
+// 元: 試作（R2）の compose.ts の pathOf・eventsOf・stepsFor。変えた所: 手の 3 か月は翌月から（truth-15）・届け出の答えは届け出る手でだけ・
+//   移った会社と戻った会社の出来事（truth-11）・独立した月の翌月に Pro（truth-10）・出来事の年月は文にするときに状態の月から書く
 import type { MapData, MapHeader } from "../../deepmap/mapData";
 import type { ImpactSt } from "../impact";
 import { clr, cond, f2, n0, slot, type Env } from "./text";
@@ -18,15 +19,40 @@ export interface Calendar {
   readonly aprils: readonly number[];
   /** m か月目の [年, 月（1〜12）] */
   parts(m: number): [number, number];
+  /** その年月が何か月目か（0 か月目より前は負） */
+  monthOf(year: number, month: number): number;
   /** 「2027 年 1 月」（数は差し込みの印つき） */
   ym(m: number): string;
   /** 前に書いた月と同じ年なら年を落とす（「2026 年 12 月〜2 月」の後ろ） */
   ymRel(m: number, prev: number | null): string;
-  /** 手の 3 か月（「2026 年 11 月〜2027 年 2 月」） */
+  /** m か月目に選んだ手の 3 か月（翌月から 3 か月。「2026 年 12 月〜2027 年 2 月」。truth-15: 4 つの月を書かない） */
   period(m: number): string;
+  /** y 年分の確定申告の期間（翌年 2 月 16 日〜3 月 15 日。土日にかかれば次の月曜。年ごとに出す。truth-10） */
+  taxPeriod(y: number): string;
+  /** y 年分の申告の期限（翌年 3 月 15 日。土日にかかれば次の月曜） */
+  taxDeadline(y: number): string;
 }
 
-function calendarOf(header: MapHeader): Calendar {
+/** 1970 年 1 月 1 日からの日数（グレゴリオ暦。Date を使わないので、時間帯で変わらない） */
+export function daysFromCivil(y: number, m: number, d: number): number {
+  const yy = m <= 2 ? y - 1 : y;
+  const era = Math.floor(yy / 400);
+  const yoe = yy - era * 400;
+  const doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
+  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+  return era * 146097 + doe - 719468;
+}
+
+/** 曜日（0 日曜〜6 土曜） */
+export const weekday = (y: number, m: number, d: number): number => (((daysFromCivil(y, m, d) + 4) % 7) + 7) % 7;
+
+/** 土日なら次の月曜の日（申告の期間の始めと終わり。2 月 16 日・3 月 15 日に祝日は来ない） */
+const businessDay = (y: number, m: number, d: number): number => {
+  const w = weekday(y, m, d);
+  return w === 6 ? d + 2 : w === 0 ? d + 1 : d;
+};
+
+export function calendarOf(header: MapHeader): Calendar {
   const mm = /^(\d{4})-(\d{2})$/.exec(header.anchor);
   const y0 = mm ? Number(mm[1]) : NaN;
   const mo0 = mm ? Number(mm[2]) : NaN;
@@ -36,7 +62,7 @@ function calendarOf(header: MapHeader): Calendar {
   for (let m = 0; m <= horizon; m++) if ((mo0 - 1 + m) % 12 === 3) aprils.push(m);
   const parts = (m: number): [number, number] => {
     const t = y0 * 12 + (mo0 - 1) + m;
-    return [Math.floor(t / 12), (t % 12) + 1];
+    return [Math.floor(t / 12), (((t % 12) + 12) % 12) + 1];
   };
   const ym = (m: number): string => {
     const [y, mo] = parts(m);
@@ -47,7 +73,19 @@ function calendarOf(header: MapHeader): Calendar {
     if (prev !== null && parts(prev)[0] === y) return `${slot(mo)} 月`;
     return `${slot(y)} 年 ${slot(mo)} 月`;
   };
-  return { horizon, aprils, parts, ym, ymRel, period: (m) => `${ym(m)}〜${ymRel(m + 3, m)}` };
+  const taxPeriod = (y: number): string => `${slot(y + 1)} 年 ${slot(2)} 月 ${slot(businessDay(y + 1, 2, 16))} 日〜${slot(3)} 月 ${slot(businessDay(y + 1, 3, 15))} 日`;
+  const taxDeadline = (y: number): string => `${slot(y + 1)} 年 ${slot(3)} 月 ${slot(businessDay(y + 1, 3, 15))} 日`;
+  return {
+    horizon,
+    aprils,
+    parts,
+    monthOf: (year, month) => year * 12 + (month - 1) - (y0 * 12 + (mo0 - 1)),
+    ym,
+    ymRel,
+    period: (m) => `${ym(m + 1)}〜${ymRel(m + 3, m + 1)}`,
+    taxPeriod,
+    taxDeadline,
+  };
 }
 
 // ---- 先の数え上げ（下から 1 回）
@@ -111,12 +149,16 @@ export function ripple(map: MapData, i: number): Ripple {
 
 // ---- 道の覚え
 
-/** 状態で起きたこと: 出来事の名前・その月・文に差し込む値（quiet は行き先の節目にだけ数え、状態の文には書かない） */
+/**
+ * 状態で起きたこと: 出来事の名前・その月・文に差し込む値・文に差し込む年月（何か月目か。文にするときに、そのカードの月から書く）。
+ * quiet は行き先の節目にだけ数え、状態の文には書かない
+ */
 export interface Ev {
   code: string;
   quiet?: boolean;
   m: number;
   x: Record<string, string>;
+  at?: Record<string, number>;
 }
 
 /** 判断（今日・状態）か行き先までの道の覚え。1 つ前の判断の覚え（up）を指す */
@@ -126,13 +168,16 @@ export interface Link {
   readonly i: number;
   /** up からここへ来た手の種類（今日は null） */
   readonly kind: string | null;
+  /** その手の番号（今日は −1） */
+  readonly move: number;
   /** その手が使った手引きの番号 */
   readonly steps: readonly string[];
   /** この状態で起きたこと */
   readonly evs: readonly Ev[];
-  /** その 3 か月の副業の稼ぎ（広告運用 + SpellDash、万円/月。まとめた行き先は 0）と、その手を始めた月 */
+  /** その 3 か月の副業の稼ぎ（広告運用 + SpellDash、万円/月。まとめた行き先は 0）と、その手を始めた月・稼ぎが始まった月 */
   readonly side: number;
   readonly sideM: number;
+  readonly sideFrom: number;
   /** 独立した月（道の上で一番新しい物） */
   readonly indFrom: number | null;
   /** 道の最初の手（今日の手）の番号。今日は −1 */
@@ -149,6 +194,8 @@ interface PerMap {
   cal: Calendar | null;
   counts: Counts | null;
   links: WeakMap<Banks, Map<number, Link>>;
+  /** 兄弟の題（親の番号 → 子の並びの題と、その題に使った文の型）。題は年収で変わらないので、束ごとに 1 回 */
+  titles: WeakMap<Banks, Map<number, readonly TitleEntry[]>>;
 }
 
 const MEMO = new WeakMap<MapData, PerMap>();
@@ -156,11 +203,14 @@ const MEMO = new WeakMap<MapData, PerMap>();
 function perMap(map: MapData): PerMap {
   let pm = MEMO.get(map);
   if (!pm) {
-    pm = { cal: null, counts: null, links: new WeakMap() };
+    pm = { cal: null, counts: null, links: new WeakMap(), titles: new WeakMap() };
     MEMO.set(map, pm);
   }
   return pm;
 }
+
+/** 題と、その題に使った文の型（trace に足す） */
+export type TitleEntry = readonly [string, readonly string[]];
 
 /** 1 枚を組み立てる間の道具一式（作るのは安い。重い物は地図ごとの覚えに置く） */
 export interface Ctx {
@@ -170,6 +220,7 @@ export interface Ctx {
   readonly annual: number;
   readonly cal: Calendar;
   readonly links: Map<number, Link>;
+  readonly titles: Map<number, readonly TitleEntry[]>;
 }
 
 export function ctxOf(map: MapData, banks: Banks, annual: number): Ctx {
@@ -179,7 +230,12 @@ export function ctxOf(map: MapData, banks: Banks, annual: number): Ctx {
     links = new Map();
     pm.links.set(banks, links);
   }
-  return { map, B: banks, C: banks.C, annual, cal: (pm.cal ??= calendarOf(map.header)), links };
+  let titles = pm.titles.get(banks);
+  if (!titles) {
+    titles = new Map();
+    pm.titles.set(banks, titles);
+  }
+  return { map, B: banks, C: banks.C, annual, cal: (pm.cal ??= calendarOf(map.header)), links, titles };
 }
 
 /** 抱えられる顧客の数 */
@@ -189,6 +245,13 @@ export const capOf = (C: Consts, j: ImpactSt["j"]): number => (j === "i" ? C.cap
 export function countKind(link: Link, kind: string): number {
   let c = 0;
   for (let l: Link | null = link; l; l = l.up) if (l.kind === kind) c++;
+  return c;
+}
+
+/** 道の上で、その出来事が起きた回数（覚えの状態まで） */
+export function countEvent(link: Link | null, code: string): number {
+  let c = 0;
+  for (let l: Link | null = link; l; l = l.up) for (const e of l.evs) if (e.code === code) c++;
   return c;
 }
 
@@ -208,18 +271,51 @@ export function eventsList(link: Link): Ev[] {
   return out;
 }
 
-/** 道の上で、その暦の年に入った副業の稼ぎ（万円）。3 か月の稼ぎを、手を始めた月の翌月から 3 か月にならす */
+/** 道の上で、その暦の年に入った副業の稼ぎ（万円）。3 か月の稼ぎを、稼ぎが始まった月からその 3 か月の終わりまでにならす */
 export function sideIn(c: Ctx, link: Link, year: number): number {
   let sum = 0;
   for (let l: Link | null = link; l; l = l.up) {
     if (!l.side) continue;
-    for (let k = 1; k <= 3; k++) if (c.cal.parts(l.sideM + k)[0] === year) sum += l.side;
+    for (let m = l.sideFrom; m <= l.sideM + 3; m++) if (c.cal.parts(m)[0] === year) sum += l.side;
   }
   return sum;
 }
 
+/**
+ * その暦の年に、給与のある月（会社員・週 4 日）と独立していた月がそれぞれ何か月あるか（確定申告の文。truth-10）。
+ * 道の出来事（独立した月・会社員に戻った月・週 4 日になった月）から数え、0 か月目より前は今日の仕事、
+ * このカードより後の月は、このカードの時点の仕事が続くとみる
+ */
+export function jobMonths(c: Ctx, link: Link, year: number): { sal: number; ind: number; back: boolean } {
+  const { map, cal } = c;
+  let root: Link = link;
+  while (root.up) root = root.up;
+  const spans: Array<[number, ImpactSt["j"]]> = [[-Infinity, map.st(root.i).j]];
+  let back = false;
+  for (const e of eventsList(link)) {
+    if (e.code === "IND_START") spans.push([e.m, "i"]);
+    else if (e.code === "BACK_EMP") spans.push([e.m, "e"]);
+    else if (e.code === "PART_ON") spans.push([e.m, "p"]);
+  }
+  const now = map.month(link.i);
+  const jNow = map.st(link.i).j;
+  let sal = 0;
+  let ind = 0;
+  for (let mo = 1; mo <= 12; mo++) {
+    const m = cal.monthOf(year, mo);
+    let j: ImpactSt["j"] = jNow;
+    if (m <= now) for (const [from, jj] of spans) if (from <= m) j = jj;
+    if (j === "i") ind++;
+    else {
+      sal++;
+      if (ind > 0) back = true;
+    }
+  }
+  return { sal, ind, back };
+}
+
 function rootLink(c: Ctx, i: number): Link {
-  return { up: null, i, kind: null, steps: [], evs: [], side: 0, sideM: 0, indFrom: null, first: -1, bestCl: clr(c.map.st(i).cl) };
+  return { up: null, i, kind: null, move: -1, steps: [], evs: [], side: 0, sideM: 0, sideFrom: 1, indFrom: null, first: -1, bestCl: clr(c.map.st(i).cl) };
 }
 
 /** 状態か行き先 n の覚えを、その前の判断の覚え up から作る */
@@ -228,18 +324,25 @@ function makeLink(c: Ctx, up: Link, n: number): Link {
   const move = map.parent(n);
   const kind = map.kind(move) ?? "";
   const steps = stepsFor(c, move, countKind(up, kind), usedSet(up)).map((s) => s.id);
-  const evs = eventsOf(c, n, up);
+  // まとめた行き先へは 3 か月ではなく 3 年後の平均へ飛ぶので、出来事を作らない（節目はまとめた所まで）
+  const evs = map.sum(n) ? [] : eventsOf(c, n, up);
   const e = map.e(n);
   const m0 = map.month(move);
+  const ind = evs.find((x) => x.code === "IND_START");
+  // その 3 か月の稼ぎが始まった月: 独立した月・届け出の答えの翌月・Pro の受付を始めた月（それより前の月は会社員の給与だけ。truth-10 の年の分け方）
+  const starts = evs.filter((x) => x.code === "IND_START" || x.code === "PRO_START" || x.code.startsWith("PERM_")).map((x) => (x.code.startsWith("PERM_") ? x.m + 1 : x.m));
+  const sideFrom = Math.min(m0 + 3, Math.max(m0 + 1, ...starts));
   return {
     up,
     i: n,
     kind,
+    move,
     steps,
     evs,
-    side: map.sum(n) ? 0 : (e[1] + e[2]) / 3,
+    side: map.sum(n) ? 0 : (e[1] + e[2]) / (m0 + 3 - sideFrom + 1),
     sideM: m0,
-    indFrom: evs.some((x) => x.code === "IND_START") ? m0 + 2 : up.indFrom,
+    sideFrom,
+    indFrom: ind ? ind.m : up.indFrom,
     first: up.first >= 0 ? up.first : move,
     bestCl: Math.max(up.bestCl, clr(map.st(n).cl)),
   };
@@ -282,7 +385,18 @@ export function endLink(c: Ctx, i: number): Link {
   return makeLink(c, linkOf(c, c.map.parent(c.map.parent(i))), i);
 }
 
+/** 道の上の覚え（状態・行き先は自分の物、手は選ぶ判断の物） */
+export function linkFor(c: Ctx, i: number): Link {
+  const role = c.map.role(i);
+  if (role === "a") return linkOf(c, c.map.parent(i));
+  if (role === "e") return endLink(c, i);
+  return linkOf(c, i);
+}
+
 // ---- 出来事（その 3 か月に起きたこと: 判断の状態 → この状態）
+
+/** 会社に届け出る手（届け出の答えの出来事は、この手でだけ起きる。truth-11） */
+export const FILING_KINDS: ReadonlySet<string> = new Set(["ad_perm", "ad_permside", "sd_permpro"]);
 
 export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
   const { map, C, cal } = c;
@@ -293,28 +407,51 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
   const id = map.outId(n);
   const m0 = map.month(move);
   const out: Ev[] = [];
-  if (a.pm === "?" && b.pm !== "?") out.push({ code: b.pm === "a" ? "PERM_A" : b.pm === "s" ? "PERM_S" : "PERM_N", m: m0 + 1, x: { ym1: cal.ym(m0 + 1), ym2: cal.ymRel(m0 + 2, m0 + 1) } });
-  if (a.j !== "i" && b.j === "i") out.push({ code: "IND_START", m: m0 + 2, x: { ym1: cal.ym(m0 + 1), ym2: cal.ymRel(m0 + 2, m0 + 1), overhead: slot(C.overhead) } });
-  if (a.j === "i" && b.j === "e") out.push({ code: "BACK_EMP", m: m0 + 3, x: {} });
+  const ca = clr(a.cl);
+  const cb = clr(b.cl);
+  // 届け出の答え: 届け出る手のときだけ（会社員に戻った・移った会社で答えが変わったのは、下の新しい会社の出来事）
+  if (FILING_KINDS.has(k) && a.pm === "?" && b.pm !== "?") out.push({ code: b.pm === "a" ? "PERM_A" : b.pm === "s" ? "PERM_S" : "PERM_N", m: m0 + 1, x: {}, at: { ym1: m0 + 1, ym2: m0 + 2 } });
+  if (a.j !== "i" && b.j === "i") out.push({ code: "IND_START", m: m0 + 2, x: { overhead: slot(C.overhead) }, at: { ym1: m0 + 1, ym2: m0 + 2 } });
+  // 移った・戻った会社: 届け出の範囲を持っていく・出し直す・SpellDash だけを認める会社を選ぶ。顧客は引き継ぎ先に渡す（truth-11・SPEC §2.3 #5）
+  let handover = 0;
+  const newEmployer = (switched: boolean): void => {
+    if (cb < ca) {
+      handover = ca - cb;
+      out.push({ code: "NEW_EMP_HANDOVER", m: m0 + 3, x: { lost: slot(handover) } });
+    }
+    if (b.pm === a.pm && (a.pm === "a" || a.pm === "s")) out.push({ code: a.pm === "a" ? "NEW_EMP_CARRY_A" : "NEW_EMP_CARRY_S", m: m0 + 3, x: {} });
+    else if (!switched && b.pm === "s") out.push({ code: "NEW_EMP_SONLY", m: m0 + 3, x: {} });
+    else if (b.pm === "?") out.push({ code: a.pm === "?" ? "NEW_EMP_FILE" : "NEW_EMP_REFILE", m: m0 + 3, x: {} });
+  };
+  if (a.j === "i" && b.j !== "i") {
+    out.push({ code: "BACK_EMP", m: m0 + 3, x: {} });
+    newEmployer(false);
+  }
   if ((k === "back_emp" || k === "plan_back") && b.j === "i") out.push({ code: "BACK_NO", m: m0 + 3, x: {} });
   if (a.j === "e" && b.j === "p") out.push({ code: "PART_ON", m: m0 + 2, x: { salx: `${slot(f2(map.rr(n)[0]))} 倍` } });
   if (k === "part" && b.j === "e") out.push({ code: "PART_NO", m: m0 + 3, x: {} });
   const switched = b.fl.includes("switched") && !a.fl.includes("switched");
-  if (switched) out.push({ code: b.sal / Math.max(1e-9, a.sal) >= 1.13 ? "SWITCH_HIGH" : "SWITCH_MID", m: m0 + 3, x: { salx: `${slot(f2(b.sal))} 倍`, ym3: cal.ym(m0 + 3) } });
+  if (switched) {
+    out.push({ code: b.sal / Math.max(1e-9, a.sal) >= 1.13 ? "SWITCH_HIGH" : "SWITCH_MID", m: m0 + 3, x: { salx: `${slot(f2(b.sal))} 倍` }, at: { ym3: m0 + 3 } });
+    newEmployer(true);
+  }
   if ((k === "fc_switch" || k === "fc_switch2") && !switched) out.push({ code: "SEARCH_NONE", m: m0 + 3, x: {} });
   if (k === "fc_push") {
     const april = cal.aprils.find((q) => q > m0 && q <= m0 + 3) ?? m0 + 2;
-    out.push({ code: id === "up" ? "PROMO" : "PROMO_NO", m: april, x: { ymApril: cal.ym(april), salx: `${slot(f2(b.sal))} 倍` } });
+    out.push({ code: id === "up" ? "PROMO" : "PROMO_NO", m: april, x: { salx: `${slot(f2(b.sal))} 倍` }, at: { ymApril: april } });
   }
-  if (a.pro === 0 && b.pro === 1 && !out.some((e) => e.code === "PERM_A" || e.code === "PERM_S")) out.push({ code: "PRO_START", m: m0 + 2, x: { ym2: cal.ym(m0 + 2) } });
-  const ca = clr(a.cl);
-  const cb = clr(b.cl);
+  // Pro の受付: 認められている手の 2 か月目。期間の途中で独立したなら、独立した翌月（sim.ts の latePro。truth-10）
+  if (a.pro === 0 && b.pro === 1 && !out.some((e) => e.code === "PERM_A" || e.code === "PERM_S")) {
+    const at = out.some((e) => e.code === "IND_START") ? m0 + 3 : m0 + 2;
+    out.push({ code: "PRO_START", m: at, x: {}, at: { ym2: at } });
+  }
   const cap = capOf(C, b.j);
   const jobName = b.j === "i" ? "独立" : b.j === "p" ? "週 4 日勤務" : "会社員";
   // この 3 か月より前に道で一番多かった顧客の数（離れた分を取り戻したのか、新しい最多なのかで言い方が違う）
   const best = up.bestCl;
   if (cb > ca) out.push({ code: ca === 0 && best === 0 ? "FIRST_CLIENT" : cb <= best ? "CLIENT_REGAIN" : "CLIENT_UP", m: m0 + 2, x: { nth: slot(cb), capNote: cb >= cap ? `${jobName}で持てる ${slot(cap)} 社の上限に届いた。` : "" } });
-  else if (cb < ca) out.push({ code: "CLIENT_LOST", m: m0 + 3, x: { lost: slot(ca - cb) } });
+  // 引き継ぎで手放した分は、離れた顧客として数えない
+  else if (cb < ca - handover) out.push({ code: "CLIENT_LOST", m: m0 + 3, x: { lost: slot(ca - handover - cb) } });
   else if ((k === "ad_side" || k === "ad_more") && cb === ca) out.push({ code: "CLIENT_NOT_FOUND", m: m0 + 3, x: {} });
   for (const [flag, on, off, kindOf] of FLAG_EVENTS) {
     if (k !== kindOf) continue;
