@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { accountR6Json, buildAccountR6 } from "../../scripts/fixtures/accountR6";
+import { ACCOUNT_R6_LOAD_DAY, accountR6Json, buildAccountR6 } from "../../scripts/fixtures/accountR6";
+import accountR6Src from "../../scripts/fixtures/accountR6.ts?raw";
+import { R6_NODE_W, R6_SCHEMA_VERSION, buildR6MapDoc, type R6Bundle } from "../../scripts/fixtures/frozenR6";
+import frozenR6Src from "../../scripts/fixtures/frozenR6.ts?raw";
 import history from "../../scripts/impact/releases.json";
-import { buildImpactDoc, countImpact, fnv36, impactDataVersion, impactNodeId, impactTagsOf } from "../../src/demo/impact";
+import { countImpact, fnv36, impactDataVersion, impactNodeId, impactTagsOf } from "../../src/demo/impact";
 import { normalizeDoc } from "../../src/model/schema";
 import type { DocData, GEdge, GNode, ID } from "../../src/model/types";
 import accountRaw from "../fixtures/account-r6.json?raw";
@@ -27,8 +30,9 @@ const RANDOM_ID = (prefix: string) => new RegExp(`^${prefix}_[0-9a-z]{12}$`);
 describe("アカウントの形をした版 6 の文書（tests/fixtures/account-r6.json。合成）", () => {
   const input = JSON.parse(accountRaw) as DocData;
   const { doc, report } = normalizeDoc(JSON.parse(accountRaw));
-  // 比べる元: 同じ版 6 の同梱データを今の組み立てで作った地図（同梱の ID・プロジェクト）
-  const ref = normalizeDoc(buildImpactDoc(r6Bundle(), new Date(2026, 10, 12), R6_RELEASE.version, R6_RELEASE.release)).doc;
+  // 比べる元: 同じ版 6 の同梱データを、版 6 のページの組み立ての写し（scripts/fixtures/frozenR6.ts）で作った地図（同梱の ID・プロジェクト）。
+  // アプリの今の組み立ては読まない（P2 で変わっても、この文書の確かめは版 6 のまま）
+  const ref = buildR6MapDoc(JSON.parse(R6_RAW) as R6Bundle, ACCOUNT_R6_LOAD_DAY, R6_RELEASE, "2026-11-12T10:30:00.000Z") as unknown as DocData;
   const refByKey = new Map<string, GNode>(Object.values(ref.nodes).map((n) => [keyOf(n)!, n]));
   const refEdge = new Map<string, GEdge>(Object.values(ref.edges).map((e) => [`${keyOf(ref.nodes[e.source])}>${keyOf(ref.nodes[e.target])}`, e]));
   const nodes = Object.values(doc.nodes);
@@ -40,10 +44,27 @@ describe("アカウントの形をした版 6 の文書（tests/fixtures/account
   const mapEdges = edges.filter(isMapEdge);
   const userEdges = edges.filter((e) => !isMapEdge(e));
 
-  it("検証（normalizeDoc）を通しても、何も直されず何も変わらない", () => {
+  it("今のアプリの検証（normalizeDoc）を通しても、何も直されず何も変わらない（読み手が版 1 の文書を移行するようになったら、文書ではなくこの答えを直す）", () => {
     expect(report.warnings).toEqual([]);
     expect(report.dropped).toEqual({ nodes: 0, edges: 0, projects: 0, scenarios: 0 });
     expect(doc).toEqual(input);
+  });
+
+  it("凍結の印: 版 6 のページが書いた形のまま（文書の版 1・入口は版 6・地図は版 6 のカードの幅 212 で右へ、メモの高さへずらした位置。見直し found-1）", () => {
+    // 作り直しで今のアプリの決まり（SCHEMA_VERSION・NODE_W・並べ方）が入り込んでいれば、ここで止まる
+    expect([input.schema, input.version, input.title]).toEqual(["4d-branch", 1, "マイ・ブランチ"]);
+    expect([R6_SCHEMA_VERSION, R6_NODE_W]).toEqual([1, 212]);
+    const root = Object.values(input.nodes).find((n) => n.meta.forecastRoot === true)!;
+    expect(root.meta).toMatchObject({ key: "r", futureRelease: 6, futureVersion: "bvpn-apwrrf" });
+    // 前からあったメモの右端（x 60）+ カードの幅 212 + 600、上端（y −420）にそろえる（版 6 の地図の今日は (0, 0)）
+    expect([root.x, root.y]).toEqual([60 + 212 + 600, -420]);
+    expect([refByKey.get("r")!.x, refByKey.get("r")!.y]).toEqual([0, 0]);
+    // 作り方はアプリの今のコードを読まない（型も。凍結した写し ./frozenR6.ts だけ）
+    for (const [name, src] of [
+      ["accountR6.ts", accountR6Src],
+      ["frozenR6.ts", frozenR6Src],
+    ] as const)
+      expect([name, src.match(/^import .*$/gm) ?? []]).toEqual([name, name === "accountR6.ts" ? [expect.stringMatching(/from "\.\/frozenR6";$/)] : []]);
   });
 
   it("地図は版 6 のまま全部ある: 1,533 枚のカードと 1,532 本の線。入口は版 6 の版と版の順番を持つ", () => {
@@ -57,6 +78,7 @@ describe("アカウントの形をした版 6 の文書（tests/fixtures/account
     expect(roots[0]!.meta).toMatchObject({ key: "r", futureVersion: R6_RELEASE.version, futureRelease: 6, impact: { v: 2, horizon: 36 } });
     // 地図の位置は「追加する」で右へずらしてある（版 6 の組み立ての位置そのままではない）
     expect(roots[0]!.x).not.toBe(refByKey.get("r")!.x);
+    expect(r6Bundle().nodes.length).toBe(keyed.length);
   });
 
   it("ID はどれも「追加する」で振り直した乱数（同梱の鍵の ID ではない）。プロジェクトは名前で合わせ、1 つは同梱と別の ID", () => {
@@ -153,7 +175,7 @@ describe("アカウントの形をした版 6 の文書（tests/fixtures/account
     expect(userEdges.some((e) => keyOf(doc.nodes[e.source]) !== null && keyOf(doc.nodes[e.target]) !== null)).toBe(true);
   });
 
-  it("決まった種の台本（scripts/fixtures/accountR6.ts）で作り直すと、バイトまで同じ（node scripts/fixtures/run.mjs で書いた物）", () => {
+  it("決まった種の台本（scripts/fixtures/accountR6.ts。版 6 の時の作り方の写しだけを使う）で作り直すと、バイトまで同じ（node scripts/fixtures/run.mjs --check と同じ）", () => {
     expect(accountR6Json(buildAccountR6(R6_RAW, R6_RELEASE))).toBe(accountRaw);
   });
 });
