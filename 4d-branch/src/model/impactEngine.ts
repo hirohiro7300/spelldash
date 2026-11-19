@@ -1266,6 +1266,15 @@ export class ImpactEngine {
     return t;
   }
 
+  /**
+   * 同梱の地図の列から作った今の形（組み立てたままの文書で、形を変えていない間だけ。それ以外は null）。
+   * 見え方の計算が、3 年の分かれ道の範囲と先の数を、文書をたどらずにこの形から作る（作業メモ perf-3）
+   */
+  mapTopo(doc: DocData): Topo | null {
+    const t = this.topo;
+    return this.pristine && this.pristine.doc === doc && !(this.dirty & C_TOPO) && t && t.map && t.cm ? t : null;
+  }
+
   /** 今の形（確かめ用） */
   get graph(): { topo: Topo | null; nums: Nums | null } {
     return { topo: this.topo, nums: this.nums };

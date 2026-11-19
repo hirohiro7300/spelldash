@@ -261,9 +261,11 @@ export class App implements AppContext {
     opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
 
     // ---- 配線
-    this.store.on("change", () => {
+    this.store.on("change", (info) => {
       this.syncEmpty();
       this.syncFutureNew();
+      // 全部が入れ替わったら、検索の索引は空いた時間に作り直す（初めての検索の 1 文字を待たせない）
+      if (info.full) this.warmSearchSoon();
     });
     this.persistence.on("writer", (w) => {
       this.renderBanner();
@@ -306,6 +308,7 @@ export class App implements AppContext {
       // 3 年の分かれ道を初めて見せた後、年収がまだ仮なら一度だけ知らせる
       offerImpactSalary(this);
       this.afterTour = () => void this.askPersistOnce();
+      this.warmSearchSoon();
     });
     void this.refreshLastBackup();
   }
@@ -343,15 +346,41 @@ export class App implements AppContext {
     }
   }
 
-  private syncEmpty(): void {
-    this.emptyHint.hidden = Object.keys(this.store.doc.nodes).length > 0;
+  /** 検索の索引を、手が空いたときに作っておく（requestIdleCallback。無ければ少し後に） */
+  private warmSearchSoon(): void {
+    const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    if (ric) ric(() => this.vm.warmSearch(), { timeout: 4000 });
+    else setTimeout(() => this.vm.warmSearch(), 1500);
   }
 
-  /** 古い版の未来の道筋があれば、「未来の道筋」のボタンに「新」の印（断って聞かれなくなっても、新しい版にできると分かる。入口だけを見るので軽い） */
+  private syncEmpty(): void {
+    // ノードの数は索引が持つ（文書をなめない。作業メモ perf-4・gaps-8）
+    this.emptyHint.hidden = this.vm.nodeCount > 0;
+  }
+
+  /** 「新」の印の材料（予測の入口のノードの版）と、そのときの答え */
+  private futureNewKey = "";
+  private futureNewOn = false;
+
+  /**
+   * 古い版の未来の道筋があれば、「未来の道筋」のボタンに「新」の印（断って聞かれなくなっても、新しい版にできると分かる）。
+   * 入口のノードだけを見る（索引が覚えている入口。入口のノードが変わったときだけ確かめ直す）
+   */
   private syncFutureNew(): void {
     const btn = this.futureBtn;
     if (!btn) return;
-    const on = hasStaleFuture(this.store.doc, futureVersion(), futureRelease());
+    const idx = this.vm.index;
+    const key = `${idx.version.roots}|${idx.source === this.store.doc}|${futureVersion()}|${futureRelease()}`;
+    if (key !== this.futureNewKey) {
+      this.futureNewKey = key;
+      const nodes: DocData["nodes"] = {};
+      for (const id of idx.forecastRoots) {
+        const n = this.store.doc.nodes[id];
+        if (n) nodes[id] = n;
+      }
+      this.futureNewOn = hasStaleFuture({ ...this.store.doc, nodes }, futureVersion(), futureRelease());
+    }
+    const on = this.futureNewOn;
     if (btn.classList.contains("has-new") === on) return;
     btn.classList.toggle("has-new", on);
     btn.title = on ? `${FUTURE_BTN_TITLE}（新しい版があります）` : FUTURE_BTN_TITLE;
@@ -399,7 +428,7 @@ export class App implements AppContext {
         history.replaceState(null, "", location.pathname + location.search.replace(/[?&](stress|demo)(=[^&]*)?/g, "").replace(/^&/, "?"));
         location.reload();
       });
-      add("info", "layers", `性能確認用の一時表示です（${Object.keys(this.store.doc.nodes).length.toLocaleString("ja-JP")} ノード）。変更は保存されず、ふだんのデータにも触れません。`, back);
+      add("info", "layers", `性能確認用の一時表示です（${this.vm.nodeCount.toLocaleString("ja-JP")} ノード）。変更は保存されず、ふだんのデータにも触れません。`, back);
       return;
     }
     if (!per.writer) {
@@ -929,6 +958,7 @@ export class App implements AppContext {
     this.ui.select([]);
     this.ui.setPrefs({ projectFilter: [], scenarioId: null, timeCursor: null });
     this.ui.setSearch("");
+    // 全体を見てよい: 入れ替えた直後に 1 回だけ（変更のたびではない）
     const all = Object.keys(this.store.doc.nodes);
     this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, all) : undefined, { minZoom: opts.fitMinZoom });
     toast(opts.done ?? `${label}しました`, { tone: "ok", action: this.cmd.undoAction() });
@@ -945,9 +975,11 @@ export class App implements AppContext {
     const mark = this.futureMarkFor(doc);
     if (mark) this.store.doc.meta = { ...this.store.doc.meta, ...mark };
     void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
+    // 全体を見てよい: 追加の取り込みの前と後に 1 回ずつ（変更のたびではない）
     const before = new Set(Object.keys(this.store.doc.nodes));
     const res = mergeDocs(this.store.doc, doc);
     this.store.replaceDoc(res.doc, label);
+    // 全体を見てよい: 同じ取り込みの後の 1 回
     const added = Object.keys(this.store.doc.nodes).filter((id) => !before.has(id));
     this.ui.select(opts.select === false ? [] : added);
     this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, added) : added, { minZoom: opts.fitMinZoom });
@@ -1008,7 +1040,10 @@ export class App implements AppContext {
    * 自分で書いた内容があれば、追加か入れ替えかを選ぶ確認を出す
    */
   async showFuture(): Promise<void> {
-    const root = Object.values(this.store.doc.nodes).find((x) => x.meta?.forecastRoot === true);
+    // 予測の入口（索引が覚えている。文書の順で最初の物）
+    const idx = this.vm.index;
+    const rootId = this.vm.forecastRootIds().sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b))[0];
+    const root = rootId ? this.store.doc.nodes[rootId] : undefined;
     if (root) {
       if (this.ui.prefs.view !== "map") this.ui.setPrefs({ view: "map" });
       // 絞り込み・シナリオで隠れていたら「薄くする」にして出す（検索で選んだときと同じ）
@@ -1304,7 +1339,7 @@ export class App implements AppContext {
     if (this.ephemeral) return;
     const show = (): void => {
       if (this.store.readOnly) return;
-      if (!Object.values(this.store.doc.nodes).some((x) => x.meta?.forecastRoot === true)) return;
+      if (!this.vm.index.forecastRoots.size) return;
       const st = this.futureState();
       if (st.newer.length) return this.tellNewerFuture();
       const v = futureVersion();
@@ -1552,6 +1587,7 @@ export class App implements AppContext {
         const yielding = how === "remote" && isFreshFuture(this.store.doc);
         // 入れ替える前に見ていた未来の道筋の今日の位置（同じ所にまだあるなら、見ている場所はそのままにする）
         const rootAt = (d: DocData) => {
+          // 全体を見てよい: 届いた文書（ストアの文書ではない）の入口を、取り込むときに 1 回探す
           const r = Object.values(d.nodes).find((n) => n.meta?.forecastRoot === true);
           return r ? { x: r.x, y: r.y, v: r.meta?.futureVersion } : null;
         };

@@ -6,7 +6,7 @@ import { onlyTimeCursor } from "../app/uiState";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
 import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from "../model/dates";
 import type { GEdge, GNode, ID } from "../model/types";
-import { MOD, autosize, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
+import { MOD, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
 import { buildImpactNodeBlock, buildImpactOverview, focusLost, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
@@ -125,14 +125,26 @@ function sectionEl(title: string, ...children: Array<Node | null>): HTMLElement 
   return h("section", { class: "insp-section" }, h("h3", { class: "insp-label" }, title), ...children);
 }
 
+/** 次のフレームで高さを合わせるテキストエリア（と高さの上限） */
+const pendingFit = new Map<HTMLTextAreaElement, number | undefined>();
+let fitRaf = 0;
+
 /**
  * テキストエリアの高さを中身に合わせる。閉じている右のパネル（狭い画面の引き出しも）の中では幅がほとんど無く、
- * 高く測ったまま開いた後も残る。パネルを開く知らせはパネルが広がる前に届くので、次のフレーム（広がった後）にもう一度合わせる
+ * 高く測ったまま開いた後も残る。パネルを開く知らせはパネルが広がる前に届くので、次のフレーム（広がった後）に合わせる。
+ * 合わせるのは次のフレームの描く前に、その時の物をまとめて 1 回（先に全部を auto にしてから測る: 測るたびに配置を
+ * やり直さない。選ぶ・1 文字のたびに何度も配置をやり直すと、スマホで 100 ms 以上かかる: 作業メモ perf-4・perf-12）
  */
 function fitHeight(ta: HTMLTextAreaElement, max?: number): void {
-  autosize(ta, max);
-  requestAnimationFrame(() => {
-    if (ta.isConnected) autosize(ta, max);
+  pendingFit.set(ta, max);
+  if (fitRaf) return;
+  fitRaf = requestAnimationFrame(() => {
+    fitRaf = 0;
+    const list = [...pendingFit].filter(([t]) => t.isConnected);
+    pendingFit.clear();
+    for (const [t] of list) t.style.height = "auto";
+    const hs = list.map(([t, m]) => Math.min(m ?? 360, t.scrollHeight + 2));
+    list.forEach(([t], i) => (t.style.height = `${hs[i]}px`));
   });
 }
 
@@ -188,7 +200,7 @@ function bindText(app: AppContext, el: HTMLInputElement | HTMLTextAreaElement, w
   el.addEventListener("compositionend", () => (composing = false));
   unsaved.set(el, () => composing);
   el.addEventListener("input", () => {
-    if (el instanceof HTMLTextAreaElement) autosize(el);
+    if (el instanceof HTMLTextAreaElement) fitHeight(el);
     write(el.value);
   });
   el.addEventListener("blur", () => app.store.history.seal());
@@ -777,6 +789,18 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
 
 // ------------------------------------------------------------ 何も選んでいない
 
+/** 未来の道筋（v1）の分かれ道の数（見込みの結果ごとに 1 回数える） */
+const forkCounts = new WeakMap<object, number>();
+function forkCount(fc: { reach: ReadonlyMap<ID, unknown> }, doc: { nodes: Record<ID, GNode> }): number {
+  let c = forkCounts.get(fc);
+  if (c === undefined) {
+    c = 0;
+    for (const id of fc.reach.keys()) if (doc.nodes[id]?.type === "branch") c++;
+    forkCounts.set(fc, c);
+  }
+  return c;
+}
+
 function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void): void {
   const { store, vm, ui } = app;
   const wrap = h("div", { class: "insp-overview" });
@@ -807,10 +831,10 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
       h("button", { class: "btn btn-sm", type: "button", onClick: () => app.startTour() }, icon("help", 14), "操作ガイドを見る"),
     ),
   );
+  // 数はどれも索引から（文書をなめない。作業メモ perf-4・gaps-8）。プロジェクトをまたぐノードは見え方の計算が覚えている物
   push(() => {
-    vm.ensure();
     const doc = store.doc;
-    const nodes = Object.values(doc.nodes);
+    const idx = vm.index;
     const impactShown = impact.update();
     clear(ends);
     const fc = vm.forecast;
@@ -818,7 +842,7 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
     if (!impactShown && fc.active && fc.ends.length) {
       const sid = ui.prefs.scenarioId;
       const scen = sid ? doc.scenarios[sid] : undefined;
-      const forks = [...fc.reach.keys()].filter((id) => doc.nodes[id]?.type === "branch").length;
+      const forks = forkCount(fc, doc);
       ends.append(
         h("h3", { class: "insp-label" }, "行き先の見込み", scen ? h("span", { class: "insp-count" }, `${scen.name}を選んだ場合`) : null),
         h("div", { class: "muted small forecast-sub" }, `今日から最長 ${fc.longest} 歩・分かれ道 ${forks} 個。線の % を直すと計算し直します`),
@@ -843,15 +867,15 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
     clear(stats);
     const stat = (label: string, value: number, hint: string, iconName: string) => h("div", { class: "stat", title: hint }, h("span", { class: "stat-icon" }, icon(iconName, 14)), h("span", { class: "stat-value" }, value.toLocaleString("ja-JP")), h("span", { class: "stat-label" }, label));
     stats.append(
-      stat("ノード", nodes.length, "目標・行動・分岐・結果", "layers"),
-      stat("接続", Object.keys(doc.edges).length, "方向と関係を持つ線", "link"),
-      stat("共有ノード", vm.index.shared.size, "2 つ以上のプロジェクトに属するノード", "merge"),
-      stat("プロジェクト間の線", vm.index.cross.size, "別のプロジェクトへ影響する線", "sparkle"),
+      stat("ノード", idx.nodeCount, "目標・行動・分岐・結果", "layers"),
+      stat("接続", idx.edgeCount, "方向と関係を持つ線", "link"),
+      stat("共有ノード", idx.shared.size, "2 つ以上のプロジェクトに属するノード", "merge"),
+      stat("プロジェクト間の線", idx.cross.size, "別のプロジェクトへ影響する線", "sparkle"),
     );
     clear(bars);
-    const total = Math.max(1, nodes.length);
+    const total = Math.max(1, idx.nodeCount);
     for (const t of NODE_TYPE_ORDER) {
-      const c = nodes.filter((n) => n.type === t).length;
+      const c = idx.typeCounts[t] ?? 0;
       bars.append(
         h(
           "div",
@@ -862,13 +886,14 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
         ),
       );
     }
-    // いちばん多くのプロジェクトに効いている行動（相乗効果の目安。計算はせず、所属と線の数だけ）
+    // いちばん多くのプロジェクトに効いている行動（相乗効果の目安。計算はせず、所属と線の数だけ）。3 年の分かれ道のカードは除く
+    // （地図のカードはどれも 3 つの領域に属する。見え方の計算が形・所属の版ごとに覚えている）
     clear(insight);
-    const hubs = nodes
-      .map((n) => ({ n, reach: new Set([...(vm.index.out.get(n.id) ?? [])].flatMap((eid) => doc.nodes[doc.edges[eid]!.target]!.projectIds)).size, outs: vm.index.out.get(n.id)?.length ?? 0 }))
-      .filter((x) => x.n.projectIds.length > 1 || x.reach > 1)
-      .sort((a, b) => b.n.projectIds.length + b.reach - (a.n.projectIds.length + a.reach) || b.outs - a.outs)
-      .slice(0, 3);
+    const hubs = vm
+      .hubs(3)
+      .map((id) => doc.nodes[id])
+      .filter((n): n is GNode => !!n)
+      .map((n) => ({ n }));
     if (hubs.length) {
       insight.append(h("h3", { class: "insp-label" }, "プロジェクトをまたぐノード"));
       for (const x of hubs) {

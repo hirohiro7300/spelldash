@@ -13,7 +13,7 @@ import { futureData } from "../demo/futureBundle";
 import { formatPercent } from "../model/forecast";
 import { IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, type AltInfo, type ImpactResult, type SalaryFlips } from "../model/impact";
 import { formatMan, formatShare, IMPACT_FILL, IMPACT_INK, IMPACT_NEUTRAL_RING, impactBin } from "../model/impactFormat";
-import { cachedWorthRanking, famLabel, hasFamLabel, keyDecisions } from "../model/impactRank";
+import { cachedAvoidRanking, cachedWorthRanking, famLabel, hasFamLabel, keyDecisions, worthReady, worthStep } from "../model/impactRank";
 import {
   altMetaParts,
   areaOf,
@@ -792,11 +792,32 @@ function famRow(app: AppContext, imp: ImpactResult, r: FamRowData, kind: "worth"
   );
 }
 
-/** 「3 年でやる価値が大きい手」: 手の種類ごとに、ずっと使わない場合との差が 1 万円以上の物を、大きい順に 5 つまで */
+/**
+ * 「3 年でやる価値が大きい手」: 手の種類ごとに、ずっと使わない場合との差が 1 万円以上の物を、大きい順に 5 つまで。
+ * 種類ごとに逆にたどる計算が 1 回要る（8 万枚で 1 回数 ms〜10 ms）。大きい地図では、パネルを描いた後に、手が空いたときに
+ * 1 種類ずつ数え、その間は「計算中」の行を出す（シナリオ・年収・選んだ手の変更で、入力から次の画面までを待たせない: 作業メモ perf-4）。
+ * 数が変わってパネルを作り直したら（この欄が外れたら）、そこで止める
+ */
 function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
   const span = horizonText(imp.horizon);
   sec.append(h("h3", { class: "insp-label" }, `${span}でやる価値が大きい手`, h("span", { class: "insp-count" }, "ずっと使わない場合との差")));
+  if (imp.counts.nodes <= FLIP_SYNC_NODES) while (!worthStep(imp));
+  if (!worthReady(imp)) {
+    sec.append(h("p", { class: "imp-note imp-worth-wait", attrs: { "aria-busy": "true" } }, "手の種類ごとの差を計算中…"));
+    sec.classList.add("is-busy");
+    const step = (): void => {
+      // 作り直した・数が変わった: やめる（次のパネルが自分で始める。同じ結果なら数えた所から続く）
+      if (!sec.isConnected || app.vm.impact !== imp) return;
+      if (worthStep(imp)) {
+        sec.classList.remove("is-busy");
+        fillWorth(app, imp, sec, seen);
+      } else whenIdle(step);
+    };
+    whenIdle(step);
+    return;
+  }
+  sec.classList.remove("is-busy");
   const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast)
     .worth.filter((w) => w.k >= WORTH_MIN)
     .slice(0, WORTH_LIMIT);
@@ -812,7 +833,7 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
 /** 「避けたい手」: 出てくる所の差の平均（来る見込みで重み付け）が −15 万円以下の種類を、悪い順に 3 つまで。無ければ欄ごと出さない */
 function fillAvoid(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
-  const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast).avoid.slice(0, AVOID_LIMIT);
+  const rows = cachedAvoidRanking(app.store.doc, imp, app.vm.forecast).slice(0, AVOID_LIMIT);
   sec.hidden = !rows.length;
   if (!rows.length) return;
   sec.append(h("h3", { class: "insp-label" }, "避けたい手", h("span", { class: "insp-count" }, "出てくる所の差の平均")));

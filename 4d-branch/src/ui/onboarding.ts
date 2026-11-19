@@ -22,14 +22,16 @@ export function startTour(app: AppContext): void {
     const doc = store.doc;
     const demo = doc.nodes["n_demo_learn_ads"];
     if (demo) return demo.id;
-    // いちばん多くのプロジェクトに属し、線の多いノード
+    // いちばん多くのプロジェクトに属し、線の多いノード。3 年の分かれ道のカードは除く（どれも 3 つの領域に属する。文書をなめない:
+    // 範囲の外のノードは見え方の計算が覚えている）。自分のノードが無ければ、3 年の分かれ道の入口
     let best: { id: string; score: number } | null = null;
-    for (const id in doc.nodes) {
-      const n = doc.nodes[id]!;
+    for (const id of app.vm.userNodeIds()) {
+      const n = doc.nodes[id];
+      if (!n) continue;
       const score = n.projectIds.length * 10 + (app.vm.index.out.get(id)?.length ?? 0);
       if (!best || score > best.score) best = { id, score };
     }
-    return best?.id ?? null;
+    return best?.id ?? app.vm.impactRoots()[0] ?? null;
   };
   /**
    * パネルを照らすステップ用。閉じていれば（狭い画面では左右とも閉じて始める）そのステップの間だけ開き、

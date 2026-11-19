@@ -11,6 +11,8 @@ import { icon } from "./icons";
 
 const PAD_L = 14;
 const PAD_R = 14;
+/** 再生中に時点を変える間隔（ms。1 秒に約 15 回） */
+const PLAY_MS = 66;
 
 export function buildBottomBar(app: AppContext): HTMLElement {
   const { store, ui, vm } = app;
@@ -40,21 +42,21 @@ export function buildBottomBar(app: AppContext): HTMLElement {
   let range = { start: 0, end: 1 };
   let markers: Array<{ id: ID; x: number; y: number; type: NodeType }> = [];
   let dragging = false;
-  let playing: { raf: number; from: number; to: number; t0: number } | null = null;
+  let playing: { raf: number; from: number; to: number; t0: number; lastDay: number; lastAt: number } | null = null;
   let scheduled = false;
   let hoverId: ID | null = null;
 
+  /** 時間軸の幅の材料（期限の版と今日）。同じなら作り直さない */
+  let rangeKey = "";
+  /** 時間軸の幅: 期限の一番早い日と遅い日は索引が持つ（文書をなめない。期限が変わったときだけ索引が直す: 作業メモ perf-4・gaps-8） */
   const computeRange = () => {
     const today = dayNumber(todayStr());
-    let min = today;
-    let max = today;
-    for (const id in store.doc.nodes) {
-      const due = store.doc.nodes[id]!.time.due;
-      if (!due) continue;
-      const d = dayNumber(due);
-      if (d < min) min = d;
-      if (d > max) max = d;
-    }
+    const key = `${vm.index.version.dates}|${today}`;
+    if (key === rangeKey) return;
+    rangeKey = key;
+    const due = vm.index.dueRange();
+    const min = due ? Math.min(today, due.min) : today;
+    const max = due ? Math.max(today, due.max) : today;
     const startStr = addMonths(fromDayNumber(min), -1).slice(0, 8) + "01";
     const endStr = addMonths(fromDayNumber(Math.max(max, today + 300)), 2).slice(0, 8) + "01";
     range = { start: dayNumber(startStr), end: dayNumber(endStr) };
@@ -333,7 +335,12 @@ export function buildBottomBar(app: AppContext): HTMLElement {
       if (!playing) return;
       const p = Math.min(1, (t - playing.t0) / 7000);
       const d = Math.round(playing.from + (playing.to - playing.from) * p);
-      ui.setPrefs({ timeCursor: fromDayNumber(d) });
+      // 時点を変えるのは、日が変わって前から PLAY_MS 以上たったときと最後だけ（毎フレームは見え方を作り直さない: 作業メモ perf-15）
+      if (p >= 1 || (d !== playing.lastDay && t - playing.lastAt >= PLAY_MS)) {
+        playing.lastDay = d;
+        playing.lastAt = t;
+        ui.setPrefs({ timeCursor: fromDayNumber(d) });
+      }
       if (p >= 1) {
         playing = null;
         syncControls();
@@ -341,7 +348,7 @@ export function buildBottomBar(app: AppContext): HTMLElement {
       }
       playing.raf = requestAnimationFrame(step);
     };
-    playing = { raf: 0, from, to, t0: performance.now() };
+    playing = { raf: 0, from, to, t0: performance.now(), lastDay: NaN, lastAt: -Infinity };
     playing.raf = requestAnimationFrame(step);
     syncControls();
   });
@@ -365,9 +372,15 @@ export function buildBottomBar(app: AppContext): HTMLElement {
     }
   };
 
+  // シナリオの切替を作り直すのは、シナリオ（中身・並び）が変わったときだけ（題名・状態などの編集では作り直さない）
+  let seenScenarioOrder: unknown = store.doc.scenarioOrder;
   store.on("change", (info) => {
     schedule();
-    if (!info.positionsOnly) renderScenarios();
+    if (info.positionsOnly) return;
+    if (info.full || info.scenarios.size || store.doc.scenarioOrder !== seenScenarioOrder) {
+      seenScenarioOrder = store.doc.scenarioOrder;
+      renderScenarios();
+    }
   });
   ui.on("visual", schedule);
   ui.on("prefs", (p) => {

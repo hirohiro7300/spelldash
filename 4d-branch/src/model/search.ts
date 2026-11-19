@@ -1,4 +1,5 @@
-// ノード検索。全角・半角、大文字・小文字、カタカナ・ひらがなの違いを無視する。`#タグ` でタグを絞る
+// ノード検索。全角・半角、大文字・小文字、カタカナ・ひらがなの違いを無視する。`#タグ` でタグを絞る。
+// アプリの検索は文字の表の索引（./searchIndex.ts。同じ点の付け方に、ひとこと・線の文を足した物）。searchNodes は全部のノードを見る元の作り
 
 import { NODE_TYPES, STATUSES } from "./constants";
 import type { DocData, GNode, ID, Project } from "./types";

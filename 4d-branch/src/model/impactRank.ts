@@ -86,30 +86,83 @@ export interface WorthRanking {
   avoid: AvoidRow[];
 }
 
-/** 「3 年でやる価値が大きい手」と「避けたい手」 */
-export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): WorthRanking {
-  if (!imp.active) return { worth: [], avoid: [] };
-  const by = instancesByFam(doc, imp, fc);
-  const worth: WorthRow[] = [];
+/** 種類ごとの出てくる所（結果ごとに 1 度だけ数える。やる価値と避けたい手で使い回す） */
+const byFamCache = new WeakMap<ImpactResult, Map<string, Array<{ id: ID; p: number; delta: number | null }>>>();
+function cachedByFam(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): Map<string, Array<{ id: ID; p: number; delta: number | null }>> {
+  let by = byFamCache.get(imp);
+  if (!by) byFamCache.set(imp, (by = instancesByFam(doc, imp, fc)));
+  return by;
+}
+
+/** 「避けたい手」（出てくる所の差の平均。やる価値と違って、逆にたどる計算は要らない） */
+function avoidRows(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): AvoidRow[] {
+  if (!imp.active) return [];
+  const by = cachedByFam(doc, imp, fc);
   const avoid: AvoidRow[] = [];
   for (const fam of imp.families()) {
     const list = by.get(fam);
     if (!list?.length) continue;
-    const ids = list.map((x) => x.id);
-    const project = projectOf(doc, ids);
-    const k = imp.never(fam).k;
-    if (k !== null && Number.isFinite(k)) worth.push({ fam, k, instances: ids, project });
     let sw = 0;
     let sv = 0;
     for (const x of list) if (x.delta !== null && x.p > 0) (sw += x.p), (sv += x.p * x.delta);
-    if (sw > 0 && sv / sw <= IMPACT_AVOID_MEAN) avoid.push({ fam, mean: sv / sw, instances: ids, project });
+    if (sw > 0 && sv / sw <= IMPACT_AVOID_MEAN) {
+      const ids = list.map((x) => x.id);
+      avoid.push({ fam, mean: sv / sw, instances: ids, project: projectOf(doc, ids) });
+    }
+  }
+  avoid.sort((a, b) => a.mean - b.mean || (a.fam < b.fam ? -1 : 1));
+  return avoid.slice(0, 3);
+}
+
+/** 「3 年でやる価値が大きい手」と「避けたい手」 */
+export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): WorthRanking {
+  if (!imp.active) return { worth: [], avoid: [] };
+  const by = cachedByFam(doc, imp, fc);
+  const worth: WorthRow[] = [];
+  for (const fam of imp.families()) {
+    const list = by.get(fam);
+    if (!list?.length) continue;
+    const ids = list.map((x) => x.id);
+    const k = imp.never(fam).k;
+    if (k !== null && Number.isFinite(k)) worth.push({ fam, k, instances: ids, project: projectOf(doc, ids) });
   }
   worth.sort((a, b) => b.k - a.k || (a.fam < b.fam ? -1 : 1));
-  avoid.sort((a, b) => a.mean - b.mean || (a.fam < b.fam ? -1 : 1));
-  return { worth, avoid: avoid.slice(0, 3) };
+  return { worth, avoid: cachedAvoidRanking(doc, imp, fc) };
+}
+
+const avoidCache = new WeakMap<ImpactResult, AvoidRow[]>();
+
+/** 「避けたい手」を結果ごとに覚えておく（やる価値の逆にたどる計算を待たずに出せる） */
+export function cachedAvoidRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): AvoidRow[] {
+  let hit = avoidCache.get(imp);
+  if (!hit) avoidCache.set(imp, (hit = avoidRows(doc, imp, fc)));
+  return hit;
 }
 
 const worthCache = new WeakMap<ImpactResult, WorthRanking>();
+/** 「やる価値」（never(fam).k: 1 回の逆にたどる計算）を数え終えた手の種類（結果ごと） */
+const worthDone = new WeakMap<ImpactResult, Set<string>>();
+
+/** 「3 年でやる価値が大きい手」の数が揃っているか（揃うまでは、手が空いたときに worthStep で 1 種類ずつ数える） */
+export function worthReady(imp: ImpactResult): boolean {
+  if (!imp.active || worthCache.has(imp)) return true;
+  const done = worthDone.get(imp);
+  return !!done && imp.families().every((f) => done.has(f));
+}
+
+/** まだ数えていない手の種類を 1 つ数える（逆にたどる計算 1 回）。全部揃ったら true */
+export function worthStep(imp: ImpactResult): boolean {
+  if (worthReady(imp)) return true;
+  let done = worthDone.get(imp);
+  if (!done) worthDone.set(imp, (done = new Set()));
+  for (const f of imp.families()) {
+    if (done.has(f)) continue;
+    void imp.never(f).k;
+    done.add(f);
+    break;
+  }
+  return worthReady(imp);
+}
 
 /**
  * worthRanking を 3 年の影響の結果（imp）ごとに覚えておく（同梱の地図で 20 ms ほど。概要を作り直すたびには計算しない）。

@@ -352,10 +352,14 @@ describe("3 年の分かれ道: 開く・閉じるは見え方だけ（文書・
 });
 
 describe("見え方の計算: 範囲と折りたたみは材料が同じなら使い回す", () => {
-  it("選択・検索・時点だけでは計算し直さず、開閉・文書・シナリオ・絞り込みが変わったら計算し直す（どちらも作り直したときと同じ結果）", () => {
+  it("選択・検索・時点・題名だけでは見えるノードを作り直さず、開閉・シナリオで隠す・絞り込みが変わったら作り直す（どちらも作り直したときと同じ結果）", () => {
     const { store, ui, vm, cmd } = setup(buildImpactDoc(r6Bundle(), new Date(2026, 10, 18), "t"));
     vm.narrow = () => false;
-    const col = () => (vm as unknown as { last: { col: unknown } }).last.col;
+    /** 見えるノードの計算の結果（絞り込みが無いときは速い道、あるときは範囲を作る道） */
+    const vis = () => {
+      const l = (vm as unknown as { last: { fast: unknown; full: unknown } }).last;
+      return l.fast ?? l.full;
+    };
     /** 同じ文書・設定・選択で、いちから作った見え方と同じか */
     const sameAsFresh = () => {
       vm.ensure();
@@ -370,7 +374,7 @@ describe("見え方の計算: 範囲と折りたたみは材料が同じなら�
     vm.ensure();
     const root = vm.impactRoots()[0]!;
     const alt = vm.index.out.get(root)!.map((e) => store.doc.edges[e]!.target)[0]!;
-    const c0 = col();
+    const c0 = vis();
     ui.select([alt]);
     vm.ensure();
     expect(vm.pathActive).toBe(true);
@@ -378,40 +382,39 @@ describe("見え方の計算: 範囲と折りたたみは材料が同じなら�
     vm.ensure();
     ui.setPrefs({ timeCursor: "2027-06-30" });
     vm.ensure();
-    expect(col()).toBe(c0);
+    expect(vis()).toBe(c0);
+    sameAsFresh();
+    // 題名の 1 文字（見えるノードは変わらない）
+    cmd.updateNode(alt, { title: "変えた" });
+    vm.ensure();
+    expect(vis()).toBe(c0);
     sameAsFresh();
     // 開く・閉じる（見え方）
     cmd.toggleCollapse([alt]);
     vm.ensure();
-    const c1 = col();
+    const c1 = vis();
     expect(c1).not.toBe(c0);
-    sameAsFresh();
-    // 文書の変更
-    cmd.updateNode(alt, { title: "変えた" });
-    vm.ensure();
-    const c2 = col();
-    expect(c2).not.toBe(c1);
     sameAsFresh();
     // シナリオ（隠す → 薄くする）
     ui.setPrefs({ scenarioId: "s_early", scenarioMode: "hide" });
     vm.ensure();
-    const c3 = col();
-    expect(c3).not.toBe(c2);
+    const c3 = vis();
+    expect(c3).not.toBe(c1);
     sameAsFresh();
     ui.setPrefs({ scenarioMode: "dim" });
     vm.ensure();
-    const c4 = col();
+    const c4 = vis();
     expect(c4).not.toBe(c3);
     sameAsFresh();
     // プロジェクトに絞る（絞る → 薄くする）
     ui.setPrefs({ projectFilter: ["p_spelldash"], projectMode: "focus" });
     vm.ensure();
-    const c5 = col();
+    const c5 = vis();
     expect(c5).not.toBe(c4);
     sameAsFresh();
     ui.setPrefs({ projectMode: "dim" });
     vm.ensure();
-    expect(col()).not.toBe(c5);
+    expect(vis()).not.toBe(c5);
     sameAsFresh();
   });
 });

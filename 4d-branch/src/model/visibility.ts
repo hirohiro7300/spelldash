@@ -1,4 +1,6 @@
 // 折りたたみと経路の計算。循環・合流があっても破綻しないようにする。設計: docs/DESIGN.md §3.8
+// 見え方の計算（src/app/viewModel.ts）は、絞り込み（プロジェクトに絞る・シナリオで隠す）が無いときは見えるノードだけをたどる速い道を使い、
+// computeCollapse・computeUnreached は絞り込みがあるときと、速い道の基準（tests/unit/visibleSet*.test.ts）に使う
 //
 // 折りたたみ:
 //   1. 折りたたんだノードの出る線・折りたたんだ線を「止める線」にする

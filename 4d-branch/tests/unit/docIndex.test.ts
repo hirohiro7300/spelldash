@@ -1,0 +1,189 @@
+// 文書の索引（src/model/docIndex.ts）: 変わった物だけ直した索引が、いちから作った buildIndex と同じか（並びまで）。
+// 足した数（ノード・線・種類・期限の幅・入口・折りたたみ・プロジェクトごとの共有）も、文書を数え直した物と同じか。
+// ストアの乱数の編集（足す・消す・付け替え・関係・所属・タグ・シナリオ・期限・入口の印・プロジェクトとシナリオの増減・元に戻す・やり直す・入れ替え）で確かめる
+import { describe, expect, it } from "vitest";
+import { dayNumber } from "../../src/model/dates";
+import { DocIndex } from "../../src/model/docIndex";
+import { isImpactRoot } from "../../src/model/forks";
+import { buildIndex } from "../../src/model/graph";
+import { makeEdge, makeNode, makeProject, makeScenario } from "../../src/model/schema";
+import type { DocData, GEdge, GNode, ID, NodeType, Relation } from "../../src/model/types";
+import { Store } from "../../src/store/store";
+import { pick, rng, synthMap } from "./helpers/synthMap";
+
+/** 索引と、文書を数え直した物の食い違い */
+function indexDiff(ix: DocIndex, doc: DocData): string[] {
+  const out: string[] = [];
+  const ref = buildIndex(doc);
+  const eq = (name: string, a: unknown, b: unknown) => {
+    const sa = JSON.stringify(a);
+    const sb = JSON.stringify(b);
+    if (sa !== sb && out.length < 10) out.push(`${name}: ${sa.slice(0, 200)} ≠ ${sb.slice(0, 200)}`);
+  };
+  const mapEntries = (m: Map<ID, unknown>) => [...m.entries()].sort((a, b) => (String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0));
+  eq("out", mapEntries(ix.out), mapEntries(ref.out));
+  eq("inc", mapEntries(ix.inc), mapEntries(ref.inc));
+  eq("projectNodes", mapEntries(ix.projectNodes), mapEntries(ref.projectNodes));
+  eq("unassigned", ix.unassigned, ref.unassigned);
+  eq("tags", ix.tags, ref.tags);
+  eq("cross", [...ix.cross].sort(), [...ref.cross].sort());
+  eq("shared", [...ix.shared].sort(), [...ref.shared].sort());
+  eq("scenarioCounts", mapEntries(ix.scenarioCounts), mapEntries(ref.scenarioCounts));
+  const nodes = Object.values(doc.nodes);
+  eq("nodeCount", ix.nodeCount, nodes.length);
+  eq("edgeCount", ix.edgeCount, Object.keys(doc.edges).length);
+  const types: Record<NodeType, number> = { goal: 0, action: 0, branch: 0, result: 0 };
+  for (const n of nodes) types[n.type]++;
+  eq("typeCounts", ix.typeCounts, types);
+  const days = nodes.map((n) => (n.time.due ? dayNumber(n.time.due) : NaN)).filter((d) => Number.isFinite(d));
+  eq("dueRange", ix.dueRange(), days.length ? { min: Math.min(...days), max: Math.max(...days) } : null);
+  eq("forecastRoots", [...ix.forecastRoots].sort(), nodes.filter((n) => n.meta?.forecastRoot === true).map((n) => n.id).sort());
+  eq("impactRoots", [...ix.impactRoots].sort(), nodes.filter((n) => isImpactRoot(n)).map((n) => n.id).sort());
+  eq("collapsedNodes", [...ix.collapsedNodes].sort(), nodes.filter((n) => n.collapsed).map((n) => n.id).sort());
+  eq("collapsedEdges", [...ix.collapsedEdges].sort(), Object.values(doc.edges).filter((e) => e.collapsed).map((e) => e.id).sort());
+  const sharedIn = new Map<ID, number>();
+  for (const [p, list] of ref.projectNodes) {
+    const c = list.filter((id) => ref.shared.has(id)).length;
+    if (c) sharedIn.set(p, c);
+  }
+  eq("sharedIn", mapEntries(ix.sharedIn), mapEntries(sharedIn));
+  // 描く順に使うキーの順
+  const keys = Object.keys(doc.nodes);
+  for (let i = 1; i < keys.length; i++) if (!(ix.nodeOrder(keys[i - 1]!) < ix.nodeOrder(keys[i]!))) eq(`nodeOrder ${keys[i]}`, ix.nodeOrder(keys[i]!), ">" + ix.nodeOrder(keys[i - 1]!));
+  const ekeys = Object.keys(doc.edges);
+  for (let i = 1; i < ekeys.length; i++) if (!(ix.edgeOrder(ekeys[i - 1]!) < ix.edgeOrder(ekeys[i]!))) eq(`edgeOrder ${ekeys[i]}`, ix.edgeOrder(ekeys[i]!), ">" + ix.edgeOrder(ekeys[i - 1]!));
+  return out;
+}
+
+const RELS: Relation[] = ["leads", "condition", "supports", "blocks", "feedback"];
+
+function randomEdit(rand: () => number, store: Store, k: number): string {
+  const doc = store.doc;
+  const ids = Object.keys(doc.nodes);
+  const eids = Object.keys(doc.edges);
+  const pids = Object.keys(doc.projects);
+  const sids = Object.keys(doc.scenarios);
+  if (!sids.length) sids.push("s_missing");
+  if (!pids.length) pids.push("p_missing");
+  const u = rand();
+  if (u < 0.1) {
+    store.transact("足す", (tx) => {
+      const n = tx.addNode(makeNode({ id: `x${k}`, title: `足した ${k}`, tags: rand() < 0.5 ? ["仕事", "Shigoto"] : ["shigoto"], projectIds: rand() < 0.5 ? [pick(rand, pids)] : [], time: { due: rand() < 0.5 ? "2031-01-01" : null, start: null } }));
+      if (ids.length) tx.addEdge(makeEdge({ id: `xe${k}`, source: pick(rand, ids), target: n.id, relation: pick(rand, RELS), scenarioIds: rand() < 0.3 ? [pick(rand, sids)] : [] }));
+    });
+    return "足す";
+  }
+  if (u < 0.18 && ids.length) {
+    store.transact("消す", (tx) => tx.deleteNode(pick(rand, ids)));
+    return "消す";
+  }
+  if (u < 0.28 && ids.length) {
+    store.transact("つなぐ", (tx) => tx.addEdge(makeEdge({ id: `y${k}`, source: pick(rand, ids), target: pick(rand, ids), relation: pick(rand, RELS), collapsed: rand() < 0.2, scenarioIds: rand() < 0.3 ? [pick(rand, sids)] : [] })));
+    return "つなぐ";
+  }
+  if (u < 0.36 && eids.length) {
+    store.transact("線を消す", (tx) => tx.deleteEdge(pick(rand, eids)));
+    return "線を消す";
+  }
+  if (u < 0.46 && eids.length) {
+    const id = pick(rand, eids);
+    const e = doc.edges[id]!;
+    const patch: Partial<GEdge> = rand() < 0.3 ? { source: pick(rand, ids) } : rand() < 0.3 ? { target: pick(rand, ids) } : rand() < 0.5 ? { relation: pick(rand, RELS), collapsed: !e.collapsed } : { scenarioIds: rand() < 0.5 ? [] : [pick(rand, sids)], label: `l${k}` };
+    store.transact("線を変える", (tx) => tx.updateEdge(id, patch));
+    return "線を変える";
+  }
+  if (u < 0.66 && ids.length) {
+    const id = pick(rand, ids);
+    const n = doc.nodes[id]!;
+    const v = rand();
+    const patch: Partial<GNode> =
+      v < 0.2
+        ? { projectIds: rand() < 0.3 ? [] : rand() < 0.5 ? [pick(rand, pids)] : pids.slice(0, 2) }
+        : v < 0.35
+          ? { tags: rand() < 0.3 ? [] : [pick(rand, ["仕事", "SHIGOTO", "shigoto", "副業"]), "仕事"] }
+          : v < 0.5
+            ? { scenarioIds: rand() < 0.5 ? [] : [pick(rand, sids)] }
+            : v < 0.6
+              ? { type: pick(rand, ["goal", "action", "branch", "result"] as NodeType[]) }
+              : v < 0.72
+                ? { time: { due: rand() < 0.3 ? null : rand() < 0.5 ? "2020-02-02" : "2040-12-31", start: null } }
+                : v < 0.82
+                  ? { collapsed: !n.collapsed }
+                  : v < 0.9
+                    ? { meta: rand() < 0.5 ? { ...n.meta, forecastRoot: true, impact: { v: 2, horizon: 36 } } : { ...n.meta, forecastRoot: false } }
+                    : { title: `${n.title}x`, x: n.x + 10 };
+    store.transact("ノードを変える", (tx) => tx.updateNode(id, patch));
+    return "ノードを変える";
+  }
+  if (u < 0.72) {
+    if (rand() < 0.5) store.transact("プロジェクトを足す", (tx) => tx.addProject(makeProject({ id: `p${k}`, name: `P${k}` })));
+    else if (pids.length) store.transact("プロジェクトを消す", (tx) => tx.deleteProject(pick(rand, pids)));
+    return "プロジェクト";
+  }
+  if (u < 0.78) {
+    if (rand() < 0.5) store.transact("シナリオを足す", (tx) => tx.addScenario(makeScenario({ id: `s${k}`, name: `S${k}` })));
+    else if (sids.length) store.transact("シナリオを消す", (tx) => tx.deleteScenario(pick(rand, sids)));
+    return "シナリオ";
+  }
+  if (u < 0.88) {
+    store.undo();
+    return "元に戻す";
+  }
+  if (u < 0.97) {
+    store.redo();
+    return "やり直す";
+  }
+  // 入れ替え（全部が変わる）
+  const next = structuredClone(doc);
+  delete next.nodes[pick(rand, Object.keys(next.nodes))];
+  for (const [id, e] of Object.entries(next.edges)) if (!next.nodes[e.source] || !next.nodes[e.target]) delete next.edges[id];
+  store.replaceDoc(next, "入れ替え");
+  return "入れ替え";
+}
+
+describe("文書の索引: 変わった物だけ直しても、いちから作った物と同じ", () => {
+  for (const seed of [1, 2, 3]) {
+    it(`種 ${seed}: 乱数の編集 400 回の後でも buildIndex と同じ（並び・数・期限の幅・入口・折りたたみ）`, () => {
+      const syn = synthMap(seed, { cards: 600, users: 40, links: 80, twoRoots: seed === 2 });
+      const store = new Store(syn.doc);
+      const ix = new DocIndex(store.doc);
+      store.on("change", (info) => ix.apply(store.doc, info));
+      expect(indexDiff(ix, store.doc)).toEqual([]);
+      const rand = rng(seed * 104729);
+      const log: string[] = [];
+      for (let k = 0; k < 400; k++) {
+        log.push(randomEdit(rand, store, k));
+        const d = indexDiff(ix, store.doc);
+        if (d.length) throw new Error(`${k} 回目（${log.slice(-4).join("・")}）の後:\n${d.join("\n")}`);
+      }
+    });
+  }
+
+  it("題名・本文・位置だけの編集では、形・道の線・所属の版は進まない（中身の版だけ）", () => {
+    const syn = synthMap(5, { cards: 300, users: 10, links: 20 });
+    const store = new Store(syn.doc);
+    const ix = new DocIndex(store.doc);
+    store.on("change", (info) => ix.apply(store.doc, info));
+    const v0 = { ...ix.version };
+    const id = syn.cards[3]!;
+    store.transact("題名", (tx) => tx.updateNode(id, { title: "新しい題名", body: "本文" }));
+    store.transact("位置", (tx) => tx.updateNode(syn.users[0]!, { x: 999 }));
+    store.transact("状態", (tx) => tx.updateNode(id, { status: "active" }));
+    const eid = Object.keys(store.doc.edges)[2]!;
+    store.transact("線の文", (tx) => tx.updateEdge(eid, { label: "新しい名前", condition: "新しい条件" }));
+    expect(ix.version.topo).toBe(v0.topo);
+    expect(ix.version.flow).toBe(v0.flow);
+    expect(ix.version.members).toBe(v0.members);
+    expect(ix.version.scen).toBe(v0.scen);
+    expect(ix.version.collapse).toBe(v0.collapse);
+    expect(ix.version.content).toBeGreaterThan(v0.content);
+    // 相乗効果の線を足すと形は進むが、道の線は進まない。道の線を足すと両方
+    const v1 = { ...ix.version };
+    store.transact("相乗効果", (tx) => tx.addEdge(makeEdge({ id: "sup", source: syn.users[1]!, target: id, relation: "supports" })));
+    expect(ix.version.topo).toBeGreaterThan(v1.topo);
+    expect(ix.version.flow).toBe(v1.flow);
+    store.transact("道", (tx) => tx.addEdge(makeEdge({ id: "fl", source: id, target: syn.users[1]!, relation: "leads" })));
+    expect(ix.version.flow).toBeGreaterThan(v1.flow);
+    expect(indexDiff(ix, store.doc)).toEqual([]);
+  });
+});

@@ -619,6 +619,13 @@ kbd {
   color: var(--text-3);
   text-align: center;
 }
+/* 当たりの残りの数・探す所の説明（組み立てた本文は探さない） */
+.search-note {
+  padding: 6px 12px 8px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
 
 .save-status {
   display: inline-flex;

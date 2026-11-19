@@ -194,7 +194,7 @@ function mainMenu(app: AppContext): MenuEntry[] {
     { label: "名前を変更…", icon: "tag", disabled: ro, run: () => app.renameDoc() },
     { label: `やりたいことリスト（${WISHLIST_SIZE_LABEL}）を読み込む…`, icon: "goal", disabled: ro, run: () => app.loadWishlist() },
     { label: "未来の道筋（仕事・3 年）を読み込む…", icon: "split", disabled: ro, run: () => app.loadFuture() },
-    { label: "未来の道筋だけを新しい版に差し替える…", icon: "swap", disabled: ro || !Object.values(app.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), run: () => void app.swapFuture() },
+    { label: "未来の道筋だけを新しい版に差し替える…", icon: "swap", disabled: ro || app.vm.index.forecastRoots.size === 0, run: () => void app.swapFuture() },
     { label: "デモを読み込む（置き換え）", icon: "sparkle", disabled: ro, run: () => void app.loadDemo() },
     { label: "空のドキュメントにする", icon: "reset", disabled: ro, run: () => void app.newEmptyDoc() },
     "sep",
@@ -226,8 +226,9 @@ function buildSearch(app: AppContext): HTMLElement {
 
   const render = () => {
     vm.ensure();
+    // 当たりは上の 50 件だけ並べ、数は全部（言葉と中身が同じなら前の答え: 作業メモ perf-9）
     const hits = vm.searchHits;
-    count.textContent = ui.search.trim() ? `${hits.length} 件` : "";
+    count.textContent = ui.search.trim() ? `${vm.searchCount.toLocaleString("ja-JP")} 件` : "";
     kbd.hidden = !!ui.search || document.activeElement === input;
     clear(results);
     items = hits.slice(0, 50).map((x) => x.id);
@@ -236,8 +237,11 @@ function buildSearch(app: AppContext): HTMLElement {
       return;
     }
     results.hidden = false;
+    // 3 年の分かれ道があるときは、カードの本文（組み立てた文章）は探さないことを伝える
+    const note = vm.index.impactRoots.size ? h("div", { class: "search-note" }, "地図のカードは題名・ひとこと・結果の名前・判断の文で探します（組み立てた本文は探しません）") : null;
     if (items.length === 0) {
       results.append(h("div", { class: "search-empty" }, "見つかりません"));
+      if (note) results.append(note);
       return;
     }
     active = Math.min(active, items.length - 1);
@@ -260,6 +264,8 @@ function buildSearch(app: AppContext): HTMLElement {
       });
       results.append(row);
     });
+    if (vm.searchCount > items.length) results.append(h("div", { class: "search-note" }, `ほか ${(vm.searchCount - items.length).toLocaleString("ja-JP")} 件（言葉を足すと絞れます）`));
+    if (note) results.append(note);
   };
 
   const go = (i: number) => {
