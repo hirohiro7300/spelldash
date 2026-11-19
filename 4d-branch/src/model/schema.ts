@@ -14,6 +14,26 @@ export class DocFormatError extends Error {
   override name = "DocFormatError";
 }
 
+/**
+ * このページより新しい版（スキーマ）で保存されたデータ。壊れているのではなく、このページが古い。
+ * DocFormatError の一種（取り込み・アカウントの写しは今までどおり読めない理由として扱う）。
+ * 保存先（本体・緊急コピー・バックアップ）では壊れたデータと分け、読まずに残す（上書きも削除もしない）。設計: docs/DESIGN.md §3.10・§5
+ */
+export class NewerDocError extends DocFormatError {
+  override name = "NewerDocError";
+  /** 保存されていた版 */
+  readonly version: number;
+  constructor(version: number) {
+    super(`このファイルは新しい版（スキーマ ${version}）の 4D Branch で作られています。アプリを新しくしてから読み込んでください。`);
+    this.version = version;
+  }
+}
+
+/** 版の印（ドキュメント・版の記録・バックアップの見出しの docVersion）が、このページより新しいか */
+export function isNewerVersion(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && Math.floor(v) > SCHEMA_VERSION;
+}
+
 export interface NormalizeReport {
   warnings: string[];
   dropped: { nodes: number; edges: number; projects: number; scenarios: number };
@@ -274,12 +294,10 @@ const EXPORT_ONLY_KEYS = new Set(["exportedAt", "app"]);
 
 // ---------------------------------------------------------------- 版の移行
 
-/** 古い版のファイルを今の版へ。新しすぎる版は読まない（勝手に壊さない） */
+/** 古い版のファイルを今の版へ。新しすぎる版は読まない（勝手に壊さない。壊れたデータとは分けて NewerDocError） */
 export function migrate(raw: Obj): Obj {
   const v = typeof raw.version === "number" && Number.isFinite(raw.version) ? Math.floor(raw.version) : SCHEMA_VERSION;
-  if (v > SCHEMA_VERSION) {
-    throw new DocFormatError(`このファイルは新しい版（スキーマ ${v}）の 4D Branch で作られています。アプリを新しくしてから読み込んでください。`);
-  }
+  if (v > SCHEMA_VERSION) throw new NewerDocError(v);
   const out = raw;
   // 版 1 が最初の版。版を上げるときはここに順に足す: if (v < 2) out = v1to2(out); …
   return { ...out, version: SCHEMA_VERSION };

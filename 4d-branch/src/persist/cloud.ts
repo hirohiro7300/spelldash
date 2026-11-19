@@ -176,7 +176,8 @@ export async function decodeDoc(enc: Manifest["enc"], payload: string): Promise<
   try {
     return normalizeDoc(raw).doc;
   } catch (e) {
-    // 新しい版のアプリで保存された（このページが古い）など: 上書きせずに止める
+    // 新しい版のアプリで保存された（このページが古い。NewerDocError も DocFormatError の一種）など: 上書きせずに止める。
+    // 壊れた写し（corrupt）とは分ける: corrupt は手元の内容で書き直すが、format は「同期をやり直す」でも書き直さない
     if (e instanceof DocFormatError) throw new CloudError("format", e.message);
     throw e;
   }

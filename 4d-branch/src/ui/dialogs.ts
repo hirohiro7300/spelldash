@@ -10,7 +10,7 @@ import { buildFuture } from "../demo/futureBundle";
 import { FUTURE_MIN_ZOOM, nearFutureRoot } from "../demo/futureSwap";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
-import { BACKUP_LABELS, type BackupMeta } from "../persist/persistence";
+import { BACKUP_LABELS, isNewerBackup, type BackupMeta } from "../persist/persistence";
 import { MOD, clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { confirmDialog, openModal, toast } from "./overlays";
@@ -106,11 +106,37 @@ export function openBackupDialog(app: AppContext): void {
   void renderList();
 }
 
+/** このページより新しい版で作られたバックアップの印・断るときの文 */
+const BACKUP_NEWER_MARK = "このページより新しい版";
+const BACKUP_NEWER_TEXT = "このバックアップは、このページより新しい版で作られています。この版では復元できません。最新の版のページを開いて復元してください。";
+const BACKUP_NEWER_EXPORT = "このバックアップは、このページより新しい版で作られています。この版では書き出せません。最新の版のページを開いて書き出してください。";
+const BACKUP_NEWER_TITLE = "このページより新しい版のバックアップです（最新の版のページで復元・書き出し・削除できます）";
+
 function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refresh: () => Promise<void>): HTMLElement {
   const per = app.persistence;
   const restore = h("button", { class: "btn btn-sm", type: "button", disabled: app.store.readOnly, title: "この時点の内容に戻す（今の内容は安全用バックアップに残ります）" }, icon("reset", 13), "復元");
+  const dl = h("button", { class: "icon-btn icon-btn-sm", type: "button", title: "JSON でダウンロード", ariaLabel: "ダウンロード" }, icon("download", 15));
+  const del = h("button", { class: "icon-btn icon-btn-sm", type: "button", title: "このバックアップを削除", ariaLabel: "削除" }, icon("trash", 15));
+  const when = h("div", { class: "backup-when" }, fmtWhen(b.createdAt));
+  // このページより新しい版のバックアップ: 一覧には出して印を付ける。復元は断り（押すと訳を出す）、書き出し・削除は新しい版のページに任せる
+  const markNewer = () => {
+    if (when.querySelector(".backup-newer")) return;
+    when.append(h("span", { class: "backup-newer", title: BACKUP_NEWER_TITLE }, BACKUP_NEWER_MARK));
+    restore.title = BACKUP_NEWER_TEXT;
+    for (const btn of [dl, del]) {
+      btn.disabled = true;
+      btn.title = BACKUP_NEWER_TITLE;
+    }
+  };
+  /** 新しい版と分かったら印を付けて断る（見出しに版の無いバックアップは、中身を読んで初めて分かる） */
+  const refuseNewer = (text = BACKUP_NEWER_TEXT) => {
+    markNewer();
+    toast(text, { tone: "warn", ms: 8000 });
+  };
   restore.addEventListener("click", async () => {
-    const doc = await per.readBackup(b.id);
+    if (isNewerBackup(b)) return refuseNewer();
+    const { doc, newer } = await per.readBackupChecked(b.id);
+    if (newer) return refuseNewer();
     if (!doc) return toast("このバックアップを読めませんでした", { tone: "error" });
     const ok = await confirmDialog({
       title: "このバックアップに戻しますか？",
@@ -121,23 +147,23 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
     await app.replaceDocSafely(doc, "バックアップから復元");
     closeDialog();
   });
-  const dl = h("button", { class: "icon-btn icon-btn-sm", type: "button", title: "JSON でダウンロード", ariaLabel: "ダウンロード" }, icon("download", 15));
   dl.addEventListener("click", async () => {
-    const doc = await per.readBackup(b.id);
+    const { doc, newer } = await per.readBackupChecked(b.id);
+    if (newer) return refuseNewer(BACKUP_NEWER_EXPORT);
     if (doc) app.exportJson(doc, `4d-branch_backup_${b.createdAt.slice(0, 16).replace(/[:T]/g, "-")}.json`);
   });
-  const del = h("button", { class: "icon-btn icon-btn-sm", type: "button", title: "このバックアップを削除", ariaLabel: "削除" }, icon("trash", 15));
   del.addEventListener("click", async () => {
     const ok = await confirmDialog({ title: "バックアップを削除", body: `${fmtWhen(b.createdAt)} のバックアップを削除します。この操作は元に戻せません。`, ok: "削除する", danger: true });
     if (!ok) return;
     await per.deleteBackup(b.id);
     await refresh();
   });
+  if (isNewerBackup(b)) markNewer();
   return h(
     "div",
     { class: "backup-row" },
     h("span", { class: `backup-kind kind-${b.kind}` }, BACKUP_LABELS[b.kind]),
-    h("div", { class: "backup-main" }, h("div", { class: "backup-when" }, fmtWhen(b.createdAt)), h("div", { class: "backup-sub" }, [b.label, b.docTitle].filter(Boolean).join(" · "))),
+    h("div", { class: "backup-main" }, when, h("div", { class: "backup-sub" }, [b.label, b.docTitle].filter(Boolean).join(" · "))),
     h("span", { class: "backup-counts" }, `ノード ${b.counts.nodes} · 接続 ${b.counts.edges}`),
     h("div", { class: "backup-actions" }, restore, dl, del),
   );
