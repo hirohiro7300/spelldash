@@ -15,7 +15,7 @@ import { joinsRow, rowJoinOf, type RowJoin } from "../../src/deepmap/core/path";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, MapData, MapRole } from "../../src/deepmap/mapData";
 import { BANKS, composeMarkedCard, composeMarkedConts, finishCard, type Banks, type Card, type ComposeRuntime } from "../../src/demo/compose";
-import { checkBanks, checkCard, checkCont, checkPaths, recommendIssues, wishIndex, type WishText } from "../../src/demo/compose/checks";
+import { checkBanks, checkCard, checkCont, checkPaths, recommendIssues, stateRecommendIssues, wishIndex, type WishText } from "../../src/demo/compose/checks";
 import { calendarOf, likeliest, recommended, type Calendar } from "../../src/demo/compose/path";
 import { hash, spaceJa, strip } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
@@ -48,7 +48,7 @@ export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C10", name: "数の言い方（月にならして・手数料とサーバー代を引いて・月に遊んだ人・3 つの月）", block: true },
   { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う・まとめた手と行き先が言う出来事の月（会社員に戻る月など）が標準の続きの出来事の月と合う", block: true },
   { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果・次の判断に無い手を勧めない）", block: true },
-  { id: "C13", name: "本文の「おすすめ」が画面のおすすめ（その年収の一番良い選び方の手）と同じ手で、おすすめより多いと言い切らない", block: true },
+  { id: "C13", name: "本文の「おすすめ」が画面のおすすめ（その年収の一番良い選び方の手）と同じ手で、おすすめより多いと言い切らない・状態は次の判断のおすすめの手（選べる手が無ければその訳）を言う", block: true },
   { id: "T4", name: "兄弟の題が違う（手も結果も）", block: true },
   { id: "D1", name: "『どちらも不可』なのに Pro が続く（データ。計算の側へ返す）", block: false },
   { id: "D2", name: "本当の状態の顧客の数が整数でない（データ。計算の側へ返す）", block: false },
@@ -88,16 +88,83 @@ export function sentencesOf(body: string): string[] {
 }
 
 /**
- * 構造の文: どのカードにもある枠で、中身は数の行と同じくデータ（次の 3 か月の問い・1 つの結果の見込み・分かれ目の書き出し・
- * 数で分かれる結果の数・年月だけの書き出し）。道の繰り返し（C6）には数えない（user-9: 構造の文が並ぶのは水増しに読めない）。
+ * 構造の文: どのカードにもある枠で、中身は数の行と同じくデータ（0.8 からは状態の数の枠: この結果の見込みと月の稼ぎの動き・3 年の見込み・
+ * 別の結果との 3 年の見込みの差・次の手の並びの違い・分かれ道・次の手とおすすめ・今日の手の効き目。手の 1 つの結果の見込み・分かれ目の書き出し・
+ * 数で分かれる結果の数・年月だけの書き出し）。状態の数の枠は言い方ごとに 1 つの枠として数える（道 1 本で 4 回まで。L2）。道の繰り返し（C6）には数えない（user-9: 構造の文が並ぶのは水増しに読めない）。
  * 状態の書き出しの年月（「# 年 # 月、」）は落としてから、残り（出来事の文）を中身として比べる
  */
+/** 見込みの割（「# 割」「# 割 # 分」「# 分」） */
+const WARI = "# (?:割(?: # 分)?|分)";
+/** 3 年の見込みの差に添える月の稼ぎの違い（「（年収で # 万円の差）」） */
+const NOTE = "(?:（[^）]*）)?";
+const L = "『[^』]*』";
 export const STRUCTURAL: readonly RegExp[] = [
-  // 次の 3 か月の問い（状態）
-  /^次の # か月は、.*か$/,
-  /^# 年 # 月までの手は、.*か$/,
-  /^ここからは、.*か$/,
-  /^次の # か月も今のまま続ける$/,
+  // 0.8（W2）: 状態の数の枠（L2: どれも 3 つ以上の言い方を道の上の位置で回す。言い方ごとに 1 つの枠として数える）
+  // S1 この結果の見込みと、この 3 か月の月の稼ぎの動き
+  new RegExp(`^(?:見込み ${WARI}の結果で、)?月の稼ぎは # か月前(?:とほぼ同じ|より # 万円(?:増えた|減った)(?:（主に[^）]*）)?)$`),
+  new RegExp(`^この # か月で月の稼ぎは(?:ほぼ動いていない|ほぼ動かず、この結果になる見込みは ${WARI}だった| # 万円(?:増えた|減った)(?:（主に[^）]*）)?| # 万円(?:増え|減り)(?:（主に[^）]*）)?、この結果になる見込みは ${WARI}だった)$`),
+  new RegExp(`^(?:${WARI}の見込みで起きた結果で、)?(?:月の稼ぎは # か月前と変わらない|# か月前と比べた月の稼ぎは [+−]# 万円(?:（主に[^）]*）)?)$`),
+  new RegExp(`^この結果になる見込みは ${WARI}だった$`),
+  new RegExp(`^${WARI}の見込みで起きた結果$`),
+  new RegExp(`^見込み ${WARI}の結果$`),
+  // S2 今日からの 3 年の見込み（ここまで + この先）と、3 か月前からの動き・ずっと今のままとの差（L1・L4）
+  /^今日からの # 年の見込みは −?# 万円（ここまで −?# 万円＋この先 −?# 万円）(?:で、(?:今日|# か月前)の見込み(?:より # 万円(?:上がった|下がった)|とほぼ同じ))?$/,
+  /^この先は、(?:毎回おすすめの手を選んだ場合|おすすめの手の後を標準の選び方で続けた場合)(?:で、ずっと今のままなら # 年で −?# 万円)?$/,
+  /^# 年の見込みは、ここまでの −?# 万円とこの先の −?# 万円で −?# 万円(?:になり、# か月前(?:より # 万円(?:上がった|下がった)|とほぼ同じ))?$/,
+  /^ここまでの −?# 万円にこの先の −?# 万円を足した # 年の見込みは −?# 万円(?:で、# か月前(?:より # 万円(?:上がった|下がった)|とほぼ同じ))?$/,
+  /^ずっと今のままの # 年(?:より # 万円(?:多い|少ない)|とほぼ同じ)$/,
+  // S3 同じ手の別の結果との 3 年の見込みの差（7 つの言い方を位置と兄弟の並びで回す。rep-4）
+  new RegExp(`^同じ手で${L}だった場合より、# 年の見込みが # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^# 年の見込みを${L}の場合と比べると、# 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^${L}だった道と比べて、# 年の見込みは # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^この結果の # 年の見込みは、${L}の場合より # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^${L}の場合なら、# 年の見込みは # 万円(?:少なかった|多かった)${NOTE}$`),
+  new RegExp(`^${L}の場合と比べた # 年の見込みは [+−]# 万円${NOTE}$`),
+  new RegExp(`^# 年の見込みで見ると、この結果は${L}の場合より # 万円(?:多い|少ない)${NOTE}$`),
+  new RegExp(`^同じ手で${L}だった場合と、# 年の見込みはほとんど変わらない${NOTE}$`),
+  new RegExp(`^# 年の見込みは、${L}の場合とほぼ同じ${NOTE}$`),
+  new RegExp(`^${L}と比べても、この結果の # 年の見込みはほぼ同じ${NOTE}$`),
+  new RegExp(`^# 年の見込みは、${L}の場合より # 万円少なく、${L}の場合より # 万円多い$`),
+  new RegExp(`^この結果の # 年の見込みは、${L}だった場合に # 万円届かず、${L}だった場合を # 万円上回る$`),
+  new RegExp(`^同じ手の結果と比べると、# 年の見込みは${L}の場合の # 万円下で、${L}の場合の # 万円上$`),
+  // S3 の続き: 別の結果と比べた次の手の並び
+  new RegExp(`^${L}の場合に次に並んだ.+は、この結果では選べ(?:ず、代わりに.+が並ぶ|ない)$`),
+  new RegExp(`^この結果では.+が選べる代わりに、${L}の場合にある.+は並ばない$`),
+  new RegExp(`^次の手の並びも${L}の場合とは違い、.+が消えて.+が入る$`),
+  new RegExp(`^この結果の次の手には、${L}の場合(?:にある.+が無い|に無い.+が加わる)$`),
+  new RegExp(`^次の手の並びは${L}の場合より(?:少なく、.+が無い|多く、.+も選べる)$`),
+  new RegExp(`^${L}の場合には無い.+が、この結果では選べる$`),
+  // S4 今日の手の先の分かれ道のうち、ここから残る数（別の結果の後の数と比べる）
+  /^ここから # 年 # 月までの分かれ道は #（判断 #・出来事の分かれ #）/,
+  new RegExp(`^今日の(?:${L}|手)の先の # の分かれ道のうち、ここから残るのは #（判断 #・出来事の分かれ #）`),
+  new RegExp(`^今日の(?:${L}|手)から数えて # ある分かれ道は、この結果の先に #（判断 #・出来事の分かれ #）が残る`),
+  new RegExp(`^この先に続く分かれ道は、今日の(?:${L}|手)の後の # のうち #（判断 #・出来事の分かれ #）`),
+  new RegExp(`^今日の(?:${L}|手)の先の(?: # の分かれ道のうち、ここから残るのは #|分かれ道 #（判断 #・出来事の分かれ #）は、どれもこの結果から続く)$`),
+  new RegExp(`^今日の(?:${L}|手)から数え(?:て # ある分かれ道は、この結果の先に # が残る|た分かれ道 #（判断 #・出来事の分かれ #）が、そのままこの先に残る)$`),
+  new RegExp(`^この先に続く分かれ道は、今日の(?:${L}|手)の後の(?: # のうち #|（判断 #・出来事の分かれ #）の全部| #（判断 #・出来事の分かれ #）の全部)$`),
+  // 出来事の後の数の枠: 持てる顧客の上限・次の顧客の見込みの動き・今のままの期と残る判断
+  /^(?:会社員|週 # 日勤務|独立)で持てる顧客は # 社まで(?:（あと # 社）)?$/,
+  /^(?:あと # 社で、(?:会社員|週 # 日勤務|独立)で持てる # 社の上限に届く|(?:会社員|週 # 日勤務|独立)のうちに持てる顧客の上限は # 社)$/,
+  /^(?:(?:会社員|週 # 日勤務|独立)のうちは # 社が上限で、残りは # 社|顧客の上限は、(?:会社員|週 # 日勤務|独立)で # 社)$/,
+  new RegExp(`^# 社目が決まる見込みは、前の期の ${WARI}から ${WARI}に動いた$`),
+  new RegExp(`^前の期に ${WARI}だった # 社目の見込みは、今回 ${WARI}$`),
+  new RegExp(`^# 社目の見込みは ${WARI}から ${WARI}へ$`),
+  /^何も足さない期はこれで # 期目で、# 年 # 月までに残る判断は # 回$/,
+  /^今のままを選んだのは # 回目で、残る判断はあと # 回$/,
+  /^# 年 # 月までの判断はあと # 回で、今のままはこれが # 期目$/,
+  // S5 次の手の数・おすすめの手（見込み）・ほかの手との差（rep-8）
+  new RegExp(`^# 年 # 月までの手は # つで、(?:おすすめは|地図を作った年収の見積もりで一番の手は)${L}(?:（[^）]*）)?$`),
+  new RegExp(`^次の # か月に選べる # つの手のうち、(?:おすすめは|地図を作った年収の見積もりで一番の手は)${L}(?:（[^）]*）)?$`),
+  new RegExp(`^ここで選べる手は # つあり、(?:# 年の稼ぎが一番多いのは|地図を作った年収の見積もりで一番の手は)${L}(?:（[^）]*）)?$`),
+  /^次の # か月に選べる手は今のままだけ（[^）]*）$/,
+  /^ほかの手は、『/,
+  /^おすすめとの差は、『/,
+  /^残りの手は、おすすめ(?:より|と)『/,
+  /^ほかに選べるのは、『/,
+  // 今日の手とその答えが、この状態をまだ決めている（L4・rep-14）
+  new RegExp(`^.+のは、今日の${L}(?:の結果が${L}だった|があった)から$`),
+  new RegExp(`^今日の${L}(?:が${L}だったので|で)、`),
+  new RegExp(`^# 年 # 月(?:の${L}（今日の${L}の結果）|までの${L}（今日の手）)がまだ効いていて、`),
   // 1 つの結果の見込み（手）
   /^# 年 # 月の見込みは、/,
   /^# 年 # 月には、.*見込み$/,
@@ -138,9 +205,9 @@ export function skeleton(sentence: string): string | null {
 // ---- C8（言葉の間・カードの年月の言い直し）
 
 /** 文の型に差し込む言葉のうち、日本語で始まることがある物（前に空白を置くと「は 年収」になる） */
-const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "salBack", "partLoss", "job", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
+const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "salBack", "partLoss", "job", "jobName", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
 /** 日本語で終わる物（後ろに空白を置くと「社 の」になる） */
-const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "hiX", "midX", "hiYen", "midYen"]);
+const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "sharePrev", "growth", "conv", "hz", "jobName", "hiX", "midX", "hiYen", "midYen"]);
 
 /** 束の言い換えの、差し込みの隣の空白（間は組み立てが空ける。R2 の C8） */
 export function bankSpacing(banks: Banks): string[] {
@@ -246,6 +313,8 @@ export interface PathRepeats {
    * （道の数）。止めない（作業メモ text-w1 の L2: 数の枠を構造の文にしてよい代わりに、道でいくつ並ぶかを報告する）
    */
   frames: { dist: Dist; hist: Record<number, number>; over: number; top: Array<[string, number]> };
+  /** 同じ物を状態の本文の文だけで数えた物（0.8・W2: 状態の数の枠は道の上の位置で 3 つ以上の言い方を回すので、目安の 4 に収まるか） */
+  stateFrames: { dist: Dist; hist: Record<number, number>; over: number; top: Array<[string, number]> };
 }
 
 /** 道 1 本で 1 つの枠を使う数の目安（報告だけ。止めない。L2） */
@@ -303,6 +372,8 @@ export interface TextCheckRun {
   identical: number;
   /** 状態の本文がほかのカードの本文と同じ数と、状態の数（参考。rep-3） */
   identicalState: { same: number; states: number };
+  /** 状態のうち、次の判断のおすすめの手（選べる手が無ければその訳）を言う数（0.8・W2。言わない物は C13 で止める） */
+  stateRec: { named: number; states: number };
   ms: { compose: number; perCardUs: number; cardChecks: number; paths: number; siblings: number };
 }
 
@@ -435,6 +506,8 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   }
   const tCompose = now() - t0;
   const tally = new Tally(k);
+  // 状態のうち、次の判断のおすすめの手（無ければ選べない訳）を言う物（0.8・W2）
+  const stateRec = { named: 0, states: 0 };
   // 1 枚ごと（C1・C1b・C2・C3・C4・C4b・C5・C5b・C7・C10・D1・D2 は checks.ts、C8 はここ）
   const t1 = now();
   for (let i = 0; i < n; i++) {
@@ -445,8 +518,14 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
     for (const part of [f.title, f.short, f.body, ...f.numbers, ...f.todo.map((t) => t.text)]) for (const x of spacingIssues(part)) tally.add(`C8 ${x}`, role, key);
     const again = ownDateAgain(f.body, cal, map.month(i));
     if (again) tally.add(`C8 カードの年月（${again}）を文の頭でもう一度言う`, role, key);
-    // C13: 本文の「おすすめ」は画面のおすすめと同じ手（truth-1）
+    // C13: 本文の「おすすめ」は画面のおすすめと同じ手（truth-1）。状態は次の判断のおすすめの手を必ず言う（0.8・W2）
     if (role === "a") for (const x of recommendIssues(map, i, f.body, rt.recommended!)) tally.add(`C13 ${x}`, role, key);
+    if (role === "s") {
+      const xs = stateRecommendIssues(map, i, f.body, rt.recommended!);
+      for (const x of xs) tally.add(`C13 ${x}`, role, key);
+      stateRec.states++;
+      if (!xs.length) stateRec.named++;
+    }
   }
   // 標準の続きの期（1 枚ごとの点検と言葉の間）
   let contRows = 0;
@@ -514,6 +593,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
     cousins,
     identical: n > 1 ? dup / (n - 1) : 0,
     identicalState,
+    stateRec,
     ms: { compose: Math.round(tCompose), perCardUs: Math.round((tCompose / Math.max(1, n)) * 10000) / 10, cardChecks: Math.round(tCards), paths: Math.round(tPaths), siblings: Math.round(tSibs) },
   };
 }
@@ -592,6 +672,36 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
   };
   const perFrame: Int32Array[] = new Array<Int32Array>(map.n);
   for (let i = 0; i < map.n; i++) perFrame[i] = framesOf(fin[i]!.body);
+  // 元に戻す記録: [枠, 前の fLast（−3 は同じ行の中）]
+  type FUndo = Array<[number, number]>;
+  // 状態の本文の枠だけ（行ごとに 1 回。状態の枠の使い方を、手の枠と分けて見る）
+  const sRuns = new Int32Array(fNames.length + 1);
+  const sLast = new Int32Array(fNames.length + 1).fill(-2);
+  const sOn: number[] = [];
+  const sMax: number[] = [];
+  const sHist: Record<number, number> = {};
+  const sTop = new Map<number, number>();
+  const countS = (ids: Int32Array, r: number, u: FUndo): void => {
+    for (const f of ids) {
+      if (sLast[f] === r) {
+        u.push([f, -3]);
+        continue;
+      }
+      sRuns[f]!++;
+      sOn.push(f);
+      u.push([f, sLast[f]!]);
+      sLast[f] = r;
+    }
+  };
+  const undoS = (u: FUndo): void => {
+    for (let j = u.length - 1; j >= 0; j--) {
+      const [f, last] = u[j]!;
+      if (last === -3) continue;
+      sRuns[f]!--;
+      sLast[f] = last;
+      sOn.pop();
+    }
+  };
   const contFrames = new Map<number, Int32Array[]>();
   for (let i = 0; i < map.n; i++) if (!map.childCount(i) && contOf(i).length) contFrames.set(i, contOf(i).map(framesOf));
   const fRuns = new Int32Array(fNames.length);
@@ -600,8 +710,6 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
   const fMax: number[] = [];
   const fHist: Record<number, number> = {};
   const fTop = new Map<number, number>();
-  // 元に戻す記録: [枠, 前の fLast（−3 は同じ行の中）]
-  type FUndo = Array<[number, number]>;
   const countF = (ids: Int32Array, r: number, u: FUndo): void => {
     for (const f of ids) {
       if (fLast[f] === r) {
@@ -672,12 +780,13 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
     }
   };
   // [カード, 行の番号, 前の行の値, 戻るときの記録（骨組みと枠）]
-  const stack: Array<[number, number, RowJoin | null, [Undo, FUndo] | null]> = [[0, -1, null, null]];
+  const stack: Array<[number, number, RowJoin | null, [Undo, FUndo, FUndo] | null]> = [[0, -1, null, null]];
   while (stack.length) {
     const [i, run, prev, undo] = stack.pop()!;
     if (undo) {
       undoAll(undo[0]);
       undoF(undo[1]);
+      undoS(undo[2]);
       continue;
     }
     const role = map.role(i);
@@ -685,6 +794,7 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
     let next = prev;
     const u: Undo = [];
     const uf: FUndo = [];
+    const us: FUndo = [];
     if (role === "r") {
       count(perCard[i]!, r, u);
       countF(perFrame[i]!, r, uf);
@@ -698,8 +808,9 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       count(perCard[i]!, r, u);
       countF(perFrame[a]!, r, uf);
       countF(perFrame[i]!, r, uf);
+      if (role === "s") countS(perFrame[i]!, r, us);
     }
-    if (role !== "a") stack.push([i, r, next, [u, uf]]);
+    if (role !== "a") stack.push([i, r, next, [u, uf, us]]);
     const kids = map.childCount(i);
     if (!kids) {
       // 標準の続きの期（期ごとに別の行。行の番号は道の行の月と重ならないように 100 + 月）
@@ -717,6 +828,16 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       fMax.push(fm);
       fHist[fm] = (fHist[fm] ?? 0) + 1;
       if (fa >= 0) fTop.set(fa, (fTop.get(fa) ?? 0) + 1);
+      let sm = 0;
+      let sa = -1;
+      for (const f of sOn)
+        if (sRuns[f]! > sm) {
+          sm = sRuns[f]!;
+          sa = f;
+        }
+      sMax.push(sm);
+      sHist[sm] = (sHist[sm] ?? 0) + 1;
+      if (sa >= 0) sTop.set(sa, (sTop.get(sa) ?? 0) + 1);
       undoF(ucf);
       per.push(rep);
       perRaw.push(raw);
@@ -747,7 +868,16 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       .slice(0, 8)
       .map(([f, c]) => [fNames[f]!, c] as [string, number]),
   };
-  return { paths: per.length, dist: dist(per), hist, raw: dist(perRaw), histRaw, overGate: per.filter((x) => x > gates.pathRepeats).length, worst: worst.slice(0, Math.max(k, 10)), top: top.slice(0, 15), frames };
+  const stateFrames = {
+    dist: dist(sMax),
+    hist: sHist,
+    over: sMax.filter((x) => x > FRAME_SOFT).length,
+    top: [...sTop]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([f, c]) => [fNames[f]!, c] as [string, number]),
+  };
+  return { paths: per.length, dist: dist(per), hist, raw: dist(perRaw), histRaw, overGate: per.filter((x) => x > gates.pathRepeats).length, worst: worst.slice(0, Math.max(k, 10)), top: top.slice(0, 15), frames, stateFrames };
 }
 
 /**
@@ -1127,6 +1257,11 @@ export function reportMarkdown(rep: TextCheckReport): string {
       .map(([x, c]) => `${x}: ${f(c)}`)
       .join("・")}`);
     L.push(`    - 一番多く使う枠（道の数）: ${pr.frames.top.map(([x, c]) => `「${x.slice(0, 28)}…」${f(c)}`).join(" / ")}`);
+    L.push(`  - 同じ数え方で状態の本文の文だけ（0.8・W2 の状態の数の枠。目安 ${FRAME_SOFT} まで・止めない）: ${dl(pr.stateFrames.dist).replace(/ 枚）/, " 本）")}・目安を超える道 ${f(pr.stateFrames.over)}`);
+    L.push(`    - 数ごとの道: ${Object.entries(pr.stateFrames.hist)
+      .map(([x, c]) => `${x}: ${f(c)}`)
+      .join("・")}`);
+    L.push(`    - 一番多く使う枠（道の数）: ${pr.stateFrames.top.map(([x, c]) => `「${x.slice(0, 28)}…」${f(c)}`).join(" / ")}`);
     const dr = r.decisionRepeats;
     L.push(`- 判断ごとの繰り返し（続く 2 つの判断の同じ種類の手が同じ骨組みで言う文。${f(dr.pairs)} 組）: 門を超える組 ${f(dr.overGate)}`);
     L.push(`  - 同じ文の数ごとの組: ${Object.entries(dr.hist)
@@ -1139,6 +1274,7 @@ export function reportMarkdown(rep: TextCheckReport): string {
     const s = r.siblings;
     L.push(`- 兄弟: 手 ${f(s.movePairs)} 組で骨組みが同じ ${f(s.moveSame)}・結果 ${f(s.outPairs)} 組で ${f(s.outSame)}・題が同じ ${f(s.titleSame)} 組（${f(s.titlePairs)} 組のうち）`);
     L.push(`  - 参考（止めない）: 手の書き出し（最初の 14 字）が同じ組 ${f(s.openerSame)}（${pct(s.openerSame / Math.max(1, s.movePairs))}）・結果が 3 つ以上でどれも別の結果と比べる組 ${f(s.cmpGroups)} のうち、比べる文の枠がどれも同じ組 ${f(s.cmpSame)}`);
+    L.push(`- 状態の本文が次の判断のおすすめの手（選べる手が無ければその訳）を言う: ${f(r.stateRec.named)} / ${f(r.stateRec.states)}（${pct(r.stateRec.named / Math.max(1, r.stateRec.states))}。言わない物は C13）`);
     L.push(`- いとこ（参考）: ${f(r.cousins.pairs)} 組で文が同じ ${pct(r.cousins.same / Math.max(1, r.cousins.pairs))}・骨組みが同じ ${pct(r.cousins.skeleton / Math.max(1, r.cousins.pairs))}。本文が完全に同じカード ${pct(r.identical)}・状態の本文がほかのカードと同じ ${f(r.identicalState.same)} / ${f(r.identicalState.states)}（${pct(r.identicalState.same / Math.max(1, r.identicalState.states))}）`);
     L.push("");
   }

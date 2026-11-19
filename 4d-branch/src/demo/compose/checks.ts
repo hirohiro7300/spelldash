@@ -37,7 +37,7 @@ export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /�
  *   660 → 700（0.7・W1 で測り直した）: 届け出の結果の意味を、結果ごとの 1 文でその月と額まで言うようにした（rep-7）。届け出て副業の本文は
  *   年収 360 で 652 字・540 で 650 字（前は 621）。手の上と同じにして、W2 が今日の手に足す分の余白を残す
  */
-export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 400 }, e: { title: 24, min: 80, max: 560 }, r: { title: 40, min: 0, max: 600 } } as const;
+export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 480 }, e: { title: 24, min: 80, max: 560 }, r: { title: 40, min: 0, max: 600 } } as const;
 export const FIRST_MOVE_MAX = 700;
 export const TODO_MAX = 24;
 
@@ -453,6 +453,26 @@ export function recommendIssues(map: MapData, a: number, text: string, pi: (d: n
   const more = /(?<!見積もりでは)おすすめの『[^』]*』より [0-9.,]+ 万円多い/.exec(text);
   if (more) out.push(`おすすめの手より多いと言い切る「${more[0]}」`);
   return out;
+}
+
+/** 状態の本文が次の判断のおすすめの手を言う言い方（「おすすめは『…』」「3 年の稼ぎが一番多いのは『…』」「地図を作った年収の見積もりで一番の手は『…』」） */
+const STATE_REC = /(?:おすすめは|一番多いのは|一番の手は)『([^』]*)』/;
+/** 選べる手が今のままだけの判断の言い方（訳つき） */
+const STATE_NO_CHOICE = /選べる手は今のままだけ（/;
+
+/**
+ * 状態の本文が、次の判断のおすすめの手を言うか（0.8・W2: どの状態も次のおすすめの手を言い、選べる手が無ければその訳を言う）と、
+ * その手が画面のおすすめ（pi。決まらなければ −1 で、地図のおすすめ）と同じか（C13）。text は仕上げた本文
+ */
+export function stateRecommendIssues(map: MapData, n: number, text: string, pi: (d: number) => number): string[] {
+  if (map.role(n) !== "s") return [];
+  const m = STATE_REC.exec(text);
+  if (!m) return STATE_NO_CHOICE.test(text) ? [] : ["状態の本文が次の判断のおすすめの手を言わない"];
+  const rec = pi(n);
+  if (rec < 0) return [];
+  // 地図の見出しに手の名前が無い手（手で作った地図）は、組み立てが題で言うので名前では比べない
+  const want = listNameOf(map, rec);
+  return !want || m[1] === want ? [] : [`状態の本文のおすすめ『${m[1]}』が画面のおすすめ『${want}』と違う`];
 }
 
 /**

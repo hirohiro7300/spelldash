@@ -9,11 +9,13 @@
 //   言わず、まとめた見積もりだと書く（見込みが分かれば割で）
 // 手: 来た訳 → 書き出し → 手引きの文 → お金と仕事の変わり方・見込みの変わり方 → 避けたい訳 → 分かれ目 → この手の 3 年の見積もり →
 //   この手の先の分かれ道の数（まとめた手は、標準の選び方で続けた見積もりだと書く）
-// 状態: 年月と出来事 → 出来事の助言 → 節目からの月（節目が変わったときだけ）→ 静かな期の一言 → 同じ手の別の結果との違い → 次の問い → 暦
+// 状態（0.8・W2）: 年月と出来事 → 出来事の助言 → 出来事の後の一言 → 節目からの月（節目が変わったときだけ）→ 静かな期の一言 →
+//   この結果の見込みと月の稼ぎの動き → 今日の手の効き目 → 今日からの 3 年の見込み → 同じ手の別の結果との 3 年の見込みの差と次の手の並びの違い →
+//   今日の手の先の分かれ道のうちここから残る数 → 次の手（おすすめとほかの手との差）→ 暦。長さの目安を超えるときは決まった順に短くする
 // 行き先: 年月と仕事 → まとめた行き先の注 → 節目 → 月の稼ぎ → この先の見通し → この道で月の稼ぎを一番動かした結果（まとめた行き先は、標準の続きの目安）
 import type { MapContStep, MapData, MapMix } from "../../deepmap/mapData";
 import type { ImpactSt, R3 } from "../impact";
-import { capOf, clBand, countEvent, countKind, countKindHere, endLink, eventMonth, eventsList, factShare, indMonthsAt, jobMonths, joinedAt, linkFor, linkOf, mergedFact, newFeeOf, optionValue, pathEnv, quarterSal, recentSteps, recommended, ripple, sideIn, stepsFor, usedSet, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
+import { accOf, capOf, clBand, countEvent, countKind, countKindHere, endLink, eventMonth, eventsList, factShare, FILING_KINDS, indMonthsAt, jobMonths, joinedAt, keepTotalOf, linkFor, linkOf, mergedFact, newFeeOf, optionValue, pathEnv, quarterSal, recentSteps, recommended, ripple, searchCount, sideIn, stepsFor, usedSet, wOf, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
 import { clPhrase, clr, cond, f2, hash, man, n0, pbText, renyo, slot, spaceJa, strip, wari, yenTxt, type Env } from "./text";
 import type { Card, Consts, Step, Variant } from "./types";
 
@@ -122,6 +124,12 @@ function constSlots(C: Consts): Readonly<Slots> {
     searchRun: slot(C.searchRun),
     netYen: slot(n0(C.netYen)),
     infraYen: slot(n0(C.infraYen)),
+    // 0.8（W2）: 状態の出来事の後の一言が言う前提（週 4 日で持てる顧客・遊ぶ人の伸びと有料になる割合・集客の手の上限）
+    capPart: slot(C.capPart),
+    growth: wari(C.growth),
+    conv: wari(C.conv),
+    growMax: slot(C.growMax),
+    adsMax: slot(C.adsMax),
   };
   CONST_SLOTS.set(C, out);
   return out;
@@ -142,7 +150,9 @@ function baseEnv(c: Ctx, n: number): { env: Env; slots: Slots } {
   // cband: 顧客の数が社数の違う場合をまとめた幅（下と上が違う）。「N 社目」と社数を決めて言わない（truth-3）
   // im: 独立してからの月（手はその判断の月、状態と行き先はその月。会社員に戻る仕事探しと決まらない期の言い方を進める。rep-5）
   const im = indMonthsAt(link, m, s.j);
-  const env: Env = { j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), clo, chi, cband: clo !== chi ? 1 : 0, pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap, m, mon: cal.parts(m)[1], n: kind ? countKind(link, kind) : 0, first: m === 0 ? 1 : 0, h: 0, sal1: Math.abs(rr[0] - 1) < 0.005 ? 1 : 0, f5: link.f5 ? 1 : 0, im };
+  // al: この月より後、3 年の終わりまでに残る 4 月の評価の数（据え置きの後の言い方・状態の出来事の後の一言。rep-12）
+  const al = cal.aprils.filter((q) => q > m && q <= cal.horizon).length;
+  const env: Env = { j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), clo, chi, cband: clo !== chi ? 1 : 0, pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap, m, mon: cal.parts(m)[1], n: kind ? countKind(link, kind) : 0, first: m === 0 ? 1 : 0, h: 0, sal1: Math.abs(rr[0] - 1) < 0.005 ? 1 : 0, f5: link.f5 ? 1 : 0, im, al };
   const slots: Slots = {
     ...constSlots(C),
     // 0 か月目（今日）の手は今月から言う（user-17: 地図の年月は見出しにあり、今日の手は「今月のうちに」）
@@ -166,6 +176,8 @@ function baseEnv(c: Ctx, n: number): { env: Env; slots: Slots } {
     sdRev: slot(man(rr[2])),
     seats: slot(n0(s.seats)),
     indMonths: slot(im),
+    aprilsLeft: slot(al),
+    hz: cal.ym(cal.horizon),
   };
   const april = cal.aprils.find((q) => q > m);
   if (april !== undefined) slots.nextApril = cal.ym(april);
@@ -705,12 +717,6 @@ function outcomeClass(map: MapData, o: number, sibs: readonly number[]): string 
   return sibs.indexOf(o) === 0 ? "hi" : "lo";
 }
 
-function moveShortPhrase(c: Ctx, a: number): string {
-  const kind = c.map.kind(a) ?? "";
-  const v = c.B.nextPhrase[kind] ?? [`${kindNoun(c, kind)}を選ぶか`];
-  return v[hash(c.map.key(a)) % v.length]!;
-}
-
 /** 手の年月の差し込み（独立を伝える月・独立する月・4 月の評価） */
 function moveDates(c: Ctx, a: number): Slots {
   const { cal } = c;
@@ -1212,6 +1218,8 @@ function stateEnv(c: Ctx, n: number, link: Link): { env: Env; slots: Slots } {
   r.env.dpu = dpu;
   // 次の判断（この状態の子）に転職活動の続きが並ぶか（「応募を続ければ」は並ぶときだけ言う。reader-3）
   r.env.next2 = kidsOf(map, n).some((x) => map.kind(x) === "fc_switch2" || map.kind(x) === "fc_switch") ? 1 : 0;
+  // 0.8: 1 つ前の判断の時点で、もう担当を広げていたか（2 回目の担当を広げる 3 か月は、昇格の見込みをもう上げない）
+  r.env.scope0 = before.fl.includes("scope") ? 1 : 0;
   r.slots.dpu = slot(dpu);
   r.slots.pu0 = slot(n0(before.pu));
   return r;
@@ -1286,43 +1294,89 @@ function permKey(c: Ctx, o: number): string | null {
   return so.pm !== ss.pm && so.pm !== "?" && ss.pm !== "?" ? `perm.${so.pm}` : null;
 }
 
+/** 別の結果との月の稼ぎの違い（数の行の項目ごと）。売上と給与の差は今の年収で（truth-15） */
+interface MonthDiff {
+  what: "ads" | "adsBand" | "pu" | "sal";
+  /** 差の大きさ（売上 万円/月・有料会員の人数・年収 万円）。adsBand は向きだけ */
+  x: number;
+  more: boolean;
+}
+
 /**
- * 同じ手の別の結果（一番違う物）との違い。言い方は道の上の何期目かで回す。permOk: 答えの範囲の一言を書く（段取りで決めた）。
- * 顧客の数が幅（社数の違う場合をまとめた結果）なら、平均の売上の差は言わず、社数の幅が重ならないときだけ社数で比べる（reader-9）
+ * 結果 o と別の結果 sib の月の稼ぎの違い。顧客の数が幅（社数の違う場合をまとめた結果）なら、平均の売上の差は言わず、
+ * 社数の幅が重ならないときだけ社数で比べる（reader-9）
  */
-function contrastSentence(c: Ctx, o: number, permOk: boolean): string {
+function monthDiffs(c: Ctx, o: number, sib: number): MonthDiff[] {
   const { map } = c;
-  const sib = contrastSib(c, o);
-  if (sib === null) return "";
   const so = map.st(o);
   const ss = map.st(sib);
-  const d: string[] = [];
-  let perm = "";
+  const d: MonthDiff[] = [];
   const [ol, oh] = clBand(map, o);
   const [sl, sh] = clBand(map, sib);
   const banded = (ol !== oh && !!map.band(o)?.cl) || (sl !== sh && !!map.band(sib)?.cl);
   if (!banded) {
     const dAds = so.cl * so.fee - ss.cl * ss.fee;
-    if (Math.abs(dAds) >= 0.5) d.push(`広告運用の売上が月 ${slot(man(Math.abs(dAds)))} 万円${dAds > 0 ? "多い" : "少ない"}`);
-  } else if (ol > sh || oh < sl) d.push(`広告運用の顧客が${ol > sh ? "多い" : "少ない"}`);
+    if (Math.abs(dAds) >= 0.5) d.push({ what: "ads", x: Math.abs(dAds), more: dAds > 0 });
+  } else if (ol > sh || oh < sl) d.push({ what: "adsBand", x: 0, more: ol > sh });
   const dPu = Math.round(so.pu) - Math.round(ss.pu);
-  if (Math.abs(dPu) >= 1) d.push(`有料会員が ${slot(Math.abs(dPu))} 人${dPu > 0 ? "多い" : "少ない"}`);
-  // 給与の差は年収で（truth-15）
+  if (Math.abs(dPu) >= 1) d.push({ what: "pu", x: Math.abs(dPu), more: dPu > 0 });
   const dSal = c.annual * (map.rr(o)[0] - map.rr(sib)[0]);
-  if (Math.abs(dSal) >= 6) d.push(`年収が ${slot(n0(Math.abs(dSal)))} 万円${dSal > 0 ? "高い" : "低い"}`);
-  // 届け出の答えの違いは、この結果のことなので別の文にする
-  if (permOk && so.pm !== ss.pm && so.pm !== "?" && ss.pm !== "?") perm = so.pm === "a" ? "この場合は広告運用の副業もできる。" : so.pm === "s" ? "この場合は Pro は出せるが、広告運用はできない。" : "この場合は Pro も副業も出せない。";
+  if (Math.abs(dSal) >= 6) d.push({ what: "sal", x: Math.abs(dSal), more: dSal > 0 });
+  return d;
+}
+
+/** 月の稼ぎの違いの言い方（「年収が 65 万円低い」） */
+function diffText(x: MonthDiff): string {
+  switch (x.what) {
+    case "ads":
+      return `広告運用の売上が月 ${slot(man(x.x))} 万円${x.more ? "多い" : "少ない"}`;
+    case "adsBand":
+      return `広告運用の顧客が${x.more ? "多い" : "少ない"}`;
+    case "pu":
+      return `有料会員が ${slot(x.x)} 人${x.more ? "多い" : "少ない"}`;
+    default:
+      return `年収が ${slot(n0(x.x))} 万円${x.more ? "高い" : "低い"}`;
+  }
+}
+
+/** 3 年の見込みの差に添える、月の稼ぎの一番の違い（「（年収で 65 万円の差）」） */
+function diffNote(x: MonthDiff | undefined): string {
+  if (!x) return "";
+  switch (x.what) {
+    case "ads":
+      return `（広告運用の売上で月 ${slot(man(x.x))} 万円の差）`;
+    case "adsBand":
+      return "（広告運用の顧客の数も違う）";
+    case "pu":
+      return `（有料会員で ${slot(x.x)} 人の差）`;
+    default:
+      return `（年収で ${slot(n0(x.x))} 万円の差）`;
+  }
+}
+
+/** 届け出の答えの範囲の一言（答えが別の結果と違うとき。段取りで決めた、道で 1 回だけの文） */
+function permLine(c: Ctx, o: number, permOk: boolean): string {
+  const sib = contrastSib(c, o);
+  if (!permOk || sib === null) return "";
+  const so = c.map.st(o);
+  const ss = c.map.st(sib);
+  if (so.pm === ss.pm || so.pm === "?" || ss.pm === "?") return "";
+  return so.pm === "a" ? "この場合は広告運用の副業もできる。" : so.pm === "s" ? "この場合は Pro は出せるが、広告運用はできない。" : "この場合は Pro も副業も出せない。";
+}
+
+/**
+ * 同じ手の別の結果（一番違う物）との月の稼ぎの違い（3 年の見込みが出せないとき。計算の芯も手の見積もりも無い地図）。
+ * 言い方は道の上の位置と兄弟の並びで 7 通りを回す（兄弟が同じ言い方にならない。rep-4・L2）
+ */
+function contrastSentence(c: Ctx, o: number, k: number): string {
+  const sib = contrastSib(c, o);
+  if (sib === null) return "";
+  const d = monthDiffs(c, o, sib).map(diffText);
   const lab = labelOf(c, sib);
-  // 言い方は、道でそれまでに別の結果と比べた状態の数で 7 通りを回す（同じ文は 7 回比べた後にしか戻らない。点検 C6）。始まりは今日の手で変える
-  const link = linkOf(c, o);
-  let before = 0;
-  for (let l = link.up; l && l.up; l = l.up) if (map.childCount(map.parent(l.i)) >= 2) before++;
-  const k = (before + (hash(map.key(link.first >= 0 ? link.first : o)) % 7)) % 7;
-  if (!d.length && perm) return perm;
-  if (!d.length) return [`同じ手で『${lab}』だった場合と、数字はほとんど変わらない。`, `『${lab}』だった場合とも、数字はほぼ同じ。`, `別の結果の『${lab}』とも、数字はほとんど変わらない。`, `『${lab}』の場合とも、数字に大きな違いは無い。`, `数字は、同じ手で『${lab}』だった場合とほとんど同じ。`, `この結果と『${lab}』の場合で、数字はほとんど変わらない。`, `『${lab}』と比べても、この結果の数字はほぼ同じ。`][k]!;
+  if (!d.length) return [`同じ手で『${lab}』だった場合と、数字はほとんど変わらない。`, `『${lab}』だった場合とも、数字はほぼ同じ。`, `別の結果の『${lab}』とも、数字はほとんど変わらない。`, `『${lab}』の場合とも、数字に大きな違いは無い。`, `数字は、同じ手で『${lab}』だった場合とほとんど同じ。`, `この結果と『${lab}』の場合で、数字はほとんど変わらない。`, `『${lab}』と比べても、この結果の数字はほぼ同じ。`][k % 7]!;
   // 2 つの差は「〜多く、〜高い」とつなぐ（reader-10）
   const ds = d.length >= 2 ? `${renyo(d[0]!)}、${d[1]!}` : d[0]!;
-  return [`同じ手で『${lab}』だった場合より、${ds}。`, `『${lab}』だった場合と比べると、${ds}。`, `別の結果の『${lab}』と比べて、${ds}。`, `『${lab}』の場合に比べ、${ds}。`, `${ds}（同じ手で『${lab}』だった場合と比べて）。`, `『${lab}』と比べると、この結果は${ds}。`, `この結果は、『${lab}』の場合より${ds}。`][k]! + perm;
+  return [`同じ手で『${lab}』だった場合より、${ds}。`, `『${lab}』だった場合と比べると、${ds}。`, `別の結果の『${lab}』と比べて、${ds}。`, `『${lab}』の場合に比べ、${ds}。`, `${ds}（同じ手で『${lab}』だった場合と比べて）。`, `『${lab}』と比べると、この結果は${ds}。`, `この結果は、『${lab}』の場合より${ds}。`][k % 7]!;
 }
 
 /** まとめた行き先が、名前の付いた結果（兄弟がある）の後か */
@@ -1378,16 +1432,457 @@ function endContrast(c: Ctx, n: number): string {
   return `同じ手で『${labelOf(c, sib[0])}』だった場合より、この時の月の稼ぎが ${slot(man(Math.abs(dt)))} 万円${dt > 0 ? "多い" : "少ない"}。`;
 }
 
-/** 次の 3 か月の問い（言い方は 3 通りを回す） */
-function nextSentence(c: Ctx, n: number): string {
-  const { map, cal } = c;
-  const alts = kidsOf(map, n).filter((x) => map.kind(x) !== "keep");
-  if (!alts.length) return "次の 3 か月も今のまま続ける。";
-  // 並ぶ手を全部言う（選べる手が 5 つの判断で 1 つ落とさない。truth-6）
-  const ph = alts.map((a) => moveShortPhrase(c, a)).filter((x, k, arr) => arr.indexOf(x) === k);
-  const frames = [`次の 3 か月は、${ph.join("、")}、今のままか。`, `${cal.ym(map.month(n) + 3)}までの手は、${ph.join("、")}、今のままか。`, `ここからは、${ph.join("、")}、何も足さないか。`];
-  return frames[hash(map.key(n) + "next") % frames.length]!;
+// ---- 状態の数の文（0.8・W2: con-1 の S1〜S5・con-7・rep-3・rep-4・rep-8・rep-14・L1〜L5）
+// 数の行の数（年収・売上・有料・遊ぶ人・週の時間）は書かず、差・合計・見込みだけを書く（L5・点検 C10）。
+// 数の枠（その 3 か月の見込みと月の稼ぎの動き・3 年の見込み・別の結果との差・次の手の並びの違い・分かれ道・次の手・今日の手の効き目）は
+// 構造の文（scripts/impact/textChecks.ts の STRUCTURAL）。言い方は道の上の位置（その状態より上にある状態の数）で 3 つ以上を回し、
+// 結果の兄弟どうしはさらに兄弟の並びでずらす（L2・rep-4）
+
+/** 道の上の位置: 3 か月目の状態が 0（その状態より上にある状態の数。言い方を回す数。L2: ハッシュでなく位置で） */
+const posOf = (c: Ctx, n: number): number => Math.max(0, Math.round(c.map.month(n) / 3) - 1);
+
+/** 万円の数の本体（画面と同じ: 10 未満は小数 1 桁、それ以上は整数。符号は付けない） */
+const manAbs = (x: number): string => {
+  const a = Math.abs(x);
+  return a < 9.95 ? man(a) : n0(a);
+};
+/** 符号つきの万円の数（負なら −。差し込みの印つき） */
+const manSigned = (x: number): string => (x < 0 && Math.abs(x) >= 0.05 ? `${MINUS}${slot(manAbs(x))}` : slot(manAbs(x)));
+
+/** カード i の月の稼ぎ（万円/月。給与は今の年収の月割り。手はその判断の値） */
+const monthlyOf = (c: Ctx, i: number): number => {
+  const rr = rrOf(c, i);
+  return salMan(c, rr[0]) + rr[1] + rr[2];
+};
+
+/**
+ * 判断 d から 36 か月目までの稼ぎ（その判断から、おすすめの手で進んだ場合）: 計算の芯があれば一番良い選び方の値（画面の「ここから一番良い選び方で
+ * 進んだ 3 年の合計の見込み」と同じ）、無ければ地図のおすすめの手の見積もり（その 3 か月は正確に・その後は標準の選び方。q）。出せなければ null
+ */
+function aheadOf(c: Ctx, d: number): number | null {
+  const { map } = c;
+  // 行き先（判断の無いカード）: その月の月の稼ぎ × 3 年の終わりまでの月（計算の芯の行き先の値と同じ。36 か月目は 0）
+  if (!map.childCount(d)) return wOf(c.annual, map.rr(d)) * Math.max(0, c.cal.horizon - map.month(d));
+  const pi = c.rt?.recommended?.(d) ?? -1;
+  if (pi >= 0) {
+    const v = c.rt?.treeValue?.(pi) ?? null;
+    if (v !== null && Number.isFinite(v)) return v;
+  }
+  return optionValue(c.map, recommended(c.map, d), c.annual);
 }
+
+/** 状態の 3 年の見込み（今日から）: ここまで・この先・合わせて・1 つ前の判断の時点の合わせて・ずっと今のまま */
+interface StateVals {
+  acc: number;
+  ahead: number;
+  total: number;
+  prev: number | null;
+  keep: number | null;
+}
+
+function stateVals(c: Ctx, n: number, link: Link): StateVals | null {
+  const ahead = aheadOf(c, n);
+  if (ahead === null || !link.up) return null;
+  const acc = accOf(c, link);
+  const upAhead = aheadOf(c, link.up.i);
+  return { acc, ahead, total: acc + ahead, prev: upAhead === null ? null : accOf(c, link.up) + upAhead, keep: keepTotalOf(c) };
+}
+
+/** 同じ手の別の結果（状態）の 3 年の見込み（今日から: 1 つ前の判断までの稼ぎ + その結果の 3 か月 + その先）。出せなければ null */
+function sibTotal(c: Ctx, up: Link, o: number): number | null {
+  const a = aheadOf(c, o);
+  return a === null ? null : accOf(c, up) + wOf(c.annual, c.map.e(o)) + a;
+}
+
+/** 万円の差の言い方（「28 万円上がった」「ほぼ同じ」。D は今 − 前） */
+const moveWord = (d: number, up: string, down: string, same: string): string => (Math.abs(d) < 0.05 ? same : `より ${slot(manAbs(d))} 万円${d > 0 ? up : down}`);
+
+/** 給与・勤め先が変わる出来事と据え置き（その 3 か月の給与の動きは、出来事の文が訳を言う） */
+const SAL_EVENTS = /^(SWITCH_|PROMO|PART_ON|PART_MIX|BACK_EMP|BACK_MIX|IND_START)/;
+
+/**
+ * S1: この結果になる見込み（結果が 2 つ以上の手）と、この 3 か月の月の稼ぎの動き（差と、主に動いた物）。数の行の数は書かない（L5）。
+ * 言い方は位置で 3 つを回す
+ */
+function quarterSentence(c: Ctx, n: number, link: Link, p: number, moneySaid: boolean, trace: string[]): string {
+  const { map } = c;
+  const d = monthlyOf(c, n) - monthlyOf(c, link.up!.i);
+  const odds = map.childCount(map.parent(n)) >= 2 && map.p(n) > 0 && map.p(n) < 100 ? wari(map.p(n) / 100) : null;
+  // 出来事の後の一言がこの 3 か月の稼ぎの動きを言うなら（有料会員の線）、見込みだけ
+  if (moneySaid) {
+    if (!odds) return "";
+    trace.push("state:quarter");
+    return [`この結果になる見込みは ${odds}だった。`, `${odds}の見込みで起きた結果。`, `見込み ${odds}の結果。`][p % 3]!;
+  }
+  // 0.3 万円より小さい動きは「ほぼ同じ」（Pro の数百円の動きを月の稼ぎの動きとして言わない）。見込みも無ければ書かない
+  const flat = Math.abs(d) < 0.3;
+  if (flat && !odds && !moneySaid) return "";
+  const amt = `${slot(man(Math.abs(d)))} 万円`;
+  const src = flat || link.evs.some((e) => SAL_EVENTS.test(e.code)) ? "" : `（主に${leverName(c, link)}）`;
+  trace.push("state:quarter");
+  switch (p % 3) {
+    case 0:
+      return `${odds ? `見込み ${odds}の結果で、` : ""}月の稼ぎは 3 か月前${flat ? "とほぼ同じ" : `より ${amt}${d > 0 ? "増えた" : "減った"}${src}`}。`;
+    case 1:
+      if (!odds) return flat ? "この 3 か月で月の稼ぎはほぼ動いていない。" : `この 3 か月で月の稼ぎは ${amt}${d > 0 ? "増えた" : "減った"}${src}。`;
+      return `この 3 か月で月の稼ぎは${flat ? "ほぼ動かず" : ` ${amt}${d > 0 ? "増え" : "減り"}${src}`}、この結果になる見込みは ${odds}だった。`;
+    default:
+      return `${odds ? `${odds}の見込みで起きた結果で、` : ""}${flat ? "月の稼ぎは 3 か月前と変わらない" : `3 か月前と比べた月の稼ぎは ${sgn(d)}${amt}${src}`}。`;
+  }
+}
+
+/**
+ * S2（L1・con-7）: 今日からの 3 年の見込み（ここまで + この先）と、1 つ前の判断の時点の見込みからの動き。言い方は位置で 3 つを回し、
+ * 3 つ目はずっと今のままと比べる（L4）。最初の状態（道で 1 回）だけ、この先の見積もり方とずっと今のままの 3 年を言う
+ */
+function totalSentence(c: Ctx, p: number, v: StateVals, trace: string[]): string {
+  const X = v.total;
+  const A = v.acc;
+  // ここまで + この先 = 合わせて（見せる数で足し算が合うように、この先は見せる 2 つの数の差。どちらも整数で見せるとき）
+  const B = Math.abs(X) >= 9.95 && Math.abs(A) >= 9.95 ? Math.round(X) - Math.round(A) : X - A;
+  const tot = `${manSigned(X)} 万円`;
+  const here = `${manSigned(A)} 万円`;
+  const ahead = `${manSigned(B)} 万円`;
+  const D = v.prev === null ? null : X - v.prev;
+  trace.push("state:total");
+  if (p === 0) {
+    const how = c.rt?.recommended ? "毎回おすすめの手を選んだ場合" : "おすすめの手の後を標準の選び方で続けた場合";
+    const keep = v.keep === null ? "" : `で、ずっと今のままなら 3 年で ${manSigned(v.keep)} 万円`;
+    return `今日からの 3 年の見込みは ${tot}（ここまで ${here}＋この先 ${ahead}）${D === null ? "" : `で、今日の見込み${moveWord(D, "上がった", "下がった", "とほぼ同じ")}`}。この先は、${how}${keep}。`;
+  }
+  switch (p % 3) {
+    case 0:
+      return `今日からの 3 年の見込みは ${tot}（ここまで ${here}＋この先 ${ahead}）${D === null ? "" : `で、3 か月前の見込み${moveWord(D, "上がった", "下がった", "とほぼ同じ")}`}。`;
+    case 1:
+      return D === null ? `3 年の見込みは、ここまでの ${here}とこの先の ${ahead}で ${tot}。` : `3 年の見込みは、ここまでの ${here}とこの先の ${ahead}で ${tot}になり、3 か月前${moveWord(D, "上がった", "下がった", "とほぼ同じ")}。`;
+    default: {
+      const H = v.keep === null ? null : X - v.keep;
+      const head = `ここまでの ${here}にこの先の ${ahead}を足した 3 年の見込みは ${tot}${D === null ? "" : `で、3 か月前${moveWord(D, "上がった", "下がった", "とほぼ同じ")}`}。`;
+      return H === null ? head : `${head}ずっと今のままの 3 年${moveWord(H, "多い", "少ない", "とほぼ同じ")}。`;
+    }
+  }
+}
+
+/** 次の手の種類の並び（今のままは除く） */
+function nextKinds(c: Ctx, i: number): string[] {
+  const out: string[] = [];
+  for (const x of kidsOf(c.map, i)) {
+    const k = c.map.kind(x) ?? "";
+    if (k !== "keep" && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
+/**
+ * S3（rep-4）: 同じ手の別の結果と 3 年の見込みで比べる。比べる相手は 3 年の見込みで並べた隣（上と下。兄弟で同じ相手にしない）。
+ * 言い方は位置と兄弟の並びで 7 通りを回す（兄弟で同じ枠にしない）。月の稼ぎの一番の違いは、その出来事が道で初めてのときだけ添える
+ * （同じ差を期ごとに繰り返さない。続く同じ結果は出来事の後の一言が、何回目かと残る機会を言う）。3 年の見込みが出せなければ月の稼ぎで比べる
+ */
+function contrastMain(c: Ctx, n: number, link: Link, p: number, firstTime: boolean, trace: string[]): string {
+  const { map } = c;
+  const sibs = kidsOf(map, map.parent(n));
+  if (sibs.length < 2) return "";
+  const rank = sibs.indexOf(n);
+  // 位置は 3 つ飛びで回す（兄弟は並びで 1 つずつずれ、道の上で同じ言い方が重なりにくい。L2・rep-4）
+  const k = (3 * p + rank) % 7;
+  const up = link.up!;
+  const tots = sibs.map((x) => [x, sibTotal(c, up, x)] as const);
+  trace.push("state:contrast");
+  if (tots.some(([, t]) => t === null)) return contrastSentence(c, n, k);
+  const order = tots.map(([x, t]) => [x, t!] as const).sort((a, b) => b[1] - a[1] || sibs.indexOf(a[0]) - sibs.indexOf(b[0]));
+  const at = order.findIndex(([x]) => x === n);
+  const t = order[at]![1];
+  const hi = order[at - 1];
+  const lo = order[at + 1];
+  if (hi && lo && hi[1] - t >= 0.05 && t - lo[1] >= 0.05) {
+    const a = `『${labelOf(c, hi[0])}』`;
+    const b = `『${labelOf(c, lo[0])}』`;
+    const d1 = `${slot(manAbs(hi[1] - t))} 万円`;
+    const d2 = `${slot(manAbs(t - lo[1]))} 万円`;
+    return [`3 年の見込みは、${a}の場合より ${d1}少なく、${b}の場合より ${d2}多い。`, `この結果の 3 年の見込みは、${a}だった場合に ${d1}届かず、${b}だった場合を ${d2}上回る。`, `同じ手の結果と比べると、3 年の見込みは${a}の場合の ${d1}下で、${b}の場合の ${d2}上。`][k % 3]!;
+  }
+  const ref = (hi ?? lo)!;
+  const lab = `『${labelOf(c, ref[0])}』`;
+  const d = t - ref[1];
+  const note = firstTime ? diffNote(monthDiffs(c, n, ref[0])[0]) : "";
+  if (Math.abs(d) < 0.05) return [`同じ手で${lab}だった場合と、3 年の見込みはほとんど変わらない${note}。`, `3 年の見込みは、${lab}の場合とほぼ同じ${note}。`, `${lab}と比べても、この結果の 3 年の見込みはほぼ同じ${note}。`][k % 3]!;
+  const amt = `${slot(manAbs(d))} 万円`;
+  const more = d > 0;
+  return [
+    `同じ手で${lab}だった場合より、3 年の見込みが ${amt}${more ? "多い" : "少ない"}${note}。`,
+    `3 年の見込みを${lab}の場合と比べると、${amt}${more ? "多い" : "少ない"}${note}。`,
+    `${lab}だった道と比べて、3 年の見込みは ${amt}${more ? "多い" : "少ない"}${note}。`,
+    `この結果の 3 年の見込みは、${lab}の場合より ${amt}${more ? "多い" : "少ない"}${note}。`,
+    `${lab}の場合なら、3 年の見込みは ${amt}${more ? "少なかった" : "多かった"}${note}。`,
+    `${lab}の場合と比べた 3 年の見込みは ${sgn(d)}${amt}${note}。`,
+    `3 年の見込みで見ると、この結果は${lab}の場合より ${amt}${more ? "多い" : "少ない"}${note}。`,
+  ][k]!;
+}
+
+/**
+ * S3 の続き（con-1・rep-3）: この結果で次の手の並びがどう変わったか。別の結果（3 年の見込みの順で近い物から）の後に並ぶ手と比べ、
+ * この結果では並ばない手と、代わりに並ぶ手を言う。どの結果の後も同じ並びなら言わない。言い方は位置で 3 つを回す
+ */
+function menuSentence(c: Ctx, n: number, p: number, trace: string[]): string {
+  const { map } = c;
+  const sibs = kidsOf(map, map.parent(n)).filter((x) => x !== n && map.role(x) === "s");
+  if (!sibs.length) return "";
+  const mine = nextKinds(c, n);
+  for (const x of sibs) {
+    const theirs = nextKinds(c, x);
+    const closed = theirs.filter((k) => !mine.includes(k));
+    const opened = mine.filter((k) => !theirs.includes(k));
+    if (!closed.length && !opened.length) continue;
+    const lab = `『${labelOf(c, x)}』`;
+    const cl = closed.map((k) => kindNoun(c, k)).join("と");
+    const op = opened.map((k) => kindNoun(c, k)).join("と");
+    trace.push("state:menu");
+    if (closed.length && opened.length) return [`${lab}の場合に次に並んだ${cl}は、この結果では選べず、代わりに${op}が並ぶ。`, `この結果では${op}が選べる代わりに、${lab}の場合にある${cl}は並ばない。`, `次の手の並びも${lab}の場合とは違い、${cl}が消えて${op}が入る。`][p % 3]!;
+    if (closed.length) return [`${lab}の場合に次に並んだ${cl}は、この結果では選べない。`, `この結果の次の手には、${lab}の場合にある${cl}が無い。`, `次の手の並びは${lab}の場合より少なく、${cl}が無い。`][p % 3]!;
+    return [`${lab}の場合には無い${op}が、この結果では選べる。`, `この結果の次の手には、${lab}の場合に無い${op}が加わる。`, `次の手の並びは${lab}の場合より多く、${op}も選べる。`][p % 3]!;
+  }
+  return "";
+}
+
+/**
+ * S4（con-1・user-1）: 今日の手の先の分かれ道のうち、ここから 3 年後までに残る数（判断と出来事の分かれ）と、同じ手の別の結果の後の数との比べ。
+ * 今日の手の名前と、その手の先の分かれ道の数を言う（一つの手がこの先の約 2,000 の分かれ道を決めていることを、どの状態でも見せる。user-1）。
+ * 言い方は位置で 3 つを回す（数は地図ごとに 1 回だけ下から数えた物。L7）
+ */
+function forkSentence(c: Ctx, n: number, link: Link, p: number, trace: string[], bare = false, named = false, min = false): string {
+  const { map, cal } = c;
+  const r = ripple(map, n);
+  const hz = cal.ym(cal.horizon);
+  const sibs = kidsOf(map, map.parent(n)).filter((x) => x !== n);
+  const f = slot(n0(r.forks));
+  const split = `判断 ${slot(n0(r.decisions))}・出来事の分かれ ${slot(n0(r.splits))}`;
+  if (!r.forks) return "";
+  const first = link.first >= 0 ? link.first : -1;
+  const all = first >= 0 ? slot(n0(ripple(map, first).forks)) : "";
+  // 今日の手の名前は、同じ本文の今日の手の効き目の文が言っていれば「今日の手」とだけ言う
+  const name = first < 0 ? "" : named ? "の手" : `の『${firstName(c, first)}』`;
+  let cmp = "";
+  let tail = "";
+  // 別の結果の後の数がどれもこの結果と同じなら比べない
+  const same = sibs.every((x) => ripple(map, x).forks === r.forks);
+  if (bare || same) {
+    // 比べない（長さの目安を超えるときの短い形）
+  } else if (sibs.length === 1) {
+    const sf = ripple(map, sibs[0]!).forks;
+    const lab = `『${labelOf(c, sibs[0]!)}』`;
+    cmp = `で、${lab}の場合の ${slot(n0(sf))}${r.forks === sf ? "と同じ" : r.forks > sf ? "より多い" : "より少ない"}`;
+    tail = `（${lab}の場合は ${slot(n0(sf))}）`;
+  } else if (sibs.length >= 2) {
+    const list = sibs.map((x) => slot(n0(ripple(map, x).forks))).join("・");
+    cmp = `で、ほかの結果の後は ${list}`;
+    tail = `（ほかの結果の後は ${list}）`;
+  }
+  trace.push("state:forks");
+  if (first < 0) return `ここから ${hz}までの分かれ道は ${f}（${split}）${cmp}。`;
+  // 今日の手の先の分かれ道がどれもここから続く（結果が 1 つの今日の手の 3 か月目）
+  if (r.forks === ripple(map, first).forks) return [`今日${name}の先の分かれ道 ${f}（${split}）は、どれもこの結果から続く。`, `今日${name}から数えた分かれ道 ${f}（${split}）が、そのままこの先に残る。`, `この先に続く分かれ道は、今日${name}の後の ${f}（${split}）の全部。`][p % 3]!;
+  // 長さの目安を超えるときの一番短い形（判断と出来事の分かれの内訳も言わない）
+  if (min) return [`今日${name}の先の ${all} の分かれ道のうち、ここから残るのは ${f}。`, `今日${name}から数えて ${all} ある分かれ道は、この結果の先に ${f} が残る。`, `この先に続く分かれ道は、今日${name}の後の ${all} のうち ${f}。`][p % 3]!;
+  return [`今日${name}の先の ${all} の分かれ道のうち、ここから残るのは ${f}（${split}）${cmp}。`, `今日${name}から数えて ${all} ある分かれ道は、この結果の先に ${f}（${split}）が残る${tail}。`, `この先に続く分かれ道は、今日${name}の後の ${all} のうち ${f}（${split}）${cmp}。`][p % 3]!;
+}
+
+/** 手 a の「うまくいく」結果の見込みの言い方（結果が 2 つ以上の手。割で）。無ければ null */
+function oddsPhrase(c: Ctx, a: number, d: number): string | null {
+  const { map } = c;
+  const ks = kidsOf(map, a);
+  if (ks.length < 2) return null;
+  const kind = map.kind(a) ?? "";
+  const share = (ok: (o: number) => boolean): number => ks.filter(ok).reduce((s, o) => s + map.p(o), 0) / 100;
+  const id = (o: number): string => map.outId(o);
+  const say = (what: string, q: number): string | null => (q > 0.005 && q < 0.995 ? `${what} ${wari(q)}` : null);
+  switch (kind) {
+    case "fc_push":
+      return say("昇格の見込み", share((o) => id(o) === "up"));
+    case "fc_switch":
+    case "fc_switch2":
+      return say("移れる見込み", share((o) => /^(high|mid|high_mid)$/.test(id(o))));
+    case "ad_permside":
+    case "ad_perm":
+      return say("全部可の見込み", share((o) => /^(a|a0|a1|a0_a1)$/.test(id(o))));
+    case "sd_permpro":
+      return say("Pro が認められる見込み", share((o) => /^(a|s)$/.test(id(o))));
+    case "part":
+      return say("週 4 日が認められる見込み", share((o) => id(o) === "p"));
+    case "back_emp":
+      return say("3 か月で戻れる見込み", share((o) => id(o) === "e"));
+    case "sd_school":
+      return say("導入が決まる見込み", share((o) => id(o) === "yes"));
+    case "sd_pilot":
+      return say("試用が決まる見込み", share((o) => id(o) === "yes"));
+    case "ad_portfolio":
+      return say("事例ができる見込み", share((o) => id(o) === "yes"));
+    default:
+  }
+  const metric = map.ln(ks[0]!)?.[0] ?? "";
+  if (metric === "cl") {
+    if (kind === "ind_quit") return say("顧客がつく見込み", share((o) => clBand(map, o)[0] >= 1));
+    const top = clBand(map, d)[1];
+    return say("顧客が増える見込み", share((o) => clBand(map, o)[0] > top));
+  }
+  if (metric === "pu" || metric === "mau") {
+    const best = ks.slice().sort((x, y) => outcomeNum(c, y) - outcomeNum(c, x))[0]!;
+    return say(`『${labelOf(c, best)}』の見込み`, map.p(best) / 100);
+  }
+  return null;
+}
+
+/** 数で分かれる結果の区切りの数（「pu30」の 30。無ければ 0） */
+const outcomeNum = (c: Ctx, o: number): number => Number(/(\d+)$/.exec(c.map.outId(o))?.[1] ?? 0);
+
+/** 結果が 1 つの手の、その 3 か月で動く物の見込み（差だけ。数の行の数は書かない。L5）。無ければ null */
+function forecastPhrase(c: Ctx, a: number, d: number): string | null {
+  const { map, C } = c;
+  const ks = kidsOf(map, a);
+  if (ks.length !== 1) return null;
+  const o = ks[0]!;
+  const kind = map.kind(a) ?? "";
+  if (map.sum(o)) return "先は標準の選び方で続けた見積もり";
+  const s0 = map.st(d);
+  const s1 = map.st(o);
+  if (mergedFact(map, o)) {
+    const p = factShare(C, kind, s0.fl);
+    if (p !== null && kind === "fc_push") return `昇格の見込み ${wari(p)}`;
+    if (p !== null && kind === "sd_school") return `導入が決まる見込み ${wari(p)}`;
+    return null;
+  }
+  if (kind === "fc_scope") return `次の 4 月の評価で昇格する見込みが ${wari(C.promoPScope)}に上がる`;
+  if ((kind === "ad_side" || kind === "ad_more") && clBand(map, o)[1] > clBand(map, d)[1]) {
+    const [bl, bh] = clBand(map, o);
+    const share = bh - bl === 1 ? s1.cl - bl : -1;
+    if (share > 0.05 && share < 0.95) return `顧客が増える見込み ${wari(share)}`;
+  }
+  const dPu = Math.round(s1.pu) - Math.round(s0.pu);
+  if (s0.pro && s1.pro && (kind === "sd_retain" || kind === "sd_grow" || kind === "sd_ads") && dPu >= 1) return `有料会員が ${slot(n0(dPu))} 人ほど増える見込み`;
+  const dMau = Math.round(s1.mau) - Math.round(s0.mau);
+  if ((kind === "sd_grow" || kind === "sd_ads") && dMau >= 1) return `月に遊ぶ人が ${slot(n0(dMau))} 人ほど増える見込み`;
+  return null;
+}
+
+/** 次の手の名前の言い換え（地図の手の名前と短い名前を、道の上の位置と並びで回す。rep-8: 同じ言い方を判断ごとに並べない） */
+function optName(c: Ctx, x: number, k: number): string {
+  const { map } = c;
+  if (map.isBase(x)) return "今のまま";
+  return k % 2 ? kindShort(c, map.kind(x) ?? "") : listName(c, x);
+}
+
+/**
+ * S5（con-1・rep-8）: 次の判断の手の数・おすすめの手（その見込みか、その 3 か月で動く物）と、ほかの手との差（どの手も同じ見積もり方: その 3 か月は
+ * 正確に・その後は標準の選び方。手のカードの差と同じ数）。おすすめは計算の芯の一番良い選び方（画面のおすすめ）、無ければ地図のおすすめ。
+ * 言い方は位置で 3 つを回し、ほかの手の名前は言い換えを回す。選べる手が今のままだけなら、そう言う
+ */
+function nextParts(c: Ctx, n: number, p: number, trace: string[]): { head: string; others: string } {
+  const { map, cal } = c;
+  const kids = kidsOf(map, n);
+  trace.push("state:next");
+  if (!kids.some((x) => map.kind(x) !== "keep")) return { head: "次の 3 か月に選べる手は今のままだけ（この地図では、ここから先の手を分けていない）。", others: "" };
+  const pi = c.rt?.recommended?.(n) ?? -1;
+  const rec = pi >= 0 ? pi : recommended(map, n);
+  const sure = pi >= 0 || c.annual === map.header.annual;
+  const info = oddsPhrase(c, rec, n) ?? forecastPhrase(c, rec, n);
+  const recName = `『${listName(c, rec)}』${info ? `（${info}）` : ""}`;
+  const k = slot(kids.length);
+  const head = sure
+    ? [`${cal.ym(map.month(n) + 3)}までの手は ${k} つで、おすすめは${recName}。`, `次の 3 か月に選べる ${k} つの手のうち、おすすめは${recName}。`, `ここで選べる手は ${k} つあり、3 年の稼ぎが一番多いのは${recName}。`][p % 3]!
+    : [`${cal.ym(map.month(n) + 3)}までの手は ${k} つで、地図を作った年収の見積もりで一番の手は${recName}。`, `次の 3 か月に選べる ${k} つの手のうち、地図を作った年収の見積もりで一番の手は${recName}。`, `ここで選べる手は ${k} つあり、地図を作った年収の見積もりで一番の手は${recName}。`][p % 3]!;
+  // ほかの手: おすすめとの差の小さい順（差が出せない手は名前だけ）
+  const vr = optionValue(map, rec, c.annual);
+  const rest = kids
+    .filter((x) => x !== rec)
+    .map((x) => {
+      const v = optionValue(map, x, c.annual);
+      return { x, g: v === null || vr === null ? null : v - vr };
+    })
+    .sort((a, b) => (b.g ?? -Infinity) - (a.g ?? -Infinity));
+  // 並ぶ手は全部言う（選べる手が 5 つの判断でも落とさない。truth-6）
+  const named = rest;
+  const less = named.filter((r) => r.g !== null && r.g <= -1);
+  const same = named.filter((r) => r.g !== null && Math.abs(r.g) < 1);
+  const more = named.filter((r) => r.g !== null && r.g >= 1);
+  const bare = named.filter((r) => r.g === null);
+  const nm = (r: { x: number }, j: number): string => `『${optName(c, r.x, p + j)}』`;
+  const items: string[] = [];
+  const f = p % 3;
+  // 差の大きい順ではなく、おすすめに近い順（多い・ほぼ同じ・少ない）
+  for (const [j, r] of more.entries()) items.push(sure ? `${nm(r, j)}は見積もりでは ${amount(r.g!)} 万円多いが、その後の選び直しまで入れるとおすすめが上` : `${nm(r, j)}は ${amount(r.g!)} 万円多い`);
+  for (const [j, r] of same.entries()) items.push(f === 1 ? `${nm(r, more.length + j)}がほぼ無し` : `${nm(r, more.length + j)}はほぼ同じ`);
+  if (less.length) {
+    const j0 = more.length + same.length;
+    if (f === 1) items.push(less.map((r, j) => `${nm(r, j0 + j)}が ${MINUS}${amount(-r.g!)} 万円`).join("、"));
+    else items.push(`${less.map((r, j) => `${nm(r, j0 + j)}が ${amount(-r.g!)} 万円`).join("、")}少ない`);
+  }
+  // 差の出せない手（見積もりの無い手）は名前だけ
+  if (bare.length) items.push(`${bare.map((r, j) => nm(r, more.length + same.length + less.length + j)).join("、")}${items.length ? "も選べる" : ""}`);
+  if (!items.length) return { head, others: "" };
+  if (!more.length && !same.length && !less.length) return { head, others: `ほかに選べるのは、${items[0]}。` };
+  if (!more.length && !less.length && !bare.length) {
+    const names = same.map((r, j) => nm(r, j)).join("、");
+    return { head, others: [`ほかの手は、${names}も見込みはほぼ同じ。`, `おすすめとの差は、${names}でもほぼ無い。`, `残りの手は、おすすめと${names}の見込みがほぼ同じ。`][f]! };
+  }
+  const body = items.join("、");
+  return { head, others: [`ほかの手は、${body}。`, `おすすめとの差は、${body}。`, `残りの手は、おすすめより${body}。`][f]! };
+}
+
+/** 今日の手の名前（地図の手の名前。今のままは「今のまま」） */
+const firstName = (c: Ctx, a: number): string => (c.map.isBase(a) ? "今のまま" : listName(c, a));
+
+/** 道の最初の状態（今日の手の結果。3 か月目）の覚え */
+function firstStateLink(link: Link): Link | null {
+  let l: Link | null = link;
+  while (l && l.up && l.up.up) l = l.up;
+  return l && l.up ? l : null;
+}
+
+/**
+ * 今日の手とその答えが、まだこの状態を決めているときの一言（L4・rep-14）。効いているか（gov）は今日の手の種類ごとに道から決める:
+ * 届け出の答えは同じ会社にいて答えが変わらない間・転職して移った会社はその会社にいる間・週 4 日はその働き方の間（認められなかった答えは
+ * 同じ会社の間）・試用と事例と担当はその印がある間。中身（述語で終わる節）は束の thread、枠は 3 つを位置で回す（構造の文）
+ */
+function threadSentence(c: Ctx, n: number, link: Link, p: number, env: Env, slots: Slots, trace: string[]): string {
+  const { map, B, cal } = c;
+  const fl = firstStateLink(link);
+  if (!fl || fl === link || link.first < 0) return "";
+  const first = link.first;
+  const kind = map.kind(first) ?? "";
+  if (!B.thread[kind]) return "";
+  const fo = fl.i;
+  const s = map.st(n);
+  const s0 = map.st(fo);
+  // その後に勤め先が変わったか・独立したか・届け出の答えが出直したか
+  let moved = false;
+  let refiled = false;
+  for (let l: Link | null = link; l && l !== fl; l = l.up) {
+    if (l.newEmp) moved = true;
+    if (l.evs.some((e) => e.code.startsWith("PERM_"))) refiled = true;
+  }
+  const kids = nextKinds(c, n);
+  const id = map.outId(fo);
+  let gov = false;
+  if (FILING_KINDS.has(kind)) gov = !moved && !refiled && s.j !== "i" && s.pm === s0.pm && s0.pm !== "?";
+  else if (kind === "fc_switch") gov = /^(high|mid|high_mid)$/.test(id) && !moved && s.j !== "i";
+  else if (kind === "part") gov = id === "p" ? s.j === "p" : !moved && s.j === "e";
+  else if (kind === "sd_pilot") gov = kids.includes("sd_school") && (id !== "yes" || s.fl.includes("pilot"));
+  else if (kind === "ad_portfolio") gov = id === "yes" && s.fl.includes("portfolio") && (kids.includes("ad_side") || kids.includes("ad_more") || kids.includes("ad_permside"));
+  else if (kind === "fc_scope") gov = s.fl.includes("scope") && kids.includes("fc_push");
+  if (!gov) return "";
+  // 中身の言い換えは枠と別の周期で回す（同じ中身と枠の組が 3 期ごとに戻らない）
+  const eff = choose(B.thread[kind], { ...env, fo: id, gov: 1 }, s.fl, slots, Math.floor(p / 3), trace, `thread.${kind}`);
+  if (!eff) return "";
+  const name = `『${firstName(c, first)}』`;
+  const single = map.childCount(first) < 2;
+  const lab = `『${labelOf(c, fo)}』`;
+  const ym = cal.ym(eventMonth(cal, kind, map.month(first)));
+  trace.push("state:thread");
+  if (single) return [`${eff}のは、今日の${name}があったから。`, `今日の${name}で、${eff}。`, `${ym}までの${name}（今日の手）がまだ効いていて、${eff}。`][p % 3]!;
+  return [`${eff}のは、今日の${name}の結果が${lab}だったから。`, `今日の${name}が${lab}だったので、${eff}。`, `${ym}の${lab}（今日の${name}の結果）がまだ効いていて、${eff}。`][p % 3]!;
+}
+
+/** 状態の本文の長さの目安（点検 C3 の上より短く。超えるときは、決まった順に数の文を落とす） */
+export const STATE_BUDGET = 460;
 
 /** m か月目より後の、その暦の年の月の数（その年の残り） */
 function restMonths(c: Ctx, m: number, year: number): number {
@@ -1458,6 +1953,115 @@ function calSlots(c: Ctx, slots: Slots, cd: CalPick): Slots {
   return { ...slots, taxYear: `${slot(cd.year)} 年分`, taxPeriod: c.cal.taxPeriod(cd.year), taxDeadline: c.cal.taxDeadline(cd.year) };
 }
 
+/** 道の上で今の会社に入ってから続けている転職活動の期の数（この期まで。続けて探した期。searchRun と比べる） */
+function searchRunOf(link: Link): number {
+  let n = 0;
+  for (let l: Link | null = link; l && l.up; l = l.up) {
+    if (l.kind !== "fc_switch" && l.kind !== "fc_switch2") break;
+    n++;
+  }
+  return n;
+}
+
+/** 道の上で、この出来事の前に起きた同じ出来事（一番新しい物）。無ければ null */
+function prevEvent(link: Link, code: string): Ev | null {
+  for (let l: Link | null = link.up; l; l = l.up) for (const e of l.evs) if (e.code === code) return e;
+  return null;
+}
+
+/**
+ * 出来事の後の一言（0.8・con-2・rep-3・rep-4・rep-10・rep-12）: その出来事でこの先の何が変わったか（残る評価・探せる期・持てる顧客の数・
+ * Pro の稼ぎの動き・見込みの動き）。数は状態・地図・C から差し込む（L3）。文に出す一番の出来事の束の型（無ければ種類を落とした名前）で、
+ * 何回目か（evn）と進み具合の条件で選ぶ
+ */
+function thenSentence(c: Ctx, n: number, link: Link, env: Env, slots: Slots, trace: string[]): string {
+  const { map, B, C, cal } = c;
+  const top = shownEvents(link).find((e) => !e.code.startsWith("NEW_EMP_"));
+  if (!top) return "";
+  const bare = top.code.replace(/_[a-z_0-9]+$/, "");
+  const cell = B.then[top.code] ? top.code : B.then[bare] ? bare : null;
+  if (!cell && !CLIENT_CAP.has(top.code) && top.code !== "QUIET_keep") return "";
+  const s = map.st(n);
+  const m = map.month(n);
+  const up = link.up!;
+  const evn = countEvent(up, top.code);
+  const sibs = kidsOf(map, map.parent(n)).filter((x) => x !== n && map.role(x) === "s");
+  const r0 = map.rr(n)[0];
+  const rs = sibs.map((x) => map.rr(x)[0]);
+  const searchN = searchCount(link);
+  const al = cal.aprils.filter((q) => q > m && q <= cal.horizon).length;
+  const kids = nextKinds(c, n);
+  const cap = capOf(C, s.j);
+  const [bl, bh] = clBand(map, n);
+  const dSd = map.rr(n)[2] - map.rr(up.i)[2];
+  const prev = prevEvent(link, top.code);
+  const nth = link.kind ? countKind(link, link.kind) : 0;
+  const ev: Env = {
+    ...evEnv(env, top, evn),
+    al,
+    searchN,
+    searchLeft: C.searchMax - searchN,
+    run: searchRunOf(link),
+    capLeft: cap - bh,
+    dsd0: Math.abs(dSd) < 0.05 ? 1 : 0,
+    nthQ: nth,
+    nextBack: kids.includes("back_emp") ? 1 : 0,
+    nextSide: kids.includes("ad_side") || kids.includes("ad_more") ? 1 : 0,
+    side1: link.kind === "ad_side" ? 1 : 0,
+    nextSchool: kids.includes("sd_school") ? 1 : 0,
+    sharep: prev?.x.share ? 1 : 0,
+    pf: s.fl.includes("portfolio") ? 1 : 0,
+    pil: s.fl.includes("pilot") ? 1 : 0,
+    april: cal.aprils.some((q) => q > m && q <= cal.horizon) ? 1 : 0,
+    exactNow: bl === bh ? 1 : 0,
+  };
+  const es: Slots = {
+    ...slots,
+    ...evSlots(c, top, m),
+    evnth: slot(evn + 1),
+    searchN: slot(searchN),
+    searchLeft: slot(Math.max(0, C.searchMax - searchN)),
+    decLeft: slot(Math.max(1, Math.round((cal.horizon - m) / 3))),
+    capLeft: slot(Math.max(0, cap - bh)),
+    nthQ: slot(nth),
+    dSd: slot(man(Math.abs(dSd))),
+    beN: slot(Math.ceil(C.infraYen / C.netYen)),
+    jobName: s.j === "i" ? "独立" : s.j === "p" ? "週 4 日勤務" : "会社員",
+  };
+  if (rs.length) {
+    const hi = Math.max(...rs);
+    const lo = Math.min(...rs);
+    if (hi > r0) es.dSal = slot(n0(c.annual * (hi - r0)));
+    if (lo < r0) es.dSalD = slot(n0(c.annual * (r0 - lo)));
+  }
+  if (prev?.x.share) es.sharePrev = prev.x.share;
+  // 顧客の出来事と、今のままが続く期は数の枠（持てる顧客の上限・次の顧客の見込みの動き・今のままの期と残る判断）。言い方は位置で回す（L2）
+  const p = posOf(c, n);
+  const job = es.jobName!;
+  if (top.code === "CLIENT_MIX" && evn >= 1) {
+    if (!top.x.share || !prev?.x.share || strip(top.x.share) === strip(prev.x.share)) return "";
+    trace.push("state:then:share");
+    return [`${top.x.hi} 社目が決まる見込みは、前の期の ${prev.x.share}から ${top.x.share}に動いた。`, `前の期に ${prev.x.share}だった ${top.x.hi} 社目の見込みは、今回 ${top.x.share}。`, `${top.x.hi} 社目の見込みは ${prev.x.share}から ${top.x.share}へ。`][p % 3]!;
+  }
+  if (CLIENT_CAP.has(top.code) && !(top.code === "CLIENT_EXACT" && bh === 0)) {
+    const left = cap - bh;
+    if (left <= 0) return "";
+    trace.push("state:then:cap");
+    if (bl !== bh) return [`${job}で持てる顧客は ${slot(cap)} 社まで。`, `${job}のうちに持てる顧客の上限は ${slot(cap)} 社。`, `顧客の上限は、${job}で ${slot(cap)} 社。`][p % 3]!;
+    return [`${job}で持てる顧客は ${slot(cap)} 社まで（あと ${slot(left)} 社）。`, `あと ${slot(left)} 社で、${job}で持てる ${slot(cap)} 社の上限に届く。`, `${job}のうちは ${slot(cap)} 社が上限で、残りは ${slot(left)} 社。`][p % 3]!;
+  }
+  if (top.code === "QUIET_keep" && nth >= 2) {
+    trace.push("state:then:keep");
+    return [`何も足さない期はこれで ${es.nthQ} 期目で、${es.hz}までに残る判断は ${es.decLeft} 回。`, `今のままを選んだのは ${es.nthQ} 回目で、残る判断はあと ${es.decLeft} 回。`, `${es.hz}までの判断はあと ${es.decLeft} 回で、今のままはこれが ${es.nthQ} 期目。`][p % 3]!;
+  }
+  if (!cell) return "";
+  trace.push(`state:then`);
+  return choose(B.then[cell], ev, s.fl, es, hash(map.key(link.first >= 0 ? link.first : n)) + hash(top.code) + evn, trace, `then.${cell}`) ?? "";
+}
+
+/** 持てる顧客の上限を言う顧客の出来事（数の枠。状態の出来事の後の一言） */
+const CLIENT_CAP: ReadonlySet<string> = new Set(["FIRST_CLIENT", "CLIENT_UP", "CLIENT_REGAIN", "CLIENT_EXACT", "CLIENT_MIX"]);
+
 function composeState(c: Ctx, n: number): Card {
   const { map, B } = c;
   const trace: string[] = [];
@@ -1466,8 +2070,10 @@ function composeState(c: Ctx, n: number): Card {
   const { env, slots } = stateEnv(c, n, link);
   const s = map.st(n);
   const m = map.month(n);
+  const p = posOf(c, n);
   const seed0 = hash(map.key(link.first >= 0 ? link.first : n));
-  const evText = shownEvents(link)
+  const shown = shownEvents(link);
+  const evText = shown
     .map((e) => {
       // その出来事の型が無ければ、種類を落とした名前（QUIET_fc_push → QUIET）の型。道で何回目か（evn）で言い換えを回す
       const bare = e.code.replace(/_[a-z_0-9]+$/, "");
@@ -1489,7 +2095,57 @@ function composeState(c: Ctx, n: number): Card {
     const cd = plan.cal;
     calText = choose(B.cal[cd.code], calEnv(c, link, env, cd), s.fl, calSlots(c, slots, cd), hash(map.key(n) + cd.code), trace, `cal.${cd.code}`) ?? "";
   }
-  const body = join([head, sinceClause(c, link, plan), hint, contrastSentence(c, n, plan.perm), nextSentence(c, n), calText]);
+  const since = sinceClause(c, link, plan);
+  // 0.8（W2）: その出来事で変わったこと・この結果の見込みと月の稼ぎの動き・今日の手の効き目・3 年の見込み・別の結果との差・次の手の並びの違い・
+  //   分かれ道・次の手（おすすめと差）。どれも数は差し込み（L3）で、数の行の数は書かない（L5）
+  const then = thenSentence(c, n, link, env, slots, trace);
+  const dq = quarterSentence(c, n, link, p, then !== "" && trace.some((t) => t.startsWith("then.PU_MILE#1")), trace);
+  const thread = since ? "" : threadSentence(c, n, link, p, env, slots, trace);
+  const vals = stateVals(c, n, link);
+  const total = vals ? totalSentence(c, p, vals, trace) : "";
+  // 月の稼ぎの一番の違いは、その出来事が道で初めてで、出来事の後の一言が年収の差を言っていないときだけ添える
+  const firstTime = shown.every((e) => countEvent(link.up, e.code) === 0) && !then.includes("年収");
+  const cmp = contrastMain(c, n, link, p, firstTime, trace);
+  const perm = permLine(c, n, plan.perm);
+  const menu = menuSentence(c, n, p, trace);
+  const forks = forkSentence(c, n, link, p, trace, false, thread !== "");
+  const next = nextParts(c, n, p, trace);
+  // 長さの目安（STATE_BUDGET）を超えるときは、決まった順に短くする: 次の手の並びの違いを落とす → 分かれ道の文の、別の結果との比べを落とす →
+  //   この 3 か月の見込みと月の稼ぎ → 今日の手の効き目 → 出来事の後の一言 → 別の結果との差 → 分かれ道。
+  //   出来事・節目・暦・助言・3 年の見込み・次の手（おすすめとほかの手との差）は落とさない
+  const parts: string[] = [head, then, since, hint, dq, thread, total, cmp, perm, menu, forks, next.head, next.others, calText];
+  const at = { then: 1, dq: 4, thread: 5, cmp: 7, menu: 9, forks: 10 } as const;
+  // 中身の薄い出来事（静かな期・線を越えた・まとめた顧客の数）は、出来事の後の一言がその期の中身なので、別の結果との差より後に落とす
+  const thin = /^(?:QUIET|PU_MILE|MAU_MILE|CLIENT_MIX)/.test(shown[0]?.code ?? "QUIET");
+  const fk = (bare: boolean, min: boolean) => (): string => (forks ? forkSentence(c, n, link, p, [], bare, parts[at.thread] !== "", min) : "");
+  const steps: Array<[keyof typeof at, () => string]> = [
+    ["menu", () => ""],
+    ["forks", fk(true, false)],
+    ["dq", () => ""],
+    ["thread", () => ""],
+    ...(thin ? [] : ([["then", () => ""]] as Array<[keyof typeof at, () => string]>)),
+    ["cmp", () => ""],
+    ...(thin ? ([["then", () => ""]] as Array<[keyof typeof at, () => string]>) : []),
+    ["forks", fk(true, true)],
+    ["forks", () => ""],
+  ];
+  let size = parts.reduce((x, t) => x + len(t), 0);
+  let forkForm: [boolean, boolean] = [false, false];
+  for (const [k, short] of steps) {
+    if (size <= STATE_BUDGET) break;
+    const was = parts[at[k]]!;
+    if (!was) continue;
+    parts[at[k]] = short();
+    size += len(parts[at[k]]!) - len(was);
+    trace.push(parts[at[k]] ? `state:short:${k}` : `state:drop:${k}`);
+    if (k === "forks") forkForm = forkForm[0] ? [true, true] : [true, false];
+  }
+  // 今日の手の効き目の文を落としたら、分かれ道の文は今日の手の名前を言い直す（長さの目安を大きく超えないときだけ。超えるなら「今日の手」のまま）
+  if (thread && !parts[at.thread] && parts[at.forks]) {
+    const named = forkSentence(c, n, link, p, [], forkForm[0], false, forkForm[1]);
+    if (size + len(named) - len(parts[at.forks]!) <= STATE_BUDGET + 8) parts[at.forks] = named;
+  }
+  const body = join(parts);
   const top = link.evs[0];
   // 短い名前: 一番の出来事の短い名前（試作は {nth} などを埋めずに返していた）
   const short = top ? (fill(B.eventShort[top.code] ?? "", { ...slots, ...top.x }) ?? "") : "";
@@ -1684,6 +2340,11 @@ const JOB_EVENTS = /^(SWITCH_|PROMO$|PROMO_MIX|PART_ON|PART_MIX|BACK_EMP|BACK_MI
  * 給与の動きは 4 月の定期の昇給（手の名前だけで言うと、手が動かしたように読める。reader-11）
  */
 function leverSource(c: Ctx, link: Link): string {
+  return `（主に${leverName(c, link)}）`;
+}
+
+/** その 3 か月の月の稼ぎの動きの主な中身の名前（給与・4 月の定期の昇給・広告運用の売上・SpellDash の稼ぎ） */
+function leverName(c: Ctx, link: Link): string {
   const { map, cal } = c;
   const a = map.rr(link.up!.i);
   const b = map.rr(link.i);
@@ -1693,7 +2354,7 @@ function leverSource(c: Ctx, link: Link): string {
     [b[2] - a[2], "SpellDash の稼ぎ"],
   ];
   parts.sort((x, y) => Math.abs(y[0]) - Math.abs(x[0]));
-  return `（主に${parts[0]![1]}）`;
+  return parts[0]![1];
 }
 
 function leverSentence(c: Ctx, lv: Lever | null): string {

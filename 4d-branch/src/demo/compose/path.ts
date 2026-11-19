@@ -219,6 +219,8 @@ interface PerMap {
   /** 暦（初めて組み立てるときに作る。数え上げだけなら要らない） */
   cal: Calendar | null;
   counts: Counts | null;
+  /** ずっと今のままの 3 年の稼ぎ（年収ごと。今のままの手の先だけをたどって 1 回。null は出せない地図） */
+  keep: Map<number, number | null> | null;
   links: WeakMap<Banks, Map<number, Link>>;
   /** 兄弟の題（親の番号 → 子の並びの題と、その題に使った文の型）。題は年収で変わらないので、束ごとに 1 回 */
   titles: WeakMap<Banks, Map<number, readonly TitleEntry[]>>;
@@ -229,7 +231,7 @@ const MEMO = new WeakMap<MapData, PerMap>();
 function perMap(map: MapData): PerMap {
   let pm = MEMO.get(map);
   if (!pm) {
-    pm = { cal: null, counts: null, links: new WeakMap(), titles: new WeakMap() };
+    pm = { cal: null, counts: null, keep: null, links: new WeakMap(), titles: new WeakMap() };
     MEMO.set(map, pm);
   }
   return pm;
@@ -469,6 +471,74 @@ function makeLink(c: Ctx, up: Link, n: number): Link {
     opts: optKinds(map, n),
     newEmp: evs.some((x) => x.code.startsWith("SWITCH_") || x.code === "BACK_EMP") || (map.st(up.i).j === "i" && map.st(n).j !== "i"),
   };
+}
+
+/**
+ * 今日からその覚えのカードまでの稼ぎ（万円。0.8・con-7: 状態の 3 年の見込みの「ここまで」）。計算の芯の money.acc と同じ順に足す
+ * （今日から順に、カードごとの月の万円 w(e) を足す。端数の .5 で画面の「ここまでの稼ぎ」と 1 万円ずれないように、成分ごとに足してから
+ * 月の万円にしない）
+ */
+export function accOf(c: Ctx, link: Link): number {
+  const ls: Link[] = [];
+  for (let l: Link | null = link; l && l.up; l = l.up) ls.push(l);
+  let acc = 0;
+  for (let k = ls.length - 1; k >= 0; k--) acc += wOf(c.annual, c.map.e(ls[k]!.i));
+  return acc;
+}
+
+/**
+ * ずっと今のまま（12 回とも今のまま）の、今日から 36 か月目までの稼ぎ（万円）。計算の芯の「ずっと今のまま」（keep の選び方）と同じ決まり:
+ * 判断では今のままの手、手は結果の見込みの重み（重みが 0 なら同じ重み）で結果の稼ぎ（e）とその先を足し、行き先はその月の月の稼ぎ × 残りの月。
+ * 今のままの無い判断に当たれば null（比べる文を書かない）。地図と年収ごとに 1 回だけ（今のままの手の先だけをたどる。L4・L7）
+ */
+export function keepTotalOf(c: Ctx): number | null {
+  const pm = perMap(c.map);
+  const memo = (pm.keep ??= new Map());
+  const hit = memo.get(c.annual);
+  if (hit !== undefined) return hit;
+  const v = keepValue(c, 0);
+  if (memo.size >= 8) memo.clear();
+  memo.set(c.annual, v);
+  return v;
+}
+
+function keepValue(c: Ctx, i: number): number | null {
+  const { map, annual, cal } = c;
+  const k = map.childCount(i);
+  if (!k) return wOf(annual, map.rr(i)) * Math.max(0, cal.horizon - map.month(i));
+  if (map.role(i) !== "a") {
+    for (let j = 0; j < k; j++) {
+      const a = map.child(i, j);
+      if (map.isBase(a)) return keepValue(c, a);
+    }
+    return null;
+  }
+  // 計算の芯と同じ順と式で足す（結果の割合 = 0〜100 に収めた見込み ÷ 合計。数の出せる結果だけで割り直す。画面の数と端数までそろえる）
+  let total = 0;
+  for (let j = 0; j < k; j++) total += Math.max(0, Math.min(100, map.p(map.child(i, j))));
+  const vs: Array<number | null> = [];
+  let sw = 0;
+  let cnt = 0;
+  for (let j = 0; j < k; j++) {
+    const o = map.child(i, j);
+    const x = keepValue(c, o);
+    vs.push(x);
+    if (x === null) continue;
+    sw += total > 0 ? Math.max(0, Math.min(100, map.p(o))) / total : 1 / k;
+    cnt++;
+  }
+  if (!cnt) return null;
+  const equal = sw <= 0;
+  const norm = equal ? cnt : sw;
+  let v = 0;
+  for (let j = 0; j < k; j++) {
+    const x = vs[j];
+    if (x === null || x === undefined) continue;
+    const o = map.child(i, j);
+    const w = total > 0 ? Math.max(0, Math.min(100, map.p(o))) / total : 1 / k;
+    v += ((equal ? 1 : w) / norm) * (wOf(annual, map.e(o)) + x);
+  }
+  return v;
 }
 
 /** 判断（今日・状態）の覚え。無ければ、覚えのある判断まで道を上ってから作る */

@@ -126,6 +126,16 @@ export interface Banks {
   branch: Record<string, Record<string, Variant[]>>;
   /** 状態の出来事の文（できごとだけ。同じ出来事が道で何回も起きるときは、何回目かで言い換えを選ぶ） */
   event: Record<string, Variant[]>;
+  /**
+   * 0.8: 出来事の後の一言（その出来事でこの先の何が変わったか。数は状態・地図・C から差し込む。con-2・rep-3・rep-4・rep-10）。
+   * 鍵は出来事の名前（無ければ種類を落とした名前）。同じ出来事が道で何回も起きるときは、何回目か（evn）と進み具合の条件で言い換えを選ぶ
+   */
+  then: Record<string, Variant[]>;
+  /**
+   * 0.8: 今日の手とその答えが、この状態をまだ決めているときの一言の中身（L4・rep-14）。鍵は今日の手の種類。
+   * 中身は「…のは、今日の『手』の結果が『答え』だったから」などの決まった枠（組み立て側）に入る、述語で終わる 1 節
+   */
+  thread: Record<string, Variant[]>;
   /** 出来事に添える助言（組ごとに道で 1 回だけ） */
   tip: Record<string, Variant[]>;
   /** 出来事の短い名前（節目・短い名前） */
@@ -138,7 +148,7 @@ export interface Banks {
   eventShortAgain: Record<string, string>;
   /** 状態の題 */
   eventTitle: Record<string, Variant[]>;
-  /** 次の手を問う言い方 */
+  /** 次の手を問う言い方（0.8 からは状態の文では使わない。手の名前の言い換えは nextNoun・short・地図の手の名前） */
   nextPhrase: Record<string, string[]>;
   /** 暦の文（確定申告・住民税・4 月・辞める前）。どれも道で 1 回だけ（確定申告はその年分ごとに 1 回） */
   cal: Record<string, Variant[]>;
