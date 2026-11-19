@@ -1,6 +1,8 @@
 // 3 か月ごとの地図の生成（scripts/impact/q）を小さい予算で: 決まった木（作り直しても同じ指紋）・木の形・アプリと同じ値・一貫性・前提の点検・開発用の木の形。
 // 本物の世界（P2 の前提）で、最初の手を 2 つ（今のまま・届け出て副業の 1 社目を探す）、分かれ道 600 に絞る（粗い表を 1 回作るので数秒かかる）。
 // 新しい出力（stage 3）: 手の q・まとめた行き先の mix と cont・「3 年やらない」見積もり・予算の使い道（同じ表を引き継いで ind_quit を分かれ道 2,000 で）。
+// 生成 v2（作業メモ SPEC v1 §2.8）: 一貫性を年収 360・540 のどちらでも守る（540 の一番良い手も広げ、要らなければ戻す）・事実の小さい組を先に分ける・
+// 題・短い名前・やることの焼き込みと文章の点検（scripts/impact/q/text.ts）。
 // 点検はどれも、通る木だけでなく、1 か所壊した木で通らないこと（その点検の名前の文を返すこと）も確かめる（見直し code-1）。
 // 決まった木の数（指紋・数・値）はインラインのスナップショット。前提や作り方を変えて数が変わったら、確かめてから
 //   npx vitest run tests/unit/impactQGen.test.ts -u
@@ -8,7 +10,13 @@
 import { describe, expect, it } from "vitest";
 import worldJson from "../../scripts/impact/world.json";
 import type { World } from "../../scripts/impact/sim";
-import { checkOutputs, checkTree, filingDominance, searchStats } from "../../scripts/impact/q/checks";
+import { bestOf, checkOutputs, checkTree, filingDominance, searchStats } from "../../scripts/impact/q/checks";
+import { bundleHash, canonicalizeDevTree, encodeMap } from "../../scripts/impact/q/bundle";
+import { checkStructure, compareMaps, consistencyOfMap } from "../../scripts/impact/q/check";
+import { bakeText, checkBaked, devNodes, textGate, type ComposeFn } from "../../scripts/impact/q/text";
+import type { TextCheckReport } from "../../scripts/impact/textChecks";
+import { BANKS, composeCard } from "../../src/demo/compose";
+import { decodeBundleBytes } from "../../src/demo/impactBundle";
 import { OutcomeCache, Wsum, type Roll } from "../../scripts/impact/q/core";
 import { toDevTree } from "../../scripts/impact/q/devTree";
 import { consistencyOf, DEFAULTS, generate, R1_ALTS_BY, rollbackApp, type MoveStats, type Params, type QNode } from "../../scripts/impact/q/gen";
@@ -17,7 +25,7 @@ import { CONT_EVENTS, improvementGains, likeValue, neverOf, neverValues, orderRu
 import { runRateQ, setBook, simQ, toQ, type QSt } from "../../scripts/impact/q/sim";
 import { quarterWorld } from "../../scripts/impact/q/world";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
-import type { DevTreeNode } from "../../src/deepmap/mapData";
+import type { DevTree, DevTreeNode } from "../../src/deepmap/mapData";
 
 const w = quarterWorld(worldJson as unknown as World);
 const S = w.annual / 12;
@@ -76,8 +84,8 @@ function fingerprint(r: DevTreeNode): string {
 
 describe("3 か月ごとの地図の生成（小さい予算）", () => {
   it("決まった木: 作り直しても同じ鍵・並び・見込み・稼ぎ・状態・結果の名前と線・幅・q・mix・cont（数はスナップショット）", () => {
-    // 分ける予算だけで目標の ±2% に入る（飽和しない）
-    for (const s of stats) expect(s.calib).toMatchObject({ target: 600, saturated: false, fine: false, areaN: 0, reachMax: null, hit: true });
+    // 分ける予算だけで目標の ±2% に入る（飽和しない）。事実の小さい組は予算に収まる手だけ分ける（下の「事実の小さい組は段 3 までで先に分ける」）
+    for (const s of stats) expect(s.calib).toMatchObject({ target: 600, saturated: false, areaN: 0, reachMax: null, hit: true });
     const vSQ = rollbackApp(root, S, true);
     rollbackApp(root, S);
     const sc = starCounts(root, S, 10);
@@ -95,22 +103,22 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
       rootQ: tree.root.kids!.map((a) => a.q!.map(r9)),
     }).toMatchInlineSnapshot(`
       {
-        "bands": 1181,
+        "bands": 1238,
         "counts": {
-          "decisions": 878,
-          "ends": 1831,
-          "forks": 1187,
-          "nodes": 4967,
-          "options": 2258,
-          "sumEnds": 1457,
+          "decisions": 973,
+          "ends": 1912,
+          "forks": 1205,
+          "nodes": 5421,
+          "options": 2536,
+          "sumEnds": 1530,
         },
-        "fingerprint": "1fe4fix0kq4jv0",
-        "guards": 72,
+        "fingerprint": "19qac9y0vpakkj",
+        "guards": 80,
         "rootQ": [
           [
-            39.948835139,
-            30.000360864,
-            15.149974913,
+            39.930903139,
+            29.933160864,
+            15.053974913,
           ],
           [
             40.244530496,
@@ -118,28 +126,28 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
             9.67787199,
           ],
         ],
-        "rv": 231,
+        "rv": 224,
         "stars": [
-          51,
-          23,
+          58,
+          26,
         ],
         "stats": [
           [
             "keep",
-            588,
-            2399,
-            3,
-            735.871743487,
+            595,
+            2553,
+            18,
+            726,
           ],
           [
             "ad_permside",
-            598,
-            2567,
-            2,
-            570,
+            609,
+            2867,
+            5,
+            405.688753517,
           ],
         ],
-        "vRoot": 1249.697118643,
+        "vRoot": 1247.931381419,
         "vSQ": 1124.175,
       }
     `);
@@ -230,8 +238,8 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
       if (n.r !== "s") continue;
       const bests = n.kids!.filter((a) => a.why === "best");
       expect(bests.length).toBeLessThanOrEqual(1);
-      // 広げた手（まとめていない手）は一番良い手か、今のまま（予算の使い道 2 で広げた別の領域の手は下の ind_quit で確かめる）
-      for (const a of n.kids!) if (!a.stub && a.m < 33) expect(a.why === "best" || a.kind === "keep").toBe(true);
+      // 広げた手（まとめていない手）は一番良い手か、今のままか、540 万円の一番良い手（訳は別の領域。予算の使い道 2 で広げた別の領域の手は下の ind_quit で確かめる）
+      for (const a of n.kids!) if (!a.stub && a.m < 33) expect(a.why === "best" || a.kind === "keep" || (a.why === "area" && qByKey.get(a.k)!.forS2 === true)).toBe(true);
     }
   });
 
@@ -304,11 +312,71 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
     rollbackApp(root, S);
   });
 
-  it("一貫性（R1 の報告 §6.4）: おすすめの道ではまとめた手が勝たず、おすすめの道はまとめた手に入らない", () => {
+  it("一貫性（R1 の報告 §6.4）: おすすめの道ではまとめた手が勝たず、おすすめの道はまとめた手に入らない（年収 360・540 のどちらでも。SPEC v1 §2.8）", () => {
     expect(con.decisions).toBeGreaterThan(300);
     expect(con.violations).toBe(0);
     expect(con.piIntoStub).toBe(0);
-    expect(con.piDecisions).toBe(con.decisions);
+    // おすすめの道の印（onPi）はどちらかの年収のおすすめの道の判断。アプリの年収 360 のおすすめの道はそのうち
+    expect(con.piDecisions).toBeLessThanOrEqual(con.decisions);
+    expect(con.piDecisions).toBeGreaterThan(300);
+    rollbackApp(root, 45);
+    const c540 = consistencyOf(root);
+    expect([c540.violations, c540.piIntoStub]).toEqual([0, 0]);
+    expect(c540.piDecisions).toBeGreaterThan(300);
+    rollbackApp(root, S);
+    // 読むだけの地図（アプリと同じ選び方）でも
+    const m = fromDevTree(tree);
+    for (const annual of [360, 540]) expect(consistencyOfMap(m, annual).intoStub).toBe(0);
+  });
+
+  it("決まり 2 を 540 万円でも: 540 の一番良い手（q）が違う判断ではその手も広げ（見せる手に無ければ足す）、要らなければまとめた手に戻す", () => {
+    let both = 0;
+    let reverted = 0;
+    let added = 0;
+    rollbackApp(root, 45);
+    for (const d of qAll) {
+      if (d.role !== "s" || d.kids.length < 2) continue;
+      const s2 = d.kids.filter((a) => a.forS2);
+      if (!s2.length) continue;
+      const best = d.kids.find((a) => a.why === "best") ?? d.kids.find((a) => a.kind === "keep")!;
+      for (const a of s2) {
+        expect(a).not.toBe(best);
+        // 540 では見せた手のどれより q（まとめた手は値）が大きい（同じなら今のまま）。訳 best の手は 360 で一番
+        for (const b of d.kids) if (b !== a) expect(likeValue(a, 45)).toBeGreaterThanOrEqual(likeValue(b, 45) - 1e-6);
+        if (a.stub) reverted++;
+        else both++;
+      }
+    }
+    for (const a of qAll) if (a.addedS2) added++;
+    expect(both).toBeGreaterThan(0);
+    expect(reverted).toBeGreaterThan(0);
+    expect(added).toBeGreaterThan(0);
+    expect(both).toBe(stats.reduce((x, st) => x + st.s2Exp, 0));
+    expect(added).toBe(stats.reduce((x, st) => x + st.s2Added, 0));
+    // 戻した判断でも、どちらの年収でもアプリの選ぶ手は広げた手（まとめた手に入らない）
+    for (const S2 of [S, 45]) {
+      rollbackApp(root, S2);
+      for (const d of qAll) if (d.role === "s" && d.kids.some((a) => a.forS2 && a.stub) && d.onPi) expect(bestOf(d).stub).toBe(false);
+    }
+    rollbackApp(root, S);
+  });
+
+  it("事実の小さい組は段 3 までで先に分ける: 届け出て副業の『全部可』で 1 社目が決まる 8% は今日の手の結果として残る（SPEC v1 §2.2）", () => {
+    // 使うのは予算に収まる時だけ（この小さい予算では、今のままは幅 ±12 に入る予算が見つからず分けない。8 万枚の木では今日の手すべてで分ける）
+    expect(stats.map((st) => [st.kind, st.calib.fine, st.calib.fineDropped])).toEqual([
+      ["keep", false, true],
+      ["ad_permside", true, false],
+    ]);
+    const a1 = qByKey.get("r.ad_permside.a1")!;
+    expect([a1.out!.p, a1.out!.lab, a1.out!.fine]).toEqual([8, "全部可・1 社目", true]);
+    expect(qByKey.get("r.ad_permside.a0")!.out!.p).toBe(12);
+    expect(qByKey.has("r.ad_permside.a0_a1")).toBe(false);
+    const fine = qAll.filter((n) => n.out?.fine);
+    expect(fine.length).toBe(stats.reduce((x, st) => x + st.fineOuts, 0));
+    for (const n of fine) {
+      expect(n.parent!.stage).toBeLessThanOrEqual(P.fineDepth);
+      expect(n.out!.p).toBeLessThanOrEqual(w.minOutcomeP);
+    }
   });
 
   it("前提の点検（N10・N7・顧客は整数・幅・名前・事実・暦・転職活動の上限）に通り、一番ありそうな道で続けて決まらない転職活動は 2 期まで", () => {
@@ -593,7 +661,10 @@ describe("新しい出力（stage 3。SPEC v1 §2.4・D2）", () => {
     // ★（2 位より 10 万円以上）: 同じ見積もり方では木の値より少ない（見直し truth-2）
     const sc = starCounts(root, S, 10);
     expect(sc.all.q).toBeLessThan(sc.all.tree);
-    expect(sc.mixed.argmaxDiff).toBe(0);
+    // 木の値と q で一番の手が違うのは、540 万円の一番良い手も広げた判断で、アプリ（木の値）がそちらを選ぶ所だけ（q ではほぼ同じ所）
+    let toS2 = 0;
+    for (const d of qAll) if (d.role === "s" && d.kids.length >= 2 && bestOf(d).forS2 && !bestOf(d).stub) toS2++;
+    expect(sc.all.argmaxDiff).toBe(toS2);
   });
 
   it("まとめた行き先: mix は続きの見積もりの 36 か月目の行き先の割合と幅（道を 1 本ずつたどっても同じ）。顧客の幅は band と同じ、代表の状態は一番多い物", () => {
@@ -682,8 +753,98 @@ describe("新しい出力（stage 3。SPEC v1 §2.4・D2）", () => {
   });
 });
 
-describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_quit を分かれ道 2,000 で", () => {
-  const iq = generate(w, { ...P, B: 2000 }, ["ind_quit"], dp);
+describe("文章の焼き込みと文章の点検（scripts/impact/q/text.ts。SPEC v1 §3.1・§4.3・§4.6）", () => {
+  // 生成の入口（main.ts）と同じ順: 開発用の木 → 同梱データの精度に丸める → 焼き込む → 決まった並び → 読み手
+  const dev = canonicalizeDevTree(toDevTree(w, root, { anchor: "2026-11", release: 0, hash: "", textVersion: "dev" }));
+  const rep = bakeText(dev);
+  const m1 = fromDevTree(dev);
+  const bytes = encodeMap(m1);
+  dev.header.hash = bundleHash(bytes);
+  const m2 = decodeBundleBytes(bytes);
+  /** 作り物の組み立て（本物は遅いので、通らない場合の確かめに使う） */
+  const fake = (f: (map: Parameters<ComposeFn>[0], i: number, annual: number) => Partial<ReturnType<ComposeFn>>): ComposeFn => (map, i, annual) => ({ title: `題${i}`, short: "", body: "", numbers: [], todo: map.role(i) === "a" ? [{ text: "やる", cite: "spell-week-01" }] : [], trace: [], ...f(map, i, annual) });
+  const copy = (): DevTree => structuredClone(dev);
+
+  it("題・短い名前・やること（元の番号つき）を焼き込み、入口の textVersion は文の型の束の版。年収 540 でも同じ文", () => {
+    expect(rep.fails).toEqual([]);
+    expect([dev.header.textVersion, rep.textVersion]).toEqual([BANKS.version, BANKS.version]);
+    expect(rep.cards).toBe(m1.n);
+    expect(rep.ms).toHaveLength(2);
+    const nodes = devNodes(dev);
+    expect(nodes.map((n) => n.k)).toEqual(Array.from({ length: m1.n }, (_, i) => m1.key(i)));
+    for (const n of nodes) {
+      expect(n.title).toBeTruthy();
+      if (n.r === "a") expect(n.todo!.length).toBeGreaterThanOrEqual(1);
+      else expect(n.todo).toBeUndefined();
+      // 子の並びは最後のまま（開発用の木の JSON が読みやすいように）
+      if (n.kids) expect(Object.keys(n).at(-1)).toBe("kids");
+    }
+    expect(rep.movesWithTodo).toBe(nodes.filter((n) => n.r === "a").length);
+    expect(rep.distinct.cite).toBeGreaterThan(10);
+  });
+
+  it("開発用の木（fromDevTree）も同梱データの読み手も、焼き込んだ題・短い名前・やることを返す（仮の文でない）。その場の組み立てと同じ", () => {
+    expect(compareMaps(m1, m2)).toEqual([]);
+    expect(m2.header.textVersion).toBe(BANKS.version);
+    for (const i of [0, 1, 2, 3, m2.n - 1, Math.floor(m2.n / 2)]) {
+      const c = composeCard(m2, i, { annual: 360 });
+      expect([m2.title(i), m2.short(i), m2.todo(i)]).toEqual([c.title, c.short, m2.role(i) === "a" ? c.todo : []]);
+      expect([m1.title(i), m1.short(i), m1.todo(i)]).toEqual([m2.title(i), m2.short(i), m2.todo(i)]);
+    }
+    // 仮の文（手の種類の名前・結果の名前）ではない
+    const keep = m2.indexOfKey("r.keep");
+    expect(m2.title(0)).not.toBe("今日");
+    expect(m2.title(keep)).not.toBe(m2.header.kinds.keep![0]);
+    expect(m2.todo(keep).every((t) => t.text.length > 0 && /^[a-z]+(-[a-z0-9]+)+$/.test(t.cite))).toBe(true);
+    expect(checkBaked(m2)).toEqual([]);
+    // 木の形の点検（S1〜S5）にも通る
+    expect(checkStructure(m2, ONLY)).toEqual([]);
+  });
+
+  it("TB2: 年収で変わる題・空の題・手でないカードのやること・元の番号の無いやることは通らない", () => {
+    const codesOf = (r: { fails: string[] }) => [...new Set(r.fails.map((f) => f.split(" ")[0]))];
+    const ok = bakeText(copy(), { compose: fake(() => ({})) });
+    expect(ok.fails).toEqual([]);
+    const sal = bakeText(copy(), { compose: fake((_, i, annual) => (annual === 540 && i === 5 ? { title: "年収で変わる" } : {})) });
+    expect(codesOf(sal)).toEqual(["TB2"]);
+    expect(sal.fails[0]).toContain("年収で変わる");
+    const sal2 = bakeText(copy(), { compose: fake((map, i, annual) => (annual === 540 && map.role(i) === "a" ? { todo: [{ text: "別", cite: "spell-week-02" }] } : {})) });
+    expect(sal2.fails.some((f) => f.includes("やることが年収で変わる"))).toBe(true);
+    expect(sal2.fails.at(-1)).toContain("全部で");
+    expect(bakeText(copy(), { compose: fake((_, i) => (i === 2 ? { title: "" } : {})) }).fails).toEqual([expect.stringContaining("題が空")]);
+    expect(bakeText(copy(), { compose: fake((map, i) => (map.role(i) === "s" && i < 10 ? { todo: [{ text: "x", cite: "spell-week-01" }] } : {})) }).fails[0]).toContain("手でないカードにやること");
+    expect(bakeText(copy(), { compose: fake((map, i) => (map.role(i) === "a" ? { todo: [{ text: "x", cite: "" }] } : {})) }).fails[0]).toContain("元の番号が空");
+  });
+
+  it("TB1: 読んだ地図の題・短い名前・やることがその場の組み立てと違う・入口の版が違うと通らない", () => {
+    const k = 7;
+    const wrong = Object.create(m2) as typeof m2;
+    Object.defineProperty(wrong, "title", { value: (i: number) => (i === k ? "違う題" : m2.title(i)) });
+    expect(checkBaked(wrong)).toEqual([expect.stringContaining(`TB1 焼き込んだ文章がその場の組み立てと違う: ${m2.key(k)}`)]);
+    const a = m2.indexOfKey("r.keep");
+    const noTodo = Object.create(m2) as typeof m2;
+    Object.defineProperty(noTodo, "todo", { value: (i: number) => (i === a ? [] : m2.todo(i)) });
+    expect(checkBaked(noTodo)).toHaveLength(1);
+    const old = Object.create(m2) as typeof m2;
+    Object.defineProperty(old, "header", { value: { ...m2.header, textVersion: "0.1" } });
+    expect(checkBaked(old)).toEqual([expect.stringContaining("TB1 入口の文の型の版 0.1")]);
+  });
+
+  it("TC: 文章の点検の止める物は生成を止め（TC を付ける。例の行はそのまま）、データの指摘は注意。本物の点検はこの木で通る", () => {
+    const report = { failures: ["C6 似かた: 1 件（年収 360・path 1）", "  C6 道の繰り返し 5（門 4）"], warnings: ["D1 データ: 2 件（年収 540・e 2）"], runs: [] } as unknown as TextCheckReport;
+    const seen: unknown[] = [];
+    const g = textGate(m2, {}, (m, o) => (seen.push(m, o.annuals), report));
+    expect(seen).toEqual([m2, [360, 540]]);
+    expect(g.fails).toEqual(["TC C6 似かた: 1 件（年収 360・path 1）", "  C6 道の繰り返し 5（門 4）"]);
+    expect(g.warns).toEqual(["D1 データ: 2 件（年収 540・e 2）"]);
+    const real = textGate(m2);
+    expect(real.fails).toEqual([]);
+    expect(real.report.runs.map((r) => r.annual)).toEqual([360, 540]);
+  }, 60_000);
+});
+
+describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_quit を分かれ道 2,000 で（一貫性を生成の年収だけで守る形。540 の一番良い手を広げると飽和しないので）", () => {
+  const iq = generate(w, { ...P, B: 2000, annuals: [360] }, ["ind_quit"], dp);
   summaryOutputs(w, iq.root);
   rollbackApp(iq.root, S);
   const s = iq.stats[0]!;
@@ -694,7 +855,7 @@ describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_
   };
   visit(iq.root);
 
-  it("分ける予算だけでは飽和し、事実の小さい組を分け、別の領域の手を広げて目標の ±2% に入る（数はスナップショット）", () => {
+  it("事実の小さい組も分けて飽和し、別の領域の手を広げて目標の ±2% に入る（数はスナップショット）", () => {
     expect(s.calib).toMatchObject({ target: 2000, saturated: true, fine: true, reachMax: null, hit: true });
     expect(s.calib.areaN).toBeGreaterThan(0);
     expect(s.calib.Bint).toBe(Infinity);
@@ -709,12 +870,14 @@ describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_
           "areaReverted": 0,
           "areaUsed": 2,
           "fine": true,
+          "fineDropped": false,
           "fineMax": 1469,
           "hit": true,
           "passes": 6,
           "reachMax": null,
+          "s2Reverted": 0,
           "saturated": true,
-          "splitMax": 1325,
+          "splitMax": 1469,
           "target": 2000,
         },
         "forks": 1981,
@@ -745,7 +908,7 @@ describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_
     expect(checkOutputs(w, iq.root, { stats: iq.stats, tol: P.tol, maxNodes: 90_000 })).toEqual([]);
   });
 
-  it("広げた別の領域の手の木の値が一番良い手を超えたら、まとめた手に戻す（revertAreas。木を書き換えるので最後に）", () => {
+  it("広げた別の領域の手の木の値が一番良い手を超えたら、まとめた手に戻す（revertExpansions。木を書き換えるので最後に）", () => {
     rollbackApp(iq.root, S);
     const a = nodes.find((n) => n.areaExp)!;
     const d = a.parent!;
@@ -757,7 +920,7 @@ describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_
     rollbackApp(iq.root, S);
     expect(a.V).toBeGreaterThan(best.V);
     const a0 = iq.root.kids[0]!;
-    expect(iq.gen.revertAreas(a0)).toBe(1);
+    expect(iq.gen.revertExpansions(a0)).toEqual({ area: 1, s2: 0 });
     expect([a.stub, a.areaExp, a.qv]).toEqual([true, false, undefined]);
     // 子は a の見積もり（その 3 か月 + 続きの見積もり）からのまとめた行き先
     expect(a.kids.map((k) => [k.key, k.out!.p, k.sumEnd, k.role])).toEqual(ev.outs.map((o) => [`${a.key}.${o.id}`, o.p, true, "e"]));

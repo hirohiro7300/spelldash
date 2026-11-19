@@ -1,12 +1,17 @@
-// 同梱データの点検（作業メモ SPEC v1 §2.6）。どれも、書いたバイト列を読み手（src/demo/impactBundle.ts）で読んだ地図（MapData）で見る:
+// 同梱データの点検（作業メモ SPEC v1 §2.6・§2.8）。どれも、書いたバイト列を読み手（src/demo/impactBundle.ts）で読んだ地図（MapData）で見る:
 // アプリに届く物そのものを点検する（生成の木の点検は ./checks.ts。こちらは丸めて書いて読んだ後）。入口 main.ts が全部を呼び、通らなければ書き出さない。
 //   B2  読み手: どのノードのどの問いにも、丸めた開発用の木の fromDevTree() と同じ答え（compareMaps）
+//   S1〜S5 木の形（v0 の点検を 3 か月ごとの地図に合わせた物。checkStructure）:
+//       S1 親は子より前・鍵は重ならず「親の鍵 + . + 区切り」・S2 判断（今日・状態）の子は同じ月の手、手の子は結果、今日の手は今日の手の並び・
+//       S3 判断ごとに今のままが 1 つだけで並びの最後・S4 手には結果があり、見込みは 1〜100 の整数で合計 100・
+//       S5 結果の月は手の月 + 3（まとめた手の結果は 36 か月目のまとめた行き先）、行き先は 36 か月目で子が無い、状態には手がある（3 年の前で
+//          終わる道が無い）、33 か月目にまとめた手は無く、33 か月目の手の結果は本当の行き先
 //   N1  ノードは 90,000 枚まで
 //   B1  最初の手ごとの分かれ道（子が 2 つ以上のノード）が、合わせ込みの報告の数と同じで、目標 min(B, 届く上限) の ±tol
 //   N10 Pro を出していれば、届け出の答えが『全部可』か『SpellDash だけ可』、または独立（まとめた行き先は数えるだけ）
 //   C1  顧客の社数: 幅の無い状態は整数の社数、幅は整数で小さい順
 //   K1  暦: 入口の年月と 4 月の月の番号（(anchorMonth + a) mod 12 = 4）
-//   R1  一貫性（生成の年収）: 最初の手ごとのおすすめの道で、アプリの一番良い手がまとめた手になる判断が 0
+//   R1  一貫性（年収 360・540 のどちらも）: 最初の手ごとのおすすめの道で、アプリの一番良い手がまとめた手になる判断が 0
 //   R2  アプリと同じ値: 読んだ地図からアプリの文書を組み立て、computeImpact の今日の値・ずっと今のまま・すべての手の差が、
 //       読んだ値から直接出した値と |差| ≤ 1e-9（年収 360・540）。一番良い手も同じ
 //   I1  ID: 鍵からの 64 ビットの ID（ノード n_i_・線 e_i_）が重ならない
@@ -26,8 +31,11 @@ import type { DocData } from "../../../src/model/types";
 
 /** ノードの上限（SPEC v1 §2.6） */
 export const MAX_NODES = 90_000;
-/** 決まった並び（圧縮する前）の上限 Z1（測った値 3.2 MB に、文章の表の分の余裕）と gzip の上限 Z2 */
-export const MAX_RAW = 4_000_000;
+/**
+ * 決まった並び（圧縮する前）の上限 Z1 と gzip の上限 Z2（SPEC v1 §2.6）。Z1 は測った値から: 生成 v2 の木（77,737 枚・題・短い名前・やることを
+ * 焼き込んだ物）で 3.84 MB（文章の表の前は 72,402 枚で 3.26 MB）。文の型の束を増やす分（違う題の数）に 1 割ほどの余裕を足して 4.3 MB
+ */
+export const MAX_RAW = 4_300_000;
 export const MAX_GZIP = 1_200_000;
 
 const LIMIT = 40;
@@ -101,6 +109,77 @@ export function compareMaps(a: MapData, b: MapData): string[] {
     }
     for (let k = 0; k < a.childCount(i); k++) if (a.child(i, k) !== b.child(i, k)) fail(`${a.key(i)} の ${k} 番目の子が違います`);
     if (b.indexOfKey(a.key(i)) !== i) fail(`${a.key(i)} を鍵から引けません`);
+  }
+  return fails;
+}
+
+// ---- 木の形（S1〜S5）
+
+/**
+ * 木の形の点検（S1〜S5。上の説明）。menu は今日の手の種類（並べる順は値の順なので、種類の組で比べる。--only で作った木はその手だけ）。
+ * 地図の月は 0..horizon、手は 3 か月（SPEC v1 §2.1）
+ */
+export function checkStructure(map: MapData, menu: readonly string[]): string[] {
+  const { fails, fail } = collector();
+  const H = map.header.horizon;
+  const n = map.n;
+  if (n < 1 || map.role(0) !== "r" || map.parent(0) !== -1) return ["S1 今日（0）が先頭で親の無いカードでない"];
+  // S1 親は子より前・鍵
+  const keys = new Set<string>();
+  for (let i = 0; i < n; i++) {
+    const k = map.key(i);
+    if (keys.has(k)) fail(`S1 鍵が重なる: ${k}`);
+    keys.add(k);
+    if (i === 0) continue;
+    const p = map.parent(i);
+    if (!(p >= 0 && p < i)) fail(`S1 親が子より前でない: ${k}`);
+    else {
+      const pk = map.key(p);
+      const seg = k.startsWith(`${pk}.`) ? k.slice(pk.length + 1) : "";
+      if (!seg || seg.includes(".")) fail(`S1 鍵が「親の鍵 + . + 区切り」でない: ${k}`);
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const role = map.role(i);
+    const m = map.month(i);
+    const key = map.key(i);
+    const c = map.childCount(i);
+    const kids = Array.from({ length: c }, (_, k) => map.child(i, k));
+    if (role === "r" || role === "s") {
+      // S2・S3 判断: 子は同じ月の手。今のままが 1 つだけで最後
+      if (c < 2) fail(`S5 3 年の前で終わる道・手が 1 つの判断: ${key}（手 ${c}）`);
+      if (kids.some((a) => map.role(a) !== "a" || map.month(a) !== m)) fail(`S2 判断の子が同じ月の手でない: ${key}`);
+      const bases = kids.filter((a) => map.isBase(a));
+      if (bases.length !== 1 || map.kind(bases[0]!) !== "keep") fail(`S3 今のままが 1 つでない: ${key}`);
+      else if (kids.at(-1) !== bases[0]) fail(`S3 今のままが並びの最後でない: ${key}`);
+      if (role === "r") {
+        const got = kids.map((a) => map.kind(a) ?? "").sort();
+        const want = [...menu].sort();
+        if (got.length !== want.length || got.some((x, k) => x !== want[k])) fail(`S2 今日の手が今日の手の並びと違う: ${got.join(",")}（${want.join(",")}）`);
+      }
+    } else if (role === "a") {
+      // S4 結果と見込み
+      if (!c) fail(`S4 結果の無い手: ${key}`);
+      let sum = 0;
+      for (const o of kids) {
+        const p = map.p(o);
+        if (!(Number.isInteger(p) && p >= 1 && p <= 100)) fail(`S4 見込みが 1〜100 の整数でない: ${map.key(o)}（${p}）`);
+        sum += p;
+        if (map.role(o) !== "s" && map.role(o) !== "e") fail(`S2 手の子が結果でない: ${map.key(o)}`);
+      }
+      if (c && sum !== 100) fail(`S4 見込みの合計が 100 でない: ${key}（${sum}）`);
+      // S5 結果の月
+      const stub = map.stub(i);
+      if (stub && m + 3 >= H) fail(`S5 最後の 3 か月にまとめた手: ${key}`);
+      for (const o of kids) {
+        const ok = stub ? map.role(o) === "e" && map.sum(o) && map.month(o) === H : m + 3 >= H ? map.role(o) === "e" && !map.sum(o) && map.month(o) === H : map.role(o) === "s" && map.month(o) === m + 3;
+        if (!ok) fail(`S5 結果の月・役割が手と合わない: ${map.key(o)}（${map.role(o)}・${map.month(o)} か月目・手 ${m} か月目${stub ? "・まとめた手" : ""}）`);
+      }
+    } else if (role === "e") {
+      if (c) fail(`S5 行き先に子がある: ${key}`);
+      if (m !== H) fail(`S5 行き先が ${H} か月目でない: ${key}（${m}）`);
+      if (map.sum(i) !== map.stub(map.parent(i))) fail(`S5 まとめた行き先とまとめた手が合わない: ${key}`);
+    }
   }
   return fails;
 }

@@ -30,19 +30,30 @@ export interface CliOpts {
   spreadNever: boolean;
   /** 書き出す場所にもうファイルがあっても書き直す（無ければ断る） */
   force: boolean;
+  /**
+   * 文章: 題・短い名前・やることを焼き込み（入口の textVersion は文の型の束の版）、文章の点検（年収 360・540。40 秒ほど）を生成の点検に入れる。
+   * off は試すとき用（版 1 以上では使えない。焼き込まない木は題が仮の文）
+   */
+  text: boolean;
+  /** 文章の点検の報告（Markdown）を書き出す場所 */
+  textReport?: string;
+  /** 道の見本（今日の手ごとの道。年収 360・540）を書き出す置き場 */
+  golden?: string;
 }
 
 export const USAGE =
-  "使い方: node scripts/impact/q/run.mjs --out <木.json> [--force] [--bundle <同梱.b64>] [--release 0] [--record <版の記録.json>] [--history <releases.json>] [--append-history] [--runs 2] [--spread 5] [--spread-never] [--budget 2000] [--tol 0.02] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--only keep,ad_permside] [--anchor 2026-11] [--never on|off]";
+  "使い方: node scripts/impact/q/run.mjs --out <木.json> [--force] [--bundle <同梱.b64>] [--release 0] [--record <版の記録.json>] [--history <releases.json>] [--append-history] [--runs 2] [--spread 5] [--spread-never] [--budget 2000] [--tol 0.02] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--only keep,ad_permside] [--anchor 2026-11] [--never on|off] [--text on|off] [--text-report <報告.md>] [--golden <置き場>]";
 
-/** 版の記録（release 1 以上）を作れる本番の形の点検: 今日の手すべて・分かれ道 2,000・±2% 以内・never あり・2 回作る・見せる手は既定。通らない訳を返す */
-export function productionProblems(o: Pick<CliOpts, "params" | "only" | "never" | "runs">): string[] {
+/** 版の記録（release 1 以上）を作れる本番の形の点検: 今日の手すべて・分かれ道 2,000・±2% 以内・never あり・文章あり・2 回作る・見せる手と一貫性の年収は既定。通らない訳を返す */
+export function productionProblems(o: Pick<CliOpts, "params" | "only" | "never" | "runs" | "text">): string[] {
   const p = o.params;
   const out: string[] = [];
   if (o.only) out.push(`--only（${o.only.join(",")}）は使えない（今日の手すべてを作る）`);
   if (p.B !== DEFAULTS.B) out.push(`--budget は ${DEFAULTS.B}（${p.B}）`);
   if (!(p.tol <= DEFAULTS.tol + 1e-12)) out.push(`--tol は ${DEFAULTS.tol} 以下（${p.tol}）`);
   if (!o.never) out.push("--never は on");
+  if (!o.text) out.push("--text は on（題・短い名前・やることを焼き込み、文章の点検に通す）");
+  if (p.annuals.length !== DEFAULTS.annuals.length || p.annuals.some((x, i) => x !== DEFAULTS.annuals[i])) out.push(`一貫性を守る年収は ${DEFAULTS.annuals.join("・")}（${p.annuals.join("・")}）`);
   if (o.runs !== 2) out.push(`--runs は 2（${o.runs}）`);
   if (p.maxAlts !== DEFAULTS.maxAlts) out.push(`--alts は ${DEFAULTS.maxAlts}（${p.maxAlts}）`);
   if (!p.altsBy || p.altsBy.length !== R1_ALTS_BY.length || p.altsBy.some((x, i) => x !== R1_ALTS_BY[i])) out.push(`--alts-by は ${R1_ALTS_BY.join(",")}`);
@@ -65,6 +76,9 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
   let spread = 5;
   let spreadNever = false;
   let force = false;
+  let text = true;
+  let textReport: string | undefined;
+  let golden: string | undefined;
   const int = (name: string, v: string | undefined, min: number): number => {
     const n = Number(v);
     if (v === undefined || !Number.isInteger(n) || n < min) throw new Error(`${name} は ${min} 以上の整数で指定してください（${v ?? "なし"}）`);
@@ -148,6 +162,18 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
         never = s === "on";
         break;
       }
+      case "--text": {
+        const s = value();
+        if (s !== "on" && s !== "off") throw new Error(`--text は on か off です（${s}）`);
+        text = s === "on";
+        break;
+      }
+      case "--text-report":
+        textReport = value();
+        break;
+      case "--golden":
+        golden = value();
+        break;
       default:
         throw new Error(`知らない引数です: ${a}`);
     }
@@ -161,9 +187,28 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
   }
   if ((record || appendHistory) && release < 1) throw new Error("--record・--append-history は --release 1 以上と一緒に使います");
   // 版の記録は足すだけで戻せないので、版の順番を付ける（release 1 以上）のは本番の形の時だけ（見直し format-1）。release 0 は試し・テストの木用で自由
+  if ((textReport || golden) && !text) throw new Error("--text-report・--golden は --text on の時だけ使えます");
   if (release >= 1) {
-    const bad = productionProblems({ params, ...(only ? { only } : {}), never, runs });
-    if (bad.length) throw new Error(`版の記録は本番の形（今日の手すべて・${DEFAULTS.B.toLocaleString("ja-JP")}・±${DEFAULTS.tol * 100}%・never・2 回）でだけ作れます: ${bad.join("・")}`);
+    const bad = productionProblems({ params, ...(only ? { only } : {}), never, runs, text });
+    if (bad.length) throw new Error(`版の記録は本番の形（今日の手すべて・${DEFAULTS.B.toLocaleString("ja-JP")}・±${DEFAULTS.tol * 100}%・never・文章・2 回）でだけ作れます: ${bad.join("・")}`);
   }
-  return { out, params, ...(only ? { only } : {}), anchor, never, ...(bundle ? { bundle } : {}), release, ...(record ? { record } : {}), ...(history ? { history } : {}), appendHistory, runs, spread, spreadNever, force };
+  return {
+    out,
+    params,
+    ...(only ? { only } : {}),
+    anchor,
+    never,
+    ...(bundle ? { bundle } : {}),
+    release,
+    ...(record ? { record } : {}),
+    ...(history ? { history } : {}),
+    appendHistory,
+    runs,
+    spread,
+    spreadNever,
+    force,
+    text,
+    ...(textReport ? { textReport } : {}),
+    ...(golden ? { golden } : {}),
+  };
 }

@@ -25,6 +25,8 @@ export interface OutcomeQ {
   ln: Line;
   sig: string;
   local: number;
+  /** 事実の小さい組（minOutcomeP 未満）を、同じ事実の組にまとめずに分けたまま残した結果（予算の使い道 1。fine の時だけ。報告用） */
+  fine?: true;
 }
 
 /** 代表の状態: 分類は一番重い物（同じ重さなら先に出た物）・数は重みの平均・印は半分以上が持つ物・顧客は場合の混ざり（帳簿。社数はどの場合も整数） */
@@ -351,7 +353,9 @@ export function groupOutcomesQ(w: WorldQ, kind: string, driver: Driver, s0: QSt,
     const st = repStateQ(w, g.samples);
     const r = meanR(g.samples);
     const { id, lab, line, ln } = describe(driver, g, i, groups.length, salCuts, m0, mEnd, kind);
-    return { id, p: groups.length === 1 ? 100 : fl[i]!, w: g.w / total, st, r, lab, short: shortOf(driver, g, groups.length, kind), line, ln, sig: g.sig, local: g.local };
+    const o: OutcomeQ = { id, p: groups.length === 1 ? 100 : fl[i]!, w: g.w / total, st, r, lab, short: shortOf(driver, g, groups.length, kind), line, ln, sig: g.sig, local: g.local };
+    if (fineKept.has(g) && groups.length > 1) o.fine = true;
+    return o;
   });
 }
 
