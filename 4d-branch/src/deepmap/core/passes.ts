@@ -224,13 +224,25 @@ export interface Analysis {
   readonly vRoot: number | null;
   /** 今日から 3 年の稼ぎ（ずっと今のまま） */
   readonly vSQ: number | null;
+  /** 計算したときの地図の版（形・数）。数を入れ直すと古くなる（assertFresh） */
+  readonly stamp: { readonly topology: number; readonly numbers: number };
 }
 
 export function analyze(cm: CompiledMap, annual: number, opts: Omit<PassOptions, "policy"> = {}): Analysis {
   const money = moneyAt(cm, annual);
   const pi = runPass(cm, money, { ...opts, policy: "pi" });
   const keep = runPass(cm, money, { status: opts.status ?? null, allowed: opts.allowed ?? null, policy: "keep" });
-  return { cm, annual, money, pi, keep, vRoot: pi.def[0] ? pi.V[0]! : null, vSQ: keep.def[0] ? keep.V[0]! : null };
+  const stamp = { topology: cm.version.topology, numbers: cm.version.numbers };
+  return { cm, annual, money, pi, keep, vRoot: pi.def[0] ? pi.V[0]! : null, vSQ: keep.def[0] ? keep.V[0]! : null, stamp };
+}
+
+/**
+ * 計算が今の地図の版の物か確かめる。数を入れ直した（refillNumbers）後の古い計算は、新しい数と混ざるので止める（作業メモ code-3）。
+ * 見取り図・扇・進め方・道・行き先と、その画面の形（views）の入口で呼ぶ
+ */
+export function assertFresh(a: Analysis): void {
+  const v = a.cm.version;
+  if (a.stamp.topology !== v.topology || a.stamp.numbers !== v.numbers) throw new Error("古い計算です（地図の数を入れ直した後は analyze し直す）");
 }
 
 /**

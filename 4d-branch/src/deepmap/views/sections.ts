@@ -3,7 +3,7 @@
 
 import { h, nobr } from "./dom";
 import { num } from "./format";
-import type { DestRowVM, DestVM, PlanRowVM, StripVM } from "./model";
+import type { DestRowVM, DestVM, PlanMoveVM, PlanRowVM, StripVM } from "./model";
 
 // ------------------------------------------------------------ 分かれ道の帯
 
@@ -59,28 +59,29 @@ export function stripSection(vm: StripVM): HTMLElement {
 
 // ------------------------------------------------------------ 進め方
 
+function planMoveEl(m: PlanMoveVM): HTMLElement {
+  return h(
+    "li",
+    { class: "dm-plan-move" },
+    h("span", { class: "dm-plan-line" }, h("span", { class: "dm-plan-name" }, m.name), h("b", { class: "dm-plan-pct" }, m.shareText)),
+    h("span", { class: "dm-plan-bar", attrs: { "aria-hidden": "true" } }, h("i", { style: { width: `${Math.max(1, Math.round(m.share * 100))}%` } })),
+    m.cond ? h("span", { class: "dm-plan-cond" }, nobr(m.cond)) : null,
+    m.stubText ? h("span", { class: "dm-plan-cond is-warn" }, m.stubText) : null,
+  );
+}
+
+/** 進め方: 3 か月ごとに上から 3 つの手。残りの手は「ほか N つの手」を開くと同じ形で出る（作業メモ user-8） */
 export function planSection(rows: readonly PlanRowVM[]): HTMLElement {
   const list = h("ol", { class: "dm-plan" });
   for (const r of rows) {
-    const moves = h("ul", { class: "dm-plan-moves" });
-    for (const m of r.moves) {
-      moves.append(
-        h(
-          "li",
-          { class: "dm-plan-move" },
-          h("span", { class: "dm-plan-line" }, h("span", { class: "dm-plan-name" }, m.name), h("b", { class: "dm-plan-pct" }, m.shareText)),
-          h("span", { class: "dm-plan-bar", attrs: { "aria-hidden": "true" } }, h("i", { style: { width: `${Math.max(1, Math.round(m.share * 100))}%` } })),
-          m.cond ? h("span", { class: "dm-plan-cond" }, m.cond) : null,
-          m.stubText ? h("span", { class: "dm-plan-cond is-warn" }, m.stubText) : null,
-        ),
-      );
-    }
+    const moves = h("ul", { class: "dm-plan-moves" }, r.moves.map(planMoveEl));
+    const rest = r.rest.length && r.more ? h("details", { class: "dm-plan-rest" }, h("summary", null, nobr(r.more)), h("ul", { class: "dm-plan-moves" }, r.rest.map(planMoveEl))) : null;
     list.append(
       h(
         "li",
         { class: "dm-plan-row" },
         h("div", { class: "dm-plan-when" }, h("b", null, r.ym), r.span ? h("span", null, r.span) : null),
-        h("div", { class: "dm-plan-body" }, moves, r.more ? h("p", { class: "dm-plan-more" }, r.more) : null, r.note ? h("p", { class: "dm-plan-more" }, r.note) : null),
+        h("div", { class: "dm-plan-body" }, moves, rest, r.note ? h("p", { class: "dm-plan-more" }, r.note) : null),
       ),
     );
   }
@@ -133,6 +134,7 @@ export function destSection(vm: DestVM, opts: DestOpts): HTMLElement {
             h("span", { class: "dm-dest-bar", attrs: { "aria-hidden": "true" } }, h("i", { style: { width: `${Math.max(1, Math.round(r.share * 100))}%` } })),
             h("span", { class: "dm-dest-meta" }, nobr(`${r.countText}・${r.meanText}${r.vsKeepText ? `（${r.vsKeepText}）` : ""}`)),
             r.summaryText ? h("span", { class: "dm-dest-meta is-warn" }, r.summaryText) : null,
+            r.mergedText ? h("span", { class: "dm-dest-meta" }, r.mergedText) : null,
             next,
           ),
           h("span", { class: "dm-row-go", attrs: { "aria-hidden": "true" } }, "›"),
@@ -148,6 +150,8 @@ export function destSection(vm: DestVM, opts: DestOpts): HTMLElement {
 export interface NotesVM {
   howTo: string[];
   premises: string[];
+  /** 出さなかった前提の数（この地図に無い手の前提） */
+  premisesHidden?: number;
   annual: number;
 }
 
@@ -162,6 +166,7 @@ export function notesSection(vm: NotesVM): HTMLElement {
       { class: "dm-premises" },
       h("summary", null, `前提（数字の決め方・${num(vm.premises.length)} 項目）`),
       vm.premises.length ? h("ul", { class: "dm-notes-list" }, vm.premises.map((t) => h("li", null, t))) : h("p", { class: "dm-plan-more" }, "この地図には前提が書かれていない"),
+      vm.premisesHidden ? h("p", { class: "dm-plan-more" }, `9 か月・2 年の手の前提 ${num(vm.premisesHidden)} 項目は、この地図（3 か月ごとの手だけ）には無いので出していない`) : null,
     ),
   );
 }

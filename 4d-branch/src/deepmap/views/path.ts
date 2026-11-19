@@ -8,8 +8,8 @@
 
 import { append, clear, h, nobr, s, type Child } from "./dom";
 import { manMonthly, num } from "./format";
-import type { PathAltVM, PathCardVM, PathItemVM, PathSparkVM, PathStepVM, PathVM } from "./model";
-import { FAN_ALL, FAN_KEEP } from "./model";
+import type { PathAltGroupVM, PathAltVM, PathCardVM, PathItemVM, PathSparkVM, PathStepVM, PathVM } from "./model";
+import { FAN_ALL, FAN_KEEP, PROVISIONAL_TEXT } from "./model";
 import { IMPACT_FILL, IMPACT_INK } from "../../model/impactFormat";
 
 export interface PathPageOpts {
@@ -51,15 +51,21 @@ function numbersRow(xs: readonly string[]): HTMLElement | null {
   return xs.length ? h("ul", { class: "dm-numbers dm-tl-nums" }, xs.map((t) => h("li", null, nobr(t)))) : null;
 }
 
+/** 本文（仮の文章なら「文章は仮」の印を付ける。作業メモ user-4） */
+function bodyEl(text: string, provisional: boolean): HTMLElement | null {
+  if (!text) return null;
+  return h("p", { class: "dm-tl-text" }, provisional ? h("span", { class: "dm-prov" }, PROVISIONAL_TEXT) : null, text);
+}
+
 /** 文章のカード（その 3 か月・結果） */
-function cardEl(c: PathCardVM, kind: "move" | "out"): HTMLElement {
+function cardEl(c: PathCardVM, kind: "move" | "out", provisional: boolean): HTMLElement {
   return h(
     "section",
     { class: `dm-tl-card is-${kind}` },
     h("p", { class: "dm-tl-card-head" }, nobr(c.head)),
     h("h4", { class: "dm-tl-card-title" }, c.title),
     numbersRow(c.numbers),
-    c.body ? h("p", { class: "dm-tl-text" }, c.body) : null,
+    bodyEl(c.body, provisional),
     c.todo.length ? h("div", { class: "dm-tl-todo" }, h("p", { class: "dm-tl-todo-head" }, "やること"), h("ul", null, c.todo.map((t) => h("li", null, t)))) : null,
     c.facts.length ? h("p", { class: "dm-tl-facts" }, c.facts.map((t, k) => h("span", { class: "dm-seg-t" }, nobr(t), k < c.facts.length - 1 ? "・" : null))) : null,
   );
@@ -87,6 +93,16 @@ function altEl(x: PathAltVM, onPick: (ev: Event, x: PathAltVM) => void): HTMLEle
 
 function altList(head: string, xs: readonly PathAltVM[], onPick: (ev: Event, x: PathAltVM) => void): HTMLElement {
   return h("section", { class: "dm-alts" }, h("h4", { class: "dm-alts-head" }, nobr(head)), h("ul", { class: "dm-alts-list" }, xs.map((x) => altEl(x, onPick))));
+}
+
+/** 選べる手（この先も読める手と、この先は見積もりの手に分けて。作業メモ user-5） */
+function altGroups(head: string, groups: readonly PathAltGroupVM[], onPick: (ev: Event, x: PathAltVM) => void): HTMLElement {
+  return h(
+    "section",
+    { class: "dm-alts" },
+    h("h4", { class: "dm-alts-head" }, nobr(head)),
+    groups.map((g) => [g.head ? h("p", { class: `dm-alts-sub${g.items.every((x) => x.stub) ? " is-stub" : ""}` }, nobr(g.head)) : null, h("ul", { class: "dm-alts-list" }, g.items.map((x) => altEl(x, onPick)))]),
+  );
 }
 
 /** 見出しの月の稼ぎの線（この道・ずっと今のまま）。数は行にも出ているので、線は形を見るため（縦線の札でも読める） */
@@ -133,13 +149,23 @@ function sparkEl(sp: PathSparkVM): HTMLElement {
   const plot = h("div", { class: "dm-spark-plot", attrs: { tabindex: "0", role: "img", "aria-label": `${sp.label}。← → でその時点の数` } }, svg);
   const first = sp.path[0];
   const last = sp.path[sp.path.length - 1];
-  const tip = h("div", { class: "dm-tip dm-spark-tip", attrs: { "aria-hidden": "true" } });
-  tip.hidden = true;
-  plot.append(tip);
+  // 札は線の下の 1 行（線の上に重ねない。作業メモ user-11）。最初は最後の月の数
+  const tip = h("div", { class: "dm-spark-read", attrs: { "aria-hidden": "true" } });
   // 縦線の札（指・マウス・キーボード）: 一番近い 3 か月の点
   const pathAt = (m: number) => sp.path.find((p) => p.m === m) ?? null;
   const keepAt = (m: number) => sp.keep.find((p) => p.m === m) ?? null;
   let at = -1;
+  const fillTip = (k: number) => {
+    const m = sp.months[k]!;
+    const p = pathAt(m);
+    const q = keepAt(m);
+    clear(tip);
+    append(tip, [
+      h("b", { class: "dm-spark-read-when" }, `${sp.yms[k] ?? ""}・月の稼ぎ`),
+      p ? h("span", null, h("i", { class: "dm-tip-key", style: { background: FAN_ALL } }), `${p.est ? "この道（見積もり）" : "この道"} `, h("b", null, manMonthly(p.v))) : null,
+      q ? h("span", null, h("i", { class: "dm-tip-key", style: { background: FAN_KEEP } }), `${sp.keepLabel} `, h("b", null, manMonthly(q.v))) : null,
+    ]);
+  };
   const show = (k: number) => {
     if (k < 0 || k >= sp.months.length) return;
     at = k;
@@ -147,25 +173,14 @@ function sparkEl(sp: PathSparkVM): HTMLElement {
     clear(cross);
     const x = xOf(m);
     cross.append(s("line", { class: "dm-cross-line", attrs: { x1: x.toFixed(1), x2: x.toFixed(1), y1: padT, y2: H - padB } }));
-    const rows: HTMLElement[] = [];
-    const p = pathAt(m);
-    const q = keepAt(m);
-    if (p) rows.push(h("li", null, h("i", { class: "dm-tip-key", style: { background: FAN_ALL } }), h("b", null, manMonthly(p.v)), h("span", null, p.est ? "この道（見積もり）" : "この道")));
-    if (q) rows.push(h("li", null, h("i", { class: "dm-tip-key", style: { background: FAN_KEEP } }), h("b", null, manMonthly(q.v)), h("span", null, "ずっと今のまま（真ん中）")));
-    clear(tip);
-    tip.append(h("p", { class: "dm-tip-when" }, `${sp.yms[k] ?? ""}・月の稼ぎ`), h("ul", null, rows));
-    tip.hidden = false;
-    const r = plot.getBoundingClientRect();
-    const px = (x / W) * r.width;
-    const tw = tip.offsetWidth || 170;
-    tip.style.left = `${Math.round(px + 10 + tw > r.width ? Math.max(0, px - 10 - tw) : px + 10)}px`;
-    tip.style.top = "0px";
+    fillTip(k);
   };
   const hide = () => {
     at = -1;
-    tip.hidden = true;
     clear(cross);
+    fillTip(sp.months.length - 1);
   };
+  fillTip(sp.months.length - 1);
   const nearest = (clientX: number) => {
     const r = plot.getBoundingClientRect();
     const m = ((clientX - r.left) / Math.max(1, r.width)) * W;
@@ -209,7 +224,7 @@ function sparkEl(sp: PathSparkVM): HTMLElement {
       "ul",
       { class: "dm-legend dm-spark-legend" },
       h("li", null, h("i", { class: "dm-key-line", style: { background: FAN_ALL }, attrs: { "aria-hidden": "true" } }), h("span", null, "この道の月の稼ぎ")),
-      h("li", null, h("i", { class: "dm-key-line is-ref", style: { background: FAN_KEEP }, attrs: { "aria-hidden": "true" } }), h("span", null, "ずっと今のまま（真ん中）")),
+      h("li", null, h("i", { class: "dm-key-line is-ref", style: { background: FAN_KEEP }, attrs: { "aria-hidden": "true" } }), h("span", null, sp.keepLabel)),
     ),
     h(
       "div",
@@ -219,6 +234,7 @@ function sparkEl(sp: PathSparkVM): HTMLElement {
       last ? h("span", { class: "dm-spark-end is-last" }, h("small", null, sp.yms[sp.yms.length - 1] ?? ""), h("b", null, manMonthly(last.v))) : null,
       years,
     ),
+    tip,
   );
 }
 
@@ -299,7 +315,12 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
       st.outcomeText ? h("span", { class: "dm-tl-out" }, "→ ", nobr(st.outcomeText)) : null,
       st.stub ? h("span", { class: "dm-tl-money is-warn" }, "この先は標準の選び方で続けた見積もり") : null,
       st.monthlyText
-        ? h("span", { class: "dm-tl-money" }, h("span", { class: "dm-seg-t" }, nobr(st.monthlyText), st.monthlyDiff ? h("small", null, nobr(`（${st.monthlyDiff}）`)) : null, "・"), h("span", { class: "dm-seg-t" }, nobr(st.runningText ?? "")))
+        ? h(
+            "span",
+            { class: "dm-tl-money" },
+            h("span", { class: "dm-seg-t" }, st.moneyAt ? h("span", { class: "dm-tl-money-at" }, nobr(`${st.moneyAt}: `)) : null, nobr(st.monthlyText), st.monthlyDiff ? h("small", null, nobr(`（${st.monthlyDiff}）`)) : null, "・"),
+            h("span", { class: "dm-seg-t" }, nobr(st.runningText ?? "")),
+          )
         : null,
       st.altOutcomesText || st.altOptionsText
         ? h(
@@ -318,9 +339,9 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
     const fill = () => {
       const d = st.detail();
       append(body, [
-        h("div", { class: "dm-tl-cards" }, cardEl(d.move, "move"), d.outcome ? cardEl(d.outcome, "out") : null, d.note ? h("p", { class: "dm-tl-note" }, d.note) : null),
+        h("div", { class: "dm-tl-cards" }, cardEl(d.move, "move", vm.provisional), d.outcome ? cardEl(d.outcome, "out", vm.provisional) : null, d.note ? h("p", { class: "dm-tl-note" }, d.note) : null),
         st.outcomesHead && st.outcomes.length ? altList(st.outcomesHead, st.outcomes, onPick) : null,
-        st.options.length > 1 ? altList(st.optionsHead, st.options, onPick) : null,
+        st.options.length > 1 ? altGroups(st.optionsHead, st.optionGroups, onPick) : null,
         h("button", { class: "dm-btn dm-tl-next", attrs: { type: "button" }, on: { click: () => stepTo(st.index + 1, st.key) } }, st.nextText, h("span", { attrs: { "aria-hidden": "true" } }, " ↓")),
       ]);
     };
@@ -333,8 +354,14 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
     if (it.type === "light") {
       return h(
         "li",
-        { class: "dm-tl-item is-light", dataset: { key: it.key } },
-        h("div", { class: "dm-tl-lightrow" }, h("span", { class: "dm-tl-when" }, h("b", null, whenText(it.ym))), h("span", { class: "dm-tl-move" }, it.title), it.note ? h("span", { class: "dm-tl-money" }, it.note) : null),
+        { class: `dm-tl-item is-light${it.head ? " is-light-head" : ""}`, dataset: { key: it.key } },
+        h(
+          "div",
+          { class: "dm-tl-lightrow" },
+          h("span", { class: "dm-tl-when" }, h("b", null, whenText(it.ym))),
+          h("span", { class: "dm-tl-move" }, it.head ? h("span", { class: "dm-tl-tag is-est" }, "見積もり") : null, it.title),
+          it.note ? h("span", { class: "dm-tl-money" }, it.note) : null,
+        ),
       );
     }
     const head = headBtn(
@@ -343,7 +370,14 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
       h("span", { class: "dm-tl-when" }, h("b", null, whenText(it.ym)), h("span", null, `${num(it.steps.length)} 期をまとめた`), it.pivot ? h("span", { class: "dm-tl-flag" }, "ここで切り替えた") : null),
       h("span", { class: "dm-tl-move" }, h("span", { class: "dm-tl-move-name" }, it.title)),
       it.outcomeText ? h("span", { class: "dm-tl-out" }, "→ ", nobr(it.outcomeText)) : null,
-      it.monthlyText ? h("span", { class: "dm-tl-money" }, h("span", { class: "dm-seg-t" }, nobr(it.monthlyText), "・"), h("span", { class: "dm-seg-t" }, nobr(it.runningText ?? ""))) : null,
+      it.monthlyText
+        ? h(
+            "span",
+            { class: "dm-tl-money" },
+            h("span", { class: "dm-seg-t" }, it.moneyAt ? h("span", { class: "dm-tl-money-at" }, nobr(`${it.moneyAt}: `)) : null, nobr(it.monthlyText), "・"),
+            h("span", { class: "dm-seg-t" }, nobr(it.runningText ?? "")),
+          )
+        : null,
       h("span", { class: "dm-tl-alt" }, "押すと 1 期ずつ"),
     );
     const sub = h("ol", { class: "dm-tl dm-tl-sub", attrs: { id: `dm-tl-${id}-${it.key}` } });
@@ -374,7 +408,7 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
     body: startBody,
     fill: () => {
       append(startBody, [
-        h("div", { class: "dm-tl-cards" }, h("section", { class: "dm-tl-card" }, numbersRow(vm.start.numbers), h("p", { class: "dm-tl-text" }, vm.start.body()))),
+        h("div", { class: "dm-tl-cards" }, h("section", { class: "dm-tl-card" }, numbersRow(vm.start.numbers), bodyEl(vm.start.body(), vm.provisional))),
         vm.steps.length ? h("button", { class: "dm-btn dm-tl-next", attrs: { type: "button" }, on: { click: () => stepTo(0, vm.start.key) } }, `次の 3 か月へ（${vm.steps[0]!.ym}）`, h("span", { attrs: { "aria-hidden": "true" } }, " ↓")) : null,
       ]);
     },
@@ -386,7 +420,9 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
   const figs = h(
     "dl",
     { class: "dm-figs" },
-    vm.figures.map((f) => h("div", { class: "dm-fig" }, h("dt", null, f.label), h("dd", { class: "dm-fig-value" }, f.value), f.sub ? h("dd", { class: "dm-fig-sub" }, nobr(f.sub)) : null)),
+    vm.figures.map((f) =>
+      h("div", { class: `dm-fig${f.note ? " has-note" : ""}` }, h("dt", null, f.label), h("dd", { class: "dm-fig-value" }, f.value), f.sub ? h("dd", { class: "dm-fig-sub" }, nobr(f.sub)) : null, f.note ? h("dd", { class: "dm-fig-sub is-note" }, nobr(f.note)) : null),
+    ),
   );
   const offs = vm.offs.length
     ? h("div", { class: "dm-pathv-offs" }, h("p", { class: "dm-pathv-offs-head" }, "一番ありそうな道と違う所"), h("ul", null, vm.offs.slice(0, 4).map((t) => h("li", null, nobr(t)))), vm.offs.length > 4 ? h("p", { class: "dm-plan-more" }, `ほか ${num(vm.offs.length - 4)} 所`) : null)
@@ -443,7 +479,7 @@ function endCard(vm: PathVM): HTMLElement {
     h("h3", { class: "dm-tl-end-cls" }, e.cls),
     e.title ? h("p", { class: "dm-tl-end-title" }, e.title) : null,
     numbersRow(e.numbers),
-    h("p", { class: "dm-tl-text" }, e.body()),
+    bodyEl(e.body(), vm.provisional),
     h("p", { class: "dm-tl-facts" }, e.facts.map((t, k) => h("span", { class: "dm-seg-t" }, nobr(t), k < e.facts.length - 1 ? "・" : null))),
     e.note ? h("p", { class: "dm-tl-note" }, e.note) : null,
     vm.resetHref ? h("a", { class: "dm-btn", attrs: { href: vm.resetHref } }, vm.resetText) : null,

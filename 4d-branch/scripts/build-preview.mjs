@@ -1,6 +1,7 @@
 // 3 年の分かれ道（試し版）の 1 枚のページを作る（claude.ai の Artifact として公開する別のページ。読むだけ）
 //   node scripts/build-preview.mjs [木のファイル] [出力の .html]
-//     木のファイル: 開発用の入れ子の木（DevTree）の .json.gz（.json なら、ここで gzip する）。環境変数 DEEPMAP_TREE でも渡せる
+//     木のファイル: 開発用の入れ子の木（DevTree）の .json.gz（.json なら、ここで gzip する）。環境変数 DEEPMAP_TREE でも渡せる。
+//       渡さなければ、計算の前提を直した木（作業メモ dev/q-tree.json.gz）があればそれ、無ければ R1 の木（dev/r1-tree.json.gz）
 //     出力: 環境変数 DEEPMAP_PREVIEW_OUT でも渡せる。ビルドの途中の物は出力の隣の .preview-build/ に置く（リポジトリには置かない）
 // アプリのビルド（vite.config.ts・dist/）には触らない: 入口 src/preview/index.html を、ここだけの設定で Vite に渡す。
 // ページの形は scripts/build-artifact.mjs と同じ（公開のときに <!doctype html>…<body> で包まれるので中身だけ）:
@@ -14,7 +15,8 @@ import { build } from "vite";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCRATCH = "/tmp/claude-0/-home-user-spelldash/342dd9ca-ed44-551f-af59-60da8aff2834/scratchpad/deepmap";
-const TREE = path.resolve(process.argv[2] || process.env.DEEPMAP_TREE || path.join(SCRATCH, "dev", "r1-tree.json.gz"));
+const DEFAULT_TREE = [path.join(SCRATCH, "dev", "q-tree.json.gz"), path.join(SCRATCH, "dev", "r1-tree.json.gz")].find((p) => fs.existsSync(p)) ?? path.join(SCRATCH, "dev", "r1-tree.json.gz");
+const TREE = path.resolve(process.argv[2] || process.env.DEEPMAP_TREE || DEFAULT_TREE);
 const OUT = path.resolve(process.argv[3] || process.env.DEEPMAP_PREVIEW_OUT || path.join(SCRATCH, "view", "preview.html"));
 const BUILD_DIR = path.join(path.dirname(OUT), ".preview-build");
 const TITLE = "3 年の分かれ道（試し版）";
@@ -29,13 +31,34 @@ if (!(gz[0] === 0x1f && gz[1] === 0x8b)) gz = zlib.gzipSync(gz, { level: 9 });
 const tree = JSON.parse(zlib.gunzipSync(gz).toString("utf8"));
 const header = tree?.header;
 if (!header || header.v !== 3 || header.kind !== "impact3y" || !tree.root) throw new Error("開発用の入れ子の木（v3・impact3y）ではありません");
+// 道のハッシュの短い名前（src/deepmap/views/format.ts の keyToken と同じ式。cyrb53 の 36 進）。地図の中で同じ名前が無いことを確かめる
+function keyToken(key) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < key.length; i++) {
+    const ch = key.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+// format.ts の単体テストと同じ値（式がずれていないこと）
+if (keyToken("r.ad_permside") !== "1cdy81soor3") throw new Error(`道の名前の式が format.ts とずれている: ${keyToken("r.ad_permside")}`);
 let nodes = 0;
 let withQ = 0;
+const tokens = new Map();
 const stack = [tree.root];
 while (stack.length) {
   const n = stack.pop();
   nodes++;
   if (n.q) withQ++;
+  const t = keyToken(n.k);
+  if (tokens.has(t)) throw new Error(`道の名前が重なる鍵があります: ${tokens.get(t)} と ${n.k}`);
+  tokens.set(t, n.k);
   if (n.kids) for (const k of n.kids) stack.push(k);
 }
 

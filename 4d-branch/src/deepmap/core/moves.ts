@@ -2,15 +2,15 @@
 // 今日の手ごとに 1 行: その手を選んだ後おすすめの選び方で進んだ 3 年の分布・今やる vs 3 か月待つ・この種類を 3 年やらない場合との差・
 // その手で分かること・今のままの先との違い・分かれ道と行き先の数。どれもその手の部分木を 1 回なめるだけ（O(N)）。
 
-import { baseOf, F_BASE, F_SUM, famKey, kindKey, quarterOf, ROLE_E, ROLE_S } from "./compile";
-import { deltaBetween, likeValue, optionValue, type Analysis, type Delta, type DeltaBasis } from "./passes";
+import { baseOf, F_BASE, F_STUB, F_SUM, famKey, kindKey, quarterOf, ROLE_E, ROLE_R, ROLE_S } from "./compile";
+import { assertFresh, deltaBetween, likeValue, optionValue, type Analysis, type Delta, type DeltaBasis } from "./passes";
 import { distOf, Weighted, type Dist } from "./stats";
 
 /** 今のままの先と「ほぼ同じ」とする違い（3〜33 か月目のおすすめの手の分布の全変動距離の平均） */
 export const NEAR_KEEP_TV = 0.1;
 /** 今日の差が小さいとする差（万円） */
 export const SMALL_DELTA = 5;
-/** 「この種類を 3 年やらない場合との差」をほぼ差なしとする差（万円。表の誤差の大きさ。作業メモ truth-3） */
+/** 「この種類を 3 年やらない場合との差」をほぼ差なしとする差の下限（万円。表の誤差の大きさ。作業メモ truth-3） */
 export const WORTH_NOISE = 4;
 /** 行き先を「見込みのある物」と数える見込み */
 export const END_P_MIN = 0.01;
@@ -142,6 +142,8 @@ export interface Overview {
   /** 地図全体の数（今日の部分木） */
   counts: MoveCounts;
   basis: Basis;
+  /** 「この種類を 3 年やらない場合との差」をほぼ差なしとする大きさ（万円。worthNoise） */
+  worthNoise: number;
 }
 
 /** k(fam) = w(never._all) − w(never[fam])。無ければ null */
@@ -153,6 +155,41 @@ export function worthOf(a: Analysis, fam: string): number | null {
   if (!all || !f || fam === "_all") return null;
   const S = a.money.S;
   return S * all[0] + all[1] + all[2] - (S * f[0] + f[1] + f[2]);
+}
+
+/**
+ * 「この種類を 3 年やらない場合との差」の誤差の大きさ（万円）: 4 と、まとまりの差の一番小さい物（マイナス）の大きさの大きい方。
+ * ある種類の手を除いて 3 年の値が上がることは無いので、マイナスの差は見積もりの誤差（作業メモ truth-4。q の木の学校・塾は −5.1〜−6.1）
+ */
+export function worthNoise(a: Analysis): number {
+  const nv = a.cm.map.header.never;
+  let noise = WORTH_NOISE;
+  if (!nv || !Array.isArray(nv._all)) return noise;
+  for (const fam of Object.keys(nv)) {
+    const k = worthOf(a, fam);
+    if (k !== null && Number.isFinite(k) && -k > noise) noise = -k;
+  }
+  return noise;
+}
+
+/** 今日の手 f の先の、おすすめの道の判断で選べるほかの手（おすすめでない手）の数と、そのうち先を広げていない（まとめた）手の数（作業メモ user-5） */
+export function altStubCounts(a: Analysis, f: number): { options: number; stubs: number } {
+  const { size, kidOff, kids, role, flags } = a.cm;
+  const { reachIn, pi } = a.pi;
+  const hi = f + size[f]!;
+  let options = 0;
+  let stubs = 0;
+  for (let d = f + 1; d < hi; d++) {
+    const r = role[d]!;
+    if ((r !== ROLE_S && r !== ROLE_R) || !(reachIn[d]! > 0) || kidOff[d + 1]! - kidOff[d]! < 2) continue;
+    for (let s = kidOff[d]!; s < kidOff[d + 1]!; s++) {
+      const j = kids[s]!;
+      if (j === pi[d]) continue;
+      options++;
+      if (flags[j]! & F_STUB) stubs++;
+    }
+  }
+  return { options, stubs };
 }
 
 /** 部分木 [lo, hi) の数（形の数は下からの数え上げ、見込みの数は wt から） */
@@ -300,6 +337,7 @@ export function outcomesOf(a: Analysis, f: number): { outcomes: MoveOutcome[]; r
 
 /** 見取り図の全部の数（今日の手ごと） */
 export function overview(a: Analysis): Overview {
+  assertFresh(a);
   const { cm } = a;
   const root = 0;
   const base = baseOf(cm, root);
@@ -350,6 +388,7 @@ export function overview(a: Analysis): Overview {
     moves,
     counts: countsOf(a, root, a.pi.reach),
     basis: { delta: allQ && base >= 0 ? "q" : "tree", worth: cm.has.never, q: cm.has.q, mix: cm.has.mix, cont: cm.has.cont, dev: header.release === 0 },
+    worthNoise: worthNoise(a),
   };
 }
 

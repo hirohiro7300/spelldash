@@ -6,7 +6,7 @@
 
 import { F_SUM, quarterOf, ROLE_A, ROLE_E, ROLE_S, type CompiledMap } from "./compile";
 import { outcomesOf } from "./moves";
-import type { Analysis } from "./passes";
+import { assertFresh, type Analysis } from "./passes";
 import { band3, Weighted } from "./stats";
 
 export interface FanPoint {
@@ -100,6 +100,7 @@ function withToday(a: Analysis, pts: FanPoint[]): FanPoint[] {
 
 /** 選んだ今日の手 f の扇 */
 export function fanData(a: Analysis, f: number): FanData {
+  assertFresh(a);
   const cm = a.cm;
   if (cm.parent[f] !== 0 || cm.role[f] !== ROLE_A) throw new RangeError(`今日の手ではありません: ${f}`);
   const { reachIn } = a.pi;

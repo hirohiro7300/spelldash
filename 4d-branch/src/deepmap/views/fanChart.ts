@@ -3,6 +3,8 @@
 // 事実を知る手は答えごとに 1 本ずつ（「まとめて」に切り替えられる）。
 // 指・マウスを動かすと一番近い 3 か月の点に縦線を立て、出しているどの帯の数も 1 つの札に並べる（キーボードは ← →）。
 // 数は「表で見る」でも読める（札だけにしない）。幅は入れ物の幅に合わせて描き直す（文字は縮めない）。
+// 狭い画面（幅 520px 未満）では、札を図の下の欄に出す（図に重ねない。最初は最後の月の数。作業メモ user-11）。
+// 広い画面では、縦線の右か左の空いている方に出し、縦線には重ねない。
 
 import { clear, h, nobr, s } from "./dom";
 import { manMonthly, num, pct } from "./format";
@@ -85,6 +87,7 @@ export function fanChart(vm: FanVM, opts: { mode?: Mode } = {}): FanChartHandle 
   let cross: SVGGElement | null = null;
   let at = -1;
   let lastW = -1;
+  let narrow = false;
 
   function fillLegend(): void {
     clear(legend);
@@ -135,7 +138,8 @@ export function fanChart(vm: FanVM, opts: { mode?: Mode } = {}): FanChartHandle 
     const W = Math.floor(plot.clientWidth);
     if (W < 120) return;
     lastW = W;
-    const narrow = W < 520;
+    narrow = W < 520;
+    plot.classList.toggle("is-narrow", narrow);
     const H = narrow ? 228 : 292;
     const ser = shown();
     const dom = fanDomain(ser);
@@ -220,6 +224,8 @@ export function fanChart(vm: FanVM, opts: { mode?: Mode } = {}): FanChartHandle 
     svg = root;
     plot.setAttribute("aria-label", summaryLabel());
     if (at >= 0) show(at);
+    else if (narrow) fillTip(vm.months.length - 1);
+    else tip.hidden = true;
   }
 
   function nearest(px: number): number {
@@ -234,6 +240,24 @@ export function fanChart(vm: FanVM, opts: { mode?: Mode } = {}): FanChartHandle 
     return best;
   }
 
+  /** 札の中身（k 番目の点の、出しているどの帯の数も） */
+  function fillTip(k: number): void {
+    const m = vm.months[k]!;
+    const rows: HTMLElement[] = [];
+    for (const ser of shown()) {
+      const p = ser.pts[k];
+      if (!p || p.mid === null) continue;
+      const range = ser.band && p.lo !== null && p.hi !== null && Math.abs(p.hi - p.lo) > 0.05 ? `10〜90%: ${fmt1(p.lo)}〜${fmt1(p.hi)}` : null;
+      rows.push(h("li", null, h("i", { class: "dm-tip-key", style: { background: ser.color } }), h("b", null, manMonthly(p.mid)), h("span", null, ser.label, range ? h("small", null, range) : null)));
+    }
+    clear(tip);
+    tip.append(h("p", { class: "dm-tip-when" }, `${vm.yms[k] ?? ""}${m > 0 ? `（${num(m)} か月後）` : "（今日）"}・月の稼ぎ`), h("ul", null, rows));
+    tip.hidden = false;
+    tip.style.left = "";
+    tip.style.top = "";
+    tip.style.maxWidth = "";
+  }
+
   function show(k: number): void {
     if (!geom || !cross || k < 0 || k >= vm.months.length) return;
     at = k;
@@ -243,28 +267,38 @@ export function fanChart(vm: FanVM, opts: { mode?: Mode } = {}): FanChartHandle 
     clear(cross);
     cross.style.display = "";
     cross.append(s("line", { class: "dm-cross-line", attrs: { x1: x.toFixed(1), x2: x.toFixed(1), y1: g.padT, y2: g.H - g.padB } }));
-    const rows: HTMLElement[] = [];
     for (const ser of shown()) {
       const p = ser.pts[k];
       if (!p || p.mid === null) continue;
       cross.append(s("circle", { class: "dm-cross-dot", attrs: { cx: x.toFixed(1), cy: g.yOf(p.mid).toFixed(1), r: 4, fill: ser.color } }));
-      const range = ser.band && p.lo !== null && p.hi !== null && Math.abs(p.hi - p.lo) > 0.05 ? `10〜90%: ${fmt1(p.lo)}〜${fmt1(p.hi)}` : null;
-      rows.push(h("li", null, h("i", { class: "dm-tip-key", style: { background: ser.color } }), h("b", null, manMonthly(p.mid)), h("span", null, ser.label, range ? h("small", null, range) : null)));
     }
-    clear(tip);
-    tip.append(h("p", { class: "dm-tip-when" }, `${vm.yms[k] ?? ""}${m > 0 ? `（${num(m)} か月後）` : "（今日）"}・月の稼ぎ`), h("ul", null, rows));
-    tip.hidden = false;
+    fillTip(k);
+    if (narrow) return;
+    // 縦線の右か左の空いている方へ（縦線には重ねない。どちらも足りなければ広い方に、幅を縮めて）
     const tw = tip.offsetWidth || 180;
-    let left = x + 12;
-    if (left + tw > g.W) left = Math.max(0, x - 12 - tw);
+    const roomR = g.W - x - 12;
+    const roomL = x - 12;
+    let left: number;
+    if (roomR >= tw) left = x + 12;
+    else if (roomL >= tw) left = x - 12 - tw;
+    else if (roomR >= roomL) {
+      left = x + 12;
+      tip.style.maxWidth = `${Math.max(120, Math.floor(roomR))}px`;
+    } else {
+      const w = Math.max(120, Math.floor(roomL));
+      tip.style.maxWidth = `${w}px`;
+      left = Math.max(0, x - 12 - w);
+    }
     tip.style.left = `${Math.round(left)}px`;
     tip.style.top = `${g.padT}px`;
   }
 
   function hide(): void {
     at = -1;
-    tip.hidden = true;
     if (cross) cross.style.display = "none";
+    // 狭い画面の欄は消さない（最後の月の数に戻す）
+    if (narrow) fillTip(vm.months.length - 1);
+    else tip.hidden = true;
   }
 
   const pointer = (ev: Event): void => {

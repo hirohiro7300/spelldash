@@ -353,7 +353,7 @@ describe("計算の芯: 扇・分かれ道の帯・進め方・道・行き先�
 
   it("進め方: どの月も割合の合計は 100%、理由は直前の結果", () => {
     const plan = planView(a, f("ad_permside"));
-    expect(plan[0]!.moves).toEqual([{ kind: "ad_permside", share: 1, mass: 1, count: 1, stub: 0, conds: [], top: 0, topOption: f("ad_permside") }]);
+    expect(plan[0]!.moves).toEqual([{ kind: "ad_permside", share: 1, mass: 1, count: 1, stub: 0, conds: [], when: null, top: 0, topOption: f("ad_permside") }]);
     for (const q of plan) {
       if (!(q.alive > 0)) continue;
       expect(q.moves.reduce((s, m) => s + m.share, 0)).toBeCloseTo(1, 12);
@@ -364,6 +364,15 @@ describe("計算の芯: 扇・分かれ道の帯・進め方・道・行き先�
     const labels = q3.moves.flatMap((m) => m.conds.map((c) => c.label));
     expect(labels.sort()).toEqual(["SpellDash だけ", "どちらも不可", "全部可"].sort());
     expect(q3.moves.every((m) => m.conds.every((c) => c.fromKind === "ad_permside"))).toBe(true);
+    // 理由（when）: その月の手どうしを分ける結果。2027 年 2 月の手は会社の答えで分かれる（作業メモ truth-5）
+    for (const mv of q3.moves) {
+      expect(mv.when).not.toBeNull();
+      expect(mv.when!.m).toBe(3);
+      expect(mv.when!.back).toBe(0);
+      expect(mv.when!.items.every((it) => it.fromKind === "ad_permside" && !it.all)).toBe(true);
+    }
+    const byLabel = new Map(q3.moves.map((m) => [m.kind, m.when!.items.flatMap((it) => it.labels).sort().join("・")]));
+    expect(new Set(byLabel.values()).size).toBe(q3.moves.length);
   });
 
   it("道: 一番ありそうな道とその見込み、ほかの結果と手、切り替えると切り替えた所から先を作り直す", () => {
@@ -456,15 +465,17 @@ describe("計算の芯: 扇・分かれ道の帯・進め方・道・行き先�
     }
     const s = map.indexOfKey("r.ad_permside.a");
     expect(text.numbers(s)[0]).toBe("年収 360 万円（月にならして 30 万円）");
-    expect(text.body(map.indexOfKey("r.ad_permside"))).toBe("12 月〜2 月: 届け出て副業の 1 社目を探す。2027 年 2 月に分かれる: 全部可 20%・SpellDash だけ 45%・どちらも不可 35%。");
+    // 手の本文は行の見出し（年月・手・結果の見込み）を繰り返さず、結果ごとの 3 か月後の月の稼ぎ（作業メモ user-4）
+    expect(text.provisional).toBe(true);
+    expect(text.body(map.indexOfKey("r.ad_permside"))).toBe("結果ごとの 2027 年 2 月の月の稼ぎ（2026 年 11 月は 29.7 万円）: 全部可 31.7 万円・SpellDash だけ 29.8 万円・どちらも不可 29.7 万円。");
     expect(text.numbers(map.indexOfKey("r.ad_permside"))).toEqual(["週の時間 +4 時間"]);
-    expect(text.body(map.indexOfKey("r.sd_grow"))).toBe("12 月〜2 月: 遊ぶ人を増やす。結果は 1 つ（2027 年 2 月の状態へ）。");
+    expect(text.body(map.indexOfKey("r.sd_grow"))).toBe("2027 年 2 月の月の稼ぎ 29.9 万円（2026 年 11 月は 29.7 万円）。");
     // 結果が 1 つの手の結果は「どの場合も」を名前にしない（状態は年月、行き先は行き先の種類）
     expect(text.title(map.indexOfKey("r.sd_grow.all"))).toBe("2027 年 2 月の状態");
     expect(text.title(map.indexOfKey("r.ad_permside.a.1k.all"))).toBe("会社員・届け出はまだ・副業なし・Pro なし");
     expect(text.title(map.indexOfKey("r.fc_switch.high"))).toBe("会社員・届け出はまだ・副業なし・Pro なし");
-    expect(text.body(map.indexOfKey("r.sd_grow.all"))).toBe("2027 年 2 月の状態（この手の結果は 1 つ）。");
-    expect(text.body(map.indexOfKey("r.ad_permside.a.1k.all"))).toContain("標準の選び方で続けた見積もり");
+    expect(text.body(map.indexOfKey("r.sd_grow.all"))).toMatch(/^2026 年 11 月から(変わった所: |大きな変わりは無い)/);
+    expect(text.body(map.indexOfKey("r.ad_permside.a.1k.all"))).toBe("標準の選び方で 2029 年 11 月まで続けた多くの道の平均。");
   });
 });
 

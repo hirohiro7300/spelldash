@@ -119,8 +119,12 @@ body {
   background: var(--warn);
 }
 .pv-size {
+  margin-left: 14px;
+  font-size: 12.5px;
+  font-weight: 400;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .pv-sr {
   position: absolute;
@@ -202,4 +206,37 @@ body {
   min-width: 0;
   padding-top: 18px;
   border-top: 1px solid var(--line-2);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 900px;
+}
+
+/* 開いた道が今の地図に無いときの知らせ（見取り図の上） */
+.pv-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(242, 193, 78, 0.45);
+  background: rgba(242, 193, 78, 0.08);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-1);
+}
+
+/* 狭い画面: 見出しの間を詰める（見取り図の「10 の手をひと目で」が最初の画面に入るように。作業メモ user-3） */
+@media (max-width: 719.98px) {
+  .pv {
+    gap: 12px;
+    padding-block: 12px 48px;
+  }
+  .pv-head {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+  .pv-head-main {
+    gap: 4px;
+  }
+  /* 全部の分かれ道の数は、見取り図の最初の文（手ごとの分かれ道の数）に任せる */
+  .pv-size-forks {
+    display: none;
+  }
 }

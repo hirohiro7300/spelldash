@@ -1,8 +1,10 @@
 // 3 年の分かれ道（試し版）: 読むだけの別のページ（設計: 作業メモ SPEC v1 §5・§10。作業メモ user-8）
 // ページに埋め込んだ地図を読み（load.ts）、計算の芯（src/deepmap/core）で 1 回だけ組み直し、
 // 見取り図・手の詳しい画面・道の画面（src/deepmap/views）を出す。アカウントにも外にもつながない（読むだけ）。
-// 画面の切り替えはハッシュ: #overview（見取り図）・#move-<手の種類>・#path-<カードの番号>（そのカードを通る道。ほかの結果・手を
-// 押すと、そのカードの #path-… へ。戻る・進むで道を行き来でき、道ごとに開いていた行と位置を覚えている）。
+// 画面の切り替えはハッシュ: #overview（見取り図）・#move-<手の種類>・#path-t<カードの鍵の短い名前>（そのカードを通る道。ほかの結果・
+// 手を押すと、そのカードの #path-t… へ。戻る・進むで道を行き来でき、道ごとに開いていた行と位置を覚えている）。
+// 道は鍵から作る名前で指すので、地図を作り直して番号がずれても同じカードの道が開く。今の地図に無い道（と前の版の番号の道）は、
+// 見取り図を出して「この道は今の地図には無い」と知らせる（作業メモ code-2）。
 // 年収を変えると計算だけやり直す（地図の組み直しはしない）。年収はこの端末にだけ覚える（使えなければ覚えない）。
 
 import "../styles/tokens.css";
@@ -12,7 +14,9 @@ import { analyze, compileMap, overview, type Analysis, type CompiledMap, type Ov
 import { clear, h } from "../deepmap/views/dom";
 import {
   findFirstMove,
+  findPathToken,
   kindSlug,
+  warmPathTokens,
   moveDetailVM,
   notesSection,
   notesVM,
@@ -55,8 +59,10 @@ interface PreviewInfo {
   timings: Record<string, number>;
   /** 道の切り替え（ほかの結果・手を押してから、切り替えた道が描かれた次の画面まで）の時間 */
   pathSwitches: number[];
+  /** 地図が持つ物の数（q・mix・cont・never） */
+  has: { q: number; mix: number; cont: number; never: boolean } | null;
 }
-const info: PreviewInfo = { ready: false, visible: false, error: null, n: 0, timings: {}, pathSwitches: [] };
+const info: PreviewInfo = { ready: false, visible: false, error: null, n: 0, timings: {}, pathSwitches: [], has: null };
 (globalThis as { __deepmapPreview?: PreviewInfo }).__deepmapPreview = info;
 
 function readStoredAnnual(): number | null {
@@ -87,7 +93,7 @@ function showError(app: HTMLElement, e: unknown): void {
 function statusText(cm: CompiledMap): string {
   const hd = cm.map.header;
   const fixed = cm.has.q > 0;
-  const tree = fixed ? "計算の前提を直した木（試し）" : "計算の前提を直す前の木（試し）";
+  const tree = fixed ? "計算の前提を直した地図（試し）" : "計算の前提を直す前の地図（試し）";
   return hd.release > 0 ? `${tree}・版 ${num(hd.release)}` : tree;
 }
 
@@ -121,6 +127,7 @@ async function boot(): Promise<void> {
   const st: State = { cm, annual: annual0, ...compute(cm, annual0), destCursor: new Map() };
   info.timings.analyze = performance.now() - t3;
   info.n = cm.n;
+  info.has = { ...cm.has };
 
   // ---- 見出し（題名・地図の年月・木の様子・年収・地図の大きさ）
   const input = h("input", {
@@ -146,13 +153,13 @@ async function boot(): Promise<void> {
     h(
       "div",
       { class: "pv-head-main" },
-      h("div", { class: "pv-title-row" }, h("h1", { class: "pv-title" }, TITLE), h("p", { class: "pv-date" }, `${ym(map, 0)}時点の地図`)),
       h(
-        "p",
-        { class: "pv-status" },
-        h("span", { class: "pv-status-tree" }, h("span", { class: "pv-status-dot", attrs: { "aria-hidden": "true" } }), statusText(cm)),
-        h("span", { class: "pv-size" }, `カード ${num(cm.n)} 枚・分かれ道 ${num(forks)}`),
+        "div",
+        { class: "pv-title-row" },
+        h("h1", { class: "pv-title" }, TITLE),
+        h("p", { class: "pv-date" }, `${ym(map, 0)}時点の地図`, h("span", { class: "pv-size" }, `カード ${num(cm.n)} 枚`, h("span", { class: "pv-size-forks" }, `・分かれ道 ${num(forks)}`))),
       ),
+      h("p", { class: "pv-status" }, h("span", { class: "pv-status-tree" }, h("span", { class: "pv-status-dot", attrs: { "aria-hidden": "true" } }), statusText(cm))),
     ),
     form,
   );
@@ -174,14 +181,17 @@ async function boot(): Promise<void> {
 
   const renderNotes = () => {
     clear(notes);
-    notes.append(notesSection(notesVM(st.a, st.ov.basis.delta, st.ov.basis.worth)));
+    notes.append(notesSection(notesVM(st.a, st.ov.basis.delta, st.ov.basis.worth, { worthNoise: st.ov.worthNoise })));
   };
 
   const render = (opts: { focus: boolean; keepScroll: boolean }) => {
     const t = performance.now();
     const hash = location.hash;
     const r = parseRoute(hash);
-    const key = r.name === "move" ? `move:${r.slug}` : r.name === "path" ? `path:${r.node}` : "overview";
+    // 道の名前 → カード（今の地図に無ければ −1: 見取り図と知らせ）
+    const pathNode = r.name === "path" && r.token ? findPathToken(map, r.token) : -1;
+    const lostPath = r.name === "path" && pathNode < 0;
+    const key = r.name === "move" ? `move:${r.slug}` : r.name === "path" && pathNode >= 0 ? `path:${pathNode}` : "overview";
     if (current === "overview" && key !== "overview") overviewScroll = scrollY;
     // 道の画面を離れる（作り直す）前に、開いていた行と位置を覚える（新しい 200 本まで）
     if (pathPage) {
@@ -201,16 +211,16 @@ async function boot(): Promise<void> {
       const f = findFirstMove(st.a, kindSlug, r.slug);
       let cursor = st.destCursor.get(f);
       if (!cursor) st.destCursor.set(f, (cursor = new Map()));
-      page = renderMoveDetail(moveDetailVM(st.a, f, st.ov), { destCursor: cursor, onDest: (row, k) => (location.hash = pathHash(row.ends[k]!)) });
+      page = renderMoveDetail(moveDetailVM(st.a, f, st.ov), { destCursor: cursor, onDest: (row, k) => (location.hash = pathHash(map, row.ends[k]!)) });
       el = page.el;
-    } else if (r.name === "path" && r.node < cm.n) {
+    } else if (r.name === "path" && pathNode >= 0) {
       // ほかの結果・手を押して来た: その行だけ開いて同じ位置に。戻る・進む・年収の計算し直し: 覚えた行と位置
       if (pending && pending.href === hash) sw = pending;
       pending = null;
       memo = sw ? undefined : pathMemory.get(hash);
       const tv = performance.now();
       if (sw) info.timings.pathQueue = tv - sw.t0;
-      const vm = pathVM(st.a, r.node, st.text);
+      const vm = pathVM(st.a, pathNode, st.text);
       const td = performance.now();
       info.timings.pathVM = td - tv;
       pathPage = renderPathPage(vm, {
@@ -232,7 +242,14 @@ async function boot(): Promise<void> {
       el = pathPage.el;
       info.timings.pathDom = performance.now() - td;
     } else {
-      el = renderOverview(overviewVM(st.a, st.ov));
+      const tv = performance.now();
+      const vm = overviewVM(st.a, st.ov);
+      const td = performance.now();
+      info.timings.overviewVM = td - tv;
+      el = renderOverview(vm);
+      info.timings.overviewDom = performance.now() - td;
+      if (lostPath)
+        el.prepend(h("p", { class: "pv-notice", attrs: { role: "status" } }, "開いた道は今の地図には無い（地図を作り直したので、前のリンクの道は別の名前になった）。見取り図を出している"));
     }
     const ta = performance.now();
     main.append(el);
@@ -299,6 +316,22 @@ async function boot(): Promise<void> {
   afterPaint(() => {
     info.timings.visible = performance.now();
     info.visible = true;
+    // 道の名前 → カードの表は、最初の画面の後の空いた時間に少しずつ作っておく（最初に道を開くときに待たせない。長く止めない）
+    type Deadline = { timeRemaining(): number };
+    const idle = (globalThis as { requestIdleCallback?: (fn: (d: Deadline) => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    let spent = 0;
+    const warm = (d: Deadline | null) => {
+      const t = performance.now();
+      let done = false;
+      do done = warmPathTokens(map, 2000);
+      while (!done && (d ? d.timeRemaining() > 4 : performance.now() - t < 8));
+      spent += performance.now() - t;
+      if (done) info.timings.pathIndex = spent;
+      else if (idle) idle(warm, { timeout: 1000 });
+      else setTimeout(() => warm(null), 16);
+    };
+    if (idle) idle(warm, { timeout: 2000 });
+    else setTimeout(() => warm(null), 200);
   });
 }
 

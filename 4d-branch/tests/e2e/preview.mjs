@@ -5,8 +5,9 @@
 // 公開のときの骨組み（<!doctype html><html><head><meta charset=utf8><meta name=viewport …></head><body>ページ</body></html>）で包み、
 // 外の物を読めない CSP の下で、390×844（スマホ）と 1440×900 で開いて確かめる:
 //   コンソールにエラーが無い・390px で横にはみ出さない・押す所は 44px 以上・英字の鍵が画面に出ない・
-//   見取り図の 10 行・手の詳しい画面と扇・2029 年 11 月（36 か月目）までの道・ほかの結果や手への切り替え（戻る・進むも）・
-//   静かな期のまとめ・標準の続きの薄い行・次の 3 か月へ・年収を変えると計算し直す
+//   見取り図の 10 行と「10 の手をひと目で」（390×844 の最初の画面に 10 行）・手の詳しい画面と扇・2029 年 11 月（36 か月目）までの道・
+//   ほかの結果や手への切り替え（戻る・進むも）・静かな期のまとめ・標準の続きの薄い行（cont のある地図は見積もりの印の行と代表の手、
+//   無い地図は 1 本の行）・次の 3 か月へ・仮の文章の印・道の名前で直接ひらく（今の地図に無い道は知らせ）・年収を変えると計算し直す
 // 時間（作業メモ SPEC v1 §7.2）: 開き始めから見取り図が描かれるまで（3 回の一番速い物）を 1440×900 と CPU 4 倍遅くした 390×844 で。
 //   上限 机 1.5 秒・スマホ（4 倍）5 秒。道の切り替え（押してから次の画面まで）は机で 50ms 以下（真ん中の値）
 // 写真（deviceScaleFactor 1）は写真の置き場に、時間はその隣の timings-preview.jsonl に残す。
@@ -70,7 +71,8 @@ const median = (xs) => {
 const r1 = (x) => Math.round(x * 10) / 10;
 
 /** 画面に出ている文字に、英字の鍵（手の種類・結果・事実・文章の語彙の名前）が無いか */
-const ID_RE = /\b(?:ad|sd|fc|ind|back)_[a-z0-9_]+\b|\b[a-z]+_[a-z0-9]+(?:_[a-z0-9]+)*\b|\bpm:\d+\b|\b(?:keep|stub|sum|undefined|null|NaN)\b/;
+const ID_RE = /\b(?:ad|sd|fc|ind|back)_[a-z0-9_]+\b|\b[a-z]+_[a-z0-9]+(?:_[a-z0-9]+)*\b|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\bpm:\d+\b|\b(?:keep|stub|sum|undefined|null|NaN)\b/;
+const FRAME = "3 年後の幅は、この手より、この先の分かれ道での選び方と運で決まる";
 
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const timings = [];
@@ -198,9 +200,35 @@ for (const [vp, mobile, tag] of [
   await check(`${tag}: 見取り図の形（はみ出し・押す所・英字の鍵）`, () => layoutChecks(page, "見取り図"));
   await check(`${tag}: 見取り図の中身（数・言葉）`, async () => {
     const t = await page.locator(".dm-overview").innerText();
-    for (const want of ["今やる vs 3 か月待つ", "3 年の合計", "ずっと今のままより", "この先の分かれ道", "判断", "出来事の分かれ", "見込み 1% 以上", "標準の続きの見積もり", "会社の答え", "3 年後の幅は、この手より、この先の分かれ道での選び方と運で決まる"]) assert(t.includes(want), `見取り図に「${want}」が無い`);
+    const wants = ["今やる vs 3 か月待つ", "3 年の合計", "ずっと今のままより", "3 か月待っても", "この先の分かれ道", "会社の答え", FRAME, "の手をひと目で", "一番ありそうな道", "真ん中あたりの道", "低い方から"];
+    // 判断・行き先の数の 1 行は、広い画面は見取り図に、狭い画面は手の詳しい画面に（作業メモ user-3）
+    if (tag === "1440") wants.push("判断", "出来事の分かれ", "見込み 1% 以上", "標準の続きの見積もり");
+    for (const want of wants) assert(t.includes(want), `見取り図に「${want}」が無い`);
     const head = await page.locator(".pv-head").innerText();
-    for (const want of ["3 年の分かれ道（試し版）", "時点の地図", "年収", "万円で計算", "カード", "分かれ道"]) assert(head.includes(want), `見出しに「${want}」が無い`);
+    for (const want of ["3 年の分かれ道（試し版）", "時点の地図", "年収", "万円で計算", "カード", "地図"]) assert(head.includes(want), `見出しに「${want}」が無い`);
+    assert(!head.includes("木"), `見出しに「木」がある: ${head}`);
+  });
+  await check(`${tag}: 10 の手をひと目で（最初の画面に 10 行・共通の軸の棒・押すと手の詳しい画面）`, async () => {
+    await goOverview(page);
+    await page.evaluate(() => scrollTo(0, 0));
+    const r = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll(".dm-glance-row")];
+      const frame = document.querySelector(".dm-overview .dm-frame")?.getBoundingClientRect();
+      return {
+        n: rows.length,
+        bottom: Math.max(...rows.map((e) => e.getBoundingClientRect().bottom)),
+        bars: document.querySelectorAll(".dm-glance-range").length,
+        mids: document.querySelectorAll(".dm-glance-mid").length,
+        frameBottom: frame ? frame.bottom : 1e9,
+        vh: innerHeight,
+      };
+    });
+    assert(r.n === 10 && r.bars === 10 && r.mids === 10, `ひと目の行・棒が 10 ではない: ${JSON.stringify(r)}`);
+    assert(r.frameBottom <= r.vh, `3 年の幅の読み方が最初の画面に無い（下端 ${Math.round(r.frameBottom)} > ${r.vh}）`);
+    if (tag === "390") assert(r.bottom <= r.vh, `ひと目の 10 行が最初の画面に入らない（下端 ${Math.round(r.bottom)} > ${r.vh}）`);
+    await page.locator(".dm-glance-row").last().click();
+    await page.waitForFunction(() => location.hash.startsWith("#move-"));
+    await page.locator(".dm-fan-svg").waitFor();
   });
   await check(`${tag}: 手の詳しい画面と扇（分かれ道の帯・進め方・行き先）`, async () => {
     await goOverview(page);
@@ -213,6 +241,14 @@ for (const [vp, mobile, tag] of [
     assert((await page.locator(".dm-dest-row").count()) >= 3, "行き先の行が足りない");
     const eyebrow = await page.locator(".dm-move .dm-eyebrow").first().innerText();
     assert(eyebrow.includes("2026 年 12 月〜2027 年 2 月"), `今日の手の 3 か月が違う: ${eyebrow}`);
+    const head = await page.locator(".dm-move-head").innerText();
+    for (const want of [FRAME, "＝ この手の分", "3 か月待っても出る分", "判断", "出来事の分かれ", "見込み 1% 以上", "標準の続きの見積もり", "一番ありそうな道", "真ん中あたりの道"]) assert(head.includes(want), `手の詳しい画面の見出しに「${want}」が無い`);
+    // 進め方の残りの手は開ける（作業メモ user-8）
+    const rest = page.locator(".dm-plan-rest summary").first();
+    if (await rest.count()) {
+      await rest.click();
+      assert((await page.locator(".dm-plan-rest[open] .dm-plan-move").count()) >= 1, "残りの手が開かない");
+    }
     await layoutChecks(page, "手の詳しい画面");
     await shot(page, `move-${tag}`);
   });
@@ -240,7 +276,9 @@ for (const [vp, mobile, tag] of [
     assert(st.steps.length === 12, `3 か月ごとの行が 12 ではない: ${st.steps.length}`);
     assert(st.steps[0].when === "2026 年 11 月" && st.steps[11].when === "2029 年 8 月", `行の年月が違う: ${st.steps[0].when}〜${st.steps[11].when}`);
     const head = await page.locator(".dm-tl-item.is-step").first().innerText();
-    for (const want of ["12 月〜2 月の手", "→", "%", "月の稼ぎ", "万円", "ここまでの稼ぎ", "ほかの結果", "ほかの手"]) assert(head.includes(want), `行に「${want}」が無い: ${head}`);
+    for (const want of ["12 月〜2 月の手", "→", "%", "2027 年 2 月:", "月の稼ぎ", "万円", "ここまでの稼ぎ", "ほかの結果", "ほかの手"]) assert(head.includes(want), `行に「${want}」が無い: ${head}`);
+    // 3 年の合計の位置（一番ありそうな道は低い側。作業メモ user-2・truth-6）
+    assert(/の道の中で(低い方から|高い方から|真ん中)/.test(await page.locator(".dm-figs").innerText()), "3 年の合計の位置が無い");
     // 静かな期は 1 行（「転職活動を続ける（2 期・転職せず）」など）
     assert(st.groups.some((g) => /（\d+ 期・[^）]+）|（\d+ 期続けて）/.test(g)), `静かな期のまとめが無い: ${st.groups.join(" / ")}`);
     const t = await page.locator(".dm-pathv").innerText();
@@ -259,6 +297,8 @@ for (const [vp, mobile, tag] of [
     assert((await body.locator(".dm-alt.is-current").count()) >= 1, "この道の物の印が無い");
     const t = await body.innerText();
     assert(t.includes("この手の結果") || t.includes("に選べる手"), `ほかの並びの見出しが無い: ${t.slice(0, 80)}`);
+    // 仮の文章は「文章は仮」と出す（作業メモ user-4）
+    assert(t.includes("文章は仮"), "仮の文章の印が無い");
     await layoutChecks(page, "開いた行");
     await shot(page, `path-${tag}-open`, false);
     const before = await pathState(page);
@@ -324,7 +364,17 @@ for (const [vp, mobile, tag] of [
     assert(st.summary && st.end.includes("標準の続きの見積もり"), `着いた所が見積もりにならない: ${st.end}`);
     const end = await page.locator(".dm-tl-end").innerText();
     assert(end.includes("標準の続きの平均"), "着いた所に「標準の続きの平均」が無い");
-    assert((await page.locator(".dm-tl-item.is-light").first().innerText()).includes("標準の選び方で続けた見積もり"), "薄い行の言葉が違う");
+    // 薄い行の最初は、どの地図でも「標準の選び方で続けた見積もり」（cont のある地図は見積もりの印の行と、その後に代表の手。作業メモ code-1）
+    const first = await page.locator(".dm-tl-item.is-light").first().innerText();
+    assert(first.includes("標準の選び方で続けた見積もり"), `薄い行の言葉が違う: ${first}`);
+    const has = await page.evaluate(() => window.__deepmapPreview.has);
+    if (has.cont > 0) {
+      assert(first.includes("見積もり") && (await page.locator(".dm-tl-item.is-light-head").count()) === 1, "見積もりの印の行が無い");
+      assert(st.light >= 2, `cont の手の薄い行が無い（${st.light}）`);
+    } else assert(st.light === 1, `cont の無い地図の薄い行が 1 本ではない（${st.light}）`);
+    // 見込みは標準の続きに入るまで（この道の見込みとは書かない。作業メモ truth-1）
+    const figs = await page.locator(".dm-figs").innerText();
+    assert(figs.includes("標準の続きに入るまでの見込み") && !figs.includes("この道の見込み") && !figs.includes("出来事の分かれが無い道"), `見込みの言葉が違う: ${figs.slice(0, 80)}`);
     await layoutChecks(page, "標準の続きの道");
     await shot(page, `path-${tag}-summary`);
   });
@@ -385,16 +435,31 @@ for (const [vp, mobile, tag] of [
     await page.fill("#pv-annual", "360");
     await page.press("#pv-annual", "Enter");
   });
-  await check(`${tag}: 直接ひらく（#move-… と #path-…）`, async () => {
+  await check(`${tag}: 直接ひらく（#move-… と、道の名前の #path-t…。今の地図に無い道は知らせて見取り図）`, async () => {
     const p2 = await s.ctx.newPage();
     await p2.goto(`${BASE}#move-ind-quit`);
     await p2.waitForFunction(() => window.__deepmapPreview?.visible);
     await p2.locator(".dm-fan-svg").waitFor();
     assert((await p2.locator("#pv-main .dm-h2").first().innerText()).includes("辞めて独立する"), "#move-ind-quit で手の詳しい画面にならない");
-    await p2.goto(`${BASE}#path-0`);
+    // 今日から一番ありそうな道のリンク（道の名前）で直接ひらく
+    await p2.goto(`${BASE}#overview`);
     await p2.waitForFunction(() => window.__deepmapPreview?.visible);
-    await p2.locator(".dm-tl-end").waitFor();
-    assert((await p2.locator(".dm-tl-item.is-step").count()) === 12, "#path-0 で 12 行の道にならない");
+    const href = await p2.locator(".dm-today a.dm-btn").first().getAttribute("href");
+    assert(/^#path-t[0-9a-z]+$/.test(href ?? ""), `道のリンクが道の名前でない: ${href}`);
+    const p3 = await s.ctx.newPage();
+    await p3.goto(`${BASE}${href}`);
+    await p3.waitForFunction(() => window.__deepmapPreview?.visible);
+    await p3.locator(".dm-tl-end").waitFor();
+    assert((await p3.locator(".dm-tl-item.is-step").count()) === 12, `${href} で 12 行の道にならない`);
+    // 前の版の番号の道・今の地図に無い名前: 見取り図と知らせ（作業メモ code-2）
+    for (const h of ["#path-0", "#path-tzzzzzzzz"]) {
+      await p3.goto(`${BASE}${h}`);
+      await p3.waitForFunction(() => window.__deepmapPreview?.visible);
+      await p3.locator(".pv-notice").waitFor();
+      assert((await p3.locator(".pv-notice").innerText()).includes("今の地図には無い"), `${h} の知らせが無い`);
+      assert((await p3.locator(".dm-row").count()) === 10, `${h} で見取り図にならない`);
+    }
+    await p3.close();
     await p2.close();
   });
   await check(`${tag}: コンソールにエラーが無い`, async () => {
@@ -409,7 +474,7 @@ await check("骨組みの初期化（color-scheme: light）でも暗い見た目
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto(`${BASE}host#path-0`);
+  await page.goto(`${BASE}host#overview`);
   await page.waitForFunction(() => window.__deepmapPreview?.visible, null, { timeout: 60_000 });
   const c = await page.evaluate(() => ({ bg: getComputedStyle(document.body).backgroundColor, scheme: getComputedStyle(document.documentElement).colorScheme, fg: getComputedStyle(document.body).color }));
   assert(c.bg === "rgb(7, 9, 13)" && c.scheme === "dark", `暗い見た目にならない: ${JSON.stringify(c)}`);
@@ -437,7 +502,7 @@ await check("読み込みの時間（3 回の一番速い物）と、スマホ�
       if (!best || t.visible < best.visible) best = Object.fromEntries(Object.entries(t).map(([a, b]) => [a, Math.round(b)]));
       // スマホの見立てでの道の切り替え（3 回目だけ・知らせるだけ）
       if (rate > 1 && k === 2) {
-        await page.evaluate(() => (location.hash = "#path-0"));
+        await page.locator(".dm-today a.dm-btn").first().click();
         await page.locator(".dm-tl-end").waitFor();
         for (let j = 0; j < 3; j++) {
           const row = await openRow(page, 1);

@@ -5,6 +5,7 @@ import { h, nobr } from "./dom";
 import { fanChart } from "./fanChart";
 import { OVERVIEW_HASH } from "./format";
 import type { DestRowVM, MoveDetailVM } from "./model";
+import { chainLinks } from "./overview";
 import { pill, SPLIT_COLORS, swatch } from "./parts";
 import { destSection, planSection, stripSection } from "./sections";
 
@@ -26,10 +27,13 @@ function card(id: string, title: string, sub: string | null, ...body: Array<Node
   return h("section", { class: `dm-card dm-card-${id}`, attrs: { "aria-labelledby": `dm-${id}-h` } }, h("h3", { class: "dm-h3", attrs: { id: `dm-${id}-h` } }, title), sub ? h("p", { class: "dm-sub" }, sub) : null, ...body);
 }
 
-/** 手の詳しい画面: 見出し（差・まとめの数・この手の結果・一番ありそうな道）→ 扇 → 分かれ道の帯 → 進め方 → 行き先 */
+/** 手の詳しい画面: 見出し（差・読み方・まとめの数・この手の結果・一番ありそうな道・真ん中あたりの道）→ 扇 → 分かれ道の帯 → 進め方 → 行き先 */
 export function renderMoveDetail(vm: MoveDetailVM, opts: MoveDetailOpts): PageHandle {
   const r = vm.row;
-  const reveal = r.decides.kind === "reveal";
+  const d = r.decides;
+  const reveal = d.kind === "reveal";
+  // 今のままの先とほぼ同じ（TV < 0.1）・差は小さいが選び方は違う、の注記（作業メモ truth-2）
+  const decNote = d.kind === "near" ? d.text : d.kind === "reveal" || d.kind === "outcomes" || d.kind === "plain" ? d.note : null;
   const outs = h(
     "ul",
     { class: "dm-outs" },
@@ -57,9 +61,11 @@ export function renderMoveDetail(vm: MoveDetailVM, opts: MoveDetailOpts): PageHa
         h("p", { class: "dm-eyebrow" }, vm.eyebrow),
         h("h2", { class: "dm-h2", attrs: { tabindex: "-1" } }, r.name, r.isPi ? h("span", { class: "dm-chip" }, "おすすめ") : null),
         h("div", { class: "dm-move-pills" }, r.delta ? pill(r.delta) : null, r.worth ? pill(r.worth) : null),
+        vm.basisLine ? h("p", { class: "dm-sub" }, vm.basisLine) : null,
+        h("p", { class: "dm-frame" }, vm.frame),
         h("ul", { class: "dm-facts" }, vm.facts.map((t) => h("li", null, nobr(t)))),
-        r.decides.kind === "near" || (r.decides.kind === "reveal" && r.decides.near) ? h("p", { class: "dm-sub" }, r.decides.kind === "near" ? r.decides.text : "この手の先は『今のまま』の先と近い") : null,
-        vm.chain ? h("a", { class: "dm-btn is-primary", attrs: { href: vm.chain.href } }, vm.chain.text) : null,
+        decNote ? h("p", { class: "dm-sub" }, decNote) : null,
+        chainLinks([vm.chain, vm.median], true),
       ),
       vm.outcomes.length ? h("div", { class: "dm-outs-box" }, h("p", { class: "dm-outs-head" }, vm.outcomesHead, h("span", null, "その後、一番良い選び方で進んだ 3 年の合計")), outs) : null,
     ),
@@ -68,7 +74,12 @@ export function renderMoveDetail(vm: MoveDetailVM, opts: MoveDetailOpts): PageHa
       { class: "dm-move-grid" },
       card("fan", "月の稼ぎの広がり", vm.fan.answers.length ? "この手の後、一番良い選び方で進んだときの月の稼ぎ。会社の答えなど、この手で分かることの答えごとに分けて見られる" : "この手の後、一番良い選び方で進んだときの月の稼ぎ", fan.el),
       card("strip", "分かれ道の数（3 か月ごと）", "この手の先に、いつ、いくつ分かれ道があるか", stripSection(vm.strip)),
-      card("plan", "進め方（3 か月ごとのおすすめの手）", "その時に判断がある道の中で、どの手を選ぶことになるかの割合と、そうなる直前の結果", planSection(vm.plan)),
+      card(
+        "plan",
+        "進め方（3 か月ごとのおすすめの手）",
+        "その時に判断がある道の中で、どの手を選ぶことになるかの割合と、その手になる理由（同じ月のほかの手と分けるこれまでの結果か、前の手）。理由の無い手は、ほかの手と 1 つの結果では分けられない",
+        planSection(vm.plan),
+      ),
       card(
         "dest",
         `${vm.endYm}の行き先（種類ごと）`,

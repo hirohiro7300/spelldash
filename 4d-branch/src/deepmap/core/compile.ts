@@ -221,6 +221,7 @@ export function compileMap(map: MapData): CompiledMap {
 
 /**
  * 数だけを入れ直す（同じ形の地図: カードの数・親子が同じ）。形が違えば止める（compileMap で作り直す）。
+ * 地図（cm.map）も新しい物に替える。入れ直す前に作った計算（Analysis）は古くなり、見取り図などに渡すと止まる（assertFresh）。
  * 年収・選んだ手・シナリオが変わっただけなら、これも要らない（計算だけやり直す）
  */
 export function refillNumbers(cm: CompiledMap, map: MapData): void {
@@ -228,6 +229,8 @@ export function refillNumbers(cm: CompiledMap, map: MapData): void {
   for (let i = 0; i < cm.n; i++) {
     if (map.parent(i) !== cm.parent[i] || ROLE_CODE[map.role(i)] !== cm.role[i]) throw new Error("形の違う地図です（作り直してください）");
   }
+  // 名前・never・cont・st など、地図から直接読む物も新しい地図から（作業メモ code-3）
+  (cm as { map: MapData }).map = map;
   fillNumbers(cm, map);
 }
 

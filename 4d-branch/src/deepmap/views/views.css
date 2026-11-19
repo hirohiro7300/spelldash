@@ -177,7 +177,7 @@
 .dm-dist {
   display: flex;
   gap: 2px;
-  height: 14px;
+  height: 16px;
   min-width: 0;
 }
 .dm-dist.is-empty {
@@ -186,8 +186,20 @@
 }
 .dm-dist-seg {
   flex: 0 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 2px;
+  overflow: hidden;
   border-radius: 1px;
+}
+/* 大きな段の割合（色の見本に戻らなくても読める） */
+.dm-dist-pct {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .dm-dist-seg:first-child {
   border-top-left-radius: 4px;
@@ -197,27 +209,51 @@
   border-top-right-radius: 4px;
   border-bottom-right-radius: 4px;
 }
+/* 段の色の見本: 色の下に境目の数（万円） */
 .dm-scale {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
+  display: grid;
+  gap: 5px;
   margin: 0;
+  min-width: 0;
   font-size: 11.5px;
   color: var(--text-2);
 }
+.dm-scale-note {
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.dm-scale-box {
+  display: grid;
+  gap: 3px;
+  width: min(100%, 360px);
+  min-width: 0;
+}
+.dm-scale-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: var(--text-3);
+}
 .dm-scale-sw {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 2px;
 }
 .dm-scale-sw i {
   display: block;
-  width: 13px;
-  height: 9px;
+  height: 10px;
   border-radius: 2px;
 }
-.dm-scale-note {
+.dm-scale-ticks {
+  display: grid;
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+  font-size: 10px;
+  line-height: 1.2;
   color: var(--text-3);
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 分かれ方の細い棒（答え・結果の割合） */
@@ -260,7 +296,7 @@
 /* ------------------------------------------------------------ 3 年の見取り図 */
 .dm-overview {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 .dm-lead {
@@ -315,6 +351,9 @@
 }
 .dm-rows-item {
   min-width: 0;
+  /* 画面の外のカードは描くのを後回しに（最初の画面を早く。作業メモ SPEC v1 §7.2 の最初の画面 ≤ 3 秒） */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 380px;
 }
 .dm-row {
   display: grid;
@@ -488,16 +527,285 @@
 .dm-today .dm-headline {
   color: var(--text-1);
 }
-.dm-footer {
-  margin: 4px 0 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--line-2);
+/* 3 年の幅の読み方（見取り図の最初・手の詳しい画面の見出し） */
+.dm-frame {
+  margin: 0;
   max-width: 62ch;
-  font-size: 14.5px;
+  padding: 2px 0 2px 11px;
+  border-left: 3px solid var(--accent-line);
+  font-size: 13.5px;
   font-weight: 620;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--text-1);
   text-wrap: pretty;
+}
+.dm-overview-intro {
+  display: grid;
+  gap: 6px;
+}
+.dm-cards-h {
+  margin-top: 8px;
+}
+.dm-row-dist-head {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.dm-row-vs.is-wait {
+  color: var(--text-3);
+}
+/* 広い画面は列の見出しがあるので、分布の見出しは出さない */
+@media (min-width: 1100px) {
+  .dm-row-dist-head {
+    display: none;
+  }
+}
+/* 狭い画面: 判断・行き先の数の 1 行は手の詳しい画面にだけ（カードを短く） */
+@media (max-width: 719.98px) {
+  .dm-row-counts {
+    display: none;
+  }
+}
+
+/* 「10 の手をひと目で」: 共通の万円の軸に 10〜90% の棒と真ん中の線。狭い画面は 2 段（名前と差・棒）、広い画面は 1 段 */
+.dm-glance {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 10px 10px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+}
+.dm-glance-head {
+  display: grid;
+  gap: 2px;
+  padding: 0 6px;
+}
+.dm-glance-head .dm-h3 {
+  font-size: 14.5px;
+}
+.dm-glance-sub {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.dm-glance-axis {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 0 6px;
+}
+.dm-glance-axis-label {
+  display: none;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.dm-glance-note {
+  margin: 0;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.dm-glance-ticks {
+  position: relative;
+  height: 14px;
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.dm-glance-ticks span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.dm-glance-ticks span.is-first {
+  transform: none;
+}
+.dm-glance-ticks span.is-last {
+  transform: translateX(-100%);
+}
+.dm-glance-ticks .dm-glance-keepmark {
+  top: 9px;
+  height: 6px;
+  border-left: 1.5px dashed #8a94a6;
+  transform: none;
+}
+.dm-glance-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dm-glance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name pill"
+    "bar bar";
+  align-items: center;
+  gap: 2px 8px;
+  min-height: 44px;
+  padding: 3px 6px 5px;
+  border-radius: 8px;
+  color: var(--text-1);
+  text-decoration: none;
+}
+.dm-glance-row:hover {
+  background: var(--bg-hover);
+}
+.dm-glance-row:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
+.dm-glance-name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dm-glance-row.is-pi .dm-glance-name {
+  color: var(--accent-2);
+}
+.dm-glance-row.is-base .dm-glance-name {
+  color: var(--text-2);
+}
+.dm-glance-pill {
+  grid-area: pill;
+  justify-self: end;
+}
+.dm-glance-pill.is-none {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.dm-glance-pill .dm-pill {
+  min-width: 44px;
+  height: 19px;
+  padding: 0 7px;
+  font-size: 11.5px;
+}
+.dm-glance-bar {
+  grid-area: bar;
+  position: relative;
+  height: 12px;
+}
+.dm-glance-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: block;
+}
+.dm-glance-grid {
+  width: 1px;
+  background: var(--dm-grid);
+}
+.dm-glance-keep {
+  top: -2px !important;
+  bottom: -2px !important;
+  width: 0;
+  border-left: 1.5px dashed #8a94a6;
+}
+.dm-glance-range {
+  top: 2px !important;
+  bottom: 2px !important;
+  min-width: 2px;
+  border-radius: 4px;
+  background: rgba(139, 123, 255, 0.6);
+}
+.dm-glance-row.is-base .dm-glance-range {
+  background: rgba(138, 148, 166, 0.45);
+  box-shadow: inset 0 0 0 1px #8a94a6;
+}
+.dm-glance-mid {
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #ffffff;
+}
+.dm-glance-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 2px 0 0;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.dm-glance-legend i {
+  display: inline-block;
+  flex: none;
+}
+.dm-glance-legend i:not(:first-child) {
+  margin-left: 8px;
+}
+.dm-glance-legend-keep {
+  width: 0;
+  height: 12px;
+  border-left: 1.5px dashed #8a94a6;
+}
+.dm-glance-legend-range {
+  width: 18px;
+  height: 8px;
+  border-radius: 3px;
+  background: rgba(139, 123, 255, 0.6);
+}
+.dm-glance-legend-mid {
+  width: 2px;
+  height: 12px;
+  background: #ffffff;
+}
+@media (min-width: 720px) {
+  .dm-glance-row,
+  .dm-glance-axis {
+    grid-template-columns: minmax(150px, 240px) 84px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+  .dm-glance-row {
+    grid-template-areas: "name pill bar";
+  }
+  .dm-glance-axis-label {
+    display: block;
+    grid-column: 1 / span 2;
+    align-self: end;
+  }
+  .dm-glance-ticks {
+    grid-column: 3;
+  }
+  .dm-glance-pill {
+    justify-self: start;
+  }
+}
+
+/* 一番ありそうな道・真ん中あたりの道（ボタンの下に 3 年の合計と、行き先の中の位置） */
+.dm-chains {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  min-width: 0;
+}
+.dm-chain {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  min-width: 0;
+}
+.dm-chain-sub {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-2);
 }
 
 /* 広い画面: 4 列に並べる（列の見出しを出す） */
@@ -523,6 +831,9 @@
   }
   .dm-row-name {
     font-size: 15px;
+  }
+  .dm-rows-item {
+    contain-intrinsic-size: auto 160px;
   }
   .dm-row-pills {
     flex-direction: column;
@@ -1129,6 +1440,22 @@
   line-height: 1.5;
   color: var(--text-3);
 }
+/* 進め方の残りの手（開くと同じ形で並ぶ） */
+.dm-plan-rest {
+  min-width: 0;
+}
+.dm-plan-rest summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+.dm-plan-rest[open] summary {
+  margin-bottom: 4px;
+}
 
 /* ------------------------------------------------------------ 行き先 */
 .dm-dest-box {
@@ -1290,6 +1617,13 @@
   line-height: 1.5;
   color: var(--text-2);
 }
+.dm-fig-sub.is-note {
+  margin-top: 3px;
+  color: var(--text-1);
+}
+.dm-fig.has-note {
+  grid-column: 1 / -1;
+}
 
 /* 月の稼ぎの線（この道・ずっと今のまま） */
 .dm-spark {
@@ -1391,8 +1725,38 @@
   transform: translateX(-50%);
   white-space: nowrap;
 }
-.dm-spark-tip {
-  top: 0;
+/* 線の下の札（その時点の月の稼ぎ。線には重ねない） */
+.dm-spark-read {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-height: 20px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.dm-spark-read b {
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.dm-spark-read .dm-tip-key {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  margin-right: 5px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+/* 扇の札: 狭い画面は図の下の欄（図に重ねない） */
+.dm-fan-plot.is-narrow .dm-tip {
+  position: static;
+  min-width: 0;
+  max-width: none;
+  margin-top: 4px;
+  box-shadow: none;
+  border: 1px solid var(--line);
+  background: var(--bg-panel-2);
 }
 .dm-key-line.is-ref {
   height: 1.5px;
@@ -1602,6 +1966,18 @@
 .dm-tl-money.is-warn {
   color: var(--warn);
 }
+.dm-tl-money-at {
+  font-weight: 600;
+  color: var(--text-1);
+}
+/* 仮の文章の印 */
+.dm-prov {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--warn);
+}
 .dm-tl-alt {
   font-size: 11.5px;
   line-height: 1.5;
@@ -1741,6 +2117,16 @@
   padding: 0;
   list-style: none;
 }
+.dm-alts-sub {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.dm-alts-sub.is-stub {
+  color: var(--warn);
+}
 .dm-alt {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto 12px;
@@ -1834,6 +2220,18 @@
 }
 .dm-tl-item.is-light .dm-tl-money {
   color: var(--text-3);
+}
+.dm-tl-item.is-light-head .dm-tl-move {
+  color: var(--text-1);
+}
+.dm-tl-tag.is-est {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px dashed var(--warn);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.6;
+  color: var(--warn);
 }
 @media (min-width: 720px) {
   .dm-tl-lightrow {
