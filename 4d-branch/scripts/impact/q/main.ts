@@ -20,9 +20,13 @@
 // 今日の手の q は「3 年やらない」見積もりの _all と同じ表（何も除かない作り直しの表）から出す（k(fam) と比べられるように。見直し truth-2）。
 // 書き出す物: <木.json>（開発用の入れ子の木。src/deepmap/mapData.ts の DevTree。同梱データの精度に丸めた木で、入口の hash は同梱データの中身の指紋）と、
 // その隣の <木.json>.gz、--bundle の同梱データ、--record の版の記録。
-// 前提の文と手の決まりの点検（./checks.ts の premiseRuleChecks: J3・J4・K2）、生成の木の点検（./checks.ts: 一貫性・N10・N7・顧客は整数・幅・名前・事実・暦・
-// 転職活動の上限・q・mix・cont・分かれ道の数・ノードの数・3 か月の結果の入れ物）と、同梱データを読み手で読んだ地図の点検（./check.ts: 読み手・ノードの数・
-// 分かれ道・N10・顧客・暦・一貫性・アプリと同じ値・ID・基準の文書の指紋・決まり・大きさ・版の記録）にどれか通らなければ、何も書き出さない。
+// 一貫性（おすすめの道がまとめた手に入らない）は年収 360・540 のどちらでも守る（判断ごとに年収ごとの一番良い手を広げる。gen.ts。SPEC v1 §2.8）。
+// 文章（--text on。既定）: 題・短い名前・やること（元の番号つき）を文章の組み立て（src/demo/compose の composeCard）で焼き込み、入口の textVersion を
+// 文の型の束の版にする（./text.ts。年収で変わらないことも確かめる）。文章の点検（scripts/impact/textChecks.ts の runTextChecks。40 秒ほど）も生成の点検に入れる。
+// 前提の文と手の決まりの点検（./checks.ts の premiseRuleChecks: J3・J4・K2）、生成の木の点検（./checks.ts: 一貫性（年収ごと）・N10・N7・顧客は整数・幅・名前・事実・暦・
+// 転職活動の上限・q・mix・cont・分かれ道の数・ノードの数・3 か月の結果の入れ物）・文章の焼き込み（TB2）と、同梱データを読み手で読んだ地図の点検（./check.ts: 読み手・
+// 木の形 S1〜S5・ノードの数・分かれ道・N10・顧客・暦・一貫性（年収 360・540）・アプリと同じ値・ID・基準の文書の指紋・決まり・大きさ・版の記録。./text.ts:
+// 焼き込んだ文章 = その場の組み立て（TB1）・文章の点検（TC））にどれか通らなければ、何も書き出さない。
 // 報告だけの数（通らなくても書き出す）: 表を引く順を変えた時の今日の手の差と k の幅（truth-2）・標準の続きを 1 段改善した時の伸び（truth-5）・
 // 届け出の答えの順（truth-4）・k(fam) < −1 の注意・標準の続きと一番良い手の手の割合（truth-1）。
 // 同じ引数なら同じ木と同じ同梱データ（バイトまで同じ）。木は大きい（30 MB 台）のでリポジトリの外に書き出す
@@ -37,11 +41,13 @@ import { fromDevTree } from "../../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../../src/deepmap/mapData";
 import { IMPACT_STAR_LEAD } from "../../../src/model/impact";
 import type { World } from "../sim";
+import { goldenMarkdown, goldenPaths, reportMarkdown, runtimeOf } from "../textChecks";
 import { bundleHash, bytesToBase64, canonicalizeDevTree, encodeMap, roundingReport } from "./bundle";
 import {
   appParity,
   checkCalendar,
   checkClients,
+  checkQuarterSal,
   checkDeterminism,
   checkForks,
   checkIds,
@@ -50,6 +56,7 @@ import {
   checkReleaseAppend,
   checkReleaseHistory,
   checkSizes,
+  checkStructure,
   compareMaps,
   consistencyOfMap,
   forksByFirstMove,
@@ -61,12 +68,13 @@ import {
   type ReleaseEntry,
   type ReleaseHistory,
 } from "./check";
-import { checkOutputs, checkTree, filingDominance, premiseRuleChecks } from "./checks";
+import { bestOf, checkOutputs, checkTree, filingDominance, premiseRuleChecks } from "./checks";
 import { parseArgs, USAGE, type CliOpts } from "./cli";
 import { OutcomeCache, simCount, Wsum } from "./core";
 import { toDevTree } from "./devTree";
-import { consistencyOf, generate, rollbackApp, type MoveStats, type QNode } from "./gen";
+import { consistencyOf, generate, rollbackApp, type Consistency, type MoveStats, type QNode } from "./gen";
 import { improvementGains, neverValues, orderRuns, releaseRolls, rootTable, spreadOf, starCounts, summaryOutputs, type NeverResult } from "./outputs";
+import { bakeText, checkBaked, textGate, textSummary } from "./text";
 import { quarterWorld, type WorldQ } from "./world";
 
 const pct = (x: number) => `${(100 * x).toFixed(1)}%`;
@@ -110,6 +118,59 @@ function contShares(root: QNode): string {
   return kinds.map((k) => `${k} ${pct((cont.get(k) ?? 0) / Math.max(1, nc))}・${pct((best.get(k) ?? 0) / Math.max(1, nb))}`).join(" / ");
 }
 
+/**
+ * 報告: アプリのおすすめの道（最初の手ごとに、どの判断でも後ろからの木の値で一番の手。rollbackApp の後に呼ぶ）の判断のうち、アプリの選ぶ手が
+ * 訳 best の手（無ければ今のまま。生成の年収の q で一番の手）と違う判断。2 つの年収の一番良い手を両方広げた判断では、木の値で選ぶアプリが、
+ * もう一方の年収の一番良い手を選ぶことがある。dq はその判断の（アプリの選ぶ手 − 訳 best の手）の q（この年収の万円）
+ */
+function recommendedGap(root: QNode, S: number): { decisions: number; both: number; differ: number; toS2: number; dqLo: number; dqHi: number; examples: string[] } {
+  let decisions = 0;
+  let both = 0;
+  let differ = 0;
+  let toS2 = 0;
+  let dqLo = Infinity;
+  let dqHi = -Infinity;
+  const examples: string[] = [];
+  const walk = (a: QNode) => {
+    for (const n of a.kids) {
+      if (n.role !== "s") continue;
+      decisions++;
+      const b = bestOf(n);
+      const rec = n.kids.find((x) => x.why === "best") ?? n.kids.find((x) => x.kind === "keep")!;
+      if (n.kids.some((x) => x.forS2 && !x.stub)) both++;
+      if (b !== rec) {
+        differ++;
+        if (b.forS2) toS2++;
+        const dq = Wsum(b.qv ?? [0, 0, 0], S) - Wsum(rec.qv ?? [0, 0, 0], S);
+        dqLo = Math.min(dqLo, dq);
+        dqHi = Math.max(dqHi, dq);
+        if (examples.length < 3) examples.push(`${n.key}（${b.kind}${b.forS2 ? "・540 万円の一番良い手" : ""}・木の値 ${(b.V - rec.V).toFixed(2)}・q ${dq.toFixed(2)}）`);
+      }
+      if (!b.stub) walk(b);
+    }
+  };
+  for (const a0 of root.kids) walk(a0);
+  return { decisions, both, differ, toS2, dqLo, dqHi, examples };
+}
+
+/** 報告: 事実の小さい組を分けたまま残した結果（予算の使い道 1。段 fineDepth まで）を、手と結果の名前ごとに数える（見込みの幅と例の鍵） */
+function fineReport(root: QNode): Array<{ what: string; n: number; pLo: number; pHi: number; example: string }> {
+  const m = new Map<string, { what: string; n: number; pLo: number; pHi: number; example: string }>();
+  const walk = (n: QNode) => {
+    if (n.out?.fine && n.parent) {
+      const what = `${n.parent.kind}→${n.out.id}（${n.out.lab}）`;
+      const g = m.get(what) ?? { what, n: 0, pLo: Infinity, pHi: -Infinity, example: n.key };
+      g.n++;
+      g.pLo = Math.min(g.pLo, n.out.p);
+      g.pHi = Math.max(g.pHi, n.out.p);
+      m.set(what, g);
+    }
+    for (const k of n.kids) walk(k);
+  };
+  walk(root);
+  return [...m.values()].sort((a, b) => b.n - a.n || a.what.localeCompare(b.what));
+}
+
 /** 木を作り、生成の木を点検し、丸めて同梱データの並びにする。report が true なら報告を出し、報告だけの数（順の幅・改善の伸び）も測る */
 function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   const w = quarterWorld(base, opts.anchor);
@@ -133,6 +194,15 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   const con = consistencyOf(tree);
   const keepA = tree.kids.find((a) => a.kind === "keep");
   const delta = new Map(tree.kids.map((a) => [a.kind!, keepA ? a.V - keepA.V : NaN]));
+  // 一貫性と、アプリの選ぶ手が訳 best と違う判断を、一貫性を守る年収ごとに（SPEC v1 §2.8: 360・540 のどちらでも、おすすめの道はまとめた手に入らない）
+  const annuals = [w.annual, ...P.annuals.filter((a) => a !== w.annual)];
+  const conAt = new Map<number, Consistency>();
+  const gapAt = new Map<number, ReturnType<typeof recommendedGap>>();
+  for (const annual of annuals) {
+    rollbackApp(tree, annual / 12);
+    conAt.set(annual, annual === w.annual ? con : consistencyOf(tree));
+    gapAt.set(annual, recommendedGap(tree, annual / 12));
+  }
   const vSQ = rollbackApp(tree, S, true);
   // 新しい出力: まとめた行き先の中身と標準の続き（続きの見積もりの形がある間に）
   const tOut = performance.now();
@@ -163,7 +233,7 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   const lines: string[] = [];
   lines.push(`形: ${JSON.stringify(P)}・最初の手 ${opts.only?.join(",") ?? `今日の ${w.rootMenu.length} 手`}`);
   lines.push(
-    `粗い表 ${genSizes.cells} マス（${msTable.toFixed(0)} ms）・生成 ${msGen.toFixed(0)} ms・3 か月の数え上げ ${simCount.n} 回・続きの見積もり ${genSizes.rolls} 状態・正確な見積もり ${gen.evals} 回・分け方を落とした判断 ${gen.guards}`,
+    `粗い表 ${genSizes.cells} マス（${msTable.toFixed(0)} ms）・生成 ${msGen.toFixed(0)} ms・3 か月の数え上げ ${simCount.n} 回・続きの見積もり ${genSizes.rolls} 状態・正確な見積もり ${gen.evals} 回・分け方を落とした判断 ${gen.guards}（そのうち 540 万円の余裕だけで ${gen.guardsS2}）`,
   );
   {
     const sf = [...gen.shortfalls].sort((a, b) => a - b);
@@ -190,14 +260,41 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
     );
   }
   lines.push(`合計（今日を含む）: 分かれ道 ${tot.forks + 1}・ノード ${tot.nodes}・判断 ${tot.decisions + 1}・手 ${tot.options}（まとめた手 ${tot.stubs}）・行き先 ${tot.ends}（まとめた行き先 ${tot.sumEnds}）`);
-  lines.push("予算の合わせ込み（D1）: 最初の手 | 分かれ道 / 目標 | 分ける予算だけで飽和（予算 ∞ の分かれ道） | 事実の小さい組も分ける（予算 ∞） | 別の領域の手を広げた判断（戻した・広げられる判断） | 届く上限 | 内側の予算 | 作り直し");
+  // 今日の手の今のままとの差を、確かめる年収ごとに（木の値・q。q は never._all と同じ表）
+  for (const annual of annuals) {
+    const s2 = annual / 12;
+    rollbackApp(tree, s2);
+    const k = tree.kids.find((a) => a.kind === "keep");
+    const row = [...tree.kids]
+      .sort((a, b) => Wsum(b.qv!, s2) - Wsum(a.qv!, s2))
+      .map((a) => `${a.kind} ${k ? (a.V - k.V).toFixed(2) : "-"}・${k ? (Wsum(a.qv!, s2) - Wsum(k.qv!, s2)).toFixed(2) : "-"}`);
+    lines.push(`今日の手の今のままとの差（年収 ${annual}・木の値・q。q の大きい順）: ${row.join(" / ")}`);
+  }
+  lines.push("予算の合わせ込み（D1）: 最初の手 | 分かれ道 / 目標 | 事実の小さい組も分ける（分けた結果の数） | 分ける予算だけで飽和（予算 ∞ の分かれ道） | 別の領域の手を広げた判断（戻した・広げられる判断） | 届く上限 | 内側の予算 | 作り直し");
   for (const s of stats) {
     const c = s.calib;
     lines.push(
-      `  ${s.kind} | ${s.forks} / ${c.target}${c.hit ? "" : "（外れ）"} | ${c.saturated ? `飽和（${c.splitMax}）` : "-"} | ${c.fine ? `あり（${c.fineMax}）` : "-"} | ${c.areaN ? `${c.areaUsed - c.areaReverted}（${c.areaReverted}・${c.areaEligible}）` : "-"} | ${c.reachMax ?? "-"} | ${c.Bint === Infinity ? "∞" : c.Bint.toFixed(0)} | ${c.passes}`,
+      `  ${s.kind} | ${s.forks} / ${c.target}${c.hit ? "" : "（外れ）"} | ${c.fine ? `あり（${s.fineOuts}）` : c.fineDropped ? "予算に収まらない" : "-"} | ${c.saturated ? `飽和（${c.splitMax}）` : "-"} | ${c.areaN ? `${c.areaUsed - c.areaReverted}（${c.areaReverted}・${c.areaEligible}）` : "-"} | ${c.reachMax ?? "-"} | ${c.Bint === Infinity ? "∞" : c.Bint.toFixed(0)} | ${c.passes}`,
     );
   }
-  lines.push(`一貫性: おすすめの道の判断 ${con.decisions}・まとめた手が勝った判断 ${con.violations}（最大 ${con.worst.toFixed(2)} 万円）・最初の手ごとのおすすめの道 ${con.piDecisions} 判断・まとめた手に入った道 ${con.piIntoStub}`);
+  {
+    // 事実の小さい組を分けたまま残した結果（予算の使い道 1。SPEC v1 §2.2 の例: 届け出て副業の『全部可』で 1 社目が決まる 8%）
+    const fr = fineReport(tree);
+    lines.push(`事実の小さい組を分けた結果（段 ${P.fineDepth} まで・${fr.reduce((a, g) => a + g.n, 0)} 枚・${fr.length} 種類）: ${fr.map((g) => `${g.what} ${g.n} 枚（${g.pLo === g.pHi ? `${g.pLo}%` : `${g.pLo}〜${g.pHi}%`}・例 ${g.example}）`).join(" / ")}`);
+  }
+  // 2 つ目の年収の一番良い手（決まり 2 を 540 万円でも。広げた・見せる手に足した・要らなかったので戻した）
+  lines.push(
+    `540 万円の一番良い手（生成の年収と違う判断で広げる）: ${stats.map((s) => `${s.kind} ${s.s2Exp}（足した ${s.s2Added}・戻した ${s.calib.s2Reverted}）`).join("・")}。合わせて広げたまま ${stats.reduce((a, s) => a + s.s2Exp, 0)}・見せる手に足した ${stats.reduce((a, s) => a + s.s2Added, 0)}・戻した ${stats.reduce((a, s) => a + s.calib.s2Reverted, 0)}`,
+  );
+  for (const annual of annuals) {
+    const c = conAt.get(annual)!;
+    const g = gapAt.get(annual)!;
+    lines.push(
+      `一貫性（年収 ${annual}）: おすすめの道の判断 ${c.decisions}・まとめた手が勝った判断 ${c.violations}（最大 ${c.worst.toFixed(2)} 万円）・最初の手ごとのおすすめの道 ${c.piDecisions} 判断・まとめた手に入った道 ${c.piIntoStub}。` +
+        `おすすめの道の判断 ${g.decisions} のうち、2 つの年収の一番良い手を両方広げた判断 ${g.both}・アプリの選ぶ手が訳 best（生成の年収の q で一番）と違う判断 ${g.differ}` +
+        (g.differ ? `（540 万円の一番良い手を選ぶ ${g.toS2}・q の差（アプリの選ぶ手 − 訳 best）${g.dqLo.toFixed(2)}〜${g.dqHi.toFixed(2)} 万円・例 ${g.examples.join(" / ")}）` : ""),
+    );
+  }
   {
     const im = con.improv;
     const q = (p: number) => (im[Math.min(im.length - 1, Math.floor(p * im.length))] ?? 0).toFixed(2);
@@ -270,15 +367,16 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   oc.m.clear();
   progress("★ の数と点検");
   // ★ の数（見直し truth-2）: 木の値で比べた場合と、同じ見積もり方で比べた場合
-  rollbackApp(tree, S);
-  {
-    const sc = starCounts(tree, S, IMPACT_STAR_LEAD);
+  for (const annual of annuals) {
+    rollbackApp(tree, annual / 12);
+    const sc = starCounts(tree, annual / 12, IMPACT_STAR_LEAD);
     const row = (name: string, c: (typeof sc)["all"]) => `  ${name}: 判断 ${c.decisions}・★ 木の値 ${c.tree}・同じ見積もり方 ${c.q}・両方 ${c.both}・木の値だけ ${c.tree - c.both}・同じ見積もり方だけ ${c.q - c.both}・一番の手が違う ${c.argmaxDiff}`;
-    lines.push(`★（2 位より ${IMPACT_STAR_LEAD} 万円以上良い。年収 ${w.annual} 万円）`);
+    lines.push(`★（2 位より ${IMPACT_STAR_LEAD} 万円以上良い。年収 ${annual} 万円）`);
     lines.push(row("すべての判断", sc.all));
     lines.push(row("一番の手を広げ、まとめた手も並ぶ判断", sc.mixed));
-    lines.push(row("おすすめの道の上", sc.pi));
+    lines.push(row("おすすめの道の上（どちらかの年収で）", sc.pi));
   }
+  rollbackApp(tree, S);
   // 届け出の答えの順（見直し truth-4。数えるだけ）
   for (const annual of [360, 540]) {
     rollbackApp(tree, annual / 12);
@@ -296,7 +394,7 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   for (const s of chk.search) lines.push(`${s.kind} | ${pct(s.pSearch)} | ${pct(s.pSwitched)} | ${pct(s.pEverSwitched)} | ${s.meanSearch.toFixed(2)} | ${pct(s.chainP)}・${s.chainMaxFailRun}`);
   for (const s of chk.search) lines.push(`  ${s.kind}: ${s.chain.join(" ")}`);
   if (report) console.log(lines.join("\n"));
-  if (con.violations > 0 || con.piIntoStub > 0) fails.push(`一貫性: まとめた手が勝った判断 ${con.violations}・まとめた手に入った道 ${con.piIntoStub}`);
+  for (const [annual, c] of conAt) if (c.violations > 0 || c.piIntoStub > 0) fails.push(`一貫性（年収 ${annual}）: まとめた手が勝った判断 ${c.violations}・まとめた手に入った道 ${c.piIntoStub}`);
   fails.push(...chk.fails, ...outFails);
   // 生成の木の値（読んだ地図の値と比べる）
   const vR: Record<number, number> = {};
@@ -308,10 +406,20 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   }
   const empty = new Uint8Array(0);
   if (fails.length) return { fails, w, stats, dev: null, bytes: empty, hash: "", vRoot: vR, rootDelta: rd, rounding: {} };
-  // 開発用の木 → 同梱データの精度に丸めた木 → 決まった並び（入口の hash は中身の指紋）
+  // 開発用の木 → 同梱データの精度に丸めた木 → 文章の焼き込み → 決まった並び（入口の hash は中身の指紋）
   const raw = toDevTree(w, tree, { anchor: opts.anchor, release: opts.release, hash: "", textVersion: "dev", ...(nv ? { never: nv.never } : {}) });
   const rounding = roundingReport(raw);
   const dev = canonicalizeDevTree(raw);
+  if (opts.text) {
+    // 題・短い名前・やることは丸めた木（同梱データと同じ数）から組み立てる（SPEC v1 §4.3）。年収 540 万円でも同じことを確かめる
+    progress("文章の焼き込み");
+    const bake = bakeText(dev, { annuals: P.annuals });
+    if (report)
+      console.log(
+        `文章の焼き込み（文の型 ${bake.textVersion}）: ${bake.cards} 枚・違う題 ${bake.distinct.title}・短い名前 ${bake.distinct.short}・やることのある手 ${bake.movesWithTodo}（${bake.todoItems} 件・文 ${bake.distinct.todo}・元の番号 ${bake.distinct.cite}）・組み立て ${bake.ms.map((x) => `${(x / 1000).toFixed(1)} 秒`).join("・")}・通らない ${bake.fails.length}${bake.fails.length ? `（${bake.fails.join(" / ")}）` : ""}`,
+      );
+    if (bake.fails.length) return { fails: bake.fails, w, stats, dev: null, bytes: empty, hash: "", vRoot: vR, rootDelta: rd, rounding };
+  }
   const bytes = encodeMap(fromDevTree(dev));
   const hash = bundleHash(bytes);
   dev.header.hash = hash;
@@ -359,6 +467,9 @@ export async function main(root: string, args: string[]): Promise<number> {
   add("B2 読み手が丸めた木の fromDevTree と同じ答え（全ノード・全部の問い）", compareMaps(fromDevTree(r1.dev), map), `${map.n} 枚`);
   const devJson = JSON.stringify(r1.dev);
   r1.dev = null;
+  // 木の形（v0 の S1〜S5 を 3 か月ごとの地図に合わせた物。前は小さい木の単体テストだけ。SPEC v1 §2.8）
+  const menu = opts.only ? w.rootMenu.filter((k) => opts.only!.includes(k)) : w.rootMenu;
+  add("S1〜S5 木の形（親と鍵・判断と手と結果・今のまま・見込み・月と行き先）", checkStructure(map, menu), `今日の手 ${menu.length}`);
   add("N1 ノードの数", checkNodes(map), `${map.n} 枚（上限 ${MAX_NODES}）`);
   const forkRep = stats.map((s) => ({ kind: s.kind, forks: s.forks, target: s.calib.target }));
   const byMove = forksByFirstMove(map);
@@ -367,9 +478,13 @@ export async function main(root: string, args: string[]): Promise<number> {
   add("N10 Pro と届け出の答え", n10.fails, `まとめた行き先の代表の状態（数えるだけ）${n10.sumCount} 枚`);
   add("C1 顧客は整数の社数（幅は整数）", checkClients(map));
   add("K1 暦", checkCalendar(map, w.anchor, w.constants.aprilMonths), `${map.header.anchor}・4 月 ${w.constants.aprilMonths.join(",")} か月目`);
-  const con = consistencyOfMap(map, w.annual);
-  const con540 = consistencyOfMap(map, 540);
-  add(`R1 一貫性（年収 ${w.annual}: おすすめの道がまとめた手に入らない）`, con.fails, `判断 ${con.decisions}・入った ${con.intoStub}（参考: 年収 540 では ${con540.intoStub} / ${con540.decisions}）`);
+  const qs = checkQuarterSal(map);
+  add("Q1 その 3 か月の給与の式（まとめた手の結果の文が言う給与）が、広げた手の結果の給与と同じ", qs.fails, `結果 ${qs.checked}`);
+  // 一貫性はアプリが確かめる年収のどれでも（SPEC v1 §2.8: 360 と 540）
+  for (const annual of [w.annual, ...opts.params.annuals.filter((a) => a !== w.annual)]) {
+    const con = consistencyOfMap(map, annual);
+    add(`R1 一貫性（年収 ${annual}: おすすめの道がまとめた手に入らない）`, con.fails, `判断 ${con.decisions}・入った ${con.intoStub}`);
+  }
   const par = appParity(map, [360, 540]);
   add(
     "R2 アプリと同じ値（|差| ≤ 1e-9）",
@@ -407,6 +522,22 @@ export async function main(root: string, args: string[]): Promise<number> {
       why = [`BD 基準の文書を組み立てられません: ${(e as Error).message}`];
     }
     add("BD 基準の文書の指紋（軽い組み立ての文書の鍵・ID・親・線・やることの項目と元の番号・プロジェクト・シナリオ・タグ・期限）", why, `${digest || "なし"}（2 回で同じ・${((performance.now() - t) / 2).toFixed(0)} ms）`);
+  }
+  // 文章: 焼き込んだ題・短い名前・やること = 読んだ地図でその場で組み立てた物（TB1）、文章の点検（TC。止める点検は通らない物、データの指摘は注意）
+  if (opts.text) {
+    const tb = performance.now();
+    const baked = checkBaked(map);
+    add("TB1 焼き込んだ題・短い名前・やること = 読んだ地図でその場で組み立てた物", baked, `文の型 ${map.header.textVersion}・${((performance.now() - tb) / 1000).toFixed(1)} 秒`);
+    const tg = textGate(map);
+    add("TC 文章の点検（runTextChecks・年収 360・540）", tg.fails, `${textSummary(tg.report)}・全部で ${(tg.ms / 1000).toFixed(0)} 秒`);
+    if (tg.warns.length) lines.push(`    注意（データの指摘。止めない）: ${tg.warns.join(" / ")}`);
+    else lines.push("    注意（データの指摘。止めない）: なし");
+    if (opts.textReport) {
+      const tp = path.resolve(opts.textReport);
+      fs.mkdirSync(path.dirname(tp), { recursive: true });
+      fs.writeFileSync(tp, reportMarkdown(tg.report));
+      lines.push(`    文章の点検の報告: ${tp}`);
+    }
   }
   // 大きさ
   const gz = gzipSync(r1.bytes, { level: 9 });
@@ -466,6 +597,13 @@ export async function main(root: string, args: string[]): Promise<number> {
     fs.mkdirSync(path.dirname(bp), { recursive: true });
     fs.writeFileSync(bp, b64);
     console.log(`同梱データ: ${bp}（base64 ${b64.length} 文字）`);
+  }
+  if (opts.golden) {
+    // 道の見本（今日の手ごとに一番ありそうな道・決まった種の道・どの手も同じ重みの道。年収 360・540。SPEC v1 §4.7）
+    const gd = path.resolve(opts.golden);
+    fs.mkdirSync(gd, { recursive: true });
+    for (const annual of [360, 540]) fs.writeFileSync(path.join(gd, `golden-${annual}.md`), goldenMarkdown(map, goldenPaths(map, { annual, rt: runtimeOf(map, annual) }), annual));
+    console.log(`道の見本: ${gd}/golden-{360,540}.md`);
   }
   if (opts.record) {
     const rp = path.resolve(opts.record);

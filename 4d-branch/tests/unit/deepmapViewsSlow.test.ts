@@ -2,13 +2,15 @@
 //   DEEPMAP_SLOW=1 npx vitest run tests/unit/deepmapViewsSlow.test.ts --maxWorkers=2
 // 木の置き場は DEEPMAP_TREE（R1 の木。無ければ R1 の木の確かめは飛ばす）・DEEPMAP_QTREE（前提を直した木。あれば）で変えられる。.json.gz でもよい。
 // 確かめること: 年収 360 の見取り図の並び・差・数の 1 行・会社の答え・分かれ道の帯（作業メモ dev/check-values.ts と review の数）・
-// どの画面の文字にも英字の鍵が出ない・見取り図と 10 の手の詳しい画面を全部作る時間（3 回の一番速い物）
+// どの画面の文字にも英字の鍵が出ない・見取り図と 10 の手の詳しい画面を全部作る時間（3 回の一番速い物）。
+// 前提を直した木では、truth-1・truth-2・truth-4 の決まり（どの手が当たるかは木の数から）と、文章の組み立て（試し版と同じ作り手）の道の画面
 
 import { describe, expect, it } from "vitest";
-import { analyze, compileMap, fallbackText, worthOf, type Analysis } from "../../src/deepmap/core";
+import { analyze, compileMap, fallbackText, overview, worthOf, type Analysis } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../src/deepmap/mapData";
-import { moveDetailVM, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, WORTH_NOISE, type PathVM } from "../../src/deepmap/views";
+import { manDelta, moveDetailVM, NEAR_KEEP_NOTE, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, WORTH_NOISE, WORTH_NONE, type PathVM } from "../../src/deepmap/views";
+import { composedText } from "../../src/preview/composeText";
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const SLOW = env.DEEPMAP_SLOW === "1";
@@ -103,8 +105,9 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(vm.rows.filter((r) => !r.isBase).every((r) => r.waitText === "3 か月待っても +41〜+282 万円")).toBe(true);
     const ap = vm.rows[0]!;
     expect(ap.isPi).toBe(true);
-    expect(ap.countsText).toBe("判断 1,452 回・出来事の分かれ 586 → 2029 年 11 月の行き先 383（見込み 1% 以上 9）・標準の続きの見積もり 2,131");
-    expect(ap.decides.text).toBe("会社の答え: 全部可 20%・SpellDash だけ 45%・どちらも不可 35%");
+    // 行き先は 2 つの数に名前を付け（作業メモ reader-4）、結果の並びは「、」（reader-5）
+    expect(ap.countsText).toBe("判断 1,452 回・出来事の分かれ 586 → 2029 年 11 月の行き先: 地図にある 2,844（うち標準の続きの見積もり 2,131）・一番良い選び方で着く 383（見込み 1% 以上 9）");
+    expect(ap.decides.text).toBe("会社の答え: 全部可 20%、SpellDash だけ 45%、どちらも不可 35%");
     expect(ap.rangeText).toBe("3 年の合計 1,159〜1,452 万円（10〜90%・真ん中 1,269 万円）");
     expect(ap.vsKeepText).toBe("ずっと今のままより +35〜+328 万円");
     expect(ap.forksText).toBe("この先の分かれ道 2,038");
@@ -123,7 +126,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(d.plan[1]!.ym).toBe("2027 年 2 月");
     expect(d.plan[1]!.moves[0]!.shareText).toBe("80%");
     // 進め方の理由は、その月の手どうしを分ける結果（作業メモ truth-5）
-    expect(d.plan[1]!.moves.map((m) => m.cond)).toEqual(["2027 年 2 月に SpellDash だけ・どちらも不可なら", "2027 年 2 月に全部可なら"]);
+    expect(d.plan[1]!.moves.map((m) => m.cond)).toEqual(["2027 年 2 月に SpellDash だけかどちらも不可なら", "2027 年 2 月に全部可なら"]);
     // 平均の内訳（作業メモ user-1）
     expect(d.facts[1]).toBe("ずっと今のままより平均 +166 万円 ＝ この手の分 +22 万円 ＋ 3 か月待っても出る分 +145 万円");
     const bad = allTexts(a).filter((s) => ID_RE.test(s) || /NaN|Infinity|undefined/.test(s));
@@ -147,7 +150,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(p.end.cls).toBe("会社員・SpellDash だけ可・副業なし・有料 30〜99 人");
     expect(p.steps.map((st) => st.ym)).toEqual(["2026 年 11 月", "2027 年 2 月", "2027 年 5 月", "2027 年 8 月", "2027 年 11 月", "2028 年 2 月", "2028 年 5 月", "2028 年 8 月", "2028 年 11 月", "2029 年 2 月", "2029 年 5 月", "2029 年 8 月"]);
     expect(p.steps[0]!.outcomeText).toBe("SpellDash だけ 45%");
-    expect(p.steps[0]!.altOutcomesText).toBe("全部可 20%・どちらも不可 35%");
+    expect(p.steps[0]!.altOutcomesText).toBe("全部可 20%、どちらも不可 35%");
     expect(p.steps[1]!.move).toBe("4 月の評価で昇格を狙う");
     expect(p.steps[1]!.span).toBe("3 月〜5 月の手");
     expect(p.steps[11]!.runningText).toBe("ここまでの稼ぎ 1,159 万円");
@@ -229,29 +232,110 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     }
   }, 240_000);
 
-  it("前提を直した木（あれば）: 差が小さくても、この先の選び方が違う手に「近い・ほぼ同じ」と書かない（作業メモ truth-2）", async () => {
+  it("前提を直した木（あれば）: 差が小さくても、この先の選び方が違う手に「近い・ほぼ同じ」と書かない（作業メモ truth-2）。「3 年やらない場合との差」の誤差の幅は木から（truth-4）", async () => {
     const t = await loadTree(QTREE);
     if (!t || !t.header.never || !Array.isArray(t.header.never._all)) return;
     const cm = compileMap(fromDevTree(t));
-    const near = (annual: number, kind: string) => {
-      const vm = overviewVM(analyze(cm, annual));
-      const r = vm.rows.find((x) => x.kind === kind)!;
-      return r.decides;
-    };
-    // 360: 届け出て Pro を出す（TV 0.22・差 +3.9）・知人の店の広告を無償で手伝う（TV 0.15・差 +1.3）。540: 届け出て副業の 1 社目を探す（TV 0.22・差 +3.1）
-    for (const [annual, kind, k] of [
-      [360, "sd_permpro", "reveal"],
-      [360, "ad_portfolio", "outcomes"],
-      [540, "ad_permside", "reveal"],
-    ] as const) {
-      const d = near(annual, kind);
-      expect([annual, kind, d.kind]).toEqual([annual, kind, k]);
-      expect("note" in d ? d.note : null).toBe(SMALL_DELTA_TEXT);
+    const nv = t.header.never;
+    // 決まりは木の数から確かめる（どの手が当たるかは木ごとに違う。v2 の木の 360 では知人の店の広告を無償で手伝うが TV 0.085 で「近い」になった）。
+    // 当たる手がどの決まりにもあること（空振りしない）も確かめる
+    let small = 0;
+    let near = 0;
+    let negative = 0;
+    for (const annual of [360, 540]) {
+      const a = analyze(cm, annual);
+      const ov = overview(a);
+      const vm = overviewVM(a, ov);
+      for (const mv of ov.moves) {
+        if (mv.isBase) continue;
+        const d = vm.rows.find((r) => r.node === mv.node)!.decides;
+        const note = "note" in d ? d.note : null;
+        const tv = mv.tv!;
+        const delta = mv.delta!.d;
+        if (tv < 0.1) {
+          // その後のおすすめの手が今のままの後とほぼ同じ（TV < 0.1）だけ「近い・ほぼ同じ」。事実を知る手は答えの割合に「近い」の注記
+          expect([annual, mv.kind, d.kind === "near" || (d.kind === "reveal" && note === NEAR_KEEP_NOTE)]).toEqual([annual, mv.kind, true]);
+          near++;
+        } else {
+          // TV が 0.1 以上なら差が 5 万円未満でも「近い」と書かず、「3 年の稼ぎは…ほぼ同じ（差 5 万円未満）。この先の選び方は違う」
+          expect([annual, mv.kind, d.kind === "near"]).toEqual([annual, mv.kind, false]);
+          expect([annual, mv.kind, note]).toEqual([annual, mv.kind, Math.abs(delta) < 5 ? SMALL_DELTA_TEXT : null]);
+          if (Math.abs(delta) < 5) small++;
+        }
+      }
+      // 誤差の幅は、見取り図と同じく max(4, −（まとまりの「3 年やらない場合との差」の一番小さい物）)。見出しの never から別に数える
+      const S = annual / 12;
+      const w = (r: readonly number[]) => r[0]! * S + r[1]! + r[2]!;
+      const ks = Object.keys(nv)
+        .filter((f) => f !== "_all" && f !== "keep")
+        .map((f) => w(nv._all!) - w(nv[f]!));
+      const noise = Math.max(4, -Math.min(...ks));
+      expect(ov.worthNoise).toBeCloseTo(noise, 9);
+      expect(vm.worthNoise).toBeCloseTo(noise, 9);
+      // その幅より小さい差とマイナスの差は「ほぼ差なし」で色を付けない（損のように見せない）。それ以上は数と色
+      for (const r of vm.rows) {
+        const mv = ov.moves.find((m) => m.node === r.node)!;
+        if (mv.isBase || mv.worth === null) continue;
+        if (mv.worth < noise) {
+          expect([annual, r.kind, r.worth?.text, r.worth?.bin]).toEqual([annual, r.kind, WORTH_NONE, 0]);
+          if (mv.worth < 0) negative++;
+        } else {
+          expect([annual, r.kind, r.worth?.text]).toEqual([annual, r.kind, manDelta(mv.worth)]);
+          expect(r.worth!.bin).toBeGreaterThan(0);
+        }
+      }
     }
-    // 学校・塾など、マイナスの「3 年やらない場合との差」は誤差として「ほぼ差なし」（作業メモ truth-4）
+    expect(small).toBeGreaterThan(0);
+    expect(near).toBeGreaterThan(0);
+    expect(negative).toBeGreaterThan(0);
+  }, 240_000);
+
+  it("前提を直した木（あれば）: 組み立てた文章の道の画面（英字の鍵・仮の印が無い・手の本文は 150 字より長くやることは 3 つ・まとめた手の後の行も文章）", async () => {
+    const t = await loadTree(QTREE);
+    if (!t) return;
+    const cm = compileMap(fromDevTree(t));
+    const baked = !!t.header.textVersion && t.header.textVersion !== "dev";
+    for (const annual of [360, 540]) {
+      const a = analyze(cm, annual);
+      // 試し版と同じ作り手（その年収の計算の芯の答えを本文に渡す。作業メモ truth-1）
+      const text = composedText(cm.map, annual, a);
+      expect(text.provisional).toBeFalsy();
+      const out: string[] = [];
+      let steps = 0;
+      let contRows = 0;
+      const visit = (p: PathVM) => {
+        expect(p.provisional).toBe(false);
+        pathTexts(p, out);
+        for (const st of p.steps) {
+          const d = st.detail();
+          expect([p.node, st.ym, d.move.body.length > 150]).toEqual([p.node, st.ym, true]);
+          if (baked) expect([p.node, st.ym, d.move.todo.length]).toEqual([p.node, st.ym, 3]);
+          steps++;
+        }
+        for (const it of p.items) {
+          if (it.type !== "light" || !it.detail) continue;
+          const c = it.detail()!;
+          strings(c, out);
+          expect([it.ym, c.est, c.body.length > 100, c.todo.length >= 1 && c.todo.length <= 3]).toEqual([it.ym, true, true, true]);
+          contRows++;
+        }
+      };
+      for (const f of a.cm.firstMoves) {
+        const d = moveDetailVM(a, f);
+        if (!d.chain) continue;
+        const p = pathVM(a, d.chain.node, text);
+        visit(p);
+        for (const alt of [...(p.steps[1]?.outcomes ?? []), ...(p.steps[1]?.options ?? [])]) if (!alt.current) visit(pathVM(a, alt.node, text));
+      }
+      expect(steps).toBeGreaterThan(100);
+      if (cm.has.cont > 0) expect(contRows).toBeGreaterThan(0);
+      const bad = out.filter((s) => ID_RE.test(s) || /NaN|Infinity|undefined|文章は仮/.test(s));
+      expect(bad).toEqual([]);
+    }
+    // 学校・塾など、マイナスの「この種類が使えることの値打ち」は誤差として「ほぼ無し」（作業メモ truth-4）
     const a360 = analyze(cm, 360);
     const vm = overviewVM(a360);
-    expect(vm.rows.find((r) => r.kind === "sd_pilot")!.worth?.text).toBe("ほぼ差なし");
+    expect(vm.rows.find((r) => r.kind === "sd_pilot")!.worth?.text).toBe(WORTH_NONE);
     // 誤差の幅は 4 と、一番小さい（マイナスの）差の大きさの、大きい方。学校の席の値段の直し（37c8d9d）の後は、学校・塾は −1.14 万円で
     // 4 より小さいので、幅は 4（直しの前は −5.1 で、幅は 5 より大きかった。見直し found-2）
     const school = worthOf(a360, "school");

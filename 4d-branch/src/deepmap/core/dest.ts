@@ -120,6 +120,34 @@ function clText(c: DestClass): string {
   return c.cl === 0 ? (c.j === "i" ? "顧客 0 社" : "副業なし") : c.cl >= 4 ? "顧客 4 社以上" : `顧客 ${c.cl} 社`;
 }
 
+/**
+ * まとめた行き先（標準の続きの見積もり）の種類の言葉: 中身の幅（mix）から、9 割がそろう事実だけを言い切り、ほかは「…の道が多い」
+ * 「届け出の答えは道で違う」と幅で言う（行き先のカードの本文・数の行と食い違わない。作業メモ reader-6・SPEC §4.2）。
+ * 行き先を種類にまとめる（destinations）のは今までどおり destClassOf（多い方・真ん中の数）
+ */
+export function mixLabel(mix: MapMix): string {
+  const SURE = 0.9;
+  const parts: string[] = [];
+  const jobs = (["e", "p", "i"] as const).map((k) => [k, mix.j[k]] as const).sort((x, y) => y[1] - x[1]);
+  const [jt, jp] = jobs[0]!;
+  parts.push(jp >= SURE ? JOB[jt] : `${JOB[jt]}の道が多い`);
+  // 独立した道は会社の答えに関わらない
+  if (mix.j.i < SURE) {
+    const pms = (["?", "a", "s", "n"] as const).map((k) => [k, mix.pm[k]] as const).sort((x, y) => y[1] - x[1]);
+    parts.push(pms[0]![1] >= SURE ? PERM[pms[0]![0]] : "届け出の答えは道で違う");
+  }
+  const lo = Math.max(0, Math.round(mix.cl[0]));
+  const hi = Math.max(0, Math.round(mix.cl[2]));
+  parts.push(hi <= 0 ? (jt === "i" && jp >= SURE ? "顧客 0 社" : "副業なし") : lo === hi ? `顧客 ${lo} 社` : `顧客 ${lo}〜${hi} 社`);
+  if (mix.pro >= SURE) {
+    const a = Math.max(0, Math.round(mix.pu[0]));
+    const b = Math.max(0, Math.round(mix.pu[2]));
+    parts.push(a === b ? `有料 ${a} 人` : `有料 ${a}〜${b} 人`);
+  } else if (mix.pro <= 0.1) parts.push("Pro なし");
+  else parts.push(mix.pro >= 0.5 ? "Pro ありの道が多い" : "Pro ありの道は少ない");
+  return parts.join("・");
+}
+
 export function destLabel(c: DestClass): string {
   const parts = [JOB[c.j] ?? c.j];
   // 独立した後は会社の答えは関わらない

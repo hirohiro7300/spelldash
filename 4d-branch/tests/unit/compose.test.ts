@@ -149,6 +149,7 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
       sidePPortfolio: k.ad_side.p.pPortfolio,
       switchHigh: k.fc_switch.p.high,
       switchMid: k.fc_switch.p.mid,
+      backSal: k.back_emp.p.sal,
       seatYen: Math.round(c.seatNet * 10000),
       partFactor: c.partFactor,
       schoolSeats: c.schoolSeats,
@@ -160,8 +161,11 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
     const a = byKey(map, "r.ad_permside");
     const r = ripple(map, a);
     const c = composeCard(map, a, { annual: 360 });
-    expect(c.body).toContain(`この手の先、2029 年 11 月までの分かれ道は ${r.forks}（判断 ${r.decisions}・出来事の分かれ ${r.splits}）。全部可の後 ${ripple(map, byKey(map, "r.ad_permside.a0_a1")).forks}・SpellDash だけの後`);
-    expect(c.body).toContain(`行き先は ${r.ends} で、うち ${r.sumEnds} は標準の続きの見積もり。`);
+    // 結果の並びは「、」でつなぐ（結果の名前と区切りが混ざらない。reader-5）
+    expect(c.body).toContain(`この手の先、2029 年 11 月までの分かれ道は ${r.forks}（判断 ${r.decisions}・出来事の分かれ ${r.splits}）。全部可の後 ${ripple(map, byKey(map, "r.ad_permside.a0_a1")).forks}、SpellDash だけの後`);
+    // 行き先は名前を付けて（地図にある行き先と、そのうちのまとめた行き先。計算の芯が無ければ着く行き先は言わない。reader-4）
+    expect(c.body).toContain(`地図にある行き先は ${r.ends}（うち標準の続きの見積もり ${r.sumEnds}）。`);
+    expect(c.body).not.toContain("一番良い選び方で着く");
     // 数え上げは木をたどった数と同じ
     for (const i of all(map)) expect(ripple(map, i), map.key(i)).toEqual(walkCounts(map, i));
   });
@@ -569,7 +573,7 @@ describe("SPEC §4.2: 学校の年度・年月・題・英数字の名前", () =
     expect(asciiIds("SpellDash の Pro・GA4・CPA・D7・A4 1 枚")).toEqual([]);
     for (const m of [map, rules]) for (const i of all(m)) expect(asciiIds(text(composeCard(m, i, { annual: 360 }))), m.key(i)).toEqual([]);
     const first = body(rules, byKey(rules, "r.first.0fc_switch"));
-    expect(first).toContain("『上げて転職』なら");
+    expect(first).toContain("『少しか大きく上げて転職』なら");
     expect(first).toContain("『転職せず』なら");
     // 前の 3 か月の手は「〜した」で言う（reader-10）
     expect(body(rules, all(rules).find((i) => /\.1zza\.all\.2k$/.test(rules.key(i)))!)).toMatch(/^前の 3 か月は別の手を選んだ。/);
@@ -782,8 +786,11 @@ describe("最後の点検の指摘（F2〜F6）", () => {
     const m = fromDevTree(F_STILL);
     for (const annual of [360, 540]) {
       const b = body(m, endsOf(m)[0]!, annual);
-      expect(b).toMatch(/一番大きく動かしたのは、2029 年 5 月までの『昇格を狙う』の 3 か月で、月 \+[0-9.]+ 万円。/);
+      // 据え置きだった 3 か月は、結果の名前でも手の名前でも一番の動きと言わない（reader-11）。言うなら別の 3 か月と、その主な中身
+      expect(b).not.toMatch(/一番大きく動かしたのは、2029 年 5 月までの『/);
       expect(b).not.toContain("『据え置き』で、月");
+      const lv = /一番大きく動かしたのは、[^。]*。/.exec(b);
+      if (lv) expect(lv[0]).toMatch(/（主に(?:4 月の定期の昇給|給与|広告運用の売上|SpellDash の稼ぎ)）。$/);
     }
   });
 

@@ -6,11 +6,13 @@
 // 道は鍵から作る名前で指すので、地図を作り直して番号がずれても同じカードの道が開く。今の地図に無い道（と前の版の番号の道）は、
 // 見取り図を出して「この道は今の地図には無い」と知らせる（作業メモ code-2）。
 // 年収を変えると計算だけやり直す（地図の組み直しはしない）。年収はこの端末にだけ覚える（使えなければ覚えない）。
+// 地図は同梱データ（版 7 の候補から。開発用の入れ子の木も読める。load.ts）。カードの文章は文章の組み立て（./composeText.ts）が、
+// 道の画面で開いた行と着いた所のカードだけを、その時の年収で書く（起動では組み立てない）。
 
 import "../styles/tokens.css";
 import "../deepmap/views/views.css";
 import "./preview.css";
-import { analyze, compileMap, overview, type Analysis, type CompiledMap, type Overview, type TextSource } from "../deepmap/core";
+import { analyze, CHECKED_ANNUALS, compileMap, overview, type Analysis, type CompiledMap, type Overview, type TextSource } from "../deepmap/core";
 import { clear, h } from "../deepmap/views/dom";
 import {
   findFirstMove,
@@ -33,11 +35,15 @@ import {
   type PathPageHandle,
 } from "../deepmap/views";
 import { parseAnnual } from "../model/impactText";
+import { composedText, composeStats, textSkew, type ComposeStats } from "./composeText";
 import { LoadError, loadMap, readEmbedded } from "./load";
-import { textSourceFor } from "./textSource";
+import { setTextFactory, textSourceFor } from "./textSource";
 
 const STORE_KEY = "deepmap-preview:annual";
 const TITLE = "3 年の分かれ道（試し版）";
+
+// カードの文章は文章の組み立て（地図の数だけの仮の文章は使わない）
+setTextFactory(composedText);
 
 interface State {
   cm: CompiledMap;
@@ -61,8 +67,12 @@ interface PreviewInfo {
   pathSwitches: number[];
   /** 地図が持つ物の数（q・mix・cont・never） */
   has: { q: number; mix: number; cont: number; never: boolean } | null;
+  /** 埋め込んだデータの形・版の順番・指紋・文の型の版 */
+  map: { format: string; release: number; hash: string; textVersion: string } | null;
+  /** 文章: 仮の文章か・組み立てた枚数と時間（起動の後は 0 枚。開いた行の分だけ増える） */
+  text: { provisional: boolean; composed: ComposeStats };
 }
-const info: PreviewInfo = { ready: false, visible: false, error: null, n: 0, timings: {}, pathSwitches: [], has: null };
+const info: PreviewInfo = { ready: false, visible: false, error: null, n: 0, timings: {}, pathSwitches: [], has: null, map: null, text: { provisional: false, composed: composeStats } };
 (globalThis as { __deepmapPreview?: PreviewInfo }).__deepmapPreview = info;
 
 function readStoredAnnual(): number | null {
@@ -99,7 +109,16 @@ function statusText(cm: CompiledMap): string {
 
 function compute(cm: CompiledMap, annual: number): Pick<State, "a" | "ov" | "text"> {
   const a = analyze(cm, annual);
-  return { a, ov: overview(a), text: textSourceFor(cm.map, annual) };
+  // 本文にもこの年収の計算の芯の答え（おすすめ・数）を渡す（画面と本文で同じおすすめ。作業メモ truth-1）
+  return { a, ov: overview(a), text: textSourceFor(cm.map, annual, a) };
+}
+
+/** 地図の深さを確かめた年収の外か（作業メモ truth-5） */
+const outsideChecked = (v: number): boolean => v < CHECKED_ANNUALS[0] || v > CHECKED_ANNUALS[1];
+/** 年収が地図の深さを確かめた範囲の外のときの知らせ（範囲の中なら空） */
+function rangeNote(v: number): string {
+  if (!outsideChecked(v)) return "";
+  return `年収 ${num(v)} 万円は、地図の深さを確かめた ${num(CHECKED_ANNUALS[0])}〜${num(CHECKED_ANNUALS[1])} 万円の外。一番良い道が途中から標準の続きの見積もりになることがある`;
 }
 
 async function boot(): Promise<void> {
@@ -107,8 +126,10 @@ async function boot(): Promise<void> {
   if (!app) return;
   const t0 = performance.now();
   let cm: CompiledMap;
+  let format = "";
   try {
     const src = readEmbedded(document);
+    format = src.format;
     const t1 = performance.now();
     const map = await loadMap(src);
     const t2 = performance.now();
@@ -128,6 +149,10 @@ async function boot(): Promise<void> {
   info.timings.analyze = performance.now() - t3;
   info.n = cm.n;
   info.has = { ...cm.has };
+  info.map = { format, release: map.header.release, hash: map.header.hash, textVersion: map.header.textVersion };
+  info.text.provisional = !!st.text.provisional;
+  // 焼き込んだ文章の文の型の版と、この試し版の組み立ての版（違えば知らせる。作業メモ code-1）
+  const skew = textSkew(map.header.textVersion);
 
   // ---- 見出し（題名・地図の年月・木の様子・年収・地図の大きさ）
   const input = h("input", {
@@ -143,9 +168,11 @@ async function boot(): Promise<void> {
     input,
     h("span", { class: "pv-annual-unit" }, "万円で計算"),
     h("button", { class: "pv-annual-go", attrs: { type: "submit" } }, "計算し直す"),
-    h("span", { class: "pv-sr", attrs: { id: "pv-annual-note" } }, "賞与込みの額面。100〜3,000 万円。変えると全部の数を計算し直す"),
+    h("span", { class: "pv-sr", attrs: { id: "pv-annual-note" } }, `賞与込みの額面。100〜3,000 万円。変えると全部の数を計算し直す。地図の深さは ${num(CHECKED_ANNUALS[0])}〜${num(CHECKED_ANNUALS[1])} 万円で確かめた`),
     msg,
   );
+  // 地図の深さを確かめた年収の外なら、計算し直した知らせと一緒に言う（作業メモ truth-5）
+  if (outsideChecked(st.annual)) msg.textContent = rangeNote(st.annual);
   const forks = cm.nDec[0]! + cm.nSplit[0]!;
   const head = h(
     "header",
@@ -164,6 +191,7 @@ async function boot(): Promise<void> {
     form,
   );
   const main = h("main", { class: "pv-main", attrs: { id: "pv-main" } });
+  if (skew) head.append(h("p", { class: "pv-notice", attrs: { role: "status" } }, `${skew}。地図を作り直すまで、題と本文の言い方が合わないことがある`));
   const notes = h("div", { class: "pv-notes" });
   clear(app);
   app.append(head, main, notes);
@@ -284,7 +312,8 @@ async function boot(): Promise<void> {
     render({ focus: false, keepScroll: true });
     const ms = performance.now() - t;
     info.timings.recompute = ms;
-    msg.textContent = `年収 ${num(v)} 万円で計算し直した`;
+    const note = rangeNote(v);
+    msg.textContent = `年収 ${num(v)} 万円で計算し直した${note ? `。${note}` : ""}`;
   };
   // Enter では change と送信の両方が来る: 2 回目は同じ年収なので何もしない（読めない年収の知らせだけ消す）
   const apply = () => {

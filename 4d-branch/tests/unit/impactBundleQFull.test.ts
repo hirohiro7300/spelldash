@@ -1,11 +1,15 @@
 // 8 万枚の木（3 か月ごとの地図の本番の形）の同梱データ: 読み手がどのノードのどの問いにも fromDevTree() と同じ答え・64 ビットの ID が重ならない・
-// アプリと同じ値（年収 360・540）・決まった並び・大きさ。遅いので、環境変数 IMPACT_Q_FULL があるときだけ動く（既定のテストは小さい木。見直し gaps-4）。
+// アプリと同じ値（年収 360・540）・決まった並び・大きさ・木の形（S1〜S5）・一貫性（年収 360・540）・焼き込んだ題・短い名前・やること・
+// 文章の点検（runTextChecks。年収 360・540 で 1 分ほど。生成の点検と同じ物）。遅いので、環境変数 IMPACT_Q_FULL があるときだけ動く
+// （既定のテストは小さい木。見直し gaps-4。CI の test:slow で動かす）。
 //   IMPACT_Q_FULL=<場所> npx vitest run tests/unit/impactBundleQFull.test.ts
 //   <場所> には生成の書き出し（node scripts/impact/q/run.mjs --out <場所>/q-tree.json --bundle <場所>/impact-q.b64 …）の
 //   impact-q.b64 と q-tree.json.gz を置く（--record <場所>/impact-release.json があれば、その版の記録とも比べる）
 import { beforeAll, describe, expect, it } from "vitest";
 import { encodeMap } from "../../scripts/impact/q/bundle";
-import { appParity, checkIds, checkSizes, compareMaps, consistencyOfMap, forksByFirstMove } from "../../scripts/impact/q/check";
+import { appParity, checkIds, checkSizes, checkStructure, compareMaps, consistencyOfMap, forksByFirstMove } from "../../scripts/impact/q/check";
+import { checkBaked, textGate } from "../../scripts/impact/q/text";
+import { BANKS } from "../../src/demo/compose";
 import { fnv64x36Bytes } from "../../src/demo/impact";
 import { base64ToBytes, decodeBundle, decodeBundleBytes } from "../../src/demo/impactBundle";
 import { gunzipSync } from "../../src/demo/inflate";
@@ -76,13 +80,37 @@ describe.skipIf(!DIR)("8 万枚の木の同梱データ（IMPACT_Q_FULL があ�
   );
 
   it(
-    "アプリと同じ値（年収 360・540 で |差| ≤ 1e-9・一番の手も同じ）・一貫性（年収 360）・最初の手ごとの分かれ道",
+    "アプリと同じ値（年収 360・540 で |差| ≤ 1e-9・一番の手も同じ）・一貫性（年収 360・540 のどちらでも）・最初の手ごとの分かれ道・木の形",
     () => {
       const { parities, fails } = appParity(map, [360, 540]);
       expect(fails).toEqual([]);
       for (const p of parities) expect([p.alts, p.bestMismatch]).toEqual([map.header.counts.options, 0]);
-      expect(consistencyOfMap(map, 360).intoStub).toBe(0);
+      for (const annual of [360, 540]) expect(consistencyOfMap(map, annual).intoStub, `年収 ${annual}`).toBe(0);
       for (const m of forksByFirstMove(map)) expect(Math.abs(m.forks - 2000), m.kind).toBeLessThanOrEqual(40);
+      const menu = Array.from({ length: map.childCount(0) }, (_, k) => map.kind(map.child(0, k)) ?? "");
+      expect(menu.length).toBeGreaterThanOrEqual(10);
+      expect(checkStructure(map, menu)).toEqual([]);
+    },
+    SLOW,
+  );
+
+  it(
+    "題・短い名前・やること（元の番号つき）を焼き込み、その場の組み立てと同じ。文の型の版は束の版",
+    () => {
+      expect(map.header.textVersion).toBe(BANKS.version);
+      expect(checkBaked(map)).toEqual([]);
+      for (let i = 0; i < map.n; i++) if (map.role(i) === "a") expect(map.todo(i).length, map.key(i)).toBeGreaterThanOrEqual(1);
+    },
+    SLOW,
+  );
+
+  it(
+    "文章の点検（runTextChecks・年収 360・540）: 止める点検は 0（データの指摘は注意として出す）",
+    () => {
+      const g = textGate(map);
+      expect(g.fails).toEqual([]);
+      if (g.warns.length) console.log(`文章の点検の注意: ${g.warns.join(" / ")}`);
+      console.log(`文章の点検: ${(g.ms / 1000).toFixed(0)} 秒`);
     },
     SLOW,
   );

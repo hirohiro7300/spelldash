@@ -63,6 +63,8 @@ export interface Consts {
   /** 転職で移る先の給与（移る前の給与の倍率）: 大きく上がる・少し上がる */
   switchHigh: number;
   switchMid: number;
+  /** 会社員に戻ったときの給与（今日の給与の倍率。戻る前の 4 月の昇給は数えない） */
+  backSal: number;
   /** 学校の 1 席（円/月） */
   seatYen: number;
   /** 週 4 日勤務の給与の倍率 */

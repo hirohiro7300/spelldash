@@ -10,7 +10,7 @@
 // 道ごと: C9 道で 1 回だけの文（暦・静かな期の一言・出来事の助言・避けたい訳）が、今日から行き先までの道で 2 回出ない
 import type { MapData } from "../../deepmap/mapData";
 import type { WishData } from "../wishlist";
-import { calendarOf, clBand, mergedFact, newFeeOf, type Calendar } from "./path";
+import { calendarOf, clBand, mergedFact, newFeeOf, quarterSal, type Calendar } from "./path";
 import { clr, f2, man, ME, MS, n0, PE, PS, spaceJa, strip } from "./text";
 import type { Banks, Card, Consts } from "./types";
 
@@ -22,10 +22,15 @@ export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /�
  * 0.2: 数を数の行に移し（SPEC §4.2）、助言を道で 1 回にしたので、静かな期の本文は短い（数の行が上にある）。
  * 0.4: どの手にも 3 年の見積もりとおすすめとの差（reader-1・reader-2）、広げた手には先の分かれ道の数、まとめた手には結果ごとの 3 年の稼ぎを足した。
  *   上は新しい前提の木（71,619 枚・年収 360 と 540）で測り直した（truth-14）: 手の最大 646（結果が 3 つのまとめた独立の手）、
- *   行き先の最大 490、状態の最大 346、今日の手の最大 458。下は前の測り方のまま
+ *   行き先の最大 490、状態の最大 346、今日の手の最大 458。下は前の測り方のまま。
+ *   今日の手の上は、生成 v2 の木（事実の小さい組を段 3 まで分ける。SPEC v1 §2.2・§2.8）で測り直した: 届け出て副業の結果が
+ *   『全部可・1 社目』『全部可・まだ』『SpellDash だけ』『どちらも不可』の 4 つになり、その本文が年収 360 で 522 字（ほかの手は 459 まで）。
+ *   520 → 560（W-gen が生成の点検につないだ時に直した。W-text が確かめる）。
+ *   560 → 660: 今日の手の本文に、見積もり方の名前・一番良い選び方の平均・地図にある行き先と一番良い選び方で着く行き先を足した
+ *   （truth-4・reader-4。画面と同じ数。届け出て副業の本文は年収 360 で 604 字ほど）
  */
 export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 400 }, e: { title: 24, min: 80, max: 560 }, r: { title: 40, min: 0, max: 600 } } as const;
-export const FIRST_MOVE_MAX = 520;
+export const FIRST_MOVE_MAX = 660;
 export const TODO_MAX = 24;
 
 const SLOT_SPAN = new RegExp(`${MS}[^${ME}]*${ME}`, "g");
@@ -168,6 +173,11 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
   for (const m of `${plain}\n${title}`.matchAll(/([0-9][0-9,]*) ?席/g)) if (Number(m[1]!.replace(/,/g, "")) % banks.C.schoolSeats !== 0) out.push(`C5b 学校の席が 1 校の席の倍数でない「${m[0]}」`);
   if (role === "a") for (const x of moveClaims(map, i, plain, banks.C, annual)) out.push(`C11 ${x}`);
   for (const x of pathContext(map, i, plain, t)) out.push(`C12 ${x}`);
+  // C2: 手が言う「N 社目」は、その判断の顧客が確かに N − 1 社のときだけ（社数の違う場合をまとめた幅では社数を決めて言わない。truth-3）。
+  //   『』の中（結果や手の名前）は数えない
+  if (role === "a") for (const x of ordinalIssues(map, map.parent(i), `${plain}。${title}`)) out.push(`C2 ${x}`);
+  // C12: 状態の助言が勧める手は、その状態の次の判断に並ぶ（応募を続ける助言は、転職活動の続きが並ぶときだけ。reader-3）
+  if (role === "s") for (const x of adviceKindIssues(map, i, plain)) out.push(`C12 ${x}`);
   // C2: 状態と食い違わない（結果・行き先だけ。同じ手の別の結果を言う文は除く）。まとめた行き先は中身の幅と比べる（truth-5）
   if (role === "s" || role === "e") {
     const s = map.st(i);
@@ -205,6 +215,7 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
       // 中身の幅の無いまとめた行き先（平均）は、一番多い仕事の道として書くので仕事の決まりだけを見る（有料・顧客・席・転職は平均で、道ごとに違う）
       for (const [c, re, why] of sum ? ban.slice(0, 2) : ban) if (c && re.test(own + title)) out.push(`C2 状態と合わない（${why}）`);
       if (!sum) for (const x of mergedIssues(map, i, own + "。" + title, banks.C)) out.push(`C2 まとめた結果を 1 つの事実として言う（${x}）`);
+      if (!sum) for (const x of exactIssues(map, i, own, title)) out.push(`C2 社数が 1 つに決まった結果を、まとめた結果と言う（${x}）`);
     }
     // まとめた行き先の顧客の数（題・数の行・本文）: 中身の幅か平均に合う整数だけ。結果の名前（『』の中と「…の後」）は、その 3 か月の結果なので除く（truth-5）
     if (sum) for (const x of sumClientIssues(s.cl, mix, [title, ...nums, plain])) out.push(`C2 まとめた行き先の顧客の数${x}`);
@@ -273,6 +284,106 @@ export function mergedIssues(map: MapData, i: number, text: string, C: Consts): 
   return out;
 }
 
+/**
+ * 社数が 1 つに決まった結果（顧客の数に幅が無い・幅の上下が同じ）を、社数の違う場合をまとめた結果と言っていないか（C2・truth-2）:
+ * 1 つの社数の「N 社の幅」と、顧客の文の「決まった場合とまだの場合をまとめた」の言い方。own は同じ手の別の結果と比べる文を除いた本文
+ */
+export function exactIssues(map: MapData, i: number, own: string, title: string): string[] {
+  const out: string[] = [];
+  const [lo, hi] = clBand(map, i);
+  if (map.band(i)?.cl && lo !== hi) return out;
+  for (const m of `${own}。${title}`.matchAll(/(?<![0-9〜])([0-9]+) 社の幅/g)) out.push(`「${m[0]}」`);
+  for (const sent of own.split("。")) if (/顧客|社目/.test(sent) && /場合とまだの場合|場合を合わせた|場合をまとめ|1 つにまとめ|2 つをまとめ/.test(sent)) out.push(`「${sent.slice(0, 30)}…」`);
+  return out;
+}
+
+/** 手が言う「N 社目」が、判断 d の確かな顧客の数（N − 1）と合うか（C2・truth-3）。『』の中は数えない */
+export function ordinalIssues(map: MapData, d: number, text: string): string[] {
+  const out: string[] = [];
+  if (d < 0) return out;
+  const [lo, hi] = clBand(map, d);
+  const bare = text.replace(/『[^』]*』/g, "『』");
+  for (const m of bare.matchAll(/([1-9]) 社目/g)) {
+    const n = Number(m[1]);
+    if (lo !== hi) out.push(`「${m[0]}」と言うが、判断の顧客は ${lo}〜${hi} 社の幅`);
+    else if (lo !== n - 1) out.push(`「${m[0]}」と言うが、判断の顧客は ${lo} 社`);
+  }
+  return out;
+}
+
+/** 状態の助言が勧める手の種類（その状態の子に並ばない手を勧めない。reader-3） */
+const ADVICE_KINDS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [[/応募を続ければ|次の 3 か月にも決まる目|次の応募先選び/, ["fc_switch", "fc_switch2"]]];
+
+/** 状態 i の本文の助言が、次の判断に並ばない手を勧めていないか（C12） */
+export function adviceKindIssues(map: MapData, i: number, text: string): string[] {
+  const kinds = new Set<string>();
+  for (let k = 0; k < map.childCount(i); k++) kinds.add(map.kind(map.child(i, k)) ?? "");
+  const out: string[] = [];
+  for (const [re, want] of ADVICE_KINDS) {
+    const m = re.exec(text);
+    if (m && !want.some((x) => kinds.has(x))) out.push(`次の判断に無い手を勧める「${m[0]}」`);
+  }
+  return out;
+}
+
+/** 道の画面の「選べる手」の並びと同じ手の名前（本文の「おすすめの『…』」と比べる。組み立ての listName と同じ決まり） */
+export function listNameOf(map: MapData, a: number): string {
+  if (map.isBase(a)) return "この 3 か月は今のまま";
+  return map.header.kinds[map.kind(a) ?? ""]?.[0] ?? "";
+}
+
+/**
+ * 本文の「おすすめ」が、画面のおすすめ（今の年収の一番良い選び方 π。pi(d) はその手、決まらなければ −1）と同じ手か（C13・truth-1）:
+ * おすすめの手の本文は「おすすめの手」と言う・ほかの手の本文が言う「おすすめの『…』」はその手の名前・「おすすめの『…』より N 万円多い」と
+ * 言い切らない（見積もりで多いなら、その後の選び直しまで入れるとおすすめが上だと訳を言う）。text は仕上げた本文
+ */
+export function recommendIssues(map: MapData, a: number, text: string, pi: (d: number) => number): string[] {
+  const out: string[] = [];
+  if (map.role(a) !== "a") return out;
+  const d = map.parent(a);
+  if (map.role(d) === "r") return out;
+  const rec = pi(d);
+  if (rec < 0) return out;
+  // この手の 3 年の見積もりの文（「この手で進むと」）がある手だけ（値の無い手は比べる文を書かない）
+  if (rec === a && /この手で進むと/.test(text) && !/おすすめの手/.test(text)) out.push("おすすめの手の本文が、おすすめの手と言わない");
+  for (const m of text.matchAll(/おすすめの『([^』]*)』/g)) if (m[1] !== listNameOf(map, rec)) out.push(`本文のおすすめ『${m[1]}』が画面のおすすめ『${listNameOf(map, rec)}』と違う`);
+  const more = /(?<!見積もりでは)おすすめの『[^』]*』より [0-9.,]+ 万円多い/.exec(text);
+  if (more) out.push(`おすすめの手より多いと言い切る「${more[0]}」`);
+  return out;
+}
+
+/**
+ * まとめた行き先の後の標準の続きの 1 期の文章（composeCont を印つきで）の点検（reader-7: 道の画面で開ける文章も、ほかのカードと同じ決まり）:
+ * C1 数はデータから・C1b 手引きの数字は引いた項目に・C4 地図の文の決まり・C4b 英数字の名前・C10 数の言い方・C2 社数の幅で「N 社目」と言わない
+ * （まとめた手を選んだ判断の顧客の数と比べる）・やることは 3 つまで。d はまとめた手を選んだ判断
+ */
+export function checkCont(map: MapData, d: number, t: { title: string; body: string; todo: ReadonlyArray<{ text: string; cite: string }> }, wish: ReadonlyMap<string, WishText>): string[] {
+  const out: string[] = [];
+  const src = t.todo
+    .map((td) => wish.get(td.cite))
+    .filter((w): w is WishText => !!w)
+    .map(wishSrc)
+    .join(" ");
+  for (const td of t.todo) if (!wish.get(td.cite)) out.push(`C1b 引用先が無い: ${td.cite}`);
+  for (const span of playbookSpans(t.body)) for (const x of digitsNotIn(span, src)) out.push(`C1b 引用元に無い数字 ${x}「${span}」`);
+  const stray = [...digitsOutside(t.body), ...digitsOutside(t.title)];
+  if (stray.length) out.push(`C1 データに無い数字: ${stray.join(",")}`);
+  const plain = spaceJa(strip(t.body));
+  const title = spaceJa(strip(t.title));
+  const all = `${plain}\n${title}`;
+  if (/[%％Δ]/.test(all)) out.push("C4 % や差を書いている");
+  if (/(です|ます)[。、」]?/.test(all)) out.push("C4 敬語");
+  if (/\{\w+\}/.test(all) || /undefined|NaN|null|Infinity/.test(all)) out.push("C3 埋まっていない差し込み");
+  const ascii = asciiIds(all);
+  if (ascii.length) out.push(`C4b 英数字の名前: ${ascii.join(",")}`);
+  for (const x of numberWording(all)) out.push(`C10 ${x}`);
+  const [lo, hi] = clBand(map, d);
+  if (lo !== hi) for (const m of all.replace(/『[^』]*』/g, "『』").matchAll(/([1-9]) 社目/g)) out.push(`C2 標準の続きの期が「${m[0]}」と言うが、判断の顧客は ${lo}〜${hi} 社の幅`);
+  if (t.todo.length > 3) out.push(`C3 やることが ${t.todo.length} つ`);
+  if (!title) out.push("C3 題が無い");
+  return out;
+}
+
 /** 判断 d までの道で、顧客が上の月額の数（raiseAt 社）に確かに届いたか（会社員に戻って顧客を手放した所より前は数えない。SPEC §2.3 #6） */
 export function reachedRaise(map: MapData, d: number, C: Consts): boolean {
   for (let x = d; x >= 0; ) {
@@ -313,6 +424,22 @@ export function moveClaims(map: MapData, a: number, text: string, C: Consts, ann
     const same = real.find((o) => map.outId(o) === "same");
     const want = up !== undefined && same !== undefined ? annual * (map.rr(up)[0] - map.rr(same)[0]) : annual * C.step * (1 + C.aprilRaise) * (s0.j === "p" ? C.partFactor : 1);
     for (const m of text.matchAll(/年収(?:が|は) ([0-9,]+) ?万円上が/g)) if (Number(m[1]!.replace(/,/g, "")) !== Math.round(want)) out.push(`昇格の額「${m[0]}」が結果の給与の差 ${Math.round(want)} 万円と違う`);
+  }
+  // まとめた手の結果の給与（reader-1）: 3 年後の平均ではなく、その 3 か月の終わりの給与（広げた同じ手の結果と同じ数。quarterSal）でだけ言う。
+  // 上げ幅をまとめた結果は、大きく上がる場合と小幅の場合のどちらか（式が広げた結果の給与と合うことは、生成の点検 Q1 が確かめる）
+  const cal = calOf(map);
+  for (const o of kids) {
+    const id = map.outId(o);
+    if (!map.sum(o)) continue;
+    const lab = shownLabel(map, o);
+    if (!lab) continue;
+    const at = text.indexOf(`『${lab}』なら`);
+    if (at < 0) continue;
+    const rest = text.slice(at + lab.length + 4);
+    const seg = rest.slice(0, Math.min(...[rest.indexOf("『"), rest.indexOf("。")].map((x) => (x < 0 ? rest.length : x))));
+    const ok = (id === "high_mid" ? [quarterSal(map, C, cal, a, "high"), quarterSal(map, C, cal, a, "mid")] : [quarterSal(map, C, cal, a, id)]).filter((x): x is number => x !== null);
+    for (const m of seg.matchAll(/今日の ([0-9.]+) 倍/g)) if (!ok.some((x) => f2(x) === m[1])) out.push(`まとめた手の『${lab}』の倍率「${m[0]}」が、その 3 か月の給与 ${ok.map(f2).join("・") || "（無し）"} 倍と違う`);
+    if (annual !== undefined) for (const m of seg.matchAll(/年収 ([0-9,]+) 万円/g)) if (!ok.some((x) => n0(annual * x) === m[1])) out.push(`まとめた手の『${lab}』の年収「${m[0]}」が、その 3 か月の給与 ${ok.map((x) => n0(annual * x)).join("・") || "（無し）"} 万円と違う`);
   }
   for (const o of kids) {
     const lab = shownLabel(map, o);
@@ -424,7 +551,8 @@ export function pathContext(map: MapData, i: number, text: string, t: Card): str
   }
   if (role === "e" && !map.sum(i)) {
     // 結びの文が結果の名前で言う 3 か月は、何かを変えた結果だけ（何も変えなかった結果は、その 3 か月の手で言う。F4）
-    const lv = /一番大きく動かしたのは、([0-9]{4}) 年 ([0-9]{1,2}) 月までの『[^』]*』で/.exec(text);
+    // 結果の名前で言う形と、3 か月の手で言う形（「…までの『昇格を狙う』の 3 か月で」。据え置きの 3 か月を一番の動きと言わない。reader-11）
+    const lv = /一番大きく動かしたのは、([0-9]{4}) 年 ([0-9]{1,2}) 月までの『[^』]*』(?:の 3 か月)?で/.exec(text);
     if (lv) {
       const m = calOf(map).monthOf(Number(lv[1]), Number(lv[2]));
       for (let x = i; x > 0; x = map.parent(map.parent(x)))
@@ -513,9 +641,10 @@ export function adviceIn(body: string, matchers: readonly AdviceMatcher[]): stri
 
 /**
  * 地図のすべての道（今日から行き先まで）で、道で 1 回だけの文が 2 回出ていないか（C9）。bodyOf はカードの本文（印つき）。
+ * contOf があれば、まとめた行き先の後の標準の続きの期の本文（道の画面で開ける行。reader-7）も、その道の続きとして見る。
  * 深さ優先で道の数え上げを持ち回るので、カードごとに 1 回だけ本文を見る
  */
-export function checkPaths(map: MapData, bodyOf: (i: number) => string, banks: Banks): string[] {
+export function checkPaths(map: MapData, bodyOf: (i: number) => string, banks: Banks, contOf?: (i: number) => readonly string[]): string[] {
   const matchers = adviceMatchers(banks);
   const out: string[] = [];
   const counts = new Map<string, number>();
@@ -526,7 +655,8 @@ export function checkPaths(map: MapData, bodyOf: (i: number) => string, banks: B
       for (const id of undo) counts.set(id, counts.get(id)! - 1);
       continue;
     }
-    const ids = adviceIn(bodyOf(i), matchers);
+    const conts = contOf && map.childCount(i) === 0 ? contOf(i) : [];
+    const ids = [...adviceIn(bodyOf(i), matchers), ...conts.flatMap((b) => adviceIn(b, matchers))];
     for (const id of ids) {
       const n = (counts.get(id) ?? 0) + 1;
       counts.set(id, n);

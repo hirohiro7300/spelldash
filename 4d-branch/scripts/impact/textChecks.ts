@@ -8,11 +8,14 @@
 //   題は年収で変わらない（年収ごとに新しい覚えで組み立てて比べる。code-1）。道の繰り返しの行のまとめ方は、道の画面と同じ計算の芯の joinsRow
 //   D1・D2 は文では直せないデータ（警告。計算の側へ返す）
 // 使い方（CLI）: node scripts/impact/runTextChecks.mjs <木.json|木.json.gz> [--annual 360,540] [--examples 5] [--out 報告.md] [--golden 置き場]
+import { compileMap } from "../../src/deepmap/core/compile";
+import { textRuntime } from "../../src/deepmap/core/moves";
+import { analyze } from "../../src/deepmap/core/passes";
 import { joinsRow, rowJoinOf, type RowJoin } from "../../src/deepmap/core/path";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, MapData, MapRole } from "../../src/deepmap/mapData";
-import { BANKS, composeMarkedCard, finishCard, type Banks, type Card } from "../../src/demo/compose";
-import { checkBanks, checkCard, checkPaths, wishIndex, type WishText } from "../../src/demo/compose/checks";
+import { BANKS, composeMarkedCard, composeMarkedConts, finishCard, type Banks, type Card, type ComposeRuntime } from "../../src/demo/compose";
+import { checkBanks, checkCard, checkCont, checkPaths, recommendIssues, wishIndex, type WishText } from "../../src/demo/compose/checks";
 import { calendarOf, likeliest, recommended, type Calendar } from "../../src/demo/compose/path";
 import { hash, spaceJa, strip } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
@@ -20,7 +23,7 @@ import wishData from "../../src/demo/wishlist-data.json";
 
 // ---- 点検の名前
 
-export type TextCheckId = "C1" | "C1b" | "C2" | "C3" | "C4" | "C4b" | "C5" | "C5b" | "C6" | "C7" | "C8" | "C9" | "C10" | "C11" | "C12" | "T4" | "D1" | "D2";
+export type TextCheckId = "C1" | "C1b" | "C2" | "C3" | "C4" | "C4b" | "C5" | "C5b" | "C6" | "C7" | "C8" | "C9" | "C10" | "C11" | "C12" | "C13" | "T4" | "D1" | "D2";
 
 export interface TextCheckDef {
   id: TextCheckId;
@@ -44,7 +47,8 @@ export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C9", name: "道で 1 回だけの文が、道で 2 回出ない", block: true },
   { id: "C10", name: "数の言い方（月にならして・手数料とサーバー代を引いて・月に遊んだ人・3 つの月）", block: true },
   { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う", block: true },
-  { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果）", block: true },
+  { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果・次の判断に無い手を勧めない）", block: true },
+  { id: "C13", name: "本文の「おすすめ」が画面のおすすめ（その年収の一番良い選び方の手）と同じ手で、おすすめより多いと言い切らない", block: true },
   { id: "T4", name: "兄弟の題が違う（手も結果も）", block: true },
   { id: "D1", name: "『どちらも不可』なのに Pro が続く（データ。計算の側へ返す）", block: false },
   { id: "D2", name: "本当の状態の顧客の数が整数でない（データ。計算の側へ返す）", block: false },
@@ -112,11 +116,16 @@ export const STRUCTURAL: readonly RegExp[] = [
   /^前の # か月は[^、]*$/,
   // 事実の答えが出る月（手）
   /^答えが出るのは # 年 # 月の/,
-  // この手の 3 年の見積もりと、この手の先の分かれ道の数（どの手にもある数の行と同じデータ。reader-1・reader-2）
-  /^この手で進むと、ここから # 年 # 月までの稼ぎは合わせて/,
+  // この手の 3 年の見積もりと、この手の先の分かれ道の数（どの手にもある数の行と同じデータ。reader-1・reader-2）。見積もり方の言い方は truth-4
+  /^この手で進むと、ここから # 年 # 月までの稼ぎは/,
+  /^その後を一番良い選び方で進めば、平均 # 万円$/,
   /^この手の先、# 年 # 月までの分かれ道は/,
   // まとめた手の印（SPEC §4.2 が求める決まった注。手の種類の名前のような物）
   /^この手の先は分かれ道を開かず、標準の選び方で続けた見積もり$/,
+  // 標準の続きの 1 期の枠（道の画面の薄い行の見出しと同じデータ: その期の手・一番ありそうな出来事。reader-7）
+  /^# 年 # 月〜(?:# 年 )?# 月は、標準の選び方では『[^』]*』の # か月$/,
+  /^この期に一番ありそうな出来事は『[^』]*』$/,
+  /^(?:大きな出来事の無い # か月の見込み|目立った出来事の無い # か月とみた)$/,
 ];
 
 /** 文の骨組み。構造の文なら null。書き出しの年月（「# 年 # 月、」）と、来た結果を受ける言葉（「『…』を受けて、」）は落として比べる */
@@ -129,9 +138,9 @@ export function skeleton(sentence: string): string | null {
 // ---- C8（言葉の間・カードの年月の言い直し）
 
 /** 文の型に差し込む言葉のうち、日本語で始まることがある物（前に空白を置くと「は 年収」になる） */
-const JA_START = new Set(["salYen", "salNow", "partLoss", "job", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
+const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "partLoss", "job", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
 /** 日本語で終わる物（後ろに空白を置くと「社 の」になる） */
-const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "job", "salx", "salYen", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "share", "hiX", "midX"]);
+const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "job", "salx", "salYen", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "share", "hiX", "midX", "hiYen", "midYen"]);
 
 /** 束の言い換えの、差し込みの隣の空白（間は組み立てが空ける。R2 の C8） */
 export function bankSpacing(banks: Banks): string[] {
@@ -258,6 +267,8 @@ export interface DecisionRepeats {
 export interface TextCheckRun {
   annual: number;
   cards: number;
+  /** 点検した標準の続きの期の数（まとめた行き先の後の行。reader-7） */
+  contRows: number;
   checks: CheckCount[];
   /** 本文の字数（役割ごと） */
   lengths: Record<string, Dist>;
@@ -372,16 +383,32 @@ export function runTextChecks(map: MapData, opts: TextCheckOpts = {}): TextCheck
   return { ok: failures.length === 0, tree: { nodes: map.n, hash: map.header.hash, anchor: map.header.anchor }, gates, failures, warnings, bank, runs };
 }
 
+/** 地図をその年収で計算の芯にかけた答え（画面と同じおすすめ・一番良い選び方の値・着く行き先の数）。組み立てに渡す（truth-1・reader-4） */
+export function runtimeOf(map: MapData, annual: number): ComposeRuntime {
+  return textRuntime(analyze(compileMap(map), annual));
+}
+
 function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<string, WishText>, k: number, gates: TextGates, onTitles: (t: string[]) => void): TextCheckRun {
   const n = map.n;
   const cal = calendarOf(map.header);
   const marked: Card[] = new Array<Card>(n);
   const fin: Card[] = new Array<Card>(n);
+  // 画面（試し版・アプリ）と同じ本文を点検する: 計算の芯の答えを組み立てに渡す
+  const rt = runtimeOf(map, annual);
   const t0 = now();
   for (let i = 0; i < n; i++) {
-    const c = composeMarkedCard(map, i, { annual, banks });
+    const c = composeMarkedCard(map, i, { annual, banks, rt });
     marked[i] = c;
     fin[i] = finishCard(c);
+  }
+  // まとめた行き先の後の標準の続きの期（道の画面で開ける行。reader-7）。行き先ごとに全部の期を 1 回で
+  const contMarked = new Map<number, Card[]>();
+  const contFin = new Map<number, string[]>();
+  for (let i = 0; i < n; i++) {
+    if (map.role(i) !== "e" || !map.sum(i) || !map.cont(i)?.length) continue;
+    const rows = composeMarkedConts(map, i, { annual, banks, rt }).map((x) => ({ title: x.title, short: "", body: x.body, numbers: [], todo: x.todo, trace: [] }) as Card);
+    contMarked.set(i, rows);
+    contFin.set(i, rows.map((x) => spaceJa(strip(x.body))));
   }
   const tCompose = now() - t0;
   const tally = new Tally(k);
@@ -395,12 +422,26 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
     for (const part of [f.title, f.short, f.body, ...f.numbers, ...f.todo.map((t) => t.text)]) for (const x of spacingIssues(part)) tally.add(`C8 ${x}`, role, key);
     const again = ownDateAgain(f.body, cal, map.month(i));
     if (again) tally.add(`C8 カードの年月（${again}）を文の頭でもう一度言う`, role, key);
+    // C13: 本文の「おすすめ」は画面のおすすめと同じ手（truth-1）
+    if (role === "a") for (const x of recommendIssues(map, i, f.body, rt.recommended!)) tally.add(`C13 ${x}`, role, key);
+  }
+  // 標準の続きの期（1 枚ごとの点検と言葉の間）
+  let contRows = 0;
+  for (const [i, rows] of contMarked) {
+    const d = map.parent(map.parent(i));
+    rows.forEach((row, j) => {
+      contRows++;
+      const key = `${map.key(i)}#${j}`;
+      for (const x of checkCont(map, d, row, wish)) tally.add(x, "cont", key);
+      const f = finishCard(row);
+      for (const part of [f.title, f.body, ...f.todo.map((t) => t.text)]) for (const x of spacingIssues(part)) tally.add(`C8 ${x}`, "cont", key);
+    });
   }
   const tCards = now() - t1;
   // 道（C9・C6 の道の繰り返し）
   const t2 = now();
-  for (const x of checkPaths(map, (i) => marked[i]!.body, banks)) tally.add(x, "path");
-  const pathRepeats = repeatsOnPaths(map, fin, gates, k);
+  for (const x of checkPaths(map, (i) => marked[i]!.body, banks, (i) => (contMarked.get(i) ?? []).map((x) => x.body))) tally.add(x, "path");
+  const pathRepeats = repeatsOnPaths(map, fin, gates, k, (i) => contFin.get(i) ?? [], (i, j) => map.cont(i)![j]!.m);
   for (const w of pathRepeats.worst.filter((x) => x.n > gates.pathRepeats)) tally.add(`C6 道の繰り返し ${w.n}（門 ${gates.pathRepeats}）: ${w.repeated.slice(0, 3).join(" / ")}`, "path", w.key);
   for (let j = pathRepeats.worst.filter((x) => x.n > gates.pathRepeats).length; j < pathRepeats.overGate; j++) tally.add(`C6 道の繰り返しが門（${gates.pathRepeats}）を超える`, "path");
   const decisionRepeats = repeatsByDecision(map, marked, gates, (msg, key) => tally.add(msg, "decision", key));
@@ -433,6 +474,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   return {
     annual,
     cards: n,
+    contRows,
     checks: tally.list(),
     lengths,
     titleLengths,
@@ -445,14 +487,16 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   };
 }
 
-/** 文の骨組みを番号にした、カードごとの構造でない文（道の繰り返し・判断ごとの繰り返しで使う）。bodyOf は比べる本文 */
-function skeletonIds(map: MapData, bodyOf: (i: number) => string): { perCard: Int32Array[]; names: string[] } {
+/**
+ * 文の骨組みを番号にした、カードごとの構造でない文（道の繰り返し・判断ごとの繰り返しで使う）。bodyOf は比べる本文。
+ * idsOf はほかの本文（標準の続きの期）の骨組みを同じ番号で（新しい骨組みは names に足す）
+ */
+function skeletonIds(map: MapData, bodyOf: (i: number) => string): { perCard: Int32Array[]; names: string[]; idsOf: (body: string) => Int32Array } {
   const ids = new Map<string, number>();
   const names: string[] = [];
-  const perCard: Int32Array[] = new Array<Int32Array>(map.n);
-  for (let i = 0; i < map.n; i++) {
+  const idsOf = (body: string): Int32Array => {
     const arr: number[] = [];
-    for (const s of sentencesOf(bodyOf(i))) {
+    for (const s of sentencesOf(body)) {
       const sk = skeleton(s);
       if (sk === null) continue;
       let id = ids.get(sk);
@@ -463,9 +507,11 @@ function skeletonIds(map: MapData, bodyOf: (i: number) => string): { perCard: In
       }
       arr.push(id);
     }
-    perCard[i] = Int32Array.from(arr);
-  }
-  return { perCard, names };
+    return Int32Array.from(arr);
+  };
+  const perCard: Int32Array[] = new Array<Int32Array>(map.n);
+  for (let i = 0; i < map.n; i++) perCard[i] = idsOf(bodyOf(i));
+  return { perCard, names, idsOf };
 }
 
 /**
@@ -484,10 +530,17 @@ export function rowOf(map: MapData, prev: RowJoin | null, run: number, i: number
  * - そのまま: 同じ骨組みの文が道で n 回なら n − 1
  * - 門にかける数: 道の画面が 1 行にまとめる行（rowOf: 同じ手が続き、結果が 1 つか同じ名前）を 1 つにまとめて数える。
  *   まとめた行の中で同じ文が出るのは、画面では 1 行に入る同じ状況。別の行どうしの繰り返しを門にかける（SPEC §4.6・§5.4、W-view の groupRows）
- * 手の文は、その結果の行に入れて数える（行は判断・手・結果の組）
+ * 手の文は、その結果の行に入れて数える（行は判断・手・結果の組）。
+ * まとめた行き先の後の標準の続きの期（道の画面で開ける薄い行。reader-7）も、その道の続きの行として数える（contOf: 期ごとの本文・contMonth: 期の月）
  */
-function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k: number): PathRepeats {
-  const { perCard, names } = skeletonIds(map, (i) => fin[i]!.body);
+function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k: number, contOf: (i: number) => readonly string[] = () => [], contMonth: (i: number, j: number) => number = () => 0): PathRepeats {
+  const { perCard, names, idsOf } = skeletonIds(map, (i) => fin[i]!.body);
+  const contIds = new Map<number, Int32Array[]>();
+  for (let i = 0; i < map.n; i++) {
+    if (map.childCount(i)) continue;
+    const bodies = contOf(i);
+    if (bodies.length) contIds.set(i, bodies.map(idsOf));
+  }
   const cnt = new Int32Array(names.length);
   const runs = new Int32Array(names.length);
   const lastRun = new Int32Array(names.length).fill(-2);
@@ -521,24 +574,27 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       lastRun[s] = r;
     }
   };
+  const undoAll = (undo: Undo): void => {
+    for (let j = undo.length - 1; j >= 0; j--) {
+      const [s, last, counted] = undo[j]!;
+      cnt[s]!--;
+      if (cnt[s]! >= 1) raw--;
+      if (last !== -3) {
+        runs[s]!--;
+        lastRun[s] = last;
+      }
+      if (counted) {
+        rep--;
+        active.pop();
+      }
+    }
+  };
   // [カード, 行の番号, 前の行の値, 戻るときの記録]
   const stack: Array<[number, number, RowJoin | null, Undo | null]> = [[0, -1, null, null]];
   while (stack.length) {
     const [i, run, prev, undo] = stack.pop()!;
     if (undo) {
-      for (let j = undo.length - 1; j >= 0; j--) {
-        const [s, last, counted] = undo[j]!;
-        cnt[s]!--;
-        if (cnt[s]! >= 1) raw--;
-        if (last !== -3) {
-          runs[s]!--;
-          lastRun[s] = last;
-        }
-        if (counted) {
-          rep--;
-          active.pop();
-        }
-      }
+      undoAll(undo);
       continue;
     }
     const role = map.role(i);
@@ -558,6 +614,9 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
     if (role !== "a") stack.push([i, r, next, u]);
     const kids = map.childCount(i);
     if (!kids) {
+      // 標準の続きの期（期ごとに別の行。行の番号は道の行の月と重ならないように 100 + 月）
+      const uc: Undo = [];
+      (contIds.get(i) ?? []).forEach((ids, j) => count(ids, 100 + contMonth(i, j), uc));
       per.push(rep);
       perRaw.push(raw);
       hist[rep] = (hist[rep] ?? 0) + 1;
@@ -570,6 +629,7 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
         worst.sort((a, b) => b.n - a.n);
         if (worst.length > Math.max(k, 20)) worst.length = Math.max(k, 20);
       }
+      undoAll(uc);
       continue;
     }
     for (let c = kids - 1; c >= 0; c--) stack.push([map.child(i, c), r, next, null]);
@@ -753,12 +813,18 @@ export { likeliest, recommended };
  * 同じ道が出たら引き直す・10 回で諦める）と、どの手も同じ重みで選ぶ道 any 本（まとめた手も選ぶ。別の種。reader-1: 読む人が一番よく行き着く
  * まとめた手・まとめた行き先・「ほか N 期」を、見直しの見本に入れる）
  */
-export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks; random?: number; any?: number; seed?: number; first?: (key: string) => boolean }): GoldenPath[] {
+export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks; random?: number; any?: number; seed?: number; first?: (key: string) => boolean; rt?: ComposeRuntime }): GoldenPath[] {
   const banks = opts.banks ?? BANKS;
   const nRandom = opts.random ?? 5;
   const nAny = opts.any ?? 3;
+  // 計算の芯の答えがあれば、画面と同じ本文とおすすめの手（無ければ地図の why=best）
+  const rt = opts.rt;
+  const rec = (d: number): number => {
+    const x = rt?.recommended?.(d) ?? -1;
+    return x >= 0 ? x : recommended(map, d);
+  };
   const card = (i: number): GoldenCard => {
-    const c = finishCard(composeMarkedCard(map, i, { annual: opts.annual, banks }));
+    const c = finishCard(composeMarkedCard(map, i, { annual: opts.annual, banks, ...(rt ? { rt } : {}) }));
     const out: GoldenCard = { k: map.key(i), r: map.role(i), m: map.month(i), title: c.title, numbers: c.numbers, body: c.body, todo: c.todo.map((t) => `${t.text}（${t.cite}）`) };
     if (map.role(i) === "a" && map.stub(i)) out.stub = true;
     if (map.role(i) === "e" && map.sum(i)) out.sum = true;
@@ -803,7 +869,7 @@ export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks;
       seen.add(w.cards.join(","));
       out.push({ first: kind, how, prob: Math.round(w.prob * 10000) / 100, cards: w.cards.map(card) });
     };
-    add("likely", walk(first, (d) => recommended(map, d), (a) => likeliest(map, a)));
+    add("likely", walk(first, rec, (a) => likeliest(map, a)));
     for (let t = 0; t < nRandom; t++) {
       for (let tries = 0; tries < 10; tries++) {
         const w = walk(
@@ -902,6 +968,7 @@ export function reportMarkdown(rep: TextCheckReport): string {
   for (const r of rep.runs) {
     L.push(`## 年収 ${r.annual}`, "");
     L.push(`- 組み立て ${f(r.ms.compose)} ms（1 枚 ${r.ms.perCardUs} µs）・1 枚の点検 ${f(r.ms.cardChecks)} ms・道 ${f(r.ms.paths)} ms・兄弟 ${f(r.ms.siblings)} ms`);
+    L.push(`- まとめた行き先の後の標準の続きの期 ${f(r.contRows)} 行も、1 枚ごとの点検・道で 1 回だけの文（C9）・道の繰り返し（C6）に入れた`);
     L.push("- 点検:");
     if (!r.checks.length) L.push("  - なし");
     for (const c of r.checks) {
@@ -970,6 +1037,6 @@ export function cli(tree: DevTree, args: readonly string[]): CliResult {
   const json = arg("--json");
   if (json) files[json] = JSON.stringify(rep, null, 1);
   const golden = arg("--golden");
-  if (golden) for (const annual of annuals) files[`${golden}/golden-${annual}.md`] = goldenMarkdown(map, goldenPaths(map, { annual }), annual);
+  if (golden) for (const annual of annuals) files[`${golden}/golden-${annual}.md`] = goldenMarkdown(map, goldenPaths(map, { annual, rt: runtimeOf(map, annual) }), annual);
   return { code: rep.ok ? 0 : 1, text: md, files };
 }

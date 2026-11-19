@@ -1,6 +1,7 @@
 // 3 か月ごとの地図の同梱データ（作業メモ SPEC v1 §3.1・§3.2・§2.5・§2.6）: 書き手 scripts/impact/q/bundle.ts・読み手 src/demo/impactBundle.ts・
 // 小さな伸長 src/demo/inflate.ts・点検 scripts/impact/q/check.ts・64 ビットの ID・版の記録 scripts/impact/releases.json。
-// 本物の生成で作った小さい木（tests/fixtures/q-small.*。4,333 枚）で、読み手がどのノードのどの問いにも fromDevTree() と同じ答えを返すことを確かめる。
+// 本物の生成で作った小さい木（tests/fixtures/q-small.*。8,306 枚・題・短い名前・やることを焼き込んだ物）で、読み手がどのノードのどの問いにも
+// fromDevTree() と同じ答えを返すことを確かめる。木の形の点検 S1〜S5（生成の点検。前はこの単体テストだけで見ていた）も、1 か所壊すと通らないことを確かめる。
 // 8 万枚の木は impactBundleQFull.test.ts（環境変数があるときだけ）
 import { beforeAll, describe, expect, it } from "vitest";
 import { bundleHash, bytesToBase64, canonicalizeDevTree, encodeMap, headerForStream } from "../../scripts/impact/q/bundle";
@@ -17,6 +18,7 @@ import {
   checkReleaseAppend,
   checkReleaseHistory,
   checkSizes,
+  checkStructure,
   compareMaps,
   consistencyOfMap,
   forksByFirstMove,
@@ -30,6 +32,8 @@ import { fnv36, fnv64x36, fnv64x36Bytes, impactEdgeId64, impactNodeId, impactNod
 import { base64ToBytes, decodeBundle, decodeBundleBytes, gunzipBytes, ImpactBundleError, SCALE } from "../../src/demo/impactBundle";
 import { impactBaselineDigest } from "../../src/demo/impactDigest";
 import { buildQuarterDoc } from "../../src/demo/quarterDoc";
+import { BANKS, composeCard } from "../../src/demo/compose";
+import { checkBaked } from "../../scripts/impact/q/text";
 import { gunzipSync, InflateError } from "../../src/demo/inflate";
 import releaseRec from "../../src/demo/impact-release.json";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
@@ -62,10 +66,10 @@ const answers = (m: MapData, i: number): unknown[] =>
     }
   });
 
-describe("小さい木（tests/fixtures/q-small）: 本物の生成で作った 2〜5 千枚の木", () => {
+describe("小さい木（tests/fixtures/q-small）: 本物の生成で作った 2 千〜1 万枚の木", () => {
   it("新しい項目がどれもある（q・mix・cont・幅・事実・訳 4 つ・まとめた手と行き先・入口の never）", () => {
     expect(map.n).toBeGreaterThanOrEqual(2000);
-    expect(map.n).toBeLessThanOrEqual(5000);
+    expect(map.n).toBeLessThanOrEqual(10_000);
     const seen = new Set<string>();
     for (let i = 0; i < map.n; i++) {
       if (map.q(i)) seen.add("q");
@@ -86,6 +90,26 @@ describe("小さい木（tests/fixtures/q-small）: 本物の生成で作った 
     expect(Object.keys(map.header.never).length).toBeGreaterThan(10);
     expect(map.header.counts.nodes).toBe(map.n);
     expect(map.header.release).toBe(0);
+  });
+
+  it("題・短い名前・やること（元の番号つき）は焼き込んだ本物の文（仮の文でない）。読み手も fromDevTree() も同じで、その場の組み立てと同じ", () => {
+    expect(map.header.textVersion).toBe(BANKS.version);
+    let moves = 0;
+    for (let i = 0; i < map.n; i++) {
+      expect(map.title(i).length).toBeGreaterThan(0);
+      if (map.role(i) === "a") {
+        moves++;
+        const todo = map.todo(i);
+        expect(todo.length).toBeGreaterThanOrEqual(1);
+        expect(todo.every((t) => t.text.length > 0 && /^[a-z]+(-[a-z0-9]+)+$/.test(t.cite))).toBe(true);
+      } else expect(map.todo(i)).toEqual([]);
+    }
+    expect(moves).toBe(map.header.counts.options);
+    // 開発用の木にも同じ文がある（fromDevTree が仮の文を作らない）
+    for (const i of [0, 1, 2, map.n - 1]) expect([ref.title(i), ref.short(i), ref.todo(i)]).toEqual([map.title(i), map.short(i), map.todo(i)]);
+    expect(map.title(0)).toBe(composeCard(map, 0, { annual: 360 }).title);
+    expect(map.title(0)).not.toBe("今日");
+    expect(checkBaked(map)).toEqual([]);
   });
 
   it("読み手は、どのノードのどの問いにも fromDevTree() と同じ答え（子の並び・鍵からの番号・入口も）", () => {
@@ -208,10 +232,12 @@ describe("§2.6 の点検（scripts/impact/q/check.ts）を小さい木で", () 
     expect(ids).toEqual({ fails: [], nodes: map.n, edges: map.n - 1 });
   });
 
-  it("一貫性（年収 360）とアプリと同じ値（年収 360・540 で |差| ≤ 1e-9・一番の手も同じ）", () => {
-    const con = consistencyOfMap(map, 360);
-    expect(con.intoStub).toBe(0);
-    expect(con.decisions).toBeGreaterThan(500);
+  it("一貫性（年収 360・540 のどちらでも。SPEC v1 §2.8）とアプリと同じ値（年収 360・540 で |差| ≤ 1e-9・一番の手も同じ）", () => {
+    for (const annual of [360, 540]) {
+      const con = consistencyOfMap(map, annual);
+      expect(con.intoStub).toBe(0);
+      expect(con.decisions).toBeGreaterThan(500);
+    }
     const { parities, fails } = appParity(map, [360, 540]);
     expect(fails).toEqual([]);
     for (const p of parities) {
@@ -267,6 +293,50 @@ describe("§2.6 の点検（scripts/impact/q/check.ts）を小さい木で", () 
     const wrongKid = Object.create(map) as MapData;
     Object.defineProperty(wrongKid, "child", { value: (i: number, j: number) => (i === 0 && j === 0 ? map.child(0, 1) : map.child(i, j)) });
     expect(compareMaps(map, wrongKid).some((f) => f.includes("番目の子が違います"))).toBe(true);
+  });
+
+  it("S1〜S5 木の形: 小さい木は通り、1 か所壊すとその点検の名前で通らない", () => {
+    const menu = ["keep", "ad_permside", "ind_quit"];
+    expect(checkStructure(map, menu)).toEqual([]);
+    expect(checkStructure(ref, menu)).toEqual([]);
+    const codes = (xs: readonly string[]) => [...new Set(xs.map((x) => x.split(" ")[0]))];
+    /** 開発用の木を写して 1 か所変え、読むだけの地図にする */
+    const broken = (change: (t: DevTree) => void): MapData => {
+      const t = structuredClone(dev);
+      change(t);
+      return fromDevTree(t);
+    };
+    const firstState = (t: DevTree) => t.root.kids![0]!.kids![0]!;
+    // S1: 鍵が親の鍵 + . + 区切りでない
+    expect(codes(checkStructure(broken((t) => (firstState(t).k = "r.x.y")), menu))).toEqual(["S1"]);
+    // S2: 今日の手の並びが違う・判断の子が手でない（月が違う）
+    expect(codes(checkStructure(map, ["keep", "ad_permside", "fc_switch"]))).toEqual(["S2"]);
+    expect(codes(checkStructure(broken((t) => (firstState(t).kids![0]!.m += 3)), menu))).toContain("S2");
+    // S3: 今のままが最後でない・2 つある
+    expect(codes(checkStructure(broken((t) => firstState(t).kids!.reverse()), menu))).toEqual(["S3"]);
+    expect(codes(checkStructure(broken((t) => (firstState(t).kids![0]!.base = true)), menu))).toEqual(["S3"]);
+    // S4: 見込みの合計が 100 でない・0%
+    expect(codes(checkStructure(broken((t) => (t.root.kids![0]!.kids![0]!.p! += 1)), menu))).toEqual(["S4"]);
+    const twoOuts = (t: DevTree) => t.root.kids!.find((a) => (a.kids ?? []).length >= 2)!;
+    expect(codes(checkStructure(broken((t) => {
+      const a = twoOuts(t);
+      a.kids![0]!.p! += a.kids![1]!.p!;
+      a.kids![1]!.p = 0;
+    }), menu))).toEqual(["S4"]);
+    // S5: 行き先が 36 か月目でない・まとめた行き先の印がまとめた手と合わない・33 か月目にまとめた手・3 年の前で終わる道
+    const findNode = (t: DevTree, f: (n: DevTreeNode) => boolean): DevTreeNode => {
+      const st = [t.root];
+      while (st.length) {
+        const n = st.pop()!;
+        if (f(n)) return n;
+        st.push(...(n.kids ?? []));
+      }
+      throw new Error("見つからない");
+    };
+    expect(codes(checkStructure(broken((t) => (findNode(t, (n) => n.r === "e" && !n.sum).m = 33)), menu))).toEqual(["S5"]);
+    expect(codes(checkStructure(broken((t) => (findNode(t, (n) => !!n.sum).sum = false)), menu))).toEqual(["S5"]);
+    expect(codes(checkStructure(broken((t) => (findNode(t, (n) => n.r === "a" && n.m === 33).stub = true)), menu))).toEqual(["S5"]);
+    expect(codes(checkStructure(broken((t) => (findNode(t, (n) => n.r === "s" && n.m === 33).kids = [])), menu))).toContain("S5");
   });
 
   it("決まり・大きさの点検は違いを見つける", () => {

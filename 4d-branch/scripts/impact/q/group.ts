@@ -25,6 +25,8 @@ export interface OutcomeQ {
   ln: Line;
   sig: string;
   local: number;
+  /** 事実の小さい組（minOutcomeP 未満）を、同じ事実の組にまとめずに分けたまま残した結果（予算の使い道 1。fine の時だけ。報告用） */
+  fine?: true;
 }
 
 /** 代表の状態: 分類は一番重い物（同じ重さなら先に出た物）・数は重みの平均・印は半分以上が持つ物・顧客は場合の混ざり（帳簿。社数はどの場合も整数） */
@@ -351,7 +353,9 @@ export function groupOutcomesQ(w: WorldQ, kind: string, driver: Driver, s0: QSt,
     const st = repStateQ(w, g.samples);
     const r = meanR(g.samples);
     const { id, lab, line, ln } = describe(driver, g, i, groups.length, salCuts, m0, mEnd, kind);
-    return { id, p: groups.length === 1 ? 100 : fl[i]!, w: g.w / total, st, r, lab, short: shortOf(driver, g, groups.length, kind), line, ln, sig: g.sig, local: g.local };
+    const o: OutcomeQ = { id, p: groups.length === 1 ? 100 : fl[i]!, w: g.w / total, st, r, lab, short: shortOf(driver, g, groups.length, kind), line, ln, sig: g.sig, local: g.local };
+    if (fineKept.has(g) && groups.length > 1) o.fine = true;
+    return o;
   });
 }
 
@@ -364,8 +368,8 @@ const SHORT_TAG: Record<string, string> = {
   a: "全部可",
   s: "SpellDashだけ",
   n: "どちらも不可",
-  a1: "全部可・1社目",
-  a0: "全部可・まだ",
+  a1: "全部可1社目",
+  a0: "全部可まだ",
 };
 
 /** 社数の範囲の文（顧客は整数の社数。本当にある社数だけを書く） */
@@ -437,7 +441,8 @@ function describe(driver: Driver, g: Group, i: number, n: number, salCuts: numbe
     const hi = i === n - 1 ? null : salCuts[i]!;
     const tags = g.keys;
     const labOf = (t: string) => ({ high: "大きく上げて転職", mid: "少し上げて転職", none: "転職せず", up: "昇格", same: "据え置き" })[t] ?? t;
-    const lab = tags.length === 1 ? labOf(tags[0]!) : tags.map(labOf).join("・");
+    // まとめた結果の名前は「か」でつなぐ（「・」でつなぐと、並びの中で 2 つの結果に読める。reader-5）。上げ幅の違う転職は「少しか大きく上げて転職」
+    const lab = tags.length === 1 ? labOf(tags[0]!) : tags.length === 2 && tags.includes("high") && tags.includes("mid") ? "少しか大きく上げて転職" : tags.map(labOf).join("か");
     const f = (x: number) => x.toFixed(2).replace(/0$/, "");
     const range = lo === null ? `${f(hi!)} 倍未満` : hi === null ? `${f(lo)} 倍以上` : `${f(lo)}〜${f(hi)} 倍`;
     const id = tags.slice().sort().join("_");
@@ -471,8 +476,9 @@ function describe(driver: Driver, g: Group, i: number, n: number, salCuts: numbe
     case "permside": {
       if (isAllAnswer(keys)) return { id, lab: PERM_LAB.a!, line: `会社の答えが${PERM_TEXT.a}`, ln: { metric: "permside", at: mEnd, lo: null, hi: null, cat: id } };
       const T: Record<string, [string, string]> = {
-        a1: ["全部可・1 社目", "『全部可』で副業の 1 社目が決まる"],
-        a0: ["全部可・まだ", "『全部可』だが 1 社目はまだ決まらない"],
+        // 名前の中に「・」を使わない（「・」でつないだ並びの中で、2 つの結果に読める。reader-5）
+        a1: ["全部可（1 社目あり）", "『全部可』で副業の 1 社目が決まる"],
+        a0: ["全部可（顧客まだ）", "『全部可』だが 1 社目はまだ決まらない"],
         s: ["SpellDash だけ", "会社の答えが『SpellDash だけ可』"],
         n: ["どちらも不可", "会社の答えが『どちらも不可』"],
       };

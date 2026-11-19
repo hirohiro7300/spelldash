@@ -481,7 +481,7 @@ describe("結果のまとめ方", () => {
     ]);
   });
 
-  it("『全部可』の 1 社目（8%）は『全部可・まだ』とまとめ、社数の幅（0〜1 社）を持つ", () => {
+  it("『全部可』の 1 社目（8%）は『全部可（顧客まだ）』とまとめ、社数の幅（0〜1 社）を持つ", () => {
     const os = quarterOutcomes(w, st(), "ad_permside", 0, "split", S);
     expect(os.map((o) => [o.id, o.p, o.lab])).toEqual([
       ["a0_a1", 20, "全部可"],
@@ -523,7 +523,7 @@ describe("結果のまとめ方", () => {
     const fine = quarterOutcomes(w, st(), "ad_permside", 0, "split", S, true);
     expect(labelClients(fine.find((o) => o.id === "a1")!.lab)).toEqual({ lo: 1, hi: Infinity });
     // 社数を書かない名前は読まない
-    for (const lab of ["全部可・まだ", "SpellDash だけ", "転職せず", "有料 10〜29 人", "—"]) expect(labelClients(lab)).toBeNull();
+    for (const lab of ["全部可（顧客まだ）", "SpellDash だけ", "転職せず", "有料 10〜29 人", "—"]) expect(labelClients(lab)).toBeNull();
   });
 
   it("数の結果は fact・lean で 1 つにまとめ、昇格の結果は lean だけでまとめる", () => {
@@ -621,9 +621,13 @@ describe("生成の部品", () => {
 describe("入口の引数", () => {
   it("既定は R1 が選んだ形", () => {
     const o = parseArgs(["--out", "x.json"], w.rootMenu);
-    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", never: true, release: 0, appendHistory: false, runs: 2, spread: 5, spreadNever: false, force: false });
-    expect(o.params).toEqual({ B: 2000, maxAlts: 4, topN: 3, warn: -15, chainDiscount: 0.3, altsBy: [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2], tol: 0.02, fineDepth: 3, areaDiscount: 0.3 });
+    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", never: true, release: 0, appendHistory: false, runs: 2, spread: 5, spreadNever: false, force: false, text: true });
+    // 一貫性（決まり 2・3）は年収 360 と 540 のどちらでも守る（作業メモ SPEC v1 §2.8）
+    expect(o.params).toEqual({ B: 2000, maxAlts: 4, topN: 3, warn: -15, chainDiscount: 0.3, altsBy: [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2], tol: 0.02, fineDepth: 3, areaDiscount: 0.3, annuals: [360, 540] });
     expect(productionProblems(o)).toEqual([]);
+    // 一貫性を守る年収を変えた形・文章なしは本番の形でない
+    expect(productionProblems({ ...o, params: { ...o.params, annuals: [360] } })).toHaveLength(1);
+    expect(productionProblems({ ...o, text: false })).toEqual([expect.stringContaining("--text")]);
   });
 
   it("形を変える引数", () => {
@@ -637,6 +641,10 @@ describe("入口の引数", () => {
     expect(parseArgs(["--out", "t", "--alts-by", "0,3,3,3,3,3,3,3,3,2,2,2"], w.rootMenu).params.altsBy).toEqual([0, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2]);
     // 版 0（試し・テストの木）は形が自由
     expect(parseArgs(["--out", "t", "--budget", "40", "--tol", "12", "--only", "keep", "--runs", "1", "--never", "off"], w.rootMenu).release).toBe(0);
+    // 文章: 既定は焼き込みと点検あり。報告と道の見本の置き場
+    const t = parseArgs(["--out", "t", "--text-report", "r.md", "--golden", "g"], w.rootMenu);
+    expect([t.text, t.textReport, t.golden]).toEqual([true, "r.md", "g"]);
+    expect(parseArgs(["--out", "t", "--text", "off"], w.rootMenu).text).toBe(false);
   });
 
   it("版の順番（release 1 以上）は本番の形でだけ付けられる（format-1。記録は足すだけなので、試しの木で番号を使い切らない）", () => {
@@ -652,6 +660,7 @@ describe("入口の引数", () => {
       [["--alts", "3"], "--alts"],
       [["--alts-by", "off"], "--alts-by"],
       [["--alts-by", "0,3,3,3,3,3,3,3,3,2,2,2"], "--alts-by"],
+      [["--text", "off"], "--text"],
     ];
     for (const [extra, word] of bad) {
       expect(() => parseArgs([...prod, ...extra], w.rootMenu), extra.join(" ")).toThrow(/版の記録は本番の形/);
@@ -681,17 +690,20 @@ describe("入口の引数", () => {
       ["--out", "x", "--record", "r.json"],
       ["--out", "x", "--append-history"],
       ["--out", "x", "--tol", "0"],
+      ["--out", "x", "--text", "maybe"],
+      ["--out", "x", "--text", "off", "--text-report", "r.md"],
+      ["--out", "x", "--text", "off", "--golden", "g"],
     ];
     for (const args of bad) expect(() => parseArgs(args, w.rootMenu), args.join(" ")).toThrow();
   });
 });
 
 describe("予算の使い道 1: 事実の小さい組も分ける（fine。SPEC v1 D1・§2.2・truth-1）", () => {
-  it("『全部可』で 1 社目が決まる 8% を『全部可・まだ』にまとめない（社数は整数で、幅は無い）", () => {
+  it("『全部可』で 1 社目が決まる 8% を『全部可（顧客まだ）』にまとめない（社数は整数で、幅は無い）", () => {
     const os = quarterOutcomes(w, st(), "ad_permside", 0, "split", S, true);
     expect(os.map((o) => [o.id, o.p, o.lab])).toEqual([
-      ["a1", 8, "全部可・1 社目"],
-      ["a0", 12, "全部可・まだ"],
+      ["a1", 8, "全部可（1 社目あり）"],
+      ["a0", 12, "全部可（顧客まだ）"],
       ["s", 45, "SpellDash だけ"],
       ["n", 35, "どちらも不可"],
     ]);
@@ -916,32 +928,43 @@ describe("予算の合わせ込み（D1・truth-1）", () => {
     expect(r3.forks).toBe(2500);
   });
 
-  it("手順: 飽和しなければ分ける予算だけ。飽和したら事実の小さい組を分け、まだ足りなければ別の領域の手を一番少ない数だけ広げる", () => {
-    /** 作り物: 分ける予算だけで base まで、fine で +fineAdd、別の領域の手 1 つごとに +per（広げられる判断は elig）。予算 B は上限まで比例 */
-    const world = (base: number, fineAdd: number, per: number, elig: number) => {
+  it("手順: 事実の小さい組を分けるのを先に試し、予算に収まればそれで合わせ込む。飽和したら別の領域の手を一番少ない数だけ広げる（SPEC v1 §2.8）", () => {
+    /** 作り物: 分ける予算だけで base まで、fine で +fineAdd、別の領域の手 1 つごとに +per（広げられる判断は elig）。予算 B は上限まで比例。
+     *  fineFloor があれば、fine の時はどの予算でもその数より少なくならない（予算に収まらない事実の分け方） */
+    const world = (base: number, fineAdd: number, per: number, elig: number, fineFloor = 0) => {
       const calls: Array<[number, SinkCfg]> = [];
       const run = (B: number, cfg: SinkCfg): PassStats => {
         calls.push([B, cfg]);
         const used = Math.min(cfg.areaN, elig);
         const cap = base + (cfg.fine ? fineAdd : 0) + per * used;
-        const forks = Math.min(cap, Math.round(B === Infinity ? cap : 0.9 * B));
-        return { forks, limited: forks < cap ? 1 : 0, areaEligible: elig, areaUsed: used, areaReverted: 0 };
+        const forks = Math.max(cfg.fine ? fineFloor : 0, Math.min(cap, Math.round(B === Infinity ? cap : 0.9 * B)));
+        return { forks, limited: forks < cap ? 1 : 0, areaEligible: elig, areaUsed: used, areaReverted: 0, s2Reverted: 0 };
       };
       return { run, calls };
     };
+    // 飽和しない: 事実の小さい組も分けた形で合わせ込む（最初に作るのも fine）
     const a = world(3000, 0, 0, 10);
     const pa = planBudget(a.run, 2000, 0.02);
-    expect([pa.calib.saturated, pa.calib.fine, pa.chosen.cfg]).toEqual([false, false, { fine: false, areaN: 0 }]);
+    expect([pa.calib.saturated, pa.calib.fine, pa.calib.fineDropped, pa.chosen.cfg]).toEqual([false, true, false, { fine: true, areaN: 0 }]);
+    expect(a.calls[0]![1]).toEqual({ fine: true, areaN: 0 });
+    expect(a.calls.every(([, c]) => c.fine)).toBe(true);
+    // 分ける予算だけでは届かないが、事実の小さい組も分ければ届く: 飽和とはみない
     const b = world(1700, 400, 100, 10);
     const pb = planBudget(b.run, 2000, 0.02);
-    expect([pb.calib.saturated, pb.calib.splitMax, pb.calib.fine, pb.calib.fineMax, pb.chosen.cfg.areaN]).toEqual([true, 1700, true, 2100, 0]);
+    expect([pb.calib.saturated, pb.calib.splitMax, pb.calib.fine, pb.calib.fineMax, pb.chosen.cfg]).toEqual([false, null, true, null, { fine: true, areaN: 0 }]);
+    // 事実の小さい組を分けても飽和: 別の領域の手を広げる
     const c = world(1500, 100, 120, 20);
     const pc = planBudget(c.run, 2000, 0.02);
     // 1600 + 120 n ≥ 1960 → n = 3（1・2・4 と倍々の後に 3 に詰める）
-    expect([pc.calib.saturated, pc.calib.fineMax, pc.chosen.cfg]).toEqual([true, 1600, { fine: true, areaN: 3 }]);
+    expect([pc.calib.saturated, pc.calib.splitMax, pc.calib.fineMax, pc.chosen.cfg]).toEqual([true, 1600, 1600, { fine: true, areaN: 3 }]);
     expect(pc.calib.reachMax).toBeNull();
     const d = world(1000, 50, 30, 5);
     const pd = planBudget(d.run, 2000, 0.02);
     expect([pd.calib.reachMax, pd.calib.target, pd.chosen.B, pd.chosen.cfg]).toEqual([1200, 1200, Infinity, { fine: true, areaN: 5 }]);
+    // 事実の小さい組を分けると、どの予算でも上限（2,040）を超える: 予算に収まらないので、分けずに合わせ込む
+    const e = world(3000, 0, 0, 10, 2600);
+    const pe = planBudget(e.run, 2000, 0.02);
+    expect([pe.calib.fineDropped, pe.calib.fine, pe.calib.saturated, pe.chosen.cfg]).toEqual([true, false, false, { fine: false, areaN: 0 }]);
+    expect(e.calls.at(-1)![1]).toEqual({ fine: false, areaN: 0 });
   });
 });

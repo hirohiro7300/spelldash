@@ -2233,6 +2233,19 @@
   line-height: 1.6;
   color: var(--warn);
 }
+/* 押して開ける標準の続きの行（その期の文章は見積もり: 点線の枠と印） */
+.dm-tl-item.is-light-open > .dm-tl-head {
+  padding-top: 7px;
+  padding-bottom: 8px;
+}
+.dm-tl-card.is-est {
+  border-style: dashed;
+  border-color: var(--line-3);
+  background: transparent;
+}
+.dm-tl-card-head .dm-tl-tag.is-est {
+  margin-right: 6px;
+}
 @media (min-width: 720px) {
   .dm-tl-lightrow {
     grid-template-columns: 128px minmax(0, 1fr);

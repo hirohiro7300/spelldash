@@ -238,6 +238,19 @@ function perMap(map: MapData): PerMap {
 /** 題と、その題に使った文の型（trace に足す） */
 export type TitleEntry = readonly [string, readonly string[]];
 
+/**
+ * 組み立てにその場で渡す、計算の芯（src/deepmap/core。今の年収）の答え。画面と同じ「おすすめ」と数を本文に書くため（truth-1・reader-4・reader-8）。
+ * 本文だけに使い、題・短い名前・やることには使わない（焼き込む物は年収で変わらない）。無ければ地図に書いた物（why=best・下からの数え上げ）で書く
+ */
+export interface ComposeRuntime {
+  /** 判断 d の、今の年収のおすすめの手（計算の芯の一番良い選び方 π。画面の「おすすめ」の印と同じ）。決まらなければ −1 */
+  recommended?(d: number): number;
+  /** 手 a を選んで、その後を一番良い選び方で進んだ、その判断から 36 か月目までの稼ぎ（万円）。無ければ null */
+  treeValue?(a: number): number | null;
+  /** 今日の手 a の先で、一番良い選び方で着く本当の行き先（まとめた物を除く・見込みのある物）の数と、そのうち見込み 1% 以上の数。無ければ null */
+  reach?(a: number): { ends: number; ends1: number } | null;
+}
+
 /** 1 枚を組み立てる間の道具一式（作るのは安い。重い物は地図ごとの覚えに置く） */
 export interface Ctx {
   readonly map: MapData;
@@ -247,9 +260,11 @@ export interface Ctx {
   readonly cal: Calendar;
   readonly links: Map<number, Link>;
   readonly titles: Map<number, readonly TitleEntry[]>;
+  /** 計算の芯の答え（無ければ null。本文だけに使う） */
+  readonly rt: ComposeRuntime | null;
 }
 
-export function ctxOf(map: MapData, banks: Banks, annual: number): Ctx {
+export function ctxOf(map: MapData, banks: Banks, annual: number, rt: ComposeRuntime | null = null): Ctx {
   const pm = perMap(map);
   let links = pm.links.get(banks);
   if (!links) {
@@ -261,7 +276,7 @@ export function ctxOf(map: MapData, banks: Banks, annual: number): Ctx {
     titles = new Map();
     pm.titles.set(banks, titles);
   }
-  return { map, B: banks, C: banks.C, annual, cal: (pm.cal ??= calendarOf(map.header)), links, titles };
+  return { map, B: banks, C: banks.C, annual, cal: (pm.cal ??= calendarOf(map.header)), links, titles, rt };
 }
 
 /** 抱えられる顧客の数 */
@@ -531,6 +546,34 @@ export function factShare(C: Consts, kind: string, fl: readonly string[]): numbe
   return null;
 }
 
+/**
+ * 手 a の結果 id の、その 3 か月の終わりの給与の倍率（その月の rr[0]。W-gen の sim.ts の jobPass と同じ決まり: 手の出来事の後に、
+ * 4 月を含む 3 か月なら会社員と週 4 日に 4 月の昇給。転職は上がった倍率を掛け、昇格は 4 月に足し、週 4 日は 0.8 倍、会社員に戻る手は
+ * 3 か月目に戻る水準から）。給与で分かれる手（転職・転職の続き・昇格・週 4 日・会社員に戻る）だけで、ほかと、上げ幅をまとめた high_mid は null。
+ * まとめた手の結果は 3 年後の平均なので、この 3 か月の答え（移る先の給与・昇格した給与）はこれで言う（広げた手の結果の状態と同じ数。reader-1）
+ */
+export function quarterSal(map: MapData, C: Consts, cal: Calendar, a: number, id: string): number | null {
+  const kind = map.kind(a) ?? "";
+  const s0 = map.st(map.parent(a));
+  const m0 = map.month(a);
+  const raise = cal.aprils.some((q) => q > m0 && q <= m0 + 3) ? 1 + C.aprilRaise : 1;
+  const pay = (j: ImpactSt["j"], sal: number): number => (j === "e" ? sal : j === "p" ? C.partFactor * sal : 0);
+  switch (kind) {
+    case "fc_switch":
+    case "fc_switch2":
+      return id === "high" ? pay(s0.j, s0.sal * C.switchHigh * raise) : id === "mid" ? pay(s0.j, s0.sal * C.switchMid * raise) : id === "none" ? pay(s0.j, s0.sal * raise) : null;
+    case "fc_push":
+      return id === "up" ? pay(s0.j, (s0.sal + C.step) * raise) : id === "same" ? pay(s0.j, s0.sal * raise) : null;
+    case "part":
+      return id === "p" ? pay("p", s0.sal * raise) : id === "e" ? pay(s0.j, s0.sal * raise) : null;
+    case "back_emp":
+      // 戻るのは 3 か月目（その月が 4 月なら、戻った後に昇給）。戻れなければ独立のまま給与なし
+      return id === "e" ? C.backSal * (cal.aprils.includes(m0 + 3) ? 1 + C.aprilRaise : 1) : id === "i" ? 0 : null;
+    default:
+      return null;
+  }
+}
+
 /** まとめた結果の文に差し込む見込み（分からなければ空） */
 const shareSlot = (p: number | null): string => (p === null ? "" : wari(p));
 
@@ -550,8 +593,10 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
   const exact = pl === ph && bl === bh;
   // 事実の場合をまとめた結果（昇格と据え置き・導入と見送りなど）
   const mixed = id === "all" && FACT_KINDS.has(k);
-  // 届け出の答え: 届け出る手のときだけ（会社員に戻った・移った会社で答えが変わったのは、下の新しい会社の出来事）
-  if (FILING_KINDS.has(k) && a.pm === "?" && b.pm !== "?") out.push({ code: b.pm === "a" ? "PERM_A" : b.pm === "s" ? "PERM_S" : "PERM_N", m: m0 + 1, x: {}, at: { ym1: m0 + 1, ym2: m0 + 2 } });
+  // 届け出の答え: 届け出る手のときだけ（会社員に戻った・移った会社で答えが変わったのは、下の新しい会社の出来事）。
+  // 『全部可』を 1 社目が決まったか（a1・a0）で分けた結果は、それを題と文で言う（reader-5・SPEC §4.2: 分かれた数を題で言う）
+  if (FILING_KINDS.has(k) && a.pm === "?" && b.pm !== "?")
+    out.push({ code: b.pm === "a" ? "PERM_A" : b.pm === "s" ? "PERM_S" : "PERM_N", m: m0 + 1, x: {}, at: { ym1: m0 + 1, ym2: m0 + 2 }, ...(id === "a1" ? { env: { a1: 1 } } : id === "a0" ? { env: { a0: 1 } } : {}) });
   if (a.j !== "i" && b.j === "i") out.push({ code: "IND_START", m: m0 + 2, x: { overhead: slot(C.overhead) }, at: { ym1: m0 + 1, ym2: m0 + 2 } });
   // 移った・戻った会社: 届け出の範囲を持っていく・出し直す・SpellDash だけを認める会社を選ぶ。顧客は引き継ぎ先に渡す（truth-11・SPEC §2.3 #5）
   let handover = 0;
@@ -610,11 +655,15 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
   } else if (bh < pl - handover) {
     // 確かに減った（引き継ぎで手放した分は、離れた顧客として数えない）
     out.push({ code: "CLIENT_LOST", m: m0 + 2, x: { lost: exact ? slot(pl - handover - bh) : "", cnt }, env: { exact: exact ? 1 : 0, cdef: bl === bh ? 1 : 0 } });
-  } else if (SEARCH_KINDS.has(k) && (bl !== bh || pl !== ph)) {
-    // 決まった場合とまだの場合をまとめた結果（reader-9）。幅が 1 社なら、多い方の見込みは平均から出る
+  } else if (SEARCH_KINDS.has(k) && bl !== bh) {
+    // 決まった場合とまだの場合をまとめた結果（この結果の顧客の数が幅。reader-9）。幅が 1 社なら、多い方の見込みは平均から出る
     const share = bh - bl === 1 ? b.cl - bl : -1;
     const known = share > 0.05 && share < 0.95;
     out.push({ code: "CLIENT_MIX", m: m0 + 3, x: { cnt, ...(known ? { share: wari(share), hi: slot(bh) } : {}) }, env: { share: known ? 1 : 0 } });
+  } else if (SEARCH_KINDS.has(k) && pl !== ph) {
+    // 前の期がまとめた幅で、この結果の顧客の数は 1 つに決まる（社数で分けた結果）。まとめた見積もり・幅とは言わず、決まった数を言う。
+    // 前の幅の下（0 社）か上かで言い方を分ける（兄弟の文の骨組みをそろえない。truth-2）
+    out.push({ code: "CLIENT_EXACT", m: m0 + 3, x: { cnt, prev: `${slot(pl)}〜${slot(ph)}` }, env: { zero: bl === 0 ? 1 : 0, top: bl === ph ? 1 : 0 } });
   } else if ((k === "ad_side" || k === "ad_more") && exact && bl === pl) out.push({ code: "CLIENT_NOT_FOUND", m: m0 + 3, x: {} });
   for (const [flag, on, off, kindOf, mix] of FLAG_EVENTS) {
     if (k !== kindOf) continue;

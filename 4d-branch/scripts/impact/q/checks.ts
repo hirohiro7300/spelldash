@@ -61,7 +61,7 @@ const better = (a: QNode, b: QNode) => a.V > b.V + 1e-9 || (Math.abs(a.V - b.V) 
 export const bestOf = (d: QNode): QNode => d.kids.reduce((b, a) => (better(a, b) ? a : b));
 
 /**
- * 名前に書いた社数（「顧客 1〜2 社」「顧客 3 社」「全部可・1 社目」）。無ければ null。名前は ./group.ts の describe（clRange・permside の名前）が書く物で、
+  * 名前に書いた社数（「顧客 1〜2 社」「顧客 3 社」「全部可（1 社目あり）」）。無ければ null。名前は ./group.ts の describe（clRange・permside の名前）が書く物で、
  * 書き方を変えたらここも変える（変えないと C2 が何も見なくなる。テストが本物の名前で確かめる）
  */
 export function labelClients(lab: string): { lo: number; hi: number } | null {

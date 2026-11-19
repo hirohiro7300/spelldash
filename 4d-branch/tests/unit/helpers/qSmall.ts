@@ -2,9 +2,11 @@
 //   q-small.devtree.json.gz: 開発用の入れ子の木（同梱データの精度に丸めた木。入口の hash は同梱データの中身の指紋）
 //   q-small.b64: 同じ木の同梱データ（決まった並びの gzip の base64。src/demo/impactBundle.ts の decodeBundle が読む）
 // 作り方（4d-branch で。本物の生成・P2 の前提・「3 年やらない」見積もりつき。小さい予算は分かれ道の数が飛ぶので、目標の幅を広げる）:
-//   node scripts/impact/q/run.mjs --out <作業場所>/q-small.devtree.json --bundle <作業場所>/q-small.b64 --budget 40 --tol 12 --only keep,ad_permside,ind_quit --spread 1
+//   node scripts/impact/q/run.mjs --out <作業場所>/q-small.devtree.json --bundle <作業場所>/q-small.b64 --budget 80 --tol 12 --only keep,ad_permside,ind_quit --spread 1
 //   （作業場所にもう前の物があれば --force を足す）。書き出した q-small.devtree.json.gz と q-small.b64 をここ（tests/fixtures）へ写す。生成を変えたら作り直す
-// 4,333 枚・最初の手 3 つ（今のまま・届け出て副業・今すぐ独立）。手の q・まとめた行き先の mix と cont・幅・事実・訳 4 つ・入口の never がある
+//   （予算 80: 年収 540 の一番良い手も広げる生成 v2 では、今すぐ独立の分かれ道が予算によらず 780 ほどあるので、幅 ±1200% の上限 1,040 に入る予算にした）
+// 8,306 枚・最初の手 3 つ（今のまま・届け出て副業・今すぐ独立）。手の q・まとめた行き先の mix と cont・幅・事実・訳 4 つ・入口の never・
+// 焼き込んだ題・短い名前・やること（文の型 0.6）がある。一貫性は年収 360・540 のどちらでも守る
 
 import { decodeBundle } from "../../../src/demo/impactBundle";
 import type { DevTree, MapData } from "../../../src/deepmap/mapData";

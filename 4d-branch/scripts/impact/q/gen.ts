@@ -4,11 +4,14 @@
 // 2. 判断では候補の手を正確に見積もり（3 か月 + 粗い表の通りに続けた見積もり）、一番良い手だけを広げる。
 //    ほかに見せる手（今のまま・別の領域・避けたい手）は「まとめた手」: 3 か月の結果と、36 か月目のまとめた行き先だけ
 // 3. 予算が残っていれば数の結果も分け（split）、足りなければ事実だけ（fact）、さらに足りなければ昇格の結果も平均する（lean）
-// 4. 予算の合わせ込み（D1・見直し truth-1）: 分かれ道の数が min(目標, 届く上限) の ±2% に入るように、内側の予算を単調とみて探す。
-//    予算を増やしても分かれ道が増えない（飽和）と分かったら、予算を次の 2 つに使う: (1) 段 3 までの判断で、事実の小さい組（minOutcomeP 未満）も
-//    分ける、(2) おすすめの道で来る見込みの大きい判断から順に、別の領域の手（area）も広げる
-// 一貫性（報告 §6.4 の決まり 1〜4）: 広げた手はいつもアプリの選ぶ一番良い手になり、おすすめの道はまとめた手に入らない。
-// 別の領域の手を広げても、その木の値が一番良い手を超えたら、まとめた手に戻す（おすすめの道は変えない）
+// 4. 予算の合わせ込み（D1・見直し truth-1・作業メモ SPEC v1 §2.8）: 分かれ道の数が min(目標, 届く上限) の ±2% に入るように、内側の予算を単調とみて探す。
+//    段 3 までの判断で事実の小さい組（minOutcomeP 未満。例 届け出て副業の『全部可』で 1 社目が決まる 8%）も分けるのを先に試し、予算に収まれば使う
+//    （収まらなければ分けずに合わせ込む）。予算を増やしても分かれ道が増えない（飽和）と分かったら、おすすめの道で来る見込みの大きい判断から順に、
+//    別の領域の手（area）も広げる
+// 一貫性（報告 §6.4 の決まり 1〜4）を、アプリが確かめる 2 つの年収（生成の 360 万円と 540 万円。Params.annuals）のどちらでも守る:
+// 判断ごとに年収ごとの一番良い手（同じ見積もり方の q で一番）を広げ、決まり 3 の余裕も年収ごとに持つ。540 万円での一番良い手が違えば、
+// その手も広げる（見せる手に無ければ足す）。こうして、どちらの年収でもアプリの選ぶ手は広げた手になり、おすすめの道はまとめた手に入らない。
+// 別の領域の手を広げても、その木の値がどちらかの年収でほかの広げた手を超えたら、まとめた手に戻す（おすすめの道は変えない）
 // 書き出す値（D2）: まとめた手でない手（今日の手・広げた手・33 か月目の手）にはどれも q（その 3 か月は正確に・その後は粗い表の通り。
 // まとめた手と同じ見積もり方）を付ける
 
@@ -47,12 +50,16 @@ export interface QNode {
   sumEnd?: boolean;
   /** ずっと今のままの道（今のまま も広げる） */
   chain?: boolean;
-  /** おすすめの道の上 */
+  /** おすすめの道の上（一貫性を守る年収のどれかで: 今日の手の結果と、おすすめの道の判断の年収ごとの一番良い手の先） */
   onPi?: boolean;
   /** 数の結果も分けた判断 */
   split?: boolean;
-  /** この判断の値が、その状態の続きの見積もりをどこまで下回ってよいか（上の判断の余裕。決まり 3） */
-  allow?: number;
+  /** この判断の値が、その状態の続きの見積もりをどこまで下回ってよいか（上の判断の余裕。決まり 3）。年収ごと（Gen.Ss の順。無ければどれも ∞） */
+  allow?: number[];
+  /** 2 つ目の年収（540 万円）での一番良い手で、生成の年収の一番良い手と違うので広げた手（決まり 2 を 540 万円でも） */
+  forS2?: boolean;
+  /** その 2 つ目の年収の一番良い手が、ふつうの見せる手（今のまま・一番良い手・別の領域・避けたい手）に無いので足した手 */
+  addedS2?: boolean;
   /** アプリと同じ後ろからの値（rollbackApp が入れる） */
   V: number;
   /** 手の見積もり（3 か月 + 続きの見積もり） */
@@ -88,9 +95,14 @@ export interface Params {
   fineDepth: number;
   /** 予算の使い道 2: 広げた別の領域の手の先の、取り出す見込みに掛ける数 */
   areaDiscount: number;
+  /**
+   * 一貫性（決まり 2・3）を守る年収（万円）。生成の年収（world.annual）を先に、ほかはこの順。アプリが確かめる 360・540 万円（作業メモ SPEC v1 §2.8）。
+   * どの年収でも、判断ごとの一番良い手を広げる
+   */
+  annuals: readonly number[];
 }
 
-export const DEFAULTS: Params = { B: 2000, maxAlts: 4, topN: 3, warn: -15, chainDiscount: 0.3, tol: 0.02, fineDepth: 3, areaDiscount: 0.3 };
+export const DEFAULTS: Params = { B: 2000, maxAlts: 4, topN: 3, warn: -15, chainDiscount: 0.3, tol: 0.02, fineDepth: 3, areaDiscount: 0.3, annuals: [360, 540] };
 
 /** R1 が選んだ形（報告 §11）: 1 年目 4・2 年目 3・3 年目 2 の手を見せる */
 export const R1_ALTS_BY: readonly number[] = [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2];
@@ -174,23 +186,29 @@ export interface PassStats {
   areaEligible: number;
   areaUsed: number;
   areaReverted: number;
+  /** ほかの年収（540 万円）の一番良い手として広げた後、要らなかった（まとめた手に戻してもアプリの選ぶ手がどの年収でも広げた手だった）ので戻した数 */
+  s2Reverted: number;
 }
 
 /** 予算の合わせ込みの報告（最初の手ごと） */
 export interface Calib {
   /** 目標（min(B, 届く上限)） */
   target: number;
-  /** 分ける予算だけでは目標に届かなかった（飽和）。その時の分かれ道（予算 ∞） */
+  /** 分ける予算だけでは目標に届かなかった（飽和）。その時の分かれ道（予算 ∞。事実の小さい組を分けていれば、それも入れた数） */
   saturated: boolean;
   splitMax: number | null;
-  /** 予算の使い道 1 を使った・その時の分かれ道（予算 ∞） */
+  /** 事実の小さい組も分けた（予算の使い道 1。先に試し、予算に収まれば使う）・飽和した時の分かれ道（予算 ∞） */
   fine: boolean;
   fineMax: number | null;
+  /** 事実の小さい組も分けると予算に収まらない（目標の ±tol に入る内側の予算が見つからない: どの予算でも上限を超える・分かれ道の数が飛んで幅に入らない）ので、分けずに合わせ込んだ */
+  fineDropped: boolean;
   /** 予算の使い道 2: 別の領域の手を広げる判断の数（上限）・広げた・戻した・広げられる判断 */
   areaN: number;
   areaUsed: number;
   areaReverted: number;
   areaEligible: number;
+  /** 2 つ目の年収の一番良い手として広げた後、要らなかったので戻した数（決まり 2 を 540 万円でも。revertExpansions） */
+  s2Reverted: number;
   /** 予算の使い道を全部使っても目標に届かなかった時の、届く上限（届いたら null） */
   reachMax: number | null;
   /** 内側の予算（∞ は Infinity）・作った回数・目標の ±tol に入った */
@@ -219,6 +237,11 @@ export interface MoveStats {
   fs: number;
   /** 広げた別の領域の手 */
   areaExp: number;
+  /** 2 つ目の年収（540 万円）の一番良い手として広げた手（生成の年収の一番良い手と違う所）・そのうち見せる手に足した手 */
+  s2Exp: number;
+  s2Added: number;
+  /** 事実の小さい組を分けたので、まとめずに残った結果（予算の使い道 1） */
+  fineOuts: number;
   ms: number;
   /** 予算の合わせ込みの回数と、最後の内側の予算（∞ は Infinity） */
   passes: number;
@@ -226,7 +249,8 @@ export interface MoveStats {
   calib: Calib;
 }
 
-export type Eval = { q: number; outs: OutcomeQ[]; conts: Roll[] };
+/** 手の正確な見積もり: q は生成の年収（万円）、qs は Gen.Ss の年収ごと（qs[0] = q）。3 か月の結果と、結果ごとの続きの見積もり */
+export type Eval = { q: number; qs: number[]; outs: OutcomeQ[]; conts: Roll[] };
 
 /** 見積もりの稼ぎ（R3）: Σ 見込み × (その 3 か月 + 続き)。Q（万円）と同じ足し方の順 */
 export function qOf(outs: readonly OutcomeQ[], conts: readonly Roll[]): Vec3 {
@@ -315,41 +339,47 @@ export function calibrate(run: (B: number) => CalibPoint, target: number, tol: n
 }
 
 /**
- * 最初の手 1 つの予算の合わせ込みの手順（D1・見直し truth-1）。run(内側の予算, 予算の使い方) は木を作り直して数を返す（テストでは作り物でよい）。
- *   1) 分ける予算だけで目標 B ±tol を探す（calibrate）。届けばそれで終わり
- *   2) 飽和したら、予算の使い道 1（事実の小さい組も分ける）を足し、予算 ∞ で下限に届くなら、その形で内側の予算を合わせ込む
- *   3) それでも届かなければ予算の使い道 2: 別の領域の手を広げる判断の数 n を、予算 ∞ で下限に届く一番少ない数まで増やす（1・2・4…の後に間を詰める）。
- *      届いたらその n で内側の予算を合わせ込む。広げられる判断を全部使っても届かなければ、その上限（予算 ∞・全部）を目標にする
+ * 最初の手 1 つの予算の合わせ込みの手順（D1・見直し truth-1・作業メモ SPEC v1 §2.2・§2.8）。run(内側の予算, 予算の使い方) は木を作り直して数を返す
+ * （テストでは作り物でよい）。
+ *   1) 予算の使い道 1（段 fineDepth までの判断で、事実の小さい組も分ける）を先に入れて、目標 B ±tol を探す（calibrate）。届けばそれで終わり。
+ *      どの内側の予算でも目標の上限を超える（予算に収まらない）なら、分けずに探し直す
+ *   2) 飽和したら（予算を増やしても下限に届かない）、予算の使い道 2: 別の領域の手を広げる判断の数 n を、予算 ∞ で下限に届く一番少ない数まで
+ *      増やす（1・2・4…の後に間を詰める）。届いたらその n で内側の予算を合わせ込む。広げられる判断を全部使っても届かなければ、その上限
+ *      （予算 ∞・全部）を目標にする
  * 返す chosen が最後に作った形と違えば、呼ぶ側が作り直す。calib の数（広げた・戻した・入ったか）は作り直した後に呼ぶ側が入れる
  */
 export function planBudget(run: (Bint: number, cfg: SinkCfg) => PassStats, B: number, tol: number): { chosen: { B: number; cfg: SinkCfg }; calib: Calib } {
   const lo = B * (1 - tol);
-  const calib: Calib = { target: B, saturated: false, splitMax: null, fine: false, fineMax: null, areaN: 0, areaUsed: 0, areaReverted: 0, areaEligible: 0, reachMax: null, Bint: B, passes: 0, hit: false };
+  const calib: Calib = { target: B, saturated: false, splitMax: null, fine: false, fineMax: null, fineDropped: false, areaN: 0, areaUsed: 0, areaReverted: 0, areaEligible: 0, s2Reverted: 0, reachMax: null, Bint: B, passes: 0, hit: false };
   const tune = (c: SinkCfg): CalibResult => calibrate((x) => run(x, c), B, tol, B, 14);
   const done = (Bint: number, cfg: SinkCfg) => {
     calib.Bint = Bint;
     calib.areaN = cfg.areaN;
+    calib.fine = cfg.fine;
     return { chosen: { B: Bint, cfg }, calib };
   };
-  const plain: SinkCfg = { fine: false, areaN: 0 };
-  const r1 = tune(plain);
-  if (!r1.saturated) return done(r1.B, plain);
+  // 1) 事実の小さい組も分けて合わせ込む。予算に収まらなければ（届かず・飽和でもない = どの予算でも上限を超えるか、分かれ道の数が飛んで幅に入らない）分けずに
+  let base: SinkCfg = { fine: true, areaN: 0 };
+  let r1 = tune(base);
+  if (!r1.hit && !r1.saturated) {
+    calib.fineDropped = true;
+    base = { fine: false, areaN: 0 };
+    r1 = tune(base);
+  }
+  if (!r1.saturated) return done(r1.B, base);
   calib.saturated = true;
   calib.splitMax = r1.forks;
-  // 1) 事実の小さい組も分ける
-  const fine: SinkCfg = { fine: true, areaN: 0 };
-  calib.fine = true;
-  const pf = run(Infinity, fine);
-  calib.fineMax = pf.forks;
+  const pf = run(Infinity, base);
+  if (base.fine) calib.fineMax = pf.forks;
   calib.areaEligible = pf.areaEligible;
-  if (pf.forks >= lo - 1e-9) return done(tune(fine).B, fine);
+  if (pf.forks >= lo - 1e-9) return done(tune(base).B, base);
   // 2) 別の領域の手を広げる判断の数: 予算 ∞ で下限に届く一番少ない数
   const elig = pf.areaEligible;
   let below = 0;
   let n = Math.min(1, elig);
   let top = pf.forks;
   while (n > 0) {
-    const p = run(Infinity, { fine: true, areaN: n });
+    const p = run(Infinity, { fine: base.fine, areaN: n });
     top = p.forks;
     if (p.forks >= lo - 1e-9) break;
     if (n >= elig) break;
@@ -359,29 +389,32 @@ export function planBudget(run: (Bint: number, cfg: SinkCfg) => PassStats, B: nu
   if (top < lo - 1e-9) {
     calib.reachMax = top;
     calib.target = top;
-    return done(Infinity, { fine: true, areaN: elig });
+    return done(Infinity, { fine: base.fine, areaN: elig });
   }
   let above = n;
   while (above - below > 1) {
     const mid = Math.floor((above + below) / 2);
-    if (run(Infinity, { fine: true, areaN: mid }).forks >= lo - 1e-9) above = mid;
+    if (run(Infinity, { fine: base.fine, areaN: mid }).forks >= lo - 1e-9) above = mid;
     else below = mid;
   }
-  const cfg: SinkCfg = { fine: true, areaN: above };
+  const cfg: SinkCfg = { fine: base.fine, areaN: above };
   return done(tune(cfg).B, cfg);
 }
 
 export class Gen {
   ro: Rollouts;
   kinds: string[];
-  /** 正確な見積もりの回数・決まり 3 で分け方を落とした回数と、その時の不足（万円） */
+  /** 一貫性を守る月給（万円/月）: 0 番目が生成の月給 S、その後は Params.annuals のほかの年収 / 12（同じ物は 1 つ） */
+  readonly Ss: number[];
+  /** 正確な見積もりの回数・決まり 3 で分け方を落とした回数と、その時の不足（万円。生成の年収で落とした時）・2 つ目からの年収だけで落とした回数 */
   evals = 0;
   guards = 0;
+  guardsS2 = 0;
   shortfalls: number[] = [];
   /** 作っている最初の手の予算の使い方（firstMove の間だけ） */
   private fineStage = -1;
   private areaLeft = 0;
-  private pass: PassStats = { forks: 0, limited: 0, areaEligible: 0, areaUsed: 0, areaReverted: 0 };
+  private pass: PassStats = { forks: 0, limited: 0, areaEligible: 0, areaUsed: 0, areaReverted: 0, s2Reverted: 0 };
   constructor(
     public w: WorldQ,
     public S: number,
@@ -390,6 +423,8 @@ export class Gen {
   ) {
     this.ro = new Rollouts(w, S, dp);
     this.kinds = Object.keys(w.kinds);
+    this.Ss = [S];
+    for (const a of P.annuals) if (!this.Ss.some((x) => Math.abs(x - a / 12) < 1e-12)) this.Ss.push(a / 12);
   }
   area(kind: string): string {
     return this.w.kinds[kind]!.area;
@@ -400,14 +435,17 @@ export class Gen {
   isKeyFam(kind: string): boolean {
     return this.w.keyFamilies.includes(this.fam(kind));
   }
-  /** その手のここでの正確な見積もり: 3 か月の結果 + その後は粗い表の通りに続けた見積もり。fine なら事実の小さい組も分ける */
+  /** その手のここでの正確な見積もり: 3 か月の結果 + その後は粗い表の通りに続けた見積もり（年収ごと）。fine なら事実の小さい組も分ける */
   evalMove(s: number, x: QSt, kind: string, mode: Mode, fine = false): Eval {
     this.evals++;
     const outs = quarterOutcomes(this.w, x, kind, 3 * s, mode, this.S, fine);
-    let q = 0;
     const conts = outs.map((o) => this.ro.roll(s + 1, o.st));
-    outs.forEach((o, i) => (q += (o.p / 100) * (Wsum(o.r, this.S) + Wsum(conts[i]!.v, this.S))));
-    return { q, outs, conts };
+    const qs = this.Ss.map((S) => {
+      let q = 0;
+      outs.forEach((o, i) => (q += (o.p / 100) * (Wsum(o.r, S) + Wsum(conts[i]!.v, S))));
+      return q;
+    });
+    return { q: qs[0]!, qs, outs, conts };
   }
 
   /** 今日と最初の手（only があればその手だけ）。最初の手ごとに予算を合わせ込む（D1） */
@@ -444,6 +482,7 @@ export class Gen {
     const fin = this.pass;
     calib.areaUsed = fin.areaUsed;
     calib.areaReverted = fin.areaReverted;
+    calib.s2Reverted = fin.s2Reverted;
     if (!calib.saturated) calib.areaEligible = fin.areaEligible;
     calib.passes = passes;
     calib.hit = Math.abs(fin.forks - calib.target) <= calib.target * this.P.tol + 1e-9;
@@ -456,7 +495,7 @@ export class Gen {
     const S = this.S;
     this.fineStage = cfg.fine ? this.P.fineDepth : -1;
     this.areaLeft = cfg.areaN;
-    this.pass = { forks: 0, limited: 0, areaEligible: 0, areaUsed: 0, areaReverted: 0 };
+    this.pass = { forks: 0, limited: 0, areaEligible: 0, areaUsed: 0, areaReverted: 0, s2Reverted: 0 };
     const a0: QNode = { key: `r.${k0}`, role: "a", m: 0, st: root.st, stage: 0, kind: k0, kids: [], parent: root, pPath: 1, V: 0, why: k0 === "keep" ? "keep" : "menu" };
     root.kids.push(a0);
     const heap = new Heap<QNode>();
@@ -498,7 +537,9 @@ export class Gen {
     }
     // 今日の手の q: その 3 か月 + 結果ごとの続きの見積もり（結果の判断で数えた物を引くだけ）
     a0.qv = qOf(outs0, outs0.map((o) => this.ro.roll(1, o.st)));
-    if (this.pass.areaUsed) this.pass.areaReverted = this.revertAreas(a0);
+    const rev = this.revertExpansions(a0);
+    this.pass.areaReverted = rev.area;
+    this.pass.s2Reverted = rev.s2;
     this.pass.forks = this.countSub(a0).forks;
     this.fineStage = -1;
     this.areaLeft = 0;
@@ -515,7 +556,6 @@ export class Gen {
   decide(d: QNode, level0: Mode): { children: QNode[]; bestSplitExtra: number } {
     let level = level0;
     const w = this.w;
-    const S = this.S;
     const s = d.stage;
     const m0 = 3 * s;
     const x = d.st;
@@ -536,24 +576,33 @@ export class Gen {
       for (const k of cand) if (feas.includes(k)) m.set(k, this.evalMove(s, x, k, lv, fine));
       return m;
     };
-    const sortEv = (m: Map<string, Eval>) => [...m.entries()].sort((a, b) => b[1].q - a[1].q || Number(b[0] === "keep") - Number(a[0] === "keep"));
+    const Ss = this.Ss;
+    // 年収 j の並び（その年収の q の大きい順。同じなら今のまま）
+    const sortEv = (m: Map<string, Eval>, j: number) => [...m.entries()].sort((a, b) => b[1].qs[j]! - a[1].qs[j]! || Number(b[0] === "keep") - Number(a[0] === "keep"));
     let ev = evalAll(level);
-    let order = sortEv(ev);
-    // 決まり 2・3: 続きの見積もり（lean）より細かく分けるのは、その一番良い手がこの状態の続きの見積もり以上の時か、上の判断の余裕の内だけ。
-    // 帰納的に、広げた木の値はいつもその状態の続きの見積もり以上になり、同じ見積もりのまとめた手に負けない
-    const floor = Wsum(this.ro.roll(s, x).v, S);
-    const allow = d.allow ?? Infinity;
-    while (level !== "lean" && floor - order[0]![1].q > allow + 1e-9) {
-      this.shortfalls.push(floor - order[0]![1].q);
+    let orders = Ss.map((_, j) => sortEv(ev, j));
+    // 決まり 2・3（年収ごと）: 続きの見積もり（lean）より細かく分けるのは、その年収の一番良い手がこの状態の続きの見積もり以上の時か、
+    // 上の判断の余裕の内だけ。粗い表の手はいつも候補なので、lean ならどの年収でも一番良い手は続きの見積もり以上（決まり 2）。
+    // 帰納的に、年収ごとに、その年収の一番良い手を広げた木の値は、その状態の続きの見積もり（から余裕を引いた値）以上になり、同じ見積もりのまとめた手に負けない
+    const roll = this.ro.roll(s, x);
+    const floors = Ss.map((S) => Wsum(roll.v, S));
+    const allow = d.allow ?? Ss.map(() => Infinity);
+    const short = (j: number) => floors[j]! - orders[j]![0]![1].qs[j]!;
+    while (level !== "lean" && Ss.some((_, j) => short(j) > allow[j]! + 1e-9)) {
+      if (short(0) > allow[0]! + 1e-9) this.shortfalls.push(short(0));
+      else this.guardsS2++;
       level = level === "split" ? "fact" : "lean";
       ev = evalAll(level);
-      order = sortEv(ev);
+      orders = Ss.map((_, j) => sortEv(ev, j));
       this.guards++;
     }
-    const usedHere = Math.max(0, floor - order[0]![1].q);
+    const used = Ss.map((_, j) => Math.max(0, short(j)));
     d.split = level === "split";
+    const order = orders[0]!;
     const qKeep = ev.get("keep")!.q;
     const best = order[0]![0];
+    /** 年収ごとの一番良い手（0 は生成の年収の一番良い手 best） */
+    const bests = orders.map((o) => o[0]![0]);
     const maxAlts = this.P.altsBy?.[s] ?? this.P.maxAlts;
     const shown: Array<[string, MapWhy]> = [["keep", "keep"]];
     if (best !== "keep") shown.push([best, "best"]);
@@ -562,14 +611,24 @@ export class Gen {
     const avoid = [...order].reverse().find(([k, e]) => this.isKeyFam(k) && !shown.some(([z]) => z === k) && e.q - qKeep <= this.P.warn);
     if (avoid && shown.length < maxAlts) shown.push([avoid[0], "avoid"]);
     if (shown.length < 2 && order.length > 1) shown.push([order.find(([k]) => k !== "keep")![0], "area"]);
-    // 広げる手: 一番良い手。ずっと今のままの道では今のままも（おすすめの道でなければ今のままだけ）
-    const expand = new Set<string>([best]);
+    // 決まり 2 をほかの年収でも: その年収の一番良い手が見せる手に無ければ、別の領域の枠で足す（見せる手の数の上限を超えることがある）。
+    // 33 か月目の手はどれも行き先まで開く（まとめた手が無い）ので要らない。おすすめの道でないずっと今のままの道（今のままだけ広げる）でも足さない
+    const added = new Set<string>();
+    if (s + 1 < NSTAGE && !(d.chain && !d.onPi))
+      for (const b of bests)
+        if (!shown.some(([k]) => k === b)) {
+          shown.push([b, "area"]);
+          added.add(b);
+        }
+    // 広げる手: 年収ごとの一番良い手。ずっと今のままの道では今のままも（おすすめの道でなければ今のままだけ）
+    const expand = new Set<string>(bests);
     if (d.chain) {
       expand.add("keep");
-      if (!d.onPi && best !== "keep") expand.delete(best);
+      if (!d.onPi) for (const b of bests) if (b !== "keep") expand.delete(b);
     }
-    // 予算の使い道 2: おすすめの道の上で、来る見込みの大きい判断から順に、別の領域の手も広げる（その先がある判断だけ）
-    const areaK = shown.find(([, why]) => why === "area")?.[0] ?? null;
+    // 予算の使い道 2: おすすめの道の上で、来る見込みの大きい判断から順に、別の領域の手も広げる（その先がある判断だけ。
+    // 年収ごとの一番良い手としてもう広げた手は除く）
+    const areaK = shown.find(([k, why]) => why === "area" && !expand.has(k))?.[0] ?? null;
     if (d.onPi && areaK && s + 1 < NSTAGE) {
       this.pass.areaEligible++;
       if (this.areaLeft > 0) {
@@ -579,11 +638,15 @@ export class Gen {
       }
     }
     // まとめた手は判断と同じまとめ方で見せる（R1 の決まり 4 の「より粗いまとめ方」は使わない: 見積もりは広げた手と同じ）
-    // この判断の余裕: 広げた一番良い手の値が、見せたほかの手（まとめた手と、広げた別の領域の手）の見積もりに負けずに下がってよい幅。
-    // 別の領域の手も入れるので、その手を後でまとめた手に戻しても決まり 2 が保たれる。ずっと今のままの道で広げた今のままは入れない（元の決まり）
-    const stubQs = shown.filter(([k]) => k !== best && !(k === "keep" && d.chain)).map(([k]) => ev.get(k)!.q);
-    const margin = stubQs.length ? order[0]![1].q - Math.max(...stubQs) : Infinity;
-    const childAllow = Math.min(margin, allow - usedHere);
+    // 年収 j の余裕: その年収の一番良い手を広げた値が、見せたほかの手（まとめた手と、広げた別の領域の手）の見積もりに負けずに下がってよい幅。
+    // 別の領域の手も入れるので、その手を後でまとめた手に戻しても決まり 2 が保たれる。ずっと今のままの道で広げた今のまま（元の決まり）と、
+    // ほかの年収の一番良い手として広げた手（まとめた手に戻さない）は入れない
+    const childAllow = Ss.map((_, j) => {
+      const bj = bests[j]!;
+      const stubQs = shown.filter(([k]) => k !== bj && !(k === "keep" && d.chain) && !(bests.includes(k) && expand.has(k))).map(([k]) => ev.get(k)!.qs[j]!);
+      const margin = stubQs.length ? ev.get(bj)!.qs[j]! - Math.max(...stubQs) : Infinity;
+      return Math.min(margin, allow[j]! - used[j]!);
+    });
     const children: QNode[] = [];
     let bestSplitExtra = 0;
     for (const [k, why] of shown) {
@@ -595,12 +658,22 @@ export class Gen {
       a.stub = !isExp && s + 1 < NSTAGE;
       // まとめた手でない手にはどれも q（まとめた手と同じ見積もり方。まとめた手は子の行き先から同じ値になる。33 か月目の手は 3 か月だけ）
       if (!a.stub) a.qv = qOf(e.outs, e.conts);
-      const isArea = isExp && k === areaK && k !== best && !(k === "keep" && d.chain);
+      /** どれかの年収の一番良い手 */
+      const isBest = bests.includes(k);
+      if (isExp && isBest && k !== best && !(k === "keep" && d.chain) && s + 1 < NSTAGE) {
+        a.forS2 = true;
+        a.ev = e;
+      }
+      if (added.has(k)) a.addedS2 = true;
+      const isArea = isExp && k === areaK;
       if (isArea) {
         a.areaExp = true;
         a.ev = e;
       }
       if (isExp && k === best && e.outs.length >= 2 && level === "split") bestSplitExtra = e.outs.length - 1;
+      // 子の判断の余裕: その年収の一番良い手ならその年収の余裕、ほかの年収の一番良い手なら制限なし（この判断のその年収の決まりは、
+      // その年収の一番良い手の先だけで守る）、ずっと今のままの道の今のまま・別の領域の手は 0（元の決まり）
+      const kidAllow = Ss.map((_, j) => (k === bests[j] ? childAllow[j]! : isBest ? Infinity : 0));
       e.outs.forEach((o, i) => {
         const key = `${a.key}.${o.id}`;
         if (s + 1 >= NSTAGE) {
@@ -611,10 +684,11 @@ export class Gen {
           a.kids.push(this.sumEndOf(a, o, e.conts[i]!));
           return;
         }
-        const onPi = !!d.onPi && k === best;
+        // おすすめの道（どれかの年収で）: その年収の一番良い手の先
+        const onPi = !!d.onPi && isBest;
         const chain = !!d.chain && k === "keep";
         const pPath = d.pPath * (o.p / 100) * (onPi ? 1 : chain ? this.P.chainDiscount : isArea ? this.P.areaDiscount : 1);
-        const c: QNode = { key, role: "s", m: m0 + 3, st: o.st, stage: s + 1, out: o, r: o.r, kids: [], parent: a, pPath, V: 0, chain, onPi, allow: k === best ? childAllow : 0 };
+        const c: QNode = { key, role: "s", m: m0 + 3, st: o.st, stage: s + 1, out: o, r: o.r, kids: [], parent: a, pPath, V: 0, chain, onPi, allow: kidAllow };
         a.kids.push(c);
         children.push(c);
       });
@@ -628,44 +702,104 @@ export class Gen {
   }
 
   /**
-   * 広げた別の領域の手の木の値（アプリと同じ後ろからの値・生成の年収）が、その判断の一番良い手を超えたら、まとめた手に戻す（後ろから）。
-   * 一番良い手の値は、見せたほかの手の見積もり以上（決まり 2。余裕に別の領域の手も入れてある）なので、戻した後もアプリの一番良い手は変わらない
+   * 広げた手のうち、まとめた手に戻してよい物を戻す（後ろから。木の値はアプリと同じ後ろからの値を年収 Ss ごとに）。判断ごとに:
+   * 1) ほかの年収（540 万円）の一番良い手として広げた手（forS2）: まとめた手（値はその見積もり）にしても、どの年収でもアプリの選ぶ手が
+   *    ほかの広げた手のままなら戻す（要らない枝。予算をほかに使う）。別の領域の手（予算の使い道 2）はこの比べでは見積もりの値で数える。
+   *    まとめた手の値はその見積もりそのものなので、決まり 3 の帰納（その状態の値 ≥ 続きの見積もり − 余裕）は戻しても保たれる
+   * 2) 予算の使い道 2 で広げた別の領域の手: どれかの年収で、その判断のほかの手の値を超えたら（アプリがその手を選ぶなら）戻す。
+   *    年収ごとの一番良い手の値は、見せたほかの手の見積もり以上（決まり 2。余裕に別の領域の手も入れてある）なので、戻した後もアプリの選ぶ手は
+   *    どの年収でも変わらない
+   * V は生成の年収の値にする。戻した数を返す
    */
-  revertAreas(a0: QNode): number {
-    const S = this.S;
-    let reverted = 0;
-    const val = (n: QNode): number => {
-      if (n.role === "e") return (n.V = 0);
+  revertExpansions(a0: QNode): { area: number; s2: number } {
+    const Ss = this.Ss;
+    let area = 0;
+    let s2 = 0;
+    /** 手の見積もりをまとめた手にした時の値（まとめた行き先の稼ぎ = その 3 か月 + 続きの見積もり。sumEndOf と同じ足し方） */
+    const stubVal = (e: Eval, S: number): number => {
+      let t = 0;
+      e.outs.forEach((o, i) => (t += (o.p / 100) * Wsum(add3(o.r, e.conts[i]!.v), S)));
+      return t;
+    };
+    const toStub = (a: QNode, vs: Map<QNode, number[]>): void => {
+      const e = a.ev!;
+      a.kids = e.outs.map((o, i) => this.sumEndOf(a, o, e.conts[i]!));
+      a.stub = true;
+      a.areaExp = false;
+      delete a.qv;
+      const v = Ss.map((S) => {
+        let t = 0;
+        for (const c of a.kids) t += (c.out!.p / 100) * Wsum(c.r!, S);
+        return t;
+      });
+      vs.set(a, v);
+      a.V = v[0]!;
+    };
+    const val = (n: QNode): number[] => {
+      if (n.role === "e") {
+        n.V = 0;
+        return Ss.map(() => 0);
+      }
       if (n.role === "a") {
-        let v = 0;
-        for (const c of n.kids) v += (c.out!.p / 100) * (Wsum(c.r!, S) + val(c));
-        return (n.V = v);
-      }
-      for (const a of n.kids) val(a);
-      const best = n.kids.find((a) => a.why === "best") ?? n.kids.find((a) => a.kind === "keep")!;
-      for (const a of n.kids) {
-        if (!a.areaExp || a.V <= best.V + 1e-9) continue;
-        const e = a.ev!;
-        a.kids = e.outs.map((o, i) => this.sumEndOf(a, o, e.conts[i]!));
-        a.stub = true;
-        a.areaExp = false;
-        delete a.qv;
-        let v = 0;
-        for (const c of a.kids) v += (c.out!.p / 100) * Wsum(c.r!, S);
-        a.V = v;
-        reverted++;
-      }
-      let bv = -Infinity;
-      let bn: QNode | null = null;
-      for (const a of n.kids)
-        if (a.V > bv + 1e-9 || (Math.abs(a.V - bv) <= 1e-9 && a.kind === "keep" && bn?.kind !== "keep")) {
-          bv = a.V;
-          bn = a;
+        const v = Ss.map(() => 0);
+        for (const c of n.kids) {
+          const vc = val(c);
+          Ss.forEach((S, j) => (v[j]! += (c.out!.p / 100) * (Wsum(c.r!, S) + vc[j]!)));
         }
-      return (n.V = bv);
+        n.V = v[0]!;
+        return v;
+      }
+      const vs = new Map<QNode, number[]>();
+      for (const a of n.kids) vs.set(a, val(a));
+      // 1) 要らなかった 2 つ目の年収の一番良い手
+      for (const a of n.kids) {
+        if (!a.forS2 || a.stub) continue;
+        const e = a.ev!;
+        const safe = Ss.every((S, j) => {
+          let ex = -Infinity;
+          let st = stubVal(e, S);
+          for (const b of n.kids) {
+            if (b === a) continue;
+            if (b.areaExp) st = Math.max(st, stubVal(b.ev!, S));
+            else if (b.stub) st = Math.max(st, vs.get(b)![j]!);
+            else ex = Math.max(ex, vs.get(b)![j]!);
+          }
+          return ex > st + 1e-9;
+        });
+        if (!safe) continue;
+        toStub(a, vs);
+        s2++;
+      }
+      // 2) アプリが選ぶ別の領域の手
+      for (const a of n.kids) {
+        if (!a.areaExp) continue;
+        const over = Ss.some((_, j) => {
+          let m = -Infinity;
+          for (const b of n.kids) if (b !== a) m = Math.max(m, vs.get(b)![j]!);
+          return vs.get(a)![j]! > m + 1e-9;
+        });
+        if (!over) continue;
+        toStub(a, vs);
+        area++;
+      }
+      // 判断の値（年収ごとに、アプリと同じ選び方: 1e-9 までの差は同じ値で今のままを先に）
+      const out = Ss.map((_, j) => {
+        let bv = -Infinity;
+        let bn: QNode | null = null;
+        for (const a of n.kids) {
+          const q = vs.get(a)![j]!;
+          if (q > bv + 1e-9 || (Math.abs(q - bv) <= 1e-9 && a.kind === "keep" && bn?.kind !== "keep")) {
+            bv = q;
+            bn = a;
+          }
+        }
+        return bv;
+      });
+      n.V = out[0]!;
+      return out;
     };
     val(a0);
-    return reverted;
+    return { area, s2 };
   }
 
   countSub(a0: QNode): Omit<MoveStats, "kind" | "ms" | "passes" | "Bint" | "calib"> {
@@ -681,6 +815,9 @@ export class Gen {
     let fe = 0;
     let fs = 0;
     let areaExp = 0;
+    let s2Exp = 0;
+    let s2Added = 0;
+    let fineOuts = 0;
     const byStage = new Array<number>(NSTAGE + 1).fill(0);
     const walk = (n: QNode, depth: number) => {
       nodes++;
@@ -699,15 +836,18 @@ export class Gen {
         options++;
         if (n.stub) stubs++;
         if (n.areaExp) areaExp++;
+        if (n.forS2 && !n.stub) s2Exp++;
+        if (n.addedS2) s2Added++;
       }
       if (n.role === "e") {
         ends++;
         if (n.sumEnd) sumEnds++;
       }
+      if (n.out?.fine) fineOuts++;
       for (const k of n.kids) walk(k, depth + 1);
     };
     walk(a0, 1);
-    return { forks, nodes, decisions, options, stubs, ends, sumEnds, splitDecisions, maxDepth, byStage, fe, fs, areaExp };
+    return { forks, nodes, decisions, options, stubs, ends, sumEnds, splitDecisions, maxDepth, byStage, fe, fs, areaExp, s2Exp, s2Added, fineOuts };
   }
 }
 
@@ -785,7 +925,10 @@ export interface Consistency {
   improv: number[];
 }
 
-/** 一貫性の点検（rollbackApp の後に呼ぶ）: おすすめの道ではアプリの一番良い手がいつも広げた手で、おすすめの道はまとめた手に入らない */
+/**
+ * 一貫性の点検（rollbackApp(root, S) の後に呼ぶ。年収ごとに呼ぶ）: おすすめの道（onPi。どれかの年収の）の判断では、その年収でアプリが選ぶ手がいつも広げた手で、
+ * 最初の手ごとのその年収のおすすめの道（アプリの選び方でたどる）はまとめた手に入らない
+ */
 export function consistencyOf(root: QNode): Consistency {
   let violations = 0;
   let worst = 0;
