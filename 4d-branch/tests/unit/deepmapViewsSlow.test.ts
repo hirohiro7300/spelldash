@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { analyze, compileMap, fallbackText, type Analysis } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../src/deepmap/mapData";
-import { moveDetailVM, notesVM, overviewVM, pathVM } from "../../src/deepmap/views";
+import { moveDetailVM, notesVM, overviewVM, pathVM, type PathVM } from "../../src/deepmap/views";
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const SLOW = env.DEEPMAP_SLOW === "1";
@@ -49,7 +49,14 @@ function strings(x: unknown, out: string[] = [], key = ""): string[] {
 }
 const ID_RE = /\b(?:ad|sd|fc|ind|back)_[a-z0-9_]+\b|\b[a-z]+_[a-z0-9]+(?:_[a-z0-9]+)*\b|\bpm:\d+\b|\b(?:keep|stub|undefined|null|NaN|Infinity)\b/;
 
-/** 見取り図と 10 の手の詳しい画面と一番ありそうな道を全部作り、画面の文字を集める */
+/** 道の画面の文字（開いたときの文章・着いた所の本文も） */
+function pathTexts(p: PathVM, out: string[]): void {
+  strings(p, out);
+  for (const st of p.steps) strings(st.detail(), out);
+  out.push(p.end.body(), p.start.body());
+}
+
+/** 見取り図と 10 の手の詳しい画面と一番ありそうな道（と、その道の 2 行目のほかの結果・手に切り替えた道）を全部作り、画面の文字を集める */
 function allTexts(a: Analysis): string[] {
   const out: string[] = [];
   const ov = overviewVM(a);
@@ -58,8 +65,12 @@ function allTexts(a: Analysis): string[] {
   for (const f of a.cm.firstMoves) {
     const d = moveDetailVM(a, f);
     strings(d, out);
-    if (d.chain) strings(pathVM(a, d.chain.node, text), out);
-    for (const r of d.dest.rows.slice(0, 2)) strings(pathVM(a, r.ends[0]!, text), out);
+    if (d.chain) {
+      const p = pathVM(a, d.chain.node, text);
+      pathTexts(p, out);
+      for (const alt of [...(p.steps[1]?.outcomes ?? []), ...(p.steps[1]?.options ?? [])]) if (!alt.current) pathTexts(pathVM(a, alt.node, text), out);
+    }
+    for (const r of d.dest.rows.slice(0, 2)) pathTexts(pathVM(a, r.ends[0]!, text), out);
   }
   strings(notesVM(a, ov.basis, ov.worthNote === null), out);
   return out;
@@ -98,6 +109,71 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(d.plan[1]!.moves[0]!.cond).toBe("SpellDash だけ・どちらも不可なら");
     const bad = allTexts(a).filter((s) => ID_RE.test(s) || /NaN|Infinity|undefined/.test(s));
     expect(bad).toEqual([]);
+  }, 120_000);
+
+  it("年収 360: 道の画面（届け出て副業の 1 社目を探す の一番ありそうな道と、切り替えた道）", async () => {
+    const t = await loadTree(TREE);
+    const a = analyze(compileMap(fromDevTree(t!)), 360);
+    const text = fallbackText(a.cm.map, { annual: 360 });
+    const f = a.cm.firstMoves.find((x) => a.cm.kindNames[a.cm.kind[x]!] === "ad_permside")!;
+    const p = pathVM(a, f, text);
+    expect(p.title).toBe("一番ありそうな道");
+    expect(p.figures[0]!.value).toBe("6.4%");
+    expect(p.figures[0]!.sub).toBe("出来事の分かれ 9 回が、どれもこのとおりになる見込み");
+    expect(p.figures[1]!.value).toBe("1,159 万円");
+    expect(p.end.head).toBe("2029 年 11 月に着く所");
+    expect(p.end.facts).toEqual(["3 年の合計 1,159 万円（ずっと今のままより +35 万円）", "この道の見込み 6.4%"]);
+    expect(p.end.cls).toBe("会社員・SpellDash だけ可・副業なし・有料 30〜99 人");
+    expect(p.steps.map((st) => st.ym)).toEqual(["2026 年 11 月", "2027 年 2 月", "2027 年 5 月", "2027 年 8 月", "2027 年 11 月", "2028 年 2 月", "2028 年 5 月", "2028 年 8 月", "2028 年 11 月", "2029 年 2 月", "2029 年 5 月", "2029 年 8 月"]);
+    expect(p.steps[0]!.outcomeText).toBe("SpellDash だけ 45%");
+    expect(p.steps[0]!.altOutcomesText).toBe("全部可 20%・どちらも不可 35%");
+    expect(p.steps[1]!.move).toBe("4 月の評価で昇格を狙う");
+    expect(p.steps[1]!.span).toBe("3 月〜5 月の手");
+    expect(p.steps[11]!.runningText).toBe("ここまでの稼ぎ 1,159 万円");
+    // 静かな期は 1 行（「2027 年 8 月〜11 月 転職活動を続ける（2 期・転職せず）」）
+    const groups = p.items.filter((x) => x.type === "group").map((x) => (x.type === "group" ? `${x.ym} ${x.title}` : ""));
+    expect(groups).toEqual(["2027 年 8 月〜11 月 転職活動を続ける（2 期・転職せず）", "2028 年 8 月〜11 月 転職活動を続ける（2 期・転職せず）"]);
+    // 2 行目の結果を「昇格」に切り替える: 上の行はそのまま、その行から先が変わる
+    const up = p.steps[1]!.outcomes.find((o) => o.name === "昇格")!;
+    expect(up.shareText).toBe("30%");
+    expect(up.diffText).toBe("+76 万円");
+    const q = pathVM(a, up.node, text);
+    expect(q.title).toBe("切り替えた道");
+    expect(q.steps[0]!.outcome).toBe(p.steps[0]!.outcome);
+    expect(q.steps[1]!.outcomeText).toBe("昇格 30%");
+    expect(q.steps[1]!.pivot).toBe(true);
+    expect(q.offs).toEqual(["2027 年 5 月の結果: 昇格 30%"]);
+    expect(q.end.head).toBe("2029 年 11 月に着く所");
+    // まとめた手に切り替える: その先は標準の続き（薄い行 1 本）と見積もりの着いた所
+    const stub = p.steps[1]!.options.find((o) => o.tags.includes("この先は標準の続きの見積もり"))!;
+    const r = pathVM(a, stub.node, text);
+    expect(r.end.summary).toBe(true);
+    expect(r.items.filter((x) => x.type === "light").map((x) => (x.type === "light" ? x.ym : ""))).toEqual(["2027 年 5 月〜2029 年 8 月"]);
+  }, 120_000);
+
+  it("道の画面を作る時間（今日の手ごとの道と、その 2 行目のほかの結果・手への切り替え。3 回の一番速い物）", async () => {
+    const t = await loadTree(TREE);
+    const a = analyze(compileMap(fromDevTree(t!)), 360);
+    const text = fallbackText(a.cm.map, { annual: 360 });
+    let ms = Infinity;
+    let n = 0;
+    for (let k = 0; k < 3; k++) {
+      n = 0;
+      const t0 = performance.now();
+      for (const f of a.cm.firstMoves) {
+        const p = pathVM(a, f, text);
+        n++;
+        for (const alt of [...(p.steps[1]?.outcomes ?? []), ...(p.steps[1]?.options ?? [])]) {
+          if (alt.current) continue;
+          pathVM(a, alt.node, text);
+          n++;
+        }
+      }
+      ms = Math.min(ms, performance.now() - t0);
+    }
+    console.log(`道の画面 ${n} 本: ${ms.toFixed(1)} ms（1 本 ${(ms / n).toFixed(2)} ms）`);
+    // 1 本の道の形は切り替えの予算（50 ms）の小さな一部
+    expect(ms / n).toBeLessThan(10);
   }, 120_000);
 
   it("見取り図と 10 の手の詳しい画面を全部作る時間（3 回の一番速い物）", async () => {

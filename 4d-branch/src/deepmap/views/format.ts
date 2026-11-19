@@ -57,6 +57,13 @@ export function manMonthly(x: number): string {
   return `${x < 0 && a >= 0.05 ? MINUS : ""}${body} 万円`;
 }
 
+/** 月の稼ぎの差（小数 1 桁・符号つき。「+1.0 万円」「−0.4 万円」）。0.05 万円未満は null（変わらない） */
+export function manMonthlyDelta(x: number): string | null {
+  if (!Number.isFinite(x) || Math.abs(x) < 0.05) return null;
+  const a = Math.abs(x);
+  return `${x < 0 ? MINUS : "+"}${a < 999.95 ? (Math.round(a * 10) / 10).toFixed(1) : num(a)} 万円`;
+}
+
 /** 見込み（0〜1 →「20%」。0 より大きく 0.5% 未満は「1% 未満」） */
 export function pct(p: number): string {
   if (!(p > 0)) return "0%";

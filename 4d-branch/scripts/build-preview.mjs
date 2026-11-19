@@ -87,7 +87,7 @@ const page = `<title>${TITLE}</title>
 <style>
 ${cssText}
 </style>
-<div id="app" class="pv"><p class="pv-loading">地図を読み込んでいます…（カード ${nodes.toLocaleString("en-US")} 枚）</p></div>
+<div id="app" class="pv"><p class="pv-loading">地図を読み込み中…（カード ${nodes.toLocaleString("en-US")} 枚）</p></div>
 <script type="application/octet-stream" id="deepmap-data" data-format="${FORMAT}" data-name="${path.basename(TREE).replace(/[^\w.\-]/g, "_")}">
 ${b64}</script>
 <script type="module">

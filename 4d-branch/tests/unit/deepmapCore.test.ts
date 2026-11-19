@@ -15,6 +15,7 @@ import {
   overview,
   planView,
   quarterSpanText,
+  quarterSpanYmText,
   refillNumbers,
   ROLE_A,
   runPass,
@@ -455,7 +456,15 @@ describe("計算の芯: 扇・分かれ道の帯・進め方・道・行き先�
     }
     const s = map.indexOfKey("r.ad_permside.a");
     expect(text.numbers(s)[0]).toBe("年収 360 万円（月にならして 30 万円）");
-    expect(text.body(map.indexOfKey("r.ad_permside"))).toMatch(/^11 月〜1 月: 届け出て副業の 1 社目を探す。週の時間は \+4 時間。/);
+    expect(text.body(map.indexOfKey("r.ad_permside"))).toBe("12 月〜2 月: 届け出て副業の 1 社目を探す。2027 年 2 月に分かれる: 全部可 20%・SpellDash だけ 45%・どちらも不可 35%。");
+    expect(text.numbers(map.indexOfKey("r.ad_permside"))).toEqual(["週の時間 +4 時間"]);
+    expect(text.body(map.indexOfKey("r.sd_grow"))).toBe("12 月〜2 月: 遊ぶ人を増やす。結果は 1 つ（2027 年 2 月の状態へ）。");
+    // 結果が 1 つの手の結果は「どの場合も」を名前にしない（状態は年月、行き先は行き先の種類）
+    expect(text.title(map.indexOfKey("r.sd_grow.all"))).toBe("2027 年 2 月の状態");
+    expect(text.title(map.indexOfKey("r.ad_permside.a.1k.all"))).toBe("会社員・届け出はまだ・副業なし・Pro なし");
+    expect(text.title(map.indexOfKey("r.fc_switch.high"))).toBe("会社員・届け出はまだ・副業なし・Pro なし");
+    expect(text.body(map.indexOfKey("r.sd_grow.all"))).toBe("2027 年 2 月の状態（この手の結果は 1 つ）。");
+    expect(text.body(map.indexOfKey("r.ad_permside.a.1k.all"))).toContain("標準の選び方で続けた見積もり");
   });
 });
 
@@ -466,7 +475,10 @@ describe("年月", () => {
     expect(ymText("2026-11", 36)).toBe("2029 年 11 月");
     expect(ymSpanText("2026-11", 9, 15)).toBe("2027 年 8 月〜2028 年 2 月");
     expect(ymSpanText("2026-11", 15, 21)).toBe("2028 年 2 月〜8 月");
-    expect(quarterSpanText("2026-11", 0)).toBe("11 月〜1 月");
+    expect(quarterSpanText("2026-11", 0)).toBe("12 月〜2 月");
+    expect(quarterSpanText("2026-11", 3)).toBe("3 月〜5 月");
+    expect(quarterSpanYmText("2026-11", 0)).toBe("2026 年 12 月〜2027 年 2 月");
+    expect(quarterSpanYmText("2026-11", 30)).toBe("2029 年 6 月〜8 月");
     expect(() => ymText("2026/11", 0)).toThrow(RangeError);
   });
 });

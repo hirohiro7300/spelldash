@@ -1,9 +1,9 @@
-// 手の詳しい画面の部品: 分かれ道の帯（§5.2）・進め方（§5.3）・行き先（§5.7）・道の画面の仮の形（§5.5）・見方と前提
+// 手の詳しい画面の部品: 分かれ道の帯（§5.2）・進め方（§5.3）・行き先（§5.7）・見方と前提
 // どれも画面に出す形（model.ts）を受け取って DOM を返すだけ（計算はしない）
 
 import { h, nobr } from "./dom";
 import { num } from "./format";
-import type { DestRowVM, DestVM, PathVM, PlanRowVM, StripVM } from "./model";
+import type { DestRowVM, DestVM, PlanRowVM, StripVM } from "./model";
 
 // ------------------------------------------------------------ 分かれ道の帯
 
@@ -141,38 +141,6 @@ export function destSection(vm: DestVM, opts: DestOpts): HTMLElement {
     );
   }
   return h("div", { class: "dm-dest-box" }, list, vm.more ? h("p", { class: "dm-plan-more" }, vm.more) : null);
-}
-
-// ------------------------------------------------------------ 道の画面（仮の形）
-
-export function pathSection(vm: PathVM): HTMLElement {
-  const list = h("ol", { class: "dm-path" });
-  for (const r of vm.rows) {
-    list.append(
-      h(
-        "li",
-        { class: `dm-path-row${r.onPi ? "" : " is-off"}${r.stub ? " is-stub" : ""}` },
-        h("span", { class: "dm-path-when" }, r.ym),
-        h(
-          "span",
-          { class: "dm-path-what" },
-          h("b", null, r.move, r.onPi ? null : h("small", null, "（一番良い手ではない）")),
-          r.outcome ? h("span", null, `→ ${r.outcome}`) : null,
-          h("span", { class: "dm-path-meta" }, nobr(`${r.monthly}・${r.cum}`)),
-          r.stub ? h("span", { class: "dm-path-meta is-warn" }, "この先は標準の続きの見積もり") : null,
-        ),
-      ),
-    );
-  }
-  const end = h(
-    "div",
-    { class: "dm-path-end" },
-    h("b", null, vm.endTitle),
-    h("span", null, nobr(vm.endText)),
-    vm.endNumbers.length ? h("ul", { class: "dm-numbers" }, vm.endNumbers.map((t) => h("li", null, t))) : null,
-    vm.cont.length ? h("p", { class: "dm-plan-more" }, `この後の目安: ${vm.cont.join(" → ")}`) : null,
-  );
-  return h("div", { class: "dm-path-box" }, list, end);
 }
 
 // ------------------------------------------------------------ 見方と前提

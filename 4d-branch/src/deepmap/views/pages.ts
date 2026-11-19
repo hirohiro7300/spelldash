@@ -1,12 +1,12 @@
-// 画面の組み立て: 手の詳しい画面（#move-…）と道の画面の仮の形（#path-…）
+// 画面の組み立て: 手の詳しい画面（#move-…）。道の画面（#path-…）は path.ts
 // 試し版（src/preview）とアプリ（P2）の両方で使う。行き来（ハッシュ）は使う側が決め、ここはリンクの先を受け取るだけ。
 
 import { h, nobr } from "./dom";
 import { fanChart } from "./fanChart";
 import { OVERVIEW_HASH } from "./format";
-import type { DestRowVM, MoveDetailVM, PathVM } from "./model";
+import type { DestRowVM, MoveDetailVM } from "./model";
 import { pill, SPLIT_COLORS, swatch } from "./parts";
-import { destSection, pathSection, planSection, stripSection } from "./sections";
+import { destSection, planSection, stripSection } from "./sections";
 
 export interface PageHandle {
   el: HTMLElement;
@@ -78,16 +78,4 @@ export function renderMoveDetail(vm: MoveDetailVM, opts: MoveDetailOpts): PageHa
     ),
   );
   return { el, destroy: () => fan.destroy() };
-}
-
-/** 道の画面の仮の形（一番ありそうな道の行を並べるだけ） */
-export function renderPathPage(vm: PathVM): PageHandle {
-  const el = h(
-    "article",
-    { class: "dm-move dm-path-page" },
-    h("a", { class: "dm-back", attrs: { href: vm.backHref } }, `‹ ${vm.backText}`),
-    h("header", { class: "dm-move-head" }, h("p", { class: "dm-eyebrow" }, "道（試しの形）"), h("h2", { class: "dm-h2", attrs: { tabindex: "-1" } }, vm.title), h("p", { class: "dm-sub" }, nobr(vm.intro))),
-    pathSection(vm),
-  );
-  return { el, destroy() {} };
 }

@@ -1,7 +1,8 @@
 // 3 年の分かれ道（試し版）: 読むだけの別のページ（設計: 作業メモ SPEC v1 §5・§10。作業メモ user-8）
 // ページに埋め込んだ地図を読み（load.ts）、計算の芯（src/deepmap/core）で 1 回だけ組み直し、
 // 見取り図・手の詳しい画面・道の画面（src/deepmap/views）を出す。アカウントにも外にもつながない（読むだけ）。
-// 画面の切り替えはハッシュ: #overview（見取り図）・#move-<手の種類>・#path-<カードの番号>。
+// 画面の切り替えはハッシュ: #overview（見取り図）・#move-<手の種類>・#path-<カードの番号>（そのカードを通る道。ほかの結果・手を
+// 押すと、そのカードの #path-… へ。戻る・進むで道を行き来でき、道ごとに開いていた行と位置を覚えている）。
 // 年収を変えると計算だけやり直す（地図の組み直しはしない）。年収はこの端末にだけ覚える（使えなければ覚えない）。
 
 import "../styles/tokens.css";
@@ -25,6 +26,7 @@ import {
   renderPathPage,
   ym,
   type PageHandle,
+  type PathPageHandle,
 } from "../deepmap/views";
 import { parseAnnual } from "../model/impactText";
 import { LoadError, loadMap, readEmbedded } from "./load";
@@ -43,14 +45,18 @@ interface State {
   destCursor: Map<number, Map<string, number>>;
 }
 
-/** 試し版の様子（確かめ用。時間は ms） */
+/** 試し版の様子（確かめ用。時間は ms。visible は開き始めから見取り図が描かれた次の画面までの時間） */
 interface PreviewInfo {
   ready: boolean;
+  /** 最初の画面が描かれた */
+  visible: boolean;
   error: string | null;
   n: number;
   timings: Record<string, number>;
+  /** 道の切り替え（ほかの結果・手を押してから、切り替えた道が描かれた次の画面まで）の時間 */
+  pathSwitches: number[];
 }
-const info: PreviewInfo = { ready: false, error: null, n: 0, timings: {} };
+const info: PreviewInfo = { ready: false, visible: false, error: null, n: 0, timings: {}, pathSwitches: [] };
 (globalThis as { __deepmapPreview?: PreviewInfo }).__deepmapPreview = info;
 
 function readStoredAnnual(): number | null {
@@ -156,8 +162,15 @@ async function boot(): Promise<void> {
   app.append(head, main, notes);
 
   let page: PageHandle | null = null;
+  let pathPage: PathPageHandle | null = null;
   let current = "";
+  let currentHash = "";
   let overviewScroll = 0;
+  /** 道の画面ごとに、開いていた行と位置（戻る・進むで元どおりに） */
+  const pathMemory = new Map<string, { open: string[]; scroll: number }>();
+  /** ほかの結果・手を押した（次の道の画面で、その行を開いて同じ位置に置く） */
+  let pending: { href: string; key: string; top: number; t0: number } | null = null;
+  const afterPaint = (fn: () => void) => requestAnimationFrame(() => requestAnimationFrame(fn));
 
   const renderNotes = () => {
     clear(notes);
@@ -166,14 +179,24 @@ async function boot(): Promise<void> {
 
   const render = (opts: { focus: boolean; keepScroll: boolean }) => {
     const t = performance.now();
-    const r = parseRoute(location.hash);
+    const hash = location.hash;
+    const r = parseRoute(hash);
     const key = r.name === "move" ? `move:${r.slug}` : r.name === "path" ? `path:${r.node}` : "overview";
     if (current === "overview" && key !== "overview") overviewScroll = scrollY;
+    // 道の画面を離れる（作り直す）前に、開いていた行と位置を覚える（新しい 200 本まで）
+    if (pathPage) {
+      pathMemory.delete(currentHash);
+      pathMemory.set(currentHash, { open: pathPage.openKeys(), scroll: scrollY });
+      if (pathMemory.size > 200) pathMemory.delete(pathMemory.keys().next().value!);
+    }
     const y = scrollY;
     page?.destroy();
     page = null;
+    pathPage = null;
     clear(main);
     let el: HTMLElement;
+    let sw: { key: string; top: number; t0: number } | null = null;
+    let memo: { open: string[]; scroll: number } | undefined;
     if (r.name === "move" && findFirstMove(st.a, kindSlug, r.slug) >= 0) {
       const f = findFirstMove(st.a, kindSlug, r.slug);
       let cursor = st.destCursor.get(f);
@@ -181,17 +204,56 @@ async function boot(): Promise<void> {
       page = renderMoveDetail(moveDetailVM(st.a, f, st.ov), { destCursor: cursor, onDest: (row, k) => (location.hash = pathHash(row.ends[k]!)) });
       el = page.el;
     } else if (r.name === "path" && r.node < cm.n) {
-      page = renderPathPage(pathVM(st.a, r.node, st.text));
-      el = page.el;
+      // ほかの結果・手を押して来た: その行だけ開いて同じ位置に。戻る・進む・年収の計算し直し: 覚えた行と位置
+      if (pending && pending.href === hash) sw = pending;
+      pending = null;
+      memo = sw ? undefined : pathMemory.get(hash);
+      const tv = performance.now();
+      if (sw) info.timings.pathQueue = tv - sw.t0;
+      const vm = pathVM(st.a, r.node, st.text);
+      const td = performance.now();
+      info.timings.pathVM = td - tv;
+      pathPage = renderPathPage(vm, {
+        open: sw ? new Set([sw.key]) : memo ? new Set(memo.open) : undefined,
+        onSwitch: (k, top, href) => {
+          pending = { href, key: k, top, t0: performance.now() };
+          // 履歴に足してすぐ描き直す（hashchange を待たない。戻る・進むは hashchange で来る）。使えなければリンクのまま
+          try {
+            history.pushState(null, "", href);
+          } catch {
+            return false;
+          }
+          if (location.hash !== href) return false;
+          render({ focus: false, keepScroll: false });
+          return true;
+        },
+      });
+      page = pathPage;
+      el = pathPage.el;
+      info.timings.pathDom = performance.now() - td;
     } else {
       el = renderOverview(overviewVM(st.a, st.ov));
     }
+    const ta = performance.now();
     main.append(el);
-    if (opts.keepScroll) scrollTo(0, y);
+    if (sw && pathPage) {
+      pathPage.align(sw.key, sw.top);
+      pathPage.focus(sw.key);
+      info.timings.pathLayout = performance.now() - ta;
+      const t0 = sw.t0;
+      afterPaint(() => {
+        const ms = performance.now() - t0;
+        info.pathSwitches.push(ms);
+        if (info.pathSwitches.length > 100) info.pathSwitches.shift();
+        info.timings.pathSwitch = ms;
+      });
+    } else if (opts.keepScroll) scrollTo(0, memo ? memo.scroll : y);
+    else if (memo) scrollTo(0, memo.scroll);
     else if (key === "overview" && current !== "" && current !== "overview") scrollTo(0, overviewScroll);
     else if (key !== current) scrollTo(0, 0);
-    if (opts.focus && key !== current) el.querySelector<HTMLElement>(".dm-h2")?.focus({ preventScroll: true });
+    if (opts.focus && key !== current && !sw) el.querySelector<HTMLElement>(".dm-h2")?.focus({ preventScroll: true });
     current = key;
+    currentHash = hash;
     info.timings.render = performance.now() - t;
   };
 
@@ -233,6 +295,11 @@ async function boot(): Promise<void> {
   addEventListener("hashchange", () => render({ focus: true, keepScroll: false }));
   info.timings.total = performance.now() - t0;
   info.ready = true;
+  // 開き始め（performance の 0）から、最初の画面が描かれた次の画面まで
+  afterPaint(() => {
+    info.timings.visible = performance.now();
+    info.visible = true;
+  });
 }
 
 void boot();

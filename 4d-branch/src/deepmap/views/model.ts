@@ -1,27 +1,38 @@
 // 画面に出す形（DOM を使わない。テストで確かめる）: 計算の芯の数に、単位と何の数かの言葉を付ける
 //   overviewVM(a)        見取り図（今日の手ごとの行。良い順）
 //   moveDetailVM(a, f)   手の詳しい画面（扇・分かれ道の帯・進め方・行き先・一番ありそうな道）
-//   pathVM(a, i, text)   道の画面の仮の形（一番ありそうな道の行を並べるだけ。次の段で道の画面になる）
-// 設計: 作業メモ SPEC v1 §5.1・§5.2・§5.3・§5.5・§5.7。作業メモ user-1・user-4・user-13・user-14・truth-4・truth-18
+//   pathVM(a, i, text)   道の画面（今日から 2029 年 11 月まで 3 か月に 1 行・ほかの結果と手への切り替え・静かな期のまとめ・標準の続き）
+// 設計: 作業メモ SPEC v1 §5.1〜§5.5・§5.7。作業メモ user-1〜user-4・user-7・user-9・user-13・user-14・user-20・truth-4・truth-18
 
 import {
+  destClassOf,
   destinations,
+  destLabel,
+  F_BASE,
+  F_STUB,
+  F_SUM,
   fanData,
   forkStrip,
-  isUnder,
+  keepFan,
   kindKey,
   mostLikelyChain,
   overview,
   planView,
   quarterSpanText,
+  quarterSpanYmText,
   walkPath,
+  ymSpanText,
+  ROLE_E,
   ROLE_A,
   type Analysis,
+  type Delta,
   type DeltaBasis,
   type Dist,
   type FanPoint,
   type MoveSummary,
   type Overview,
+  type PathRow,
+  type PathView,
   type PlanCond,
   type TextSource,
 } from "../core";
@@ -35,10 +46,12 @@ import {
   DELTA_LABEL,
   FOOTER_TEXT,
   kindName,
+  looksLikeId,
   man,
   manDelta,
   manDeltaRange,
   manMonthly,
+  manMonthlyDelta,
   manRange,
   moveHash,
   moveName,
@@ -442,7 +455,7 @@ export interface PlanRowVM {
   m: number;
   /** 「2027 年 2 月」 */
   ym: string;
-  /** 「2 月〜4 月の手」 */
+  /** 「3 月〜5 月の手」（判断の次の月から 3 か月） */
   span: string;
   moves: PlanMoveVM[];
   /** 出さなかった手（「ほか 2 つの手 6%」） */
@@ -573,7 +586,7 @@ export interface MoveDetailVM {
   row: OverviewRowVM;
   /** 地図の終わりの年月（「2029 年 11 月」） */
   endYm: string;
-  /** 「今日の手・2026 年 11 月〜2027 年 1 月」 */
+  /** 「今日の手・2026 年 12 月〜2027 年 2 月」（手は判断の次の月から 3 か月） */
   eyebrow: string;
   /** まとめの数（3 年の合計・分かれ道・行き先） */
   facts: string[];
@@ -602,7 +615,7 @@ export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a))
   const endYm = ym(map, cm.H);
   let eyebrow = "今日の手";
   try {
-    eyebrow = `今日の手・${ym(map, 0)}〜${ym(map, 2)}`;
+    eyebrow = `今日の手・${quarterSpanYmText(map.header.anchor, 0)}`;
   } catch {
     /* 年月が読めない */
   }
@@ -626,77 +639,551 @@ export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a))
   return { row, endYm, eyebrow, facts, outcomesHead, outcomes, chain, fan: fanVM(a, f), strip: stripVM(a, f), plan: planVM(a, f), dest: destVM(a, f) };
 }
 
-// ------------------------------------------------------------ 道の画面（仮の形: 行を並べるだけ）
+// ------------------------------------------------------------ 道の画面（§5.4・§5.5）
+// 今日から 2029 年 11 月まで、3 か月に 1 行の縦の道。行 = 判断の年月・選ぶ手・結果と見込み・月の稼ぎ・ここまでの稼ぎ。
+// 行を開くと、その 3 か月の文章（TextSource）と数字の行・やること、ほかの結果（見込み）とほかの手（この道の手との差）が出る。
+// ほかを押すとそのカードの道（#path-<番号>）に切り替わる: 切り替えた所から先は一番ありそうな道（walkPath）。
+// 続けて同じ手の静かな期は 1 行にまとめ（groupRows）、まとめた手の後は標準の続き（cont）を薄い行で出す。
 
-export interface PathRowVM {
-  /** 「2027 年 2 月」 */
+export interface PathAltVM {
+  /** 切り替え先のカード */
+  node: number;
+  href: string;
+  name: string;
+  /** 結果の見込み（「20%」）。手は null */
+  shareText: string | null;
+  /** 結果の後、一番良い選び方で進んだ 3 年の合計の見込み（「3 年の合計の見込み 1,431 万円」）。手は null */
+  valueText: string | null;
+  /** 差の札（結果: この道の結果との 3 年の合計の差・手: この道の手との差）。この道の物・数が出せない物は null */
+  diffText: string | null;
+  /** 差の色の段（−4〜+4） */
+  bin: number;
+  /** この道の物（押せない） */
+  current: boolean;
+  /** 印（「おすすめ」「標準の続きの見積もり」など） */
+  tags: string[];
+  aria: string;
+}
+
+export interface PathCardVM {
+  /** 「この 3 か月（12 月〜2 月）」「2027 年 2 月の結果（見込み 45%）」 */
+  head: string;
+  title: string;
+  /** 数字の行（年収・広告運用・有料・遊ぶ人・週の時間） */
+  numbers: string[];
+  body: string;
+  /** やること（手のカードだけ） */
+  todo: string[];
+  /** 本文の下の数（「今日からここまでの見込み 45%」など） */
+  facts: string[];
+}
+
+export interface PathStepDetailVM {
+  move: PathCardVM;
+  /** 結果のカード（まとめた手は null: 着いた所は道の終わりのカードに出す） */
+  outcome: PathCardVM | null;
+  /** まとめた手の注記 */
+  note: string | null;
+}
+
+export interface PathStepVM {
+  /** 行の鍵（判断のカードから。切り替えても同じ行は同じ鍵） */
+  key: string;
+  /** 道の中の何行目か（0 から） */
+  index: number;
+  decision: number;
+  option: number;
+  outcome: number;
+  m: number;
+  /** 判断の年月（「2027 年 2 月」） */
   ym: string;
-  /** 選んだ手 */
+  /** 手の 3 か月（「3 月〜5 月の手」） */
+  span: string;
+  /** 選ぶ手の名前 */
   move: string;
-  /** 一番良い選び方の手 */
   onPi: boolean;
-  /** 結果の名前と見込み（「SpellDash だけ 45%」）。結果が無ければ null */
-  outcome: string | null;
-  /** 結果の後の月の稼ぎ（「月の稼ぎ 30.4 万円」） */
-  monthly: string;
-  /** 道の始めからここまでの見込み */
-  cum: string;
-  /** まとめた手（この先は標準の続き） */
+  /** 一番ありそうな道から外れた所（おすすめでない手か、見込みの一番大きくない結果。今日の手の行の手は除く） */
+  off: boolean;
+  /** 道を切り替えた行 */
+  pivot: boolean;
+  /** まとめた手（この先は標準の選び方で続けた見積もり） */
   stub: boolean;
+  /** 「SpellDash だけ 45%」（結果が 1 つの手は null） */
+  outcomeText: string | null;
+  /** 「月の稼ぎ 30.8 万円」（まとめた手は null） */
+  monthlyText: string | null;
+  /** 前の行からの月の稼ぎの差（「+1.0 万円」。変わらなければ null） */
+  monthlyDiff: string | null;
+  /** 「ここまでの稼ぎ 181 万円」（まとめた手は null） */
+  runningText: string | null;
+  /** 「ほかの結果 2・ほかの手 3」（ほかが無ければ null。読み上げ用） */
+  altText: string | null;
+  /** 閉じた行に出すほかの結果（「昇格 30%」「全部可 20%・どちらも不可 35%」）。無ければ null */
+  altOutcomesText: string | null;
+  /** その区切り（「全部可 20%」ごと。折り返しは区切りの間で） */
+  altOutcomeParts: string[];
+  /** 閉じた行に出すほかの手の数（「ほかの手 3」）。無ければ null */
+  altOptionsText: string | null;
+  /** この手の結果の並びの見出し（結果が 1 つなら null） */
+  outcomesHead: string | null;
+  /** この手の結果（この道の物を含む・並べる順） */
+  outcomes: PathAltVM[];
+  optionsHead: string;
+  /** この判断で選べる手（この道の手を含む・差の大きい順） */
+  options: PathAltVM[];
+  /** 「次の 3 か月へ（2027 年 5 月）」・最後の行は「着いた所へ（2029 年 11 月）」 */
+  nextText: string;
+  aria: string;
+  /** 文章・数字の行・やること（開いたときに作る。同じ物を返す） */
+  detail(): PathStepDetailVM;
+}
+
+export type PathItemVM =
+  | { type: "step"; step: PathStepVM }
+  | {
+      type: "group";
+      key: string;
+      /** 「2027 年 8 月〜11 月」 */
+      ym: string;
+      /** 「転職活動を続ける（2 期・転職せず）」 */
+      title: string;
+      /** 「2 期とも転職せず 76%」（結果が 1 つの手なら null） */
+      outcomeText: string | null;
+      monthlyText: string | null;
+      runningText: string | null;
+      steps: PathStepVM[];
+      off: boolean;
+      pivot: boolean;
+      aria: string;
+    }
+  /** まとめた手の後の標準の続き（薄い行） */
+  | { type: "light"; key: string; ym: string; title: string; note: string | null };
+
+export interface PathFigureVM {
+  label: string;
+  value: string;
+  sub: string | null;
+}
+
+export interface PathEndVM {
+  node: number;
+  /** 「2029 年 11 月に着く所」 */
+  head: string;
+  /** 行き先の種類（「会社員・SpellDash だけ可・副業なし・有料 30〜99 人」） */
+  cls: string;
+  /** カードの題名（種類と同じなら null） */
+  title: string | null;
+  numbers: string[];
+  body(): string;
+  /** 「3 年の合計 1,159 万円（ずっと今のままより +35 万円）」「この道の見込み 6.4%」 */
+  facts: string[];
+  summary: boolean;
+  /** まとめた行き先の注記（作業メモ user-20） */
+  note: string | null;
+}
+
+export interface PathStartVM {
+  key: string;
+  ym: string;
+  title: string;
+  numbers: string[];
+  monthlyText: string;
+  body(): string;
+}
+
+/** 道の月の稼ぎの線（見出しの小さな線）。まとめた手の後は見積もり（est） */
+export interface PathSparkVM {
+  path: Array<{ m: number; v: number; est: boolean }>;
+  keep: Array<{ m: number; v: number }>;
+  /** 点の年月（0・3・…・36） */
+  yms: string[];
+  /** 0〜36 か月目 */
+  months: number[];
+  label: string;
 }
 
 export interface PathVM {
+  /** 道を決めたカード */
+  node: number;
   title: string;
+  eyebrow: string;
   intro: string;
-  rows: PathRowVM[];
-  /** 着いた所 */
-  endTitle: string;
-  endText: string;
-  endNumbers: string[];
-  /** まとめた行き先の後の目安（手の名前と年月だけ） */
-  cont: string[];
+  figures: PathFigureVM[];
+  /** 一番ありそうな道と違う所（「2027 年 5 月の結果: 昇格 30%」） */
+  offs: string[];
+  resetHref: string | null;
+  resetText: string;
   backHref: string;
   backText: string;
+  readText: string;
+  start: PathStartVM;
+  items: PathItemVM[];
+  /** 行（並び順。「次の 3 か月へ」で順に開く） */
+  steps: PathStepVM[];
+  end: PathEndVM;
+  spark: PathSparkVM;
+  /** 最初から開いておく行・まとめの鍵（切り替えた行。今日の手の道は空） */
+  defaultOpen: string[];
 }
 
-export function pathVM(a: Analysis, node: number, text: TextSource): PathVM {
+const keepFanMemo = new WeakMap<Analysis, FanPoint[]>();
+function keepFanOf(a: Analysis): FanPoint[] {
+  let k = keepFanMemo.get(a);
+  if (!k) keepFanMemo.set(a, (k = keepFan(a)));
+  return k;
+}
+
+/** 印の言葉 */
+const TAG_PI = "おすすめ";
+const TAG_STUB = "この先は標準の続きの見積もり";
+const TAG_CURRENT_OPT = "この道の手";
+const TAG_CURRENT_OUT = "この道";
+
+function stepKey(decision: number): string {
+  return `s${decision}`;
+}
+
+/** 道の 1 行の画面の形 */
+function stepVM(a: Analysis, pv: PathView, r: PathRow, k: number, text: TextSource, prevMonthly: number, markRow: number): PathStepVM {
   const cm = a.cm;
   const map = cm.map;
-  const n = Math.max(0, Math.min(cm.n - 1, Math.floor(node)));
-  const pv = walkPath(a, n, 0);
-  const rows: PathRowVM[] = pv.rows.map((r) => ({
-    ym: ym(map, r.m),
-    move: kindName(map, kindKey(cm, r.option)),
-    onPi: r.onPi,
-    outcome: r.outcome >= 0 ? `${outcomeName(map, r.outcome)} ${pct(r.w)}` : null,
-    monthly: `月の稼ぎ ${manMonthly(r.monthly)}`,
-    cum: `ここまでの見込み ${pct1(r.cum)}`,
-    stub: r.stub,
-  }));
-  // 戻り先: その道の今日の手の詳しい画面（今日なら見取り図）
-  let first = -1;
-  for (const f of cm.firstMoves) if (isUnder(cm, n, f)) first = f;
-  const backHref = first >= 0 ? moveHash(kindKey(cm, first)) : OVERVIEW_HASH;
-  const backText = first >= 0 ? `${moveName(map, kindKey(cm, first), (cm.flags[first]! & 1) !== 0)}へ` : "見取り図へ";
-  const end = pv.end;
-  const total = a.money.acc[end]! + a.pi.V[end]!;
-  const vs = a.vSQ === null ? "" : `（ずっと今のままより ${manDelta(total - a.vSQ)}）`;
-  const isChainFromMove = n === 0 || cm.parent[n] === 0;
-  const title = isChainFromMove ? `一番ありそうな道（見込み ${pct1(pv.p)}）` : `この道（ここから先の見込み ${pct1(pv.p)}）`;
-  const startYm = ym(map, cm.month[pv.pivot]!);
-  const intro = `${startYm}から${ym(map, cm.H)}まで、3 か月ごとに一番良い手を選び、一番ありそうな結果をたどった道。ほかの結果やほかの手への切り替えと、カードの文章は次の版で入る。`;
-  const cont: string[] = [];
-  for (const c of pv.cont) cont.push(`${ym(map, c.m)} ${kindName(map, c.kind)}`);
+  const anchor = map.header.anchor;
+  const isBase = (cm.flags[r.option]! & F_BASE) !== 0;
+  const move = moveName(map, kindKey(cm, r.option), isBase);
+  const nOut = cm.kidOff[r.option + 1]! - cm.kidOff[r.option]!;
+  const split = nOut >= 2;
+  const yms = ym(map, r.m);
+  let span = "";
+  try {
+    span = `${quarterSpanText(anchor, r.m)}の手`;
+  } catch {
+    /* 年月が読めない */
+  }
+  const outcomeText = r.outcome >= 0 && split ? `${outcomeName(map, r.outcome)} ${pct(r.w)}` : null;
+  const monthlyText = r.stub ? null : `月の稼ぎ ${manMonthly(r.monthly)}`;
+  const monthlyDiff = r.stub ? null : manMonthlyDelta(r.monthly - prevMonthly);
+  const runningText = r.stub ? null : `ここまでの稼ぎ ${man(r.acc)}`;
+  const off = (k > 0 && !r.onPi) || !r.likely;
+  // この手の結果（この道の物を含む）
+  const outcomes: PathAltVM[] = [];
+  if (split) {
+    for (let s = cm.kidOff[r.option]!; s < cm.kidOff[r.option + 1]!; s++) {
+      const c = cm.kids[s]!;
+      const current = c === r.outcome;
+      const total = a.money.acc[c]! + a.pi.V[c]!;
+      const diff = total - r.total;
+      const name = outcomeName(map, c);
+      const share = pct(cm.w[c]!);
+      const tags = (cm.flags[c]! & F_SUM) !== 0 ? ["標準の続きの見積もり"] : [];
+      if (current) tags.unshift(TAG_CURRENT_OUT);
+      const valueText = `3 年の合計の見込み ${man(total)}`;
+      outcomes.push({
+        node: c,
+        href: pathHash(c),
+        name,
+        shareText: share,
+        valueText,
+        diffText: current ? null : manDelta(diff),
+        bin: current ? 0 : binColors(diff).bin,
+        current,
+        tags,
+        aria: current ? `${name} ${share}（この道）。${valueText}` : `${name} ${share}。${valueText}（この道の結果より ${manDelta(diff)}）。押すとこの結果の道に切り替える`,
+      });
+    }
+  }
+  // この判断で選べる手（この道の手を含む・この道の手との差の大きい順）
+  const deltas = new Map<number, Delta | null>();
+  for (const o of r.altOptions) deltas.set(o.node, o.delta);
+  const bases = new Set<string>();
+  for (const o of r.altOptions) if (o.delta) bases.add(o.delta.basis);
+  const mixed = bases.size > 1;
+  const optNodes: number[] = [];
+  for (let s = cm.kidOff[r.decision]!; s < cm.kidOff[r.decision + 1]!; s++) optNodes.push(cm.kids[s]!);
+  const dOf = (j: number): number => (j === r.option ? 0 : (deltas.get(j)?.d ?? -Infinity));
+  optNodes.sort((x, y) => dOf(y) - dOf(x) || cm.rank[x]! - cm.rank[y]!);
+  const options: PathAltVM[] = optNodes.map((j) => {
+    const current = j === r.option;
+    const d = current ? null : (deltas.get(j) ?? null);
+    const jBase = (cm.flags[j]! & F_BASE) !== 0;
+    const name = moveName(map, kindKey(cm, j), jBase);
+    const tags: string[] = [];
+    if (current) tags.push(TAG_CURRENT_OPT);
+    if (r.piOption === j) tags.push(TAG_PI);
+    if ((cm.flags[j]! & F_STUB) !== 0) tags.push(TAG_STUB);
+    if (mixed && d) tags.push(`差は${basisText(d.basis)}`);
+    const diffText = current ? null : d ? manDelta(d.d) : "差を出せない";
+    return {
+      node: j,
+      href: pathHash(j),
+      name,
+      shareText: null,
+      valueText: null,
+      diffText,
+      bin: d ? binColors(d.d).bin : 0,
+      current,
+      tags,
+      aria: current ? `${name}（この道の手）${r.piOption === j ? "・おすすめ" : ""}` : `${name}${r.piOption === j ? "（おすすめ）" : ""}。この道の手との 3 年の合計の差 ${diffText}。押すとこの手の道に切り替える`,
+    };
+  });
+  const basisOne = bases.size === 1 ? basisText([...bases][0] as DeltaBasis) : null;
+  const optionsHead = `${yms}に選べる手（この道の手との 3 年の合計の差${basisOne ? `・${basisOne}` : ""}）`;
+  const outcomesHead = split ? (r.stub ? `この手の結果（${ym(map, cm.H)}まで続けた見積もり）` : `この手の結果（${ym(map, r.mNext)}に分かる）`) : null;
+  const nAltOut = Math.max(0, outcomes.length - 1);
+  const altOutcomeParts = outcomes.filter((o) => !o.current).map((o) => `${o.name} ${o.shareText ?? ""}`.trim());
+  const nAltOpt = r.altOptions.length;
+  const altParts = [nAltOut ? `ほかの結果 ${num(nAltOut)}` : null, nAltOpt ? `ほかの手 ${num(nAltOpt)}` : null].filter((x): x is string => !!x);
+  const next = pv.rows[k + 1];
+  const nextText = next ? `次の 3 か月へ（${ym(map, next.m)}）` : `着いた所へ（${ym(map, cm.month[pv.end]!)}）`;
+  const pivot = markRow === k;
+  let memo: PathStepDetailVM | null = null;
+  const detail = (): PathStepDetailVM => {
+    if (memo) return memo;
+    let qs = "";
+    try {
+      qs = `（${quarterSpanText(anchor, r.m)}）`;
+    } catch {
+      /* 年月が読めない */
+    }
+    const moveCard: PathCardVM = {
+      head: `この 3 か月${qs}`,
+      title: safeName(text.title(r.option), move),
+      numbers: text.numbers(r.option),
+      body: text.body(r.option),
+      todo: map
+        .todo(r.option)
+        .map((t) => t.text.trim())
+        .filter((t) => t && !looksLikeId(t)),
+      facts: [],
+    };
+    let outCard: PathCardVM | null = null;
+    let note: string | null = null;
+    if (r.stub) note = `この手の先は、標準の選び方で${ym(map, cm.H)}まで続けた見積もり（3 か月ごとの手と結果には分けていない）。着いた所は道の終わりに出す`;
+    else if (r.outcome >= 0) {
+      outCard = {
+        head: `${ym(map, r.mNext)}の結果${split ? `（見込み ${pct(r.w)}）` : ""}`,
+        title: safeName(text.title(r.outcome), outcomeName(map, r.outcome)),
+        numbers: text.numbers(r.outcome),
+        body: text.body(r.outcome),
+        todo: [],
+        facts: [`今日からここまでの見込み ${pct1(r.cum)}`, `ここから一番良い選び方で進んだ 3 年の合計の見込み ${man(r.total)}`],
+      };
+    }
+    return (memo = { move: moveCard, outcome: outCard, note });
+  };
+  const aria = [
+    `${yms}（${span}）`,
+    `${move}${r.onPi ? "（おすすめ）" : ""}`,
+    outcomeText ? `結果 ${outcomeText}` : null,
+    monthlyText ? `${monthlyText}${monthlyDiff ? `（${monthlyDiff}）` : ""}` : TAG_STUB,
+    runningText,
+    nAltOut ? `ほかの結果 ${altOutcomeParts.join("・")}` : null,
+    nAltOpt ? `ほかの手 ${num(nAltOpt)}` : null,
+  ]
+    .filter((x): x is string => !!x)
+    .join("。");
   return {
+    key: stepKey(r.decision),
+    index: k,
+    decision: r.decision,
+    option: r.option,
+    outcome: r.outcome,
+    m: r.m,
+    ym: yms,
+    span,
+    move,
+    onPi: r.onPi,
+    off,
+    pivot,
+    stub: r.stub,
+    outcomeText,
+    monthlyText,
+    monthlyDiff,
+    runningText,
+    altText: altParts.length ? altParts.join("・") : null,
+    altOutcomesText: nAltOut ? altOutcomeParts.join("・") : null,
+    altOutcomeParts,
+    altOptionsText: nAltOpt ? `ほかの手 ${num(nAltOpt)}` : null,
+    outcomesHead,
+    outcomes,
+    optionsHead,
+    options,
+    nextText,
+    aria,
+    detail,
+  };
+}
+
+/** まとめた静かな期の言葉（「転職活動を続ける（2 期・転職せず）」「遊ぶ人を増やす（2 期続けて）」） */
+export function quietTitle(move: string, count: number, label: string | null): string {
+  return label ? `${move}（${num(count)} 期・${label}）` : `${move}（${num(count)} 期続けて）`;
+}
+
+/** 道の画面の形。node は道を決めたカード（そこから下は一番ありそうな道）。from は道の始め（ふつう今日） */
+export function pathVM(a: Analysis, node: number, text: TextSource, opts: { from?: number } = {}): PathVM {
+  const cm = a.cm;
+  const map = cm.map;
+  const anchor = map.header.anchor;
+  const n = Math.max(0, Math.min(cm.n - 1, Math.floor(node)));
+  const pv = walkPath(a, n, opts.from ?? 0);
+  const { Wrr } = a.money;
+  const start = pv.from;
+  const firstMove = cm.first[n]!;
+  const isEnd = cm.role[n] === ROLE_E;
+  // 切り替えた行（ほかの結果・手のカードで開いた道だけ。今日・今日の手・行き先から開いた道には無い）
+  const markRow = pv.pivotRow >= 0 && n !== firstMove && !isEnd ? pv.pivotRow : -1;
+  // 行
+  const steps: PathStepVM[] = [];
+  let prev = Wrr[start]!;
+  pv.rows.forEach((r, k) => {
+    steps.push(stepVM(a, pv, r, k, text, prev, markRow));
+    if (!r.stub) prev = r.monthly;
+  });
+  // まとめた静かな期
+  const items: PathItemVM[] = [];
+  for (const g of pv.groups) {
+    const first = steps[g.from]!;
+    if (g.count < 2) {
+      items.push({ type: "step", step: first });
+      continue;
+    }
+    const last = steps[g.to]!;
+    const members = steps.slice(g.from, g.to + 1);
+    const r0 = pv.rows[g.from]!;
+    const split = cm.kidOff[r0.option + 1]! - cm.kidOff[r0.option]! >= 2;
+    const label = split && r0.outcome >= 0 ? outcomeName(map, r0.outcome) : null;
+    let span = first.ym;
+    try {
+      span = ymSpanText(anchor, first.m, last.m);
+    } catch {
+      /* 年月が読めない */
+    }
+    // 今のままが続く期は「今のまま」（「この 3 か月は今のまま（3 期続けて）」とは書かない）
+    const gName = (cm.flags[r0.option]! & F_BASE) !== 0 ? kindName(map, kindKey(cm, r0.option)) : first.move;
+    const title = quietTitle(gName, g.count, label);
+    const outcomeText = label ? `${num(g.count)} 期とも${label} ${pct(g.w)}` : null;
+    items.push({
+      type: "group",
+      key: `g${first.decision}`,
+      ym: span,
+      title,
+      outcomeText,
+      monthlyText: last.monthlyText,
+      runningText: last.runningText,
+      steps: members,
+      off: members.some((x) => x.off),
+      pivot: members.some((x) => x.pivot),
+      aria: [`${span}`, title, outcomeText, last.monthlyText, last.runningText, `${num(g.count)} 期をまとめた行。押すと 1 期ずつ出る`].filter((x): x is string => !!x).join("。"),
+    });
+  }
+  // まとめた手の後（標準の続き）
+  const lastRow = pv.rows[pv.rows.length - 1];
+  if (pv.summary && lastRow?.stub) {
+    if (pv.cont.length) {
+      pv.cont.forEach((c, k) => {
+        const isKeep = map.header.kinds[c.kind]?.[1] === "base";
+        items.push({ type: "light", key: `c${k}`, ym: ym(map, c.m), title: isKeep ? "今のまま" : kindName(map, c.kind), note: null });
+      });
+    } else if (lastRow.m + 3 < cm.H) {
+      let span = ym(map, lastRow.m + 3);
+      try {
+        span = ymSpanText(anchor, lastRow.m + 3, cm.H - 3);
+      } catch {
+        /* 年月が読めない */
+      }
+      items.push({ type: "light", key: "c", ym: span, title: "標準の選び方で続けた見積もり", note: "3 か月ごとの手と結果は、この地図では 1 つずつに分けていない" });
+    }
+  }
+  // 一番ありそうな道と違う所
+  const offs: string[] = [];
+  pv.rows.forEach((r, k) => {
+    if (k > 0 && !r.onPi) offs.push(`${ym(map, r.m)}の手: ${steps[k]!.move}`);
+    if (!r.likely && r.outcome >= 0) offs.push(`${ym(map, r.mNext)}の結果: ${outcomeName(map, r.outcome)} ${pct(r.w)}`);
+  });
+  const firstName = firstMove >= 0 ? moveName(map, kindKey(cm, firstMove), (cm.flags[firstMove]! & F_BASE) !== 0) : null;
+  const endNode = pv.end;
+  const endM = cm.month[endNode]!;
+  const total = a.money.acc[endNode]! + a.pi.V[endNode]!;
+  const vs = a.vSQ === null ? null : `ずっと今のままより ${manDelta(total - a.vSQ)}`;
+  const title = offs.length === 0 ? "一番ありそうな道" : isEnd ? "この行き先までの道" : "切り替えた道";
+  let eyebrow = `${firstName ?? "今日から"}・${ym(map, cm.month[start]!)}〜${ym(map, cm.H)}`;
+  if (start !== 0) eyebrow = `${ym(map, cm.month[start]!)}から・${ym(map, cm.H)}まで`;
+  const intro =
+    offs.length === 0
+      ? "3 か月ごとに一番良い手を選び、どの分かれでも見込みの一番大きい結果をたどった道。行を押すと、その 3 か月の文章と、ほかの結果・ほかの手が出る。ほかを押すと、そこから先の道に切り替わる"
+      : isEnd
+        ? "この行き先に着く道を今日からたどった。行を押すと、その 3 か月の文章と、ほかの結果・ほかの手が出る。ほかを押すと、そこから先の道に切り替わる"
+        : "切り替えた所から先は、3 か月ごとに一番良い手を選び、見込みの一番大きい結果をたどった。行を押すと、その 3 か月の文章と、ほかの結果・ほかの手が出る";
+  const splits = pv.rows.filter((r) => cm.kidOff[r.option + 1]! - cm.kidOff[r.option]! >= 2).length;
+  const figures: PathFigureVM[] = [
+    { label: "この道の見込み", value: pct1(pv.p), sub: splits > 0 ? `出来事の分かれ ${num(splits)} 回が、どれもこのとおりになる見込み` : "出来事の分かれが無い道" },
+    { label: "3 年の合計", value: man(total), sub: [vs, pv.summary ? "この先は標準の続きの平均" : null].filter((x): x is string => !!x).join("・") || null },
+    { label: `${ym(map, Math.min(endM, cm.H))}の月の稼ぎ`, value: manMonthly(Wrr[endNode]!), sub: `今日 ${manMonthly(Wrr[start]!)}` },
+  ];
+  // 道の終わり
+  const cls = destLabel(destClassOf(map.st(endNode), pv.summary ? map.mix(endNode) : null));
+  const endTitle = safeName(text.title(endNode), cls);
+  const end: PathEndVM = {
+    node: endNode,
+    head: endM >= cm.H ? `${ym(map, cm.H)}に着く所${pv.summary ? "（標準の続きの見積もり）" : ""}` : `${ym(map, endM)}で止まる道（その後は同じ月の稼ぎが${ym(map, cm.H)}まで続くとして数えた）`,
+    cls,
+    title: endTitle === cls ? null : endTitle,
+    numbers: text.numbers(endNode),
+    body: () => text.body(endNode),
+    facts: [`3 年の合計 ${man(total)}${vs ? `（${vs}）` : ""}`, `この道の見込み ${pct1(pv.p)}`],
+    summary: pv.summary,
+    note: pv.summary ? "この先は標準の続きの平均（3 年の合計と数字の行は、標準の選び方で続けた多くの道の平均）" : null,
+  };
+  // 見出しの線: この道の月の稼ぎ（まとめた手の後は見積もり）と、ずっと今のまま（真ん中）
+  const sparkPath: PathSparkVM["path"] = [{ m: cm.month[start]!, v: Wrr[start]!, est: false }];
+  for (const r of pv.rows) {
+    if (r.outcome < 0) continue;
+    sparkPath.push({ m: Math.min(cm.H, cm.month[r.outcome]!), v: r.monthly, est: r.stub });
+  }
+  if (endM < cm.H) sparkPath.push({ m: cm.H, v: Wrr[endNode]!, est: false });
+  const keep = keepFanOf(a)
+    .filter((p) => p.p50 !== null)
+    .map((p) => ({ m: p.m, v: p.p50! }));
+  const months: number[] = [];
+  for (let m = 0; m <= cm.H; m += 3) months.push(m);
+  const spark: PathSparkVM = {
+    path: sparkPath,
+    keep,
+    months,
+    yms: months.map((m) => ym(map, m)),
+    label: `この道の月の稼ぎ: ${ym(map, cm.month[start]!)} ${manMonthly(Wrr[start]!)} → ${ym(map, Math.min(endM, cm.H))} ${manMonthly(Wrr[endNode]!)}${keep.length ? `。ずっと今のまま（真ん中）は ${manMonthly(keep[keep.length - 1]!.v)}` : ""}`,
+  };
+  // 最初から開く行: 切り替えた行（今日の手・今日・行き先から開いた道は閉じたまま）
+  const defaultOpen: string[] = [];
+  if (markRow >= 0) {
+    const st = steps[markRow]!;
+    defaultOpen.push(st.key);
+    for (const it of items) if (it.type === "group" && it.steps.includes(st)) defaultOpen.push(it.key);
+  }
+  return {
+    node: n,
     title,
+    eyebrow,
     intro,
-    rows,
-    endTitle: safeName(text.title(end), "行き先"),
-    endText: `${ym(map, cm.month[end]!)}・3 年の合計 ${man(total)}${vs}${pv.summary ? "・この先は標準の続きの見積もり" : ""}`,
-    endNumbers: text.numbers(end),
-    cont,
-    backHref,
-    backText,
+    figures,
+    offs,
+    resetHref: offs.length ? pathHash(firstMove >= 0 ? firstMove : 0) : null,
+    resetText: "一番ありそうな道に戻す",
+    backHref: firstMove >= 0 ? moveHash(kindKey(cm, firstMove)) : OVERVIEW_HASH,
+    backText: firstName ? `${firstName}へ` : "見取り図へ",
+    readText: "最初の 3 か月から読む",
+    start: {
+      key: "start",
+      ym: ym(map, cm.month[start]!),
+      title: start === 0 ? "今日" : safeName(text.title(start), ym(map, cm.month[start]!)),
+      numbers: text.numbers(start),
+      monthlyText: `月の稼ぎ ${manMonthly(Wrr[start]!)}`,
+      body: () => text.body(start),
+    },
+    items,
+    steps,
+    end,
+    spark,
+    defaultOpen,
   };
 }
 
@@ -725,6 +1212,8 @@ export function notesVM(a: Analysis, basis: DeltaBasis, worthAvailable: boolean)
       ? `${WORTH_LABEL}: その種類の手を 3 年間ずっと使わない場合と比べた、3 年の稼ぎの差。${num(4)} 万円未満は「ほぼ差なし」`
       : "「この種類を 3 年やらない場合との差」は、計算の前提を直した木で入る（この木にはまだ無い）",
     "一番ありそうな道: 3 か月ごとに一番良い手を選び、どの分かれでも見込みの一番大きい結果をたどった 1 本の道。見込みは、その道のとおりになる見込み",
+    `道の画面: 行の年月は手を選ぶ月で、手はその次の月から 3 か月。「月の稼ぎ」はその結果の時点の 1 か月の稼ぎ（かっこの中は前の行との差）、「ここまでの稼ぎ」は${y0}からその結果の月までの合計で、${yEnd}で 3 年の合計になる`,
+    "道の画面のほかの結果・ほかの手: 押すと、そこから先を一番ありそうな道でたどり直す。結果の「3 年の合計の見込み」はその結果の後に一番良い選び方で進んだ見込み、手の差はこの道の手と比べた 3 年の合計の差",
     "週の時間（手ごとに増える作業の時間）は数に入れていない。お金だけで比べている",
     "数字はどれもモデルの見積もりで、決まった未来ではない",
   ];

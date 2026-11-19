@@ -28,6 +28,7 @@ import {
   pathVM,
   pct,
   pct1,
+  quietTitle,
   safeName,
   worthText,
 } from "../../src/deepmap/views";
@@ -223,20 +224,132 @@ describe("手の詳しい画面・道の画面", () => {
     expect(condText(a, [{ label: "a0_a1", fromKind: "ad_permside", single: false, share: 1 }], false)).toBe("その結果なら");
   });
 
-  it("道の画面（仮の形）: 今日から始まり、戻り先はその道の今日の手（今日からの道は見取り図）", () => {
+  it("道の画面: 今日の手の一番ありそうな道（行・見込み・月の稼ぎ・ここまでの稼ぎ・着いた所・戻り先）", () => {
     const a = handAnalysis();
     const text = fallbackText(a.cm.map, { annual: 360 });
-    const root = pathVM(a, 0, text);
-    expect(root.title).toMatch(/^一番ありそうな道（見込み [\d.]+%）$/);
-    expect(root.rows.length).toBeGreaterThanOrEqual(1);
-    expect(root.rows[0]!.ym).toBe("2026 年 11 月");
-    // 今日からの道は見取り図へ戻る（見取り図にその道のボタンがある）
-    expect(root.backHref).toBe("#overview");
     const f = a.cm.firstMoves.find((x) => kindKey(a.cm, x) === "ad_permside")!;
-    const deep = a.cm.kids[a.cm.kidOff[f]!]!;
-    const p = pathVM(a, deep, text);
-    expect(p.title).toMatch(/^この道（ここから先の見込み [\d.]+%）$/);
-    expect(p.backHref).toBe(moveHash("ad_permside"));
+    const vm = pathVM(a, f, text);
+    expect(vm.title).toBe("一番ありそうな道");
+    expect(vm.offs).toEqual([]);
+    expect(vm.resetHref).toBeNull();
+    expect(vm.backHref).toBe(moveHash("ad_permside"));
+    expect(vm.backText).toBe("届け出て副業の 1 社目を探すへ");
+    expect(vm.eyebrow).toBe("届け出て副業の 1 社目を探す・2026 年 11 月〜2029 年 11 月");
+    expect(vm.start.ym).toBe("2026 年 11 月");
+    expect(vm.start.title).toBe("今日");
+    expect(vm.defaultOpen).toEqual([]);
+    const s0 = vm.steps[0]!;
+    expect(s0.ym).toBe("2026 年 11 月");
+    expect(s0.span).toBe("12 月〜2 月の手");
+    expect(s0.move).toBe("届け出て副業の 1 社目を探す");
+    expect(s0.outcomeText).toBe("SpellDash だけ 45%");
+    expect(s0.monthlyText).toMatch(/^月の稼ぎ \d+\.\d 万円$/);
+    expect(s0.runningText).toMatch(/^ここまでの稼ぎ [\d,.]+ 万円$/);
+    expect(s0.nextText).toBe("次の 3 か月へ（2027 年 2 月）");
+    expect(s0.altOutcomesText).toBe("全部可 20%・どちらも不可 35%");
+    expect(s0.altOptionsText).toBe(`ほかの手 ${a.cm.firstMoves.length - 1}`);
+    // この手の結果: 3 つ（この道の物は押せない）・この判断で選べる手: 今日の手の全部（この道の手との差の大きい順）
+    expect(s0.outcomes.map((o) => o.name)).toEqual(["全部可", "SpellDash だけ", "どちらも不可"]);
+    expect(s0.outcomes.filter((o) => o.current).map((o) => o.name)).toEqual(["SpellDash だけ"]);
+    expect(s0.outcomes.every((o) => o.current || (o.href === pathHash(o.node) && /^[+−±]/.test(o.diffText ?? "")))).toBe(true);
+    expect(s0.options.length).toBe(a.cm.firstMoves.length);
+    expect(s0.options.find((o) => o.current)!.tags).toContain("この道の手");
+    expect(s0.options.filter((o) => o.tags.includes("おすすめ")).length).toBe(1);
+    const ds = s0.options.filter((o) => !o.current).map((o) => o.diffText);
+    expect(ds.every((d) => d !== null && /^[+−±]/.test(d))).toBe(true);
+    // 最後の行の次は着いた所・着いた所は 2029 年 11 月
+    const last = vm.steps[vm.steps.length - 1]!;
+    expect(last.nextText).toBe("着いた所へ（2029 年 11 月）");
+    expect(vm.end.head).toBe("2029 年 11 月に着く所");
+    expect(vm.end.facts[0]).toMatch(/^3 年の合計 [\d,]+ 万円（ずっと今のままより [+−±][\d,.]+ 万円）$/);
+    expect(vm.figures.map((x) => x.label)).toEqual(["この道の見込み", "3 年の合計", "2029 年 11 月の月の稼ぎ"]);
+    expect(vm.figures[0]!.value).toBe("32%");
+    // 文章は開いたときに作る（同じ物を返す）
+    const d0 = s0.detail();
+    expect(d0).toBe(s0.detail());
+    expect(d0.move.head).toBe("この 3 か月（12 月〜2 月）");
+    expect(d0.outcome!.head).toBe("2027 年 2 月の結果（見込み 45%）");
+    expect(d0.outcome!.facts[0]).toBe("今日からここまでの見込み 45%");
+    // 今日から（見取り図の「今日から一番ありそうな道」）は見取り図へ戻る
+    const root = pathVM(a, 0, text);
+    expect(root.backHref).toBe("#overview");
+    expect(root.eyebrow).toBe("今日から・2026 年 11 月〜2029 年 11 月");
+    expect(root.steps[0]!.option).toBe(a.pi.pi[0]);
+  });
+
+  it("道の画面: ほかの結果・手に切り替えると、上の行はそのまま、切り替えた所から先が変わる", () => {
+    const a = handAnalysis();
+    const text = fallbackText(a.cm.map, { annual: 360 });
+    const f = a.cm.firstMoves.find((x) => kindKey(a.cm, x) === "ad_permside")!;
+    const base = pathVM(a, f, text);
+    const alt = base.steps[0]!.outcomes.find((o) => o.name === "全部可")!;
+    const sw = pathVM(a, alt.node, text);
+    expect(sw.title).toBe("切り替えた道");
+    expect(sw.offs).toEqual(["2027 年 2 月の結果: 全部可 20%"]);
+    expect(sw.resetHref).toBe(pathHash(f));
+    expect(sw.steps[0]!.key).toBe(base.steps[0]!.key);
+    expect(sw.steps[0]!.outcome).toBe(alt.node);
+    expect(sw.steps[0]!.pivot).toBe(true);
+    expect(sw.steps[0]!.off).toBe(true);
+    expect(sw.steps[0]!.outcomes.find((o) => o.current)!.name).toBe("全部可");
+    expect(sw.defaultOpen).toEqual([sw.steps[0]!.key]);
+    expect(sw.figures[0]!.value).not.toBe(base.figures[0]!.value);
+    // ほかの手（おすすめでない手）に切り替える: その行に「おすすめの手ではない」・違う所に書く
+    const s1 = sw.steps[1]!;
+    const other = s1.options.find((o) => !o.current)!;
+    const sw2 = pathVM(a, other.node, text);
+    expect(sw2.steps[1]!.option).toBe(other.node);
+    expect(sw2.steps[1]!.key).toBe(s1.key);
+    expect(sw2.offs.some((t) => t.startsWith("2027 年 2 月の手: "))).toBe(other.tags.includes("おすすめ") ? false : true);
+  });
+
+  it("道の画面: 続けて同じ手の静かな期は 1 行（「今のまま（3 期続けて）」）、まとめた手の後は標準の続きの薄い行", () => {
+    const a = handAnalysis();
+    const text = fallbackText(a.cm.map, { annual: 360 });
+    const map = a.cm.map;
+    const keep = pathVM(a, map.indexOfKey("r.keep.all.1k.all.2k"), text);
+    const g = keep.items[0]!;
+    expect(g.type).toBe("group");
+    if (g.type !== "group") return;
+    expect(g.ym).toBe("2026 年 11 月〜2027 年 5 月");
+    expect(g.title).toBe("今のまま（3 期続けて）");
+    expect(g.outcomeText).toBeNull();
+    expect(g.steps.length).toBe(3);
+    expect(quietTitle("転職活動を続ける", 3, "決まらず")).toBe("転職活動を続ける（3 期・決まらず）");
+    // まとめた手（今のまま）の先: cont の手を年月と手の名前で（文章の組み立ての語彙の名前は出さない）
+    const stub = pathVM(a, map.indexOfKey("r.ad_permside.a.1as.cl1.2k"), text);
+    const st = stub.steps[stub.steps.length - 1]!;
+    expect(st.stub).toBe(true);
+    expect(st.monthlyText).toBeNull();
+    expect(st.detail().outcome).toBeNull();
+    expect(st.detail().note).toContain("標準の選び方で");
+    const light = stub.items.filter((x) => x.type === "light");
+    expect(light.map((x) => (x.type === "light" ? `${x.ym} ${x.title}` : ""))).toEqual(["2027 年 8 月 紹介で顧客を増やす", "2027 年 11 月 今のまま"]);
+    expect(stub.end.summary).toBe(true);
+    expect(stub.end.head).toBe("2029 年 11 月に着く所（標準の続きの見積もり）");
+    expect(stub.end.note).toContain("標準の続きの平均");
+    expect(stub.figures[1]!.sub).toContain("標準の続きの平均");
+    expect(stub.spark.path.some((p) => p.est)).toBe(true);
+    // cont の無いまとめた手: 1 本の薄い行
+    const stub2 = pathVM(a, map.indexOfKey("r.ad_permside.a.1k"), text);
+    const l2 = stub2.items.filter((x) => x.type === "light");
+    expect(l2.map((x) => (x.type === "light" ? x.ym : ""))).toEqual(["2027 年 5 月〜2029 年 8 月"]);
+  });
+
+  it("道の画面: 行き先から開いた道は「この行き先までの道」で、行き先の種類の名前を出す", () => {
+    const a = handAnalysis();
+    const text = fallbackText(a.cm.map, { annual: 360 });
+    const e = a.cm.map.indexOfKey("r.ad_permside.s.1fp.up");
+    const vm = pathVM(a, e, text);
+    expect(vm.title).toBe("この行き先までの道");
+    expect(vm.end.node).toBe(e);
+    expect(vm.end.cls).toBe("会社員・届け出はまだ・副業なし・Pro なし");
+    expect(vm.defaultOpen).toEqual([]);
+    expect(vm.spark.path[0]!.m).toBe(0);
+    expect(vm.spark.path[vm.spark.path.length - 1]!.m).toBe(36);
+    expect(vm.spark.keep.length).toBeGreaterThanOrEqual(2);
+    expect(vm.spark.keep.every((p) => p.m % 3 === 0 && p.m >= 0 && p.m <= 36)).toBe(true);
+    expect(vm.spark.months).toEqual([0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]);
   });
 
   it("どの画面の文字にも英字の鍵・数でない値が出ない（年収 360 と 540）", () => {
@@ -246,7 +359,12 @@ describe("手の詳しい画面・道の画面", () => {
       const all: string[] = [];
       strings(overviewVM(a), all);
       for (const f of a.cm.firstMoves) strings(moveDetailVM(a, f), all);
-      for (let i = 0; i < a.cm.n; i += 3) strings(pathVM(a, i, text), all);
+      for (let i = 0; i < a.cm.n; i += 3) {
+        const p = pathVM(a, i, text);
+        strings(p, all);
+        for (const st of p.steps) strings(st.detail(), all);
+        all.push(p.end.body(), p.start.body());
+      }
       strings(notesVM(a, "q", true), all);
       strings(notesVM(a, "tree", false), all);
       const bad = all.filter((s) => ID_RE.test(s) || /NaN|Infinity|undefined/.test(s));

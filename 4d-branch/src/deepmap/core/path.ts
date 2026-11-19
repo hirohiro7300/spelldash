@@ -4,7 +4,7 @@
 // ほかの結果や手に切り替えるのは、そのカードを pivot にして walkPath をもう一度呼ぶだけ（約 2,000 のどの分かれ道もたどれる）。
 // 続けて同じ手で結果が 1 つか同じ名前の静かな期は 1 つにまとめる（groups）。まとめた手の後は標準の続き（cont）を薄い行で出す。
 
-import { F_BASE, F_STUB, F_SUM, isUnder, kindKey, ROLE_A } from "./compile";
+import { F_BASE, F_STUB, F_SUM, isUnder, kindKey, ROLE_A, type CompiledMap } from "./compile";
 import { deltaBetween, type Analysis, type Delta } from "./passes";
 
 export interface PathAltOutcome {
@@ -50,6 +50,10 @@ export interface PathRow {
   total: number;
   /** 選んだ手がおすすめの手 */
   onPi: boolean;
+  /** その判断のおすすめの手（数が出せなければ −1） */
+  piOption: number;
+  /** 結果が、その手の中で一番ありそうな結果（mostLikelyChain が選ぶ物: 割合が一番大きく、同じなら並びの前）。結果が無ければ true */
+  likely: boolean;
   /** 選んだ手がまとめた手（結果はまとめた行き先: この先は標準の続き） */
   stub: boolean;
   altOutcomes: PathAltOutcome[];
@@ -85,6 +89,8 @@ export interface PathView {
   from: number;
   /** 道を決めたカード（そこから下は一番ありそうな道） */
   pivot: number;
+  /** 道を決めたカードがある行（その行の手か結果。道の始めなら −1） */
+  pivotRow: number;
   rows: PathRow[];
   groups: PathGroup[];
   /** 始めから着くまでの見込み（各行の結果の割合の積） */
@@ -97,9 +103,21 @@ export interface PathView {
   cont: PathContRow[];
 }
 
+/** 手 j の一番ありそうな結果（割合が一番大きく、同じなら並びの前）。結果が無ければ −1 */
+export function likelyOutcome(cm: CompiledMap, j: number): number {
+  const { kidOff, kids, w } = cm;
+  let best = -1;
+  let bw = -1;
+  for (let s = kidOff[j]!; s < kidOff[j + 1]!; s++) {
+    const c = kids[s]!;
+    if (w[c]! > bw) (bw = w[c]!), (best = c);
+  }
+  return best;
+}
+
 /** x から下の一番ありそうな道（判断はおすすめの手、結果は見込みの一番大きい物・同じなら並びの前）。p は x からの見込み */
 export function mostLikelyChain(a: Analysis, x: number): { nodes: number[]; p: number } {
-  const { kidOff, kids, role, w } = a.cm;
+  const { kidOff, role, w } = a.cm;
   const { pi } = a.pi;
   const nodes = [x];
   let p = 1;
@@ -110,12 +128,8 @@ export function mostLikelyChain(a: Analysis, x: number): { nodes: number[]; p: n
     if (lo === hi) break;
     let next = -1;
     if (role[i] === ROLE_A) {
-      let bw = -1;
-      for (let s = lo; s < hi; s++) {
-        const c = kids[s]!;
-        if (w[c]! > bw) (bw = w[c]!), (next = c);
-      }
-      p *= bw;
+      next = likelyOutcome(a.cm, i);
+      p *= w[next]!;
     } else next = pi[i]!;
     if (next < 0) break;
     nodes.push(next);
@@ -170,6 +184,8 @@ export function walkPath(a: Analysis, pivot: number, from = 0): PathView {
       acc: out >= 0 ? acc[out]! : acc[opt]!,
       total: out >= 0 ? acc[out]! + V[out]! : acc[opt]! + V[opt]!,
       onPi: pi[d] === opt,
+      piOption: pi[d]!,
+      likely: out < 0 || likelyOutcome(cm, opt) === out,
       stub: (flags[opt]! & F_STUB) !== 0,
       altOutcomes,
       altOptions,
@@ -179,7 +195,8 @@ export function walkPath(a: Analysis, pivot: number, from = 0): PathView {
   const summary = (flags[end]! & F_SUM) !== 0;
   const cont: PathContRow[] = [];
   if (summary) for (const c of cm.map.cont(end) ?? []) cont.push({ m: c.m, kind: c.kind, ev: c.ev ?? null });
-  return { from: start, pivot, rows, groups: groupRows(a, rows), p: cum, end, summary, cont };
+  const pivotRow = pivot === start ? -1 : rows.findIndex((r) => r.option === pivot || r.outcome === pivot);
+  return { from: start, pivot, pivotRow, rows, groups: groupRows(a, rows), p: cum, end, summary, cont };
 }
 
 /** 続けて同じ手で、結果が 1 つか同じ名前の静かな期をまとめる（まとめた手の行はまとめない） */

@@ -37,9 +37,17 @@ export function ymSpanText(anchor: string, m0: number, m1: number): string {
   return a.y === b.y ? `${a.y} 年 ${a.mo} 月〜${b.mo} 月` : `${a.y} 年 ${a.mo} 月〜${b.y} 年 ${b.mo} 月`;
 }
 
-/** 手の 3 か月（「11 月〜1 月」。m はその手を始める月） */
+/**
+ * 手の 3 か月（「12 月〜2 月」）。m はその手を選ぶ判断の月で、手はその次の月から 3 か月（地図の計算が 3 か月を数える範囲。
+ * 作業メモ truth-15 (d)・SPEC v1 §4.2「quarter periods written as 12 月〜2 月」）。結果はその 3 か月の終わりの月（m + 3）に出る
+ */
 export function quarterSpanText(anchor: string, m: number, len = 3): string {
-  const a = ymAt(anchor, m);
-  const b = ymAt(anchor, m + Math.max(1, len) - 1);
+  const a = ymAt(anchor, m + 1);
+  const b = ymAt(anchor, m + Math.max(1, len));
   return `${a.mo} 月〜${b.mo} 月`;
+}
+
+/** 手の 3 か月を年つきで（「2026 年 12 月〜2027 年 2 月」） */
+export function quarterSpanYmText(anchor: string, m: number, len = 3): string {
+  return ymSpanText(anchor, m + 1, m + Math.max(1, len));
 }
