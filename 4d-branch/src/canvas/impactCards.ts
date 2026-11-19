@@ -17,7 +17,7 @@ export interface ImpactCard {
   pill: string | null;
   /** 縁取りの札（結果・行き先: 「35%」、今日: 「最善 +65万」） */
   chip: string | null;
-  /** ★・≒・✓ */
+  /** ★・◎（おすすめ: q のある地図で、判断の一番良い手。★ の無い所だけ）・≒・✓ */
   marks: string;
   /** 1 行目の名前（選択肢: 領域「SpellDash」「本業」「独立」「今のまま」・結果: 「3 か月後」・今日: 「今日」） */
   head: string;
@@ -149,7 +149,8 @@ export class ImpactCards {
     const ranks = new Map<ID, number>();
     // 行き先は見込みの高い順に置く（同じ順位の中で、上の物ほど先に）
     imp.ends.slice(0, 20).forEach((e, i) => ranks.set(e.id, 4 + i / 100));
-    for (const [id, a] of imp.alt) if (a.mark === "star" && reach(id) >= 0.01) ranks.set(id, 3);
+    // ★ の選択肢（選択肢の詳細を作らず、印だけを読む）
+    for (const id of imp.altIds()) if (reach(id) >= 0.01 && imp.markOf(id) === "star") ranks.set(id, 3);
     const root = imp.root ? imp.decision.get(imp.root) : undefined;
     for (const id of root?.alts ?? []) ranks.set(id, 2);
     if (imp.root) ranks.set(imp.root, 2);
@@ -213,7 +214,7 @@ function buildCard(imp: ImpactResult, doc: DocData, id: ID): ImpactCard | null {
     card.dropped = a.dropped;
     card.pill = a.delta === null ? "—" : a.isBase ? "基準" : `${a.partial ? "≈" : ""}${formatMan(a.delta)}`;
     card.low = a.delta === null ? "—" : a.isBase ? "基準" : lowOf(card.pill);
-    card.marks = (a.mark === "star" ? "★" : a.mark === "tie" ? "≒" : "") + (a.picked ? "✓" : "");
+    card.marks = (a.mark === "star" ? "★" : a.rec ? "◎" : "") + (a.mark === "tie" ? "≒" : "") + (a.picked ? "✓" : "");
     if (a.isBase) {
       card.head = "今のまま";
       card.headColor = "#A3ADBF";

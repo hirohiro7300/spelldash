@@ -257,6 +257,9 @@
 .imp-mark.is-star {
   color: #f2c14e;
 }
+.imp-mark.is-rec {
+  color: #c9a85a;
+}
 .imp-mark.is-picked {
   color: var(--ok);
 }
@@ -362,6 +365,9 @@
   flex: none;
   margin-top: 3px;
   color: var(--accent-2);
+}
+.imp-flip.is-busy {
+  color: var(--text-3);
 }
 
 /* ---- 手の種類・大事な判断の行（3 年でやる価値が大きい手・避けたい手・この先の大事な判断） */

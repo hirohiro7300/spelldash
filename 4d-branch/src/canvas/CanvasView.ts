@@ -591,7 +591,7 @@ export class CanvasView {
       if (ie) {
         // 3 年の分かれ道: 判断の線は控えめ（★ の線を強く・基準の線は薄く）、結果の線はその結果の色で、見込みの太さ。
         // 縮小すると、選び方の道（π）だけを濃く
-        const pi = imp.piEdges.has(eid);
+        const pi = imp.onPiEdge(e);
         const k = lod === "low" ? (pi ? 1 : 0.25) : lod === "dot" ? (pi ? 0.8 : 0.1) : ie.alpha;
         drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: false, offScenario: ev.offScenario, flowT, style: ie.style, styleAlpha: k });
         if (flowT !== null && (ev.path || selected) && lod !== "low" && lod !== "dot") animating = true;

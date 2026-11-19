@@ -3,10 +3,15 @@
 //
 // 3 年の分かれ道（未来の道筋 v2）の範囲は、開く・閉じるを文書ではなく見え方（UiState.prefs.impactOpen・端末ごと）で持ち、
 // 位置も文書の x・y ではなく、見えているノードだけを目次の形に並べ直した「重ねる位置」を使う（posOf）。設計: docs/DESIGN.md §4.7
+//
+// 3 年の影響はエンジン（src/model/impactEngine.ts）が数える。ストアの変更はエンジンに渡すだけで（印を付ける）、読まれたときに要る所だけ
+// やり直す（作業メモ SPEC v1 §7.1・perf-11）。見込み（未来の道筋の P_path）は、見込みに使う物（道の線・% ・線のシナリオ・入口・種類）の
+// 版と方針で覚える（題名・状態・位置だけの変更では数え直さない: perf-2）。
 
 import { computeForecast, type ForecastResult } from "../model/forecast";
 import { flowOuts, forkKindOf, isFlowEdge, isImpactRoot } from "../model/forks";
-import { computeImpact, emptyImpact, type ImpactResult } from "../model/impact";
+import type { ImpactResult } from "../model/impact";
+import { ImpactEngine } from "../model/impactEngine";
 import { compareImpactKids, outlineLayout } from "../model/impactLayout";
 import { buildIndex, inScenario, type GraphIndex } from "../model/graph";
 import { isEmptyQuery, parseQuery, searchNodes } from "../model/search";
@@ -14,6 +19,7 @@ import type { DocData, GEdge, GNode, ID } from "../model/types";
 import { computeCollapse, computePaths, computeUnreached, type CollapseResult } from "../model/visibility";
 import type { ChangeInfo, Store } from "../store/store";
 import { isNarrowScreen } from "../ui/breakpoints";
+import { mapDocOf } from "./futureCache";
 import type { UiState } from "./uiState";
 
 export interface NodeVis {
@@ -46,10 +52,6 @@ export interface EdgeVis {
 
 const HIDDEN_NODE: NodeVis = { hidden: true, alpha: 0, match: false, path: false, ghost: false, future: false, offScenario: false, collapsedCount: 0, collapsed: false, inProject: false };
 
-/** 3 年の影響の計算（と、その範囲の見込み）が読まない所: ノードの文字・位置、線の説明と条件、更新の時刻 */
-const NODE_TEXT_KEYS: ReadonlySet<string> = new Set(["title", "body", "tags", "conditions", "x", "y", "updatedAt"]);
-const EDGE_TEXT_KEYS: ReadonlySet<string> = new Set(["label", "condition", "updatedAt"]);
-
 /** 1 段だけの比較（配列は要素ごと、オブジェクトはキーごと。それより深い物は同じ物かだけ） */
 function same1(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
@@ -63,15 +65,22 @@ function same1(a: unknown, b: unknown): boolean {
   return false;
 }
 
-/** skip のほかの所がすべて同じか（どちらかが無ければ違う＝足した・消した） */
-function sameExcept(a: object | undefined, b: object | undefined, skip: ReadonlySet<string>): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  const ra = a as Record<string, unknown>;
-  const rb = b as Record<string, unknown>;
-  for (const k of Object.keys(ra)) if (!skip.has(k) && !same1(ra[k], rb[k])) return false;
-  for (const k of Object.keys(rb)) if (!skip.has(k) && !(k in ra)) return false;
-  return true;
+/** 見込み（computeForecast）が読むノードの所: 種類（分岐の割り方）・入口・分かれ道の種類・3 年の分かれ道の入口の印 */
+function forecastNodeChanged(a: GNode | undefined, b: GNode | undefined): boolean {
+  if (!a || !b) return a !== b;
+  if (a.type !== b.type) return true;
+  if (a.meta === b.meta) return false;
+  return a.meta?.forecastRoot !== b.meta?.forecastRoot || a.meta?.fork !== b.meta?.fork || isImpactRoot(a) !== isImpactRoot(b);
+}
+
+/** 見込みが読む線の所（道の線だけ）: 両端・関係・% ・シナリオ */
+function forecastEdgeChanged(a: GEdge | undefined, b: GEdge | undefined): boolean {
+  if (a === b) return false;
+  const fa = !!a && isFlowEdge(a);
+  const fb = !!b && isFlowEdge(b);
+  if (!fa && !fb) return false;
+  if (!a || !b || fa !== fb) return true;
+  return a.source !== b.source || a.target !== b.target || !Object.is(a.meta?.prob, b.meta?.prob) || !same1(a.scenarioIds, b.scenarioIds);
 }
 
 /** 3 年の分かれ道の範囲（索引ごとに作り直す） */
@@ -118,17 +127,20 @@ export class ViewModel {
   pathActive = false;
   hiddenCount = 0;
   version = 0;
-  /** 索引を作り直した回数（見込みの作り直しの目印） */
+  /** 索引を作り直した回数（重ねる位置・範囲の作り直しの目印） */
   private indexVersion = 0;
+  /** 見込みに使う物（道の線・% ・線のシナリオ・入口・種類）の版。題名・状態・位置では進めない（perf-2） */
+  private forecastInputs = 0;
+  /** 題名の版（見込みの行き先の並びで、同じ見込みの行き先を題名の順にする所だけが読む） */
+  private titleVersion = 0;
   private forecastKey = "";
+  private forecastTitles = 0;
+  /** 見込みを数え直した回数（3 年の影響のエンジンが、合流のある地図で見込みが変わったかを見る） */
+  private forecastStamp = 0;
   private forecastCache: ForecastResult = { active: false, reach: new Map(), ends: [], longest: 0, order: [], impactScope: new Set() };
-  private impactKey = "";
-  private impactCache: ImpactResult = emptyImpact();
-  /**
-   * 3 年の影響の計算に使う物の版（impact の鍵）。文字だけの変更（題名・本文・タグ・条件・線の説明と条件）と位置では進めない。
-   * 見分けるために、直前に見たノード・線を覚えておき、変わった物だけ前と後を比べる
-   */
-  private impactInputs = 0;
+  /** 3 年の影響のエンジン（文書の変更を受け、読まれたときに要る所だけやり直す） */
+  readonly engine = new ImpactEngine();
+  /** 直前に見たノード・線（見込みに使う所が変わったかを、変わった物だけ前と後で比べる） */
   private seenNodes = new Map<ID, GNode>();
   private seenEdges = new Map<ID, GEdge>();
   private dirtyIndex = true;
@@ -174,19 +186,32 @@ export class ViewModel {
         this.dirtyIndex = true;
         this.dirtyVis = true;
       } else this.dirtyPos = true;
-      this.noteImpactInputs(info);
+      // 印を付けるだけ（数え直しは読まれたときに。作業メモ perf-4）
+      this.engine.note(store.doc, info);
+      if (info.full) this.useMapDoc();
+      this.noteForecastInputs(info);
     });
     ui.on("visual", () => {
       this.dirtyVis = true;
     });
+    this.useMapDoc();
     this.seeAll();
   }
 
   invalidate(): void {
     this.dirtyIndex = true;
     this.dirtyVis = true;
-    this.impactInputs++;
+    this.forecastInputs++;
+    this.engine.invalidate();
+    this.useMapDoc();
     this.seeAll();
+  }
+
+  /** 同梱の地図を組み立てたままの文書なら、3 年の影響の形をその地図の列から作るようにエンジンに知らせる（src/app/futureCache.ts） */
+  private useMapDoc(): void {
+    const doc = this.store.doc;
+    const map = mapDocOf(doc);
+    if (map) this.engine.useMap({ map, doc });
   }
 
   /** 今の文書のノード・線を覚え直す（全部が入れ替わったとき） */
@@ -196,29 +221,32 @@ export class ViewModel {
     this.seenEdges = new Map(Object.entries(doc.edges));
   }
 
-  /** 変わったノード・線の前と後を比べ、3 年の影響の計算に使う所が変わっていたら版を進める */
-  private noteImpactInputs(info: ChangeInfo): void {
+  /** 変わったノード・線の前と後を比べ、見込みに使う所が変わっていたら版を進める（題名だけなら題名の版） */
+  private noteForecastInputs(info: ChangeInfo): void {
     if (info.full) {
-      this.impactInputs++;
+      this.forecastInputs++;
+      this.titleVersion++;
       this.seeAll();
       return;
     }
     const doc = this.store.doc;
-    // プロジェクト（領域の名前と色）・シナリオ（方針で絞る）は、変わったら計算し直す（まれ）。位置だけの変更は比べない
-    let hit = info.projects.size > 0 || info.scenarios.size > 0;
+    let hit = false;
     for (const id of info.nodes) {
+      const before = this.seenNodes.get(id);
       const now = doc.nodes[id];
-      if (!hit && !info.positionsOnly && !sameExcept(this.seenNodes.get(id), now, NODE_TEXT_KEYS)) hit = true;
+      if (!hit && forecastNodeChanged(before, now)) hit = true;
+      if (before && now && before.title !== now.title) this.titleVersion++;
       if (now) this.seenNodes.set(id, now);
       else this.seenNodes.delete(id);
     }
     for (const id of info.edges) {
+      const before = this.seenEdges.get(id);
       const now = doc.edges[id];
-      if (!hit && !sameExcept(this.seenEdges.get(id), now, EDGE_TEXT_KEYS)) hit = true;
+      if (!hit && forecastEdgeChanged(before, now)) hit = true;
       if (now) this.seenEdges.set(id, now);
       else this.seenEdges.delete(id);
     }
-    if (hit) this.impactInputs++;
+    if (hit) this.forecastInputs++;
   }
 
   private ensureIndex(): void {
@@ -250,33 +278,63 @@ export class ViewModel {
 
   /**
    * 未来の道筋の見込み（予測の入口があるときだけ active）。シナリオを選んでいれば、そのシナリオを選んだ場合の見込み。
-   * 文書が変わるか、選んだシナリオが変わったときだけ計算し直す
+   * 見込みに使う物（道の線・% ・線のシナリオ・入口・種類）が変わるか、選んだシナリオが変わったときだけ数え直す（作業メモ perf-2）。
+   * 題名だけが変わったときは、行き先の並び（同じ見込みの中は題名の順）だけを、読まれたときに並べ直す
    */
   get forecast(): ForecastResult {
-    this.ensure();
-    const sid = this.ui.prefs.scenarioId ?? null;
-    const key = `${this.indexVersion}|${sid ?? ""}`;
+    const doc = this.store.doc;
+    const sid0 = this.ui.prefs.scenarioId ?? null;
+    const sid = sid0 && doc.scenarios[sid0] ? sid0 : null;
+    const key = `${this.forecastInputs}|${sid ?? ""}`;
     if (key !== this.forecastKey) {
-      this.forecastCache = computeForecast(this.store.doc, this.index.out, sid && this.store.doc.scenarios[sid] ? sid : null);
+      this.ensureIndex();
+      this.forecastCache = this.titledEnds(computeForecast(doc, this.index.out, sid));
       this.forecastKey = key;
+      this.forecastTitles = this.titleVersion;
+      this.forecastStamp++;
     }
     return this.forecastCache;
   }
 
+  /** 見込みの行き先の並びを、題名が変わったら読まれたときに並べ直す（computeForecast と同じ並べ方） */
+  private titledEnds(fc: ForecastResult): ForecastResult {
+    let ends = fc.ends;
+    Object.defineProperty(fc, "ends", {
+      enumerable: true,
+      configurable: true,
+      get: (): ID[] => {
+        if (this.forecastTitles !== this.titleVersion) {
+          this.forecastTitles = this.titleVersion;
+          const doc = this.store.doc;
+          ends = ends.slice().sort((a, b) => fc.reach.get(b)!.p - fc.reach.get(a)!.p || (doc.nodes[a]?.title || "").localeCompare(doc.nodes[b]?.title || "", "ja"));
+        }
+        return ends;
+      },
+    });
+    return fc;
+  }
+
   /**
-   * 3 年の影響（v2 の未来の道筋があるときだけ active）。計算に使う物が変わるか、選んだシナリオが変わったときだけ計算し直す
-   * （% ・状態・年収・種類・時間・meta・つなぎ方の編集。題名などの文字だけの編集・開く・閉じる・選ぶだけでは計算し直さない。
+   * 3 年の影響（v2 の未来の道筋があるときだけ active）。エンジンが、計算に使う物が変わったときだけやり直す
+   * （% ・状態・年収・種類・時間・meta・つなぎ方の編集とシナリオ。題名などの文字だけの編集・開く・閉じる・選ぶだけでは同じ結果を返す。
    * 題名を書いている所は、それぞれが文書から書き直す）
    */
   get impact(): ImpactResult {
-    const fc = this.forecast;
-    const sid = this.ui.prefs.scenarioId ?? null;
-    const key = `${this.impactInputs}|${sid ?? ""}`;
-    if (key !== this.impactKey) {
-      this.impactCache = fc.impactScope.size ? computeImpact(this.store.doc, this.index.out, fc, sid && this.store.doc.scenarios[sid] ? sid : null) : emptyImpact();
-      this.impactKey = key;
-    }
-    return this.impactCache;
+    const doc = this.store.doc;
+    const sid0 = this.ui.prefs.scenarioId ?? null;
+    const sid = sid0 && doc.scenarios[sid0] ? sid0 : null;
+    return this.engine.result({
+      doc,
+      sid,
+      out: () => {
+        this.ensureIndex();
+        return this.index.out;
+      },
+      reach: () => {
+        const fc = this.forecast;
+        return { version: this.forecastStamp, of: (id) => fc.reach.get(id)?.p ?? 0 };
+      },
+    });
   }
 
   private compute(): void {

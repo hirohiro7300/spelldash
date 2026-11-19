@@ -5,6 +5,7 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 import { App } from "./app/App";
 import { UiState } from "./app/uiState";
+import { pageMapDoc } from "./app/futureCache";
 import { buildDemoDoc } from "./demo/demo";
 import { loadImpactBundle } from "./demo/futureBundle";
 import { buildStressDoc } from "./demo/stress";
@@ -14,13 +15,18 @@ import { Store } from "./store/store";
 import { isNarrowScreen } from "./ui/breakpoints";
 import { showNewerScreen } from "./ui/newerScreen";
 
-/** 表示の切り替え。claude.ai の Artifact ではクエリ文字列が渡らないので #stress-2000 ・ #demo も受ける */
-function readMode(): { stress: number; demo: boolean } {
+/**
+ * 表示の切り替え。claude.ai の Artifact ではクエリ文字列が渡らないので #stress-2000 ・ #demo も受ける。
+ * #demo-q: ページに 3 か月ごとの地図（版 7 の候補）を入れたビルドだけ、その地図を組み立てた一時表示（保存の新しい形ができるまでの確かめの道。
+ * 入っていないビルドではふつうのデモ）
+ */
+function readMode(): { stress: number; demo: boolean; demoQ: boolean } {
   const params = new URLSearchParams(location.search);
   const hash = location.hash.replace(/^#/, "");
   const m = /^stress-(\d{1,5})$/.exec(hash);
   const stress = Math.max(0, Math.min(20000, Number(params.get("stress") || (m ? m[1] : 0)) || 0));
-  return { stress, demo: params.has("demo") || hash === "demo" };
+  const demoQ = hash === "demo-q";
+  return { stress, demo: params.has("demo") || hash === "demo" || demoQ, demoQ };
 }
 
 async function boot(): Promise<void> {
@@ -33,7 +39,7 @@ async function boot(): Promise<void> {
   // 手で # を書き換えて表示の種類が変わったら、開き直す
   window.addEventListener("hashchange", () => {
     const next = readMode();
-    if (next.stress !== mode.stress || next.demo !== mode.demo) location.reload();
+    if (next.stress !== mode.stress || next.demo !== mode.demo || next.demoQ !== mode.demoQ) location.reload();
   });
   const persistence = new Persistence({ mode: ephemeral ? "memory" : "auto" });
   await persistence.open();
@@ -48,6 +54,7 @@ async function boot(): Promise<void> {
   /** 保存してあった内容を読めず、代わりの内容（デモ・バックアップ）で始めた（アカウントの同期で、古い手元として扱う） */
   let bootFallback = false;
   if (mode.stress > 0) doc = buildStressDoc(mode.stress);
+  else if (mode.demoQ) doc = (await pageMapDoc()) ?? buildDemoDoc();
   else if (ephemeral) doc = buildDemoDoc();
   else {
     await persistence.acquireWriter();

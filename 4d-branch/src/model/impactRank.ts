@@ -63,15 +63,18 @@ function projectOf(doc: DocData, ids: ID[]): ID | null {
   return best;
 }
 
-/** 種類ごとの出てくる所（今のままを除く。その道で来る見込みの高い順、同じなら差の大きい順） */
+/**
+ * 種類ごとの出てくる所（今のままを除く。その道で来る見込みの高い順、同じなら差の大きい順）。
+ * 選択肢の詳細（AltInfo）は作らず、差だけを読む（8 万枚の地図で 3.5 万の手: 作業メモ perf-2）
+ */
 function instancesByFam(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): Map<string, Array<{ id: ID; p: number; delta: number | null }>> {
   const by = new Map<string, Array<{ id: ID; p: number; delta: number | null }>>();
-  for (const [id, a] of imp.alt) {
-    if (a.isBase) continue;
+  for (const id of imp.altIds()) {
+    if (imp.isBaseOf(id)) continue;
     const f = famOf(doc.nodes[id]);
     if (!f) continue;
     const list = by.get(f) ?? [];
-    list.push({ id, p: fc?.reach.get(id)?.p ?? 0, delta: a.delta });
+    list.push({ id, p: fc?.reach.get(id)?.p ?? 0, delta: imp.deltaOf(id) });
     by.set(f, list);
   }
   for (const list of by.values()) list.sort((x, y) => y.p - x.p || (y.delta ?? -Infinity) - (x.delta ?? -Infinity) || (x.id < y.id ? -1 : 1));
@@ -149,12 +152,14 @@ export function hasFamLabel(doc: DocData, rootId: ID | null, fam: string): boole
 export function keyDecisions(imp: ImpactResult, limit = 8): KeyDecision[] {
   if (!imp.active) return [];
   const rows: KeyDecision[] = [];
-  for (const [id, d] of imp.decision) {
+  // 判断の詳細（DecisionInfo）は作らず、来る見込みと差だけを読む
+  for (const id of imp.decisionIds()) {
     if (id === imp.root) continue;
     const p = imp.pPi.get(id) ?? 0;
-    const stakes = d.stakes;
-    if (!(p > 0) || stakes === null || !(stakes >= 1)) continue;
-    rows.push({ id, p, stakes, best: d.best });
+    if (!(p > 0)) continue;
+    const stakes = imp.stakesOf(id);
+    if (stakes === null || !(stakes >= 1)) continue;
+    rows.push({ id, p, stakes, best: imp.bestOf(id) });
   }
   rows.sort((a, b) => b.p * b.stakes - a.p * a.stakes || (a.id < b.id ? -1 : 1));
   return rows.slice(0, limit);

@@ -11,7 +11,7 @@
 import type { AppContext } from "../app/context";
 import { futureData } from "../demo/futureBundle";
 import { formatPercent } from "../model/forecast";
-import { computeImpact, IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, type AltInfo, type ImpactResult } from "../model/impact";
+import { IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, type AltInfo, type ImpactResult, type SalaryFlips } from "../model/impact";
 import { formatMan, formatShare, IMPACT_FILL, IMPACT_INK, IMPACT_NEUTRAL_RING, impactBin } from "../model/impactFormat";
 import { cachedWorthRanking, famLabel, hasFamLabel, keyDecisions } from "../model/impactRank";
 import {
@@ -71,30 +71,13 @@ function whoText(app: AppContext, imp: ImpactResult): string {
 
 // ------------------------------------------------------------ おすすめの値（自分で選んだ手・方針を外した 3 年の稼ぎ）
 
-const bestCache = new WeakMap<ImpactResult, number | null>();
-
 /**
  * おすすめの選び方での 3 年の稼ぎ。自分で選んだ手（進行中・完了）も方針も無ければ今の値そのもの。
- * あれば、選んだ手を外し（見送りはそのまま）方針でも絞らずに計算し直す（数が変わるまで覚えておく）
+ * あれば、選んだ手を外し（見送りはそのまま）方針でも絞らない 1 回の計算（エンジンが結果ごとに覚える。作業メモ perf-5）
  */
-function recommendedValue(app: AppContext, imp: ImpactResult, scenario: boolean): number | null {
+function recommendedValue(imp: ImpactResult, scenario: boolean): number | null {
   if (!imp.hasPicks && !scenario) return imp.vRoot;
-  const hit = bestCache.get(imp);
-  if (hit !== undefined) return hit;
-  const doc = app.store.doc;
-  const nodes = { ...doc.nodes };
-  for (const id of imp.scope) {
-    const n = nodes[id];
-    if (n && (n.status === "active" || n.status === "done")) nodes[id] = { ...n, status: "open" };
-  }
-  let v: number | null = null;
-  try {
-    v = computeImpact({ ...doc, nodes }, app.vm.index.out, null, null).vRoot;
-  } catch {
-    v = null;
-  }
-  bestCache.set(imp, v);
-  return v;
+  return imp.recommended();
 }
 
 // ------------------------------------------------------------ 書いた文の元・フォーカス
@@ -306,13 +289,19 @@ function areaChip(a: AreaInfo): HTMLElement {
   return h("span", { class: "imp-area", style: { "--c": a.color } }, a.label);
 }
 
-/** ★（おすすめ）・≒（ほぼ同じ）・✓（選んだ手） */
+/** ★（おすすめ）・◎（おすすめ: q のある地図の一番良い手。★ でないとき）・≒（ほぼ同じ）・✓（選んだ手） */
 function markOf(info: AltInfo): { text: string; label: string } {
   const marks: Array<[string, string]> = [];
   if (info.picked) marks.push(["✓", "選んだ手"]);
   if (info.mark === "star") marks.push(["★", "おすすめ"]);
-  else if (info.mark === "tie") marks.push(["≒", "ほぼ同じ"]);
+  else if (info.rec) marks.push(["◎", "おすすめ"]);
+  if (info.mark === "tie") marks.push(["≒", "ほぼ同じ"]);
   return { text: marks.map((m) => m[0]).join(""), label: marks.map((m) => m[1]).join("・") };
+}
+
+/** 印の部品の class（★ は金、◎ は控えめな金、✓ は緑） */
+function markClass(info: AltInfo): string {
+  return `imp-mark${info.mark === "star" ? " is-star" : info.rec ? " is-rec" : ""}${info.picked ? " is-picked" : ""}`;
 }
 
 const li = (...children: Child[]): HTMLElement => h("li", null, ...children);
@@ -368,7 +357,7 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, seen: See
       attrs: { "aria-current": opts.current ? "true" : null },
       onClick: () => opts.onGo(id),
     },
-    h("span", { class: `imp-mark${info.mark === "star" ? " is-star" : ""}${info.picked ? " is-picked" : ""}` }, mark.text),
+    h("span", { class: markClass(info) }, mark.text),
     h(
       "span",
       { class: "imp-alt-title" },
@@ -396,11 +385,48 @@ function decisionList(app: AppContext, imp: ImpactResult, decisionId: ID, seen: 
   return list;
 }
 
-/** 年収で今日の一番が入れ替わる所 */
+/** これより小さい地図は、年収の境目をその場で数える（版 6 の 1,533 枚: 40 回ほどの計算で数 ms） */
+const FLIP_SYNC_NODES = 4000;
+
+/** 手が空いたときに 1 度呼ぶ（requestIdleCallback。無ければ次の番に） */
+function whenIdle(fn: () => void): void {
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  if (ric) ric(fn, { timeout: 300 });
+  else setTimeout(fn, 0);
+}
+
+/**
+ * 年収で今日の一番が入れ替わる所。大きい地図では、パネルを描いた後に、手が空いたときに逆にたどる計算 1 回ずつ進め、
+ * その間は「計算中」の行を出す（作業メモ perf-8）。数が変わってパネルを作り直したら（この行が外れたら）、そこで止める
+ */
 function flipNote(app: AppContext, imp: ImpactResult, seen: Seen): HTMLElement {
-  const lines = flipTexts(imp.salaryFlips(), (id) => seen.title(app.store.doc, id) || "（無題）");
-  if (!lines.length) lines.push("年収が 200〜1,000 万円のどこでも、いちばんの手は同じ");
-  return h("div", { class: "imp-flip" }, icon("swap", 13), h("div", null, ...lines.map((l) => h("div", null, l))));
+  const body = h("div");
+  const note = h("div", { class: "imp-flip" }, icon("swap", 13), body);
+  const show = (f: SalaryFlips): void => {
+    const lines = flipTexts(f, (id) => seen.title(app.store.doc, id) || "（無題）");
+    if (!lines.length) lines.push("年収が 200〜1,000 万円のどこでも、いちばんの手は同じ");
+    clear(body);
+    body.append(...lines.map((l) => h("div", null, l)));
+    note.classList.remove("is-busy");
+    note.removeAttribute("aria-busy");
+  };
+  const ready = imp.salaryFlipsReady() ?? (imp.counts.nodes <= FLIP_SYNC_NODES ? imp.salaryFlips() : null);
+  if (ready) {
+    show(ready);
+    return note;
+  }
+  body.append(h("div", { class: "imp-flip-wait" }, "年収で一番の手が入れ替わる所を計算中…"));
+  note.classList.add("is-busy");
+  note.setAttribute("aria-busy", "true");
+  const step = (): void => {
+    // 作り直した・数が変わった: やめる（次のパネルが自分で始める。同じ版なら途中から続く）
+    if (!note.isConnected || app.vm.impact !== imp) return;
+    const f = imp.salaryFlipsStep();
+    if (f) show(f);
+    else whenIdle(step);
+  };
+  whenIdle(step);
+  return note;
 }
 
 // ------------------------------------------------------------ 年収
@@ -600,7 +626,7 @@ function impactHeader(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
       title.textContent = `${span}の影響（${from && to ? `${from} → ${to}・` : ""}税引き前）`;
       salary.update(imp);
       const scen = scenarioName(app);
-      const hl = headlineOf({ horizon: imp.horizon, value: imp.vRoot, statusQuo: imp.vSQ, best: recommendedValue(app, imp, !!scen), picks: imp.hasPicks, scenario: scen });
+      const hl = headlineOf({ horizon: imp.horizon, value: imp.vRoot, statusQuo: imp.vSQ, best: recommendedValue(imp, !!scen), picks: imp.hasPicks, scenario: scen });
       clear(main);
       if (hl) main.append(`${hl.lead} `, h("b", null, hl.value), hl.vsBest);
       else main.append(`${span}の稼ぎを計算できません（今日から先に数字の無い所があります）`);
@@ -642,9 +668,11 @@ function premisesSection(): HTMLElement {
   return h("section", { class: "imp-sec imp-premise" }, det, h("p", { class: "imp-note" }, "数字はモデルの目安です"));
 }
 
-function legendSection(): HTMLElement {
+/** 見方（q のある地図では ★ と ◎ の決まりが違う: likeBasis） */
+function legendSection(): { el: HTMLElement; update(imp: ImpactResult): void } {
   const sample = (bin: number, text: string, chip = false) => h("span", { class: `imp-pill imp-pill-sm${chip ? " is-chip" : ""}`, attrs: { "aria-hidden": "true" }, style: chip ? { "--b": fill(bin) } : { background: fill(bin), color: IMPACT_INK[bin] ?? "#F0EFEC" } }, text);
-  return h(
+  const star = h("span");
+  const el = h(
     "section",
     { class: "imp-sec imp-legend" },
     h("h3", { class: "insp-label" }, "見方"),
@@ -653,10 +681,28 @@ function legendSection(): HTMLElement {
       { class: "imp-legend-list" },
       li(sample(2, "+65万"), h("span", null, "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）")),
       li(sample(1, "35%", true), h("span", null, "% の札: その結果になる見込み。色はその結果の良し悪し（今のままと比べて）")),
-      li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "★"), h("span", null, `★ おすすめ（2 位より ${IMPACT_STAR_LEAD} 万円以上良い）・≒ 一番から ${IMPACT_STAR_LEAD} 万円以内・✓ 選んだ手`)),
+      li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "★"), star),
       li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "月"), h("span", null, "月+2.1万: 3 年後の月の稼ぎの差")),
     ),
   );
+  const share = Math.round(IMPACT_STAR_SHARE * 10);
+  return {
+    el,
+    update(imp) {
+      star.textContent = imp.likeBasis
+        ? `★ はっきりおすすめ（同じ見積もり方で、ほかの手より ${IMPACT_STAR_LEAD} 万円以上、かつその判断の差の幅の ${share} 割以上良い）・◎ おすすめ（その判断の一番良い手）・≒ 一番からその差の内・✓ 選んだ手`
+        : `★ おすすめ（2 位より ${IMPACT_STAR_LEAD} 万円以上良い）・≒ 一番から ${IMPACT_STAR_LEAD} 万円以内・✓ 選んだ手`;
+    },
+  };
+}
+
+/** 今日の手の先の数の行（q のある地図の今日の手だけ: 判断・出来事の分かれ・行き先。作業メモ perf-14・truth-18） */
+function rippleLine(imp: ImpactResult, id: ID, info: AltInfo): HTMLElement | null {
+  if (!imp.likeBasis || info.decision !== imp.root) return null;
+  const r = imp.ripple(id);
+  if (!r) return null;
+  const est = r.sumEnds ? `（うち標準の続きで見積もり ${groupDigits(r.sumEnds)}）` : "";
+  return li(`この先: 判断 ${groupDigits(r.decisions)} か所・出来事の分かれ ${groupDigits(r.splits)}・行き先 ${groupDigits(r.ends)}${est}`);
 }
 
 function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
@@ -891,7 +937,8 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
   // 3 年の分かれ道だけを見え方で開く（文書・履歴・保存・同期は変えない。自分で折りたたんだ所はそのまま）
   const expandBtn = h("button", { class: "btn btn-sm", type: "button", title: "3 年の分かれ道を全部ひらく", dataset: { fk: "expand" }, onClick: () => app.vm.setImpactOpen(app.vm.impactBranches()) }, icon("expand", 14), "全部ひらく");
   const resetBtn = h("button", { class: "btn btn-sm", type: "button", title: "開いている所を最初の形に戻す", dataset: { fk: "reset-open" }, onClick: () => resetCommand(app)?.(app.vm.impact.root) }, icon("collapse", 14), "最初の形に戻す");
-  const el = h("div", { class: "imp-overview" }, head.el, decide, worth, avoid, keys, dist, ends, premisesSection(), legendSection(), h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
+  const legend = legendSection();
+  const el = h("div", { class: "imp-overview" }, head.el, decide, worth, avoid, keys, dist, ends, premisesSection(), legend.el, h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
   el.hidden = true;
   let last: ImpactResult | null = null;
   let seen = new Seen();
@@ -905,6 +952,7 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
         return false;
       }
       head.update(imp);
+      legend.update(imp);
       resetBtn.hidden = !resetCommand(app);
       // 数が変わった・書いた題名が変わった（題名の入力）ときだけ作り直す
       if (imp !== last || seen.changed(app.store.doc)) {
@@ -993,7 +1041,7 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
     );
   }
   const mark = markOf(info);
-  if (mark.text) wrap.append(h("p", { class: "imp-badges" }, h("span", { class: `imp-mark${info.mark === "star" ? " is-star" : ""}${info.picked ? " is-picked" : ""}` }, mark.text), h("span", null, mark.label)));
+  if (mark.text) wrap.append(h("p", { class: "imp-badges" }, h("span", { class: markClass(info) }, mark.text), h("span", null, mark.label)));
   if (!info.allowed) wrap.append(h("p", { class: "imp-note" }, "選んでいる方針の外の手です（計算では選びません）"));
   wrap.append(picksRow(app, id, info));
 
@@ -1007,6 +1055,8 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
     const risk = riskText(info.pBad, info.worst);
     if (risk) facts.append(li(risk));
   }
+  const ripple = rippleLine(imp, id, info);
+  if (ripple) facts.append(ripple);
   const hrs = n.meta?.h;
   if (typeof hrs === "number" && Number.isFinite(hrs)) facts.append(li(hoursText(hrs)));
   if (facts.children.length) wrap.append(facts);

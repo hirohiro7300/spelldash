@@ -22,7 +22,8 @@ export interface PillRect {
 }
 
 const INK_LIGHT = "#EEF1F7";
-const MARK_COLORS: Record<string, string> = { "★": "#F2C14E", "≒": "#C9D3E6", "✓": "#3DD9A4" };
+/** 印の色（◎ おすすめは ★ より控えめな金色） */
+const MARK_COLORS: Record<string, string> = { "★": "#F2C14E", "◎": "#C9A85A", "≒": "#C9D3E6", "✓": "#3DD9A4" };
 const BRANCH_TEXT_INSET = 16;
 
 /** 文字の幅（太さと文字ごとに 100px で測って覚え、大きさに比例させる。描くたびに測らない・文字列も作らない） */
