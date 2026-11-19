@@ -1,45 +1,84 @@
-// 3 か月ごと 12 段の「3 年の地図」の木を作る入口（Vite の SSR で読み込む。R1 の試作の入口 model-tree/proto.ts を移した物）。
+// 3 か月ごと 12 段の「3 年の地図」の木と同梱データを作る入口（Vite の SSR で読み込む。R1 の試作の入口 model-tree/proto.ts を移した物）。
 // 使い方（4d-branch で）:
-//   node scripts/impact/q/run.mjs --out <木.json> [--budget 2000] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--stub split|fact|lean] [--fact-cl] [--only keep,ad_permside] [--anchor 2026-11] [--hash dev-port] [--never on|off]
+//   node scripts/impact/q/run.mjs --out <木.json> [--bundle <同梱.b64>] [--release 0] [--record <版の記録.json>] [--history <releases.json>] [--append-history] [--runs 2]
+//                                 [--budget 2000] [--tol 0.02] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--stub split|fact|lean] [--fact-cl] [--only keep,ad_permside] [--anchor 2026-11] [--never on|off]
 //   （npm run impact:q -- --out <木.json> も同じ。npm からは 4d-branch で動くので、場所は絶対パスで書く）
-//   --budget 最初の手ごとの分かれ道の数・--alts 見せる手の数・--alts-by 段ごとの見せる手の数（off で --alts だけ）・--stub まとめた手の結果のまとめ方・
-//   --fact-cl 顧客の数を事実として必ず分ける・--only 作る最初の手・--anchor 0 か月目の年月・--hash 入口の指紋の欄（開発用の木は仮の名前）・
-//   --never 「3 年やらない」見積もりを作るか（off は試すとき用。粗い表を 16 回作り直すので 1 分ほどかかる）
+//   --budget 最初の手ごとの分かれ道の数・--tol その目標の幅（±。小さい予算のテストの木は分かれ道の数が飛ぶので広げる）・--alts 見せる手の数・--alts-by 段ごとの見せる手の数（off で --alts だけ）・--stub まとめた手の結果のまとめ方・
+//   --fact-cl 顧客の数を事実として必ず分ける・--only 作る最初の手・--anchor 0 か月目の年月・
+//   --never 「3 年やらない」見積もりを作るか（off は試すとき用。粗い表を 16 回作り直すので 1 分ほどかかる）・
+//   --bundle 同梱データ（決まった並びの gzip の base64。src/demo/impactBundle.ts が読む）を書く場所・--release 入口の版の順番（開発用の木は 0）・
+//   --record 提案する版の記録 {release, hash, anchor} を書く場所・--history 版の記録（足すだけ。既定は scripts/impact/releases.json）・
+//   --append-history 版の記録に足す（既定は足せるかだけを点検する）・--runs 2 なら最初から作り直して、決まった並びと指紋が同じかを点検する（既定 2）
 // 既定は R1 が選んだ形（最初の手ごとに 2,000 の分かれ道・見せる手は 1 年目 4・2 年目 3・3 年目 2・まとめた手の結果も元の地図と同じまとめ方）。
 // 前提は P2 の物（作業メモ SPEC v1 §2.2・§2.3。world.ts の CHANGES）。4 月などの暦は --anchor の年月から出す。
 // 分かれ道の数は最初の手ごとに min(目標, 届く上限) の ±2%（D1）。分ける予算が飽和した手は、事実の小さい組を分け・別の領域の手を広げる。
-// 書き出す物: <木.json>（開発用の入れ子の木。src/deepmap/mapData.ts の DevTree。手の q・まとめた行き先の mix と cont・入口の never つき）と、その隣の <木.json>.gz。
-// 一貫性の点検（おすすめの道ではまとめた手が広げた手に勝たない・おすすめの道はまとめた手に入らない）と、前提の点検（checks.ts: N10・N7・
-// 顧客は整数・幅・名前・事実・暦・転職活動の上限）、新しい出力の点検（q・mix・cont・分かれ道の数・ノードの数・k(none)）に通らなければ書き出さない。
-// 同じ引数なら同じ木（バイトまで同じ）。木は大きい（20 MB 台）のでリポジトリの外に書き出す
+// 書き出す物: <木.json>（開発用の入れ子の木。src/deepmap/mapData.ts の DevTree。同梱データの精度に丸めた木で、入口の hash は同梱データの中身の指紋）と、
+// その隣の <木.json>.gz、--bundle の同梱データ、--record の版の記録。
+// 生成の木の点検（./checks.ts: 一貫性・N10・N7・顧客は整数・幅・名前・事実・暦・転職活動の上限・q・mix・cont・分かれ道の数・ノードの数・k(none)）と、
+// 同梱データを読み手で読んだ地図の点検（./check.ts: 読み手・ノードの数・分かれ道・N10・顧客・暦・一貫性・アプリと同じ値・ID・決まり・大きさ・版の記録）に
+// どれか通らなければ、何も書き出さない。同じ引数なら同じ木と同じ同梱データ（バイトまで同じ）。木は大きい（30 MB 台）のでリポジトリの外に書き出す
 
 import fs from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
+import { BUNDLE_FORMAT, decodeBundle, decodeBundleBytes } from "../../../src/demo/impactBundle";
+import { gunzipSync as gunzipJs } from "../../../src/demo/inflate";
+import { fromDevTree } from "../../../src/deepmap/dev/fromTree";
+import type { DevTree } from "../../../src/deepmap/mapData";
 import { IMPACT_STAR_LEAD } from "../../../src/model/impact";
 import type { World } from "../sim";
+import { bundleHash, bytesToBase64, canonicalizeDevTree, encodeMap, roundingReport } from "./bundle";
+import {
+  appParity,
+  checkCalendar,
+  checkClients,
+  checkDeterminism,
+  checkForks,
+  checkIds,
+  checkN10,
+  checkNodes,
+  checkReleaseAppend,
+  checkReleaseHistory,
+  checkSizes,
+  compareMaps,
+  consistencyOfMap,
+  forksByFirstMove,
+  formatHistory,
+  mapValues,
+  MAX_GZIP,
+  MAX_NODES,
+  MAX_RAW,
+  type ReleaseEntry,
+  type ReleaseHistory,
+} from "./check";
 import { checkOutputs, checkTree } from "./checks";
-import { parseArgs, USAGE } from "./cli";
+import { parseArgs, USAGE, type CliOpts } from "./cli";
 import { simCount, Wsum } from "./core";
 import { toDevTree } from "./devTree";
-import { consistencyOf, generate, rollbackApp } from "./gen";
+import { consistencyOf, generate, rollbackApp, type MoveStats } from "./gen";
 import { neverValues, releaseRolls, starCounts, summaryOutputs } from "./outputs";
-import { quarterWorld } from "./world";
+import { quarterWorld, type WorldQ } from "./world";
 
 const pct = (x: number) => `${(100 * x).toFixed(1)}%`;
-/** ノードの上限（SPEC v1 §2.6） */
-export const MAX_NODES = 90_000;
+export { MAX_NODES };
 
-export function main(root: string, args: string[]): number {
-  const base = JSON.parse(fs.readFileSync(path.join(root, "scripts/impact/world.json"), "utf8")) as World;
-  let opts;
-  try {
-    opts = parseArgs(args, base.rootMenu);
-  } catch (e) {
-    console.error((e as Error).message);
-    console.error(USAGE);
-    return 2;
-  }
+/** 1 回作った物: 丸めた開発用の木・決まった並びのバイト列と指紋（通らなければ fails） */
+interface Run {
+  fails: string[];
+  w: WorldQ;
+  stats: MoveStats[];
+  /** 丸めた開発用の木（入口の hash は中身の指紋） */
+  dev: DevTree | null;
+  bytes: Uint8Array;
+  hash: string;
+  /** 生成の木の値（年収 360・540）と今日の手の差（木の値）。読んだ地図の値と比べる */
+  vRoot: Record<number, number>;
+  rootDelta: Record<number, Map<string, number>>;
+  rounding: Record<string, number>;
+}
+
+/** 木を作り、生成の木を点検し、丸めて同梱データの並びにする。report が true なら報告を出す */
+function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   const w = quarterWorld(base, opts.anchor);
   const P = opts.params;
   const S = w.annual / 12;
@@ -140,23 +179,169 @@ export function main(root: string, args: string[]): number {
   lines.push("最初の手 | 転職活動を 1 期以上 | 36 か月目に転職している | 一度でも転職 | 転職活動の期の数の平均 | 一番ありそうな道（見込み・続けて決まらなかった転職活動の一番長い期の数）");
   for (const s of chk.search) lines.push(`${s.kind} | ${pct(s.pSearch)} | ${pct(s.pSwitched)} | ${pct(s.pEverSwitched)} | ${s.meanSearch.toFixed(2)} | ${pct(s.chainP)}・${s.chainMaxFailRun}`);
   for (const s of chk.search) lines.push(`  ${s.kind}: ${s.chain.join(" ")}`);
+  if (report) console.log(lines.join("\n"));
+  const fails: string[] = [];
+  if (con.violations > 0 || con.piIntoStub > 0) fails.push(`一貫性: まとめた手が勝った判断 ${con.violations}・まとめた手に入った道 ${con.piIntoStub}`);
+  fails.push(...chk.fails, ...outFails);
+  // 生成の木の値（読んだ地図の値と比べる）
+  const vR: Record<number, number> = {};
+  const rd: Record<number, Map<string, number>> = {};
+  for (const annual of [360, 540]) {
+    vR[annual] = rollbackApp(tree, annual / 12);
+    const keep = tree.kids.find((a) => a.kind === "keep");
+    rd[annual] = new Map(tree.kids.map((a) => [a.kind!, keep ? a.V - keep.V : NaN]));
+  }
+  const empty = new Uint8Array(0);
+  if (fails.length) return { fails, w, stats, dev: null, bytes: empty, hash: "", vRoot: vR, rootDelta: rd, rounding: {} };
+  // 開発用の木 → 同梱データの精度に丸めた木 → 決まった並び（入口の hash は中身の指紋）
+  const raw = toDevTree(w, tree, { anchor: opts.anchor, release: opts.release, hash: "", textVersion: "dev", ...(nv ? { never: nv.never } : {}) });
+  const rounding = roundingReport(raw);
+  const dev = canonicalizeDevTree(raw);
+  const bytes = encodeMap(fromDevTree(dev));
+  const hash = bundleHash(bytes);
+  dev.header.hash = hash;
+  return { fails, w, stats, dev, bytes, hash, vRoot: vR, rootDelta: rd, rounding };
+}
+
+export async function main(root: string, args: string[]): Promise<number> {
+  const base = JSON.parse(fs.readFileSync(path.join(root, "scripts/impact/world.json"), "utf8")) as World;
+  let opts: CliOpts;
+  try {
+    opts = parseArgs(args, base.rootMenu);
+  } catch (e) {
+    console.error((e as Error).message);
+    console.error(USAGE);
+    return 2;
+  }
+  const historyPath = path.resolve(opts.history ?? path.join(root, "scripts/impact/releases.json"));
+  const history = JSON.parse(fs.readFileSync(historyPath, "utf8")) as ReleaseHistory;
+
+  const r1 = runOnce(base, opts, true);
+  if (r1.fails.length || !r1.dev) {
+    console.error(`点検に通らないので書き出しません:\n${r1.fails.join("\n")}`);
+    return 1;
+  }
+  const { w, stats } = r1;
+  const lines: string[] = [];
+  const fails: string[] = [];
+  const add = (name: string, f: readonly string[], info = "") => {
+    lines.push(`  ${f.length ? "×" : "○"} ${name}${info ? `: ${info}` : ""}`);
+    fails.push(...f);
+  };
+  lines.push(`同梱データ（形 4DQM 版 ${BUNDLE_FORMAT}・中身の指紋 ${r1.hash}・版の順番 ${opts.release}）の点検（書いたバイト列を読み手で読んだ地図で）:`);
+  lines.push(`  丸めの差の最大（元の木 → 同梱データ）: ${Object.entries(r1.rounding).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v.toExponential(1)}`).join("・") || "なし"}`);
+  // 読み手（読む時間も）
+  const t0 = performance.now();
+  const map = decodeBundleBytes(r1.bytes);
+  const msDecodeBytes = performance.now() - t0;
+  add("B2 読み手が丸めた木の fromDevTree と同じ答え（全ノード・全部の問い）", compareMaps(fromDevTree(r1.dev), map), `${map.n} 枚`);
+  const devJson = JSON.stringify(r1.dev);
+  r1.dev = null;
+  add("N1 ノードの数", checkNodes(map), `${map.n} 枚（上限 ${MAX_NODES}）`);
+  const forkRep = stats.map((s) => ({ kind: s.kind, forks: s.forks, target: s.calib.target }));
+  const byMove = forksByFirstMove(map);
+  add(`B1 最初の手ごとの分かれ道（合わせ込みの報告と同じ・目標の ±${+(100 * opts.params.tol).toFixed(1)}%）`, checkForks(map, forkRep, opts.params.tol), byMove.map((x) => `${x.kind} ${x.forks}`).join("・"));
+  const n10 = checkN10(map);
+  add("N10 Pro と届け出の答え", n10.fails, `まとめた行き先の代表の状態（数えるだけ）${n10.sumCount} 枚`);
+  add("C1 顧客は整数の社数（幅は整数）", checkClients(map));
+  add("K1 暦", checkCalendar(map, w.anchor, w.constants.aprilMonths), `${map.header.anchor}・4 月 ${w.constants.aprilMonths.join(",")} か月目`);
+  const con = consistencyOfMap(map, w.annual);
+  const con540 = consistencyOfMap(map, 540);
+  add(`R1 一貫性（年収 ${w.annual}: おすすめの道がまとめた手に入らない）`, con.fails, `判断 ${con.decisions}・入った ${con.intoStub}（参考: 年収 540 では ${con540.intoStub} / ${con540.decisions}）`);
+  const par = appParity(map, [360, 540]);
+  add(
+    "R2 アプリと同じ値（|差| ≤ 1e-9）",
+    par.fails,
+    par.parities.map((p) => `年収 ${p.annual}: 今日 ${p.vRoot[0].toFixed(4)}・ずっと今のまま ${p.vSQ[0].toFixed(4)}・手 ${p.alts} の差の最大 ${p.maxDelta.toExponential(1)}・一番の手の違い ${p.bestMismatch}（${p.ms.toFixed(0)} ms）`).join(" / "),
+  );
+  for (const annual of [360, 540]) {
+    const v = mapValues(map, annual);
+    const keep = (() => {
+      for (let k = 0; k < map.childCount(0); k++) if (map.isBase(map.child(0, k))) return map.child(0, k);
+      return -1;
+    })();
+    const deltas: string[] = [];
+    let worst = Math.abs(v.V[0]! - r1.vRoot[annual]!);
+    for (let k = 0; k < map.childCount(0); k++) {
+      const a = map.child(0, k);
+      const d = v.V[a]! - v.V[keep]!;
+      const g = r1.rootDelta[annual]!.get(map.kind(a)!) ?? NaN;
+      worst = Math.max(worst, Math.abs(d - g));
+      deltas.push(`${map.kind(a)} ${d.toFixed(2)}`);
+    }
+    lines.push(`    年収 ${annual}: 今日の値 ${v.V[0]!.toFixed(2)}（生成の木 ${r1.vRoot[annual]!.toFixed(2)}・丸めの差の最大 ${worst.toExponential(1)}）・今日の手の差 ${deltas.join("・")}`);
+  }
+  const ids = checkIds(map);
+  add("I1 64 ビットの ID が重ならない", ids.fails, `ノード ${ids.nodes}・線 ${ids.edges}`);
+  // 大きさ
+  const gz = gzipSync(r1.bytes, { level: 9 });
+  const b64 = bytesToBase64(gz);
+  const sizes = { raw: r1.bytes.length, gzip: gz.length, base64: b64.length };
+  add("Z1・Z2 大きさ", checkSizes(sizes), `決まった並び ${(sizes.raw / 1e6).toFixed(2)} MB（上限 ${MAX_RAW / 1e6}）・gzip ${(sizes.gzip / 1e6).toFixed(3)} MB（上限 ${MAX_GZIP / 1e6}）・base64 ${(sizes.base64 / 1e6).toFixed(3)} MB`);
+  // 読む時間（node）: base64 → gzip を伸ばす → 読み手
+  {
+    const times: string[] = [];
+    for (let k = 0; k < 3; k++) {
+      const a = performance.now();
+      await decodeBundle(b64);
+      const b = performance.now();
+      const raw = gunzipJs(gz);
+      const c = performance.now();
+      decodeBundleBytes(raw);
+      const d = performance.now();
+      times.push(`decodeBundle ${(b - a).toFixed(0)} ms・小さな伸長 ${(c - b).toFixed(0)} ms + decodeBundleBytes ${(d - c).toFixed(0)} ms`);
+    }
+    lines.push(`  読む時間（node）: 1 回目の decodeBundleBytes ${msDecodeBytes.toFixed(0)} ms / ${times.join(" / ")}`);
+  }
+  // 版の記録
+  add("H1 版の記録（足すだけ・順番は増えるだけ）", checkReleaseHistory(history), `${path.relative(root, historyPath)}・最後の版 ${Math.max(...history.releases.map((r) => r.release))}`);
+  let verdict: "append" | "same" | "refuse" | null = null;
+  if (opts.release >= 1) {
+    const ap = checkReleaseAppend(history, { release: opts.release, hash: r1.hash });
+    verdict = ap.verdict;
+    add(`H1 版 ${opts.release}・指紋 ${r1.hash} を記録に足せる`, ap.why, ap.verdict === "same" ? "同じ記録がもうある" : ap.verdict);
+  }
+  // 決まり: 読んだ地図を書き直しても同じ並び・最初から作り直しても同じ並び
+  const runs = [{ bytes: r1.bytes, hash: r1.hash, what: "1 回目" }];
+  const again = encodeMap(map);
+  runs.push({ bytes: again, hash: bundleHash(again), what: "読んだ地図を書き直した物" });
+  if (opts.runs >= 2) {
+    const t2 = performance.now();
+    const r2 = runOnce(base, opts, false);
+    if (r2.fails.length) fails.push(`D1 作り直しで点検に通らない: ${r2.fails.slice(0, 3).join(" / ")}`);
+    else runs.push({ bytes: r2.bytes, hash: r2.hash, what: `作り直し（${((performance.now() - t2) / 1000).toFixed(0)} 秒）` });
+  }
+  add("D1 決まった並びと指紋が同じ", checkDeterminism(runs), runs.map((r) => r.what).join("・"));
   console.log(lines.join("\n"));
-  if (con.violations > 0 || con.piIntoStub > 0) {
-    console.error("一貫性の点検に通らないので書き出しません");
+  if (fails.length) {
+    console.error(`同梱データの点検に通らないので書き出しません:\n${fails.join("\n")}`);
     return 1;
   }
-  if (chk.fails.length || outFails.length) {
-    console.error(`点検に通らないので書き出しません:\n${[...chk.fails, ...outFails].join("\n")}`);
-    return 1;
-  }
-  const dev = toDevTree(w, tree, { anchor: opts.anchor, release: 0, hash: opts.hash, textVersion: "dev", ...(nv ? { never: nv.never } : {}) });
-  const json = JSON.stringify(dev);
+  // 書き出し
   const out = path.resolve(opts.out);
-  if (!path.relative(root, out).startsWith("..")) console.warn(`リポジトリの中に書き出します（${path.relative(root, out)}）。大きいのでコミットしないこと`);
+  const inRepo = (p: string) => !path.relative(root, p).startsWith("..");
+  if (inRepo(out)) console.warn(`リポジトリの中に書き出します（${path.relative(root, out)}）。大きいのでコミットしないこと`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, json);
-  const gz = gzipSync(json, { level: 9 });
-  fs.writeFileSync(`${out}.gz`, gz);
-  console.log(`書き出し: ${out}（${(json.length / 1e6).toFixed(1)} MB）・${out}.gz（${(gz.length / 1e6).toFixed(2)} MB）・${JSON.stringify(dev.header.counts)}`);
+  fs.writeFileSync(out, devJson);
+  const devGz = gzipSync(devJson, { level: 9 });
+  fs.writeFileSync(`${out}.gz`, devGz);
+  console.log(`書き出し: ${out}（${(devJson.length / 1e6).toFixed(1)} MB）・${out}.gz（${(devGz.length / 1e6).toFixed(2)} MB）・${JSON.stringify(map.header.counts)}`);
+  if (opts.bundle) {
+    const bp = path.resolve(opts.bundle);
+    fs.mkdirSync(path.dirname(bp), { recursive: true });
+    fs.writeFileSync(bp, b64);
+    console.log(`同梱データ: ${bp}（base64 ${b64.length} 文字）`);
+  }
+  if (opts.record) {
+    const rp = path.resolve(opts.record);
+    fs.mkdirSync(path.dirname(rp), { recursive: true });
+    fs.writeFileSync(rp, `${JSON.stringify({ release: opts.release, hash: r1.hash, anchor: map.header.anchor }, null, 2)}\n`);
+    console.log(`版の記録（提案）: ${rp}`);
+  }
+  if (opts.appendHistory && verdict === "append") {
+    const rec: ReleaseEntry = { release: opts.release, hash: r1.hash, scheme: "q1", anchor: map.header.anchor };
+    fs.writeFileSync(historyPath, formatHistory({ ...history, releases: [...history.releases, rec] }));
+    console.log(`版の記録に足しました: ${historyPath}（版 ${opts.release}）`);
+  }
   return 0;
 }

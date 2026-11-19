@@ -1,0 +1,11 @@
+{
+  "note": "同梱の「3 年の分かれ道」の版の記録。足すだけで、書き換え・消し・並べ替えはしない。版の順番は増えるだけで、1 つの版の順番には 1 つの指紋、1 つの指紋には 1 つの版の順番（scripts/impact/q/check.ts の checkReleaseHistory・checkReleaseAppend）。版 6 までの指紋は impact-data.json の文字列の指紋（v2-json）、3 か月ごとの地図からは圧縮する前の決まった並びの 64 ビットの指紋（q1）。版 3 は同じ順番で 2 度コミットされた（先の指紋は replaced。今はこれを点検で止める）",
+  "releases": [
+    { "release": 1, "hash": "bm4g-1hcxhva", "scheme": "v2-json", "commit": "a33b0bd" },
+    { "release": 2, "hash": "bf50-1ehy1iy", "scheme": "v2-json", "commit": "e2ffacd" },
+    { "release": 3, "hash": "bfcx-15fkye7", "scheme": "v2-json", "commit": "f7a4a54", "replaced": [{ "hash": "bl06-12wmu46", "commit": "de02163" }] },
+    { "release": 4, "hash": "bont-zy5ms5", "scheme": "v2-json", "commit": "abd7201" },
+    { "release": 5, "hash": "bovq-rlr0ge", "scheme": "v2-json", "commit": "954b137" },
+    { "release": 6, "hash": "bvpn-apwrrf", "scheme": "v2-json", "commit": "2d79d50" }
+  ]
+}

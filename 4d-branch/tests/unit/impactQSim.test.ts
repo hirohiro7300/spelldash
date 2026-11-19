@@ -528,21 +528,39 @@ describe("生成の部品", () => {
 describe("入口の引数", () => {
   it("既定は R1 が選んだ形", () => {
     const o = parseArgs(["--out", "x.json"], w.rootMenu);
-    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", hash: "dev-port", never: true });
+    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", never: true, release: 0, appendHistory: false, runs: 2 });
     expect(o.params).toMatchObject({ B: 2000, maxAlts: 4, stubMode: "split", factCl: false, altsBy: [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2], tol: 0.02, fineDepth: 3, areaDiscount: 0.3 });
   });
 
   it("形を変える引数", () => {
-    const o = parseArgs(["--budget", "300", "--alts", "3", "--alts-by", "off", "--stub", "lean", "--fact-cl", "--only", "keep,part", "--anchor", "2027-02", "--hash", "h", "--never", "off", "--out", "t.json"], w.rootMenu);
+    const o = parseArgs(["--budget", "300", "--alts", "3", "--alts-by", "off", "--stub", "lean", "--fact-cl", "--only", "keep,part", "--anchor", "2027-02", "--never", "off", "--out", "t.json"], w.rootMenu);
     expect(o.params).toMatchObject({ B: 300, maxAlts: 3, stubMode: "lean", factCl: true });
     expect(o.params.altsBy).toBeUndefined();
-    expect([o.only, o.anchor, o.hash, o.out, o.never]).toEqual([["keep", "part"], "2027-02", "h", "t.json", false]);
+    expect([o.only, o.anchor, o.out, o.never]).toEqual([["keep", "part"], "2027-02", "t.json", false]);
+    const r = parseArgs(["--out", "t.json", "--bundle", "b.b64", "--release", "7", "--record", "rec.json", "--history", "h.json", "--append-history", "--runs", "1", "--tol", "2"], w.rootMenu);
+    expect([r.bundle, r.release, r.record, r.history, r.appendHistory, r.runs, r.params.tol]).toEqual(["b.b64", 7, "rec.json", "h.json", true, 1, 2]);
     expect(parseArgs(["--out", "t", "--never", "on"], w.rootMenu).never).toBe(true);
     expect(parseArgs(["--out", "t", "--alts-by", "0,3,3,3,3,3,3,3,3,2,2,2"], w.rootMenu).params.altsBy).toEqual([0, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2]);
   });
 
   it("読めない引数は投げる", () => {
-    const bad = [[], ["--out"], ["--out", "x", "--budget", "0"], ["--out", "x", "--only", "plan_ind"], ["--out", "x", "--anchor", "2026-13"], ["--out", "x", "--alts-by", "0,4,4"], ["--out", "x", "--stub", "all"], ["--out", "x", "--never", "yes"], ["--out", "x", "--nope"]];
+    const bad = [
+      [],
+      ["--out"],
+      ["--out", "x", "--budget", "0"],
+      ["--out", "x", "--only", "plan_ind"],
+      ["--out", "x", "--anchor", "2026-13"],
+      ["--out", "x", "--alts-by", "0,4,4"],
+      ["--out", "x", "--stub", "all"],
+      ["--out", "x", "--never", "yes"],
+      ["--out", "x", "--nope"],
+      ["--out", "x", "--hash", "dev-port"],
+      ["--out", "x", "--runs", "3"],
+      ["--out", "x", "--release", "-1"],
+      ["--out", "x", "--record", "r.json"],
+      ["--out", "x", "--append-history"],
+      ["--out", "x", "--tol", "0"],
+    ];
     for (const args of bad) expect(() => parseArgs(args, w.rootMenu), args.join(" ")).toThrow();
   });
 });

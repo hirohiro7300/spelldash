@@ -106,9 +106,52 @@ export function fnv36(s: string): string {
   return h.toString(36);
 }
 
-/** 鍵からノードの ID（FNV-1a の 36 進 7 桁） */
+/** 鍵からノードの ID（FNV-1a の 36 進 7 桁）。版 6 の地図（同梱の impact-data.json）の ID。3 か月ごとの地図は impactNodeId64 */
 export function impactNodeId(key: string): ID {
   return `n_i_${fnv36(key).padStart(7, "0")}`;
+}
+
+/** 64 ビットの指紋の 2 つの FNV-1a（32 ビット）の初めの値: 1 つ目は FNV-1a の決まりの値（impactNodeId と同じ）、2 つ目は黄金比の 32 ビット */
+const FNV_OFF1 = 0x811c9dc5;
+const FNV_OFF2 = 0x9e3779b9;
+const FNV_PRIME = 0x01000193;
+const b36x7 = (h: number) => (h >>> 0).toString(36).padStart(7, "0");
+
+/**
+ * 64 ビットの指紋（作業メモ SPEC v1 §2.5・D9）: 初めの値だけが違う 2 つの FNV-1a（32 ビット）を、36 進 7 桁ずつ並べた 14 文字。
+ * 文字列は UTF-16 の単位ごとに数える（fnv36 と同じ。1 つ目の 7 桁は fnv36 を 7 桁にした物）
+ */
+export function fnv64x36(s: string): string {
+  let h1 = FNV_OFF1;
+  let h2 = FNV_OFF2;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, FNV_PRIME);
+    h2 = Math.imul(h2 ^ c, FNV_PRIME);
+  }
+  return b36x7(h1) + b36x7(h2);
+}
+
+/** 64 ビットの指紋（fnv64x36 と同じ作り）をバイト列で。3 か月ごとの地図の同梱データの中身の指紋（圧縮する前の決まった並び） */
+export function fnv64x36Bytes(b: Uint8Array): string {
+  let h1 = FNV_OFF1;
+  let h2 = FNV_OFF2;
+  for (let i = 0; i < b.length; i++) {
+    const c = b[i]!;
+    h1 = Math.imul(h1 ^ c, FNV_PRIME);
+    h2 = Math.imul(h2 ^ c, FNV_PRIME);
+  }
+  return b36x7(h1) + b36x7(h2);
+}
+
+/** 3 か月ごとの地図（版 7 から）の、鍵からノードの ID: n_i_ + 64 ビットの指紋 14 文字（深さによらず。見直し safety-6） */
+export function impactNodeId64(key: string): ID {
+  return `n_i_${fnv64x36(key)}`;
+}
+
+/** 3 か月ごとの地図の、親から子への線の ID: e_i_ + 子の鍵の 64 ビットの指紋 14 文字（線は子ごとに 1 本） */
+export function impactEdgeId64(childKey: string): ID {
+  return `e_i_${fnv64x36(childKey)}`;
 }
 
 /** 同梱データ（impact-data.json の文字列そのまま）の版: 長さと FNV-1a の 36 進。中身が変わると変わる */

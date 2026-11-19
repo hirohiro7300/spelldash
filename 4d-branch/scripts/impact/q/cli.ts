@@ -11,13 +11,24 @@ export interface CliOpts {
   /** 作る最初の手（無ければ今日の 10 手すべて） */
   only?: string[];
   anchor: string;
-  hash: string;
   /** 「3 年やらない」見積もり（never）を作る（off は試すとき用） */
   never: boolean;
+  /** 同梱データ（決まった並びの gzip の base64）を書き出す場所。無ければ書かない（点検はする） */
+  bundle?: string;
+  /** 版の順番（入口の release。開発用の木は 0） */
+  release: number;
+  /** 提案する版の記録 {release, hash, anchor} を書き出す場所（release が 1 以上のとき） */
+  record?: string;
+  /** 版の記録（足すだけ）の場所。無ければ scripts/impact/releases.json */
+  history?: string;
+  /** 版の記録に足す（既定は足さずに、足せるかだけを点検する） */
+  appendHistory: boolean;
+  /** 作る回数。2 なら最初から作り直して、決まった並びと指紋が同じかを点検する（D1） */
+  runs: number;
 }
 
 export const USAGE =
-  "使い方: node scripts/impact/q/run.mjs --out <木.json> [--budget 2000] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--stub split|fact|lean] [--fact-cl] [--only keep,ad_permside] [--anchor 2026-11] [--hash dev-port] [--never on|off]";
+  "使い方: node scripts/impact/q/run.mjs --out <木.json> [--bundle <同梱.b64>] [--release 0] [--record <版の記録.json>] [--history <releases.json>] [--append-history] [--runs 2] [--budget 2000] [--tol 0.02] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--stub split|fact|lean] [--fact-cl] [--only keep,ad_permside] [--anchor 2026-11] [--never on|off]";
 
 const MODES: readonly Mode[] = ["split", "fact", "lean"];
 
@@ -27,8 +38,13 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
   let out: string | null = null;
   let only: string[] | undefined;
   let anchor = "2026-11";
-  let hash = "dev-port";
   let never = true;
+  let bundle: string | undefined;
+  let release = 0;
+  let record: string | undefined;
+  let history: string | undefined;
+  let appendHistory = false;
+  let runs = 2;
   const int = (name: string, v: string | undefined, min: number): number => {
     const n = Number(v);
     if (v === undefined || !Number.isInteger(n) || n < min) throw new Error(`${name} は ${min} 以上の整数で指定してください（${v ?? "なし"}）`);
@@ -69,6 +85,14 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
         params.stubMode = s as Mode;
         break;
       }
+      case "--tol": {
+        // 分かれ道の数の目標の幅（±、割合）。小さい予算の木（テストの木）は分かれ道の数が飛ぶので、広げて作る
+        const v = value();
+        const t = Number(v);
+        if (!(Number.isFinite(t) && t > 0)) throw new Error(`--tol は 0 より大きい数です（${v}）`);
+        params.tol = t;
+        break;
+      }
       case "--fact-cl":
         params.factCl = true;
         break;
@@ -83,8 +107,24 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
         anchor = value();
         if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(anchor)) throw new Error(`--anchor は YYYY-MM です（${anchor}）`);
         break;
-      case "--hash":
-        hash = value();
+      case "--bundle":
+        bundle = value();
+        break;
+      case "--release":
+        release = int(a, value(), 0);
+        break;
+      case "--record":
+        record = value();
+        break;
+      case "--history":
+        history = value();
+        break;
+      case "--append-history":
+        appendHistory = true;
+        break;
+      case "--runs":
+        runs = int(a, value(), 1);
+        if (runs > 2) throw new Error(`--runs は 1 か 2 です（${runs}）`);
         break;
       case "--never": {
         const s = value();
@@ -97,5 +137,6 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
     }
   }
   if (!out) throw new Error("--out（書き出す木の場所）が要ります");
-  return { out, params, ...(only ? { only } : {}), anchor, hash, never };
+  if ((record || appendHistory) && release < 1) throw new Error("--record・--append-history は --release 1 以上と一緒に使います");
+  return { out, params, ...(only ? { only } : {}), anchor, never, ...(bundle ? { bundle } : {}), release, ...(record ? { record } : {}), ...(history ? { history } : {}), appendHistory, runs };
 }
