@@ -376,7 +376,8 @@ for (const [vp, mobile, tag] of [
     await page.locator(".dm-tl-end").waitFor();
     const li = await openRow(page, 0);
     const body = await li.locator(":scope > .dm-tl-body .dm-tl-card.is-move .dm-tl-text").innerText();
-    const bf = /地図にある行き先は ([\d,]+)（うち標準の続きの見積もり ([\d,]+)）で、一番良い選び方で着くのは ([\d,]+)（そのうち見込み 1 分以上は ([\d,]+)）/.exec(body);
+    // 本文は見込み 1% 以上を「100 回に 1 回以上」と言う（文の型 0.9 の R7。「1 分以上」は 1 分間とも読めるので替えた。画面の札は「見込み 1% 以上」のまま）
+    const bf = /地図にある行き先は ([\d,]+)（うち標準の続きの見積もり ([\d,]+)）で、一番良い選び方で着くのは ([\d,]+)（そのうち見込みが 100 回に 1 回以上の物は ([\d,]+)）/.exec(body);
     assert(bf, `今日の手の本文に行き先の 2 つの数が無い: ${body}`);
     for (let j = 1; j <= 4; j++) assert(numOf(pf[j]) === numOf(bf[j]), `行き先の数が違う（${j} 番目）: 画面 ${pf[0]} / 本文 ${bf[0]}`);
     assert(numOf(pf[1]) > numOf(pf[3]), `地図にある行き先が着く行き先より多くない: ${pf[0]}`);
