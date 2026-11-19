@@ -323,6 +323,6 @@ describe("生成 v2 の見直しの直し（試し版の文章の版。code-1）
     expect(textSkew(map.header.textVersion)).toBeNull();
     expect(textSkew("dev")).toBeNull();
     expect(textSkew("")).toBeNull();
-    expect(textSkew("0.5")).toMatch(/0\.5.*0\.6|0\.6.*0\.5/);
+    expect(textSkew("0.5")).toContain(`0.5 が、組み立ての版 ${BANKS.version} と違う`);
   });
 });

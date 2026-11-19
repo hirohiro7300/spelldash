@@ -73,6 +73,38 @@ export interface Consts {
   schoolSeats: number;
   /** 今日の週の時間（本業と SpellDash 週 10 時間） */
   baseHours: number;
+  // 0.7（fact-12）: 文が言う前提の数はどれもここから差し込む（scripts/impact/world.json・3 か月ごとの世界 quarterWorld・q/quarter.ts の上限と同じ値。
+  //   tests/unit/compose.test.ts で確かめる）。ここに無い数は、文に書かない（引いたやりたいことリストの項目にある数を除く。点検 C1・C1b）
+  /** 届け出の答えの見込み: 全部可・SpellDash だけ可・どちらも不可 */
+  permA: number;
+  permS: number;
+  permN: number;
+  /** 転職活動の最初の 3 か月で移れる見込み（1 つの会社で 1 回）・続けた 3 か月ごとの見込み */
+  switchP1: number;
+  switchP2: number;
+  /** 転職活動は 1 つの会社で何期まで・続けて決まらないのは何期まで */
+  searchMax: number;
+  searchRun: number;
+  /** 移る月に、前の会社の賞与の取り逃しとして引く給与（月の何か月分） */
+  switchCost: number;
+  /** 週 4 日勤務が認められる見込み */
+  partP: number;
+  /** 会社員に戻れる見込み（3 か月ごと） */
+  backP: number;
+  /** 学校・塾の無料の試用が決まる見込み（3 か月ごと） */
+  pilotP: number;
+  /** Pro 1 人の手数料を引いた月額・サーバー代（円/月。net・infra を円で） */
+  netYen: number;
+  infraYen: number;
+  /** 顧客 1 社がその 3 か月に離れる見込み（毎月 4% の 3 か月分） */
+  churnQ: number;
+  /** 遊ぶ人（月）が続けている開発で増える割合（月）・そのうち有料になる割合 */
+  growth: number;
+  conv: number;
+  /** 遊ぶ人を増やす・広告で集めるを使える期の数（3 年で）・続ける人を増やす工夫が効く回数 */
+  growMax: number;
+  adsMax: number;
+  retainMax: number;
 }
 
 /** 文の型の束。節ごとに、手の種類・出来事・結果の分類から言い換えの組を引く */

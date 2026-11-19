@@ -67,9 +67,12 @@ export function clPhrase(cl: number, ln?: ImpactLine | null): string {
   return `${slot(lo)}〜${slot(hi)} 社`;
 }
 
-/** 小さい額は円（1 万円より下）、大きい額は万円 */
+/**
+ * 小さい額は円（1 万円より下。10 円まで書く）、大きい額は万円。0.7: 数の行の有料の稼ぎを人数から出せるように、円の額を 100 円に丸めない
+ * （3 人 × 940 円 − 3,000 円 = 180 円の持ち出しを「200 円」と書かない。fact-4）
+ */
 export function yenTxt(x: number): string {
-  if (Math.abs(x) < 1) return `${slot(n0(Math.round(Math.abs(x) * 100) * 100))} 円`;
+  if (Math.abs(x) < 1) return `${slot(n0(Math.round(Math.abs(x) * 1000) * 10))} 円`;
   return `${slot(man(Math.abs(x)))} 万円`;
 }
 

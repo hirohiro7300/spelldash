@@ -17,9 +17,15 @@ import { SENTENCES } from "./sentences";
  * 0.6 は生成 v2 の見直し（reader-*・truth-*）を当てた版: まとめた手の結果の給与はその 3 か月の給与で言う（上げ幅をまとめた結果は 2 つ）・
  * 前の期がまとめた幅で社数が 1 つに決まった結果の文と題（CLIENT_EXACT）・社数の幅の判断では何社目と言わない手の題と書き出し・
  * 『全部可』を 1 社目で分けた結果の題と文・応募を続ける助言は次の判断に転職活動の続きが並ぶときだけ。
+ * 0.7 は文章の波 1 の W1（事実と余白。作業メモ text-w1/audit の fact-*・rep-5・rep-7）: まとめた手が言う会社員に戻る月を、モデルの出来事の月
+ * （その期の 3 か月目）にし、この後の目安の会社員に戻る・独立・週 4 日・移る・昇格の期にその月を添えた（fact-1。点検 C11）。
+ * この地図の前提（賞与の取り逃しの半月分・移った会社の届け出・聞き直さない・届け出の答えの時期・4 月の昇給と評価）は「この地図では…」で言い、
+ * 住民税の言い方・会社の断った訳・決まらなかった訳・給与が止まる月を直し、入社してすぐの評価の対象を人事に確かめる一言を足した
+ * （fact-2〜11・fact-23。点検 C2 の言い過ぎ）。前提の数を C に足した（fact-12）。届け出の結果の意味は結果ごとに 1 文にし、「転職か独立」は
+ * 1 か所だけで言う（rep-7）。会社員に戻る仕事探し・決まらない期・今のままが長く続く道は、独立してからの月・何期目で言い方を進める（rep-5）。
  * 組み立ては束ごとに道の覚えを持つので、書き換えない（凍らせてある。別の束は写して作る） */
 export const BANKS: Banks = deepFreeze({
-  version: "0.6",
+  version: "0.7",
   // 文が言う計算の前提の数（scripts/impact/world.json の constants・kinds と同じ値。副業の月額の段は 3 か月ごとの世界の値。tests/unit/compose.test.ts で確かめる）
   C: {
     feeFirst: 3,
@@ -50,6 +56,27 @@ export const BANKS: Banks = deepFreeze({
     partFactor: 0.8,
     schoolSeats: 40,
     baseHours: 52,
+    // 0.7（fact-12）: 届け出の答え・転職・週 4 日・会社員に戻る・試用の見込み、転職活動の上限、移る月の賞与の取り逃し、Pro の円の額、
+    //   顧客が離れる見込み（3 か月）、遊ぶ人の伸びと有料になる割合、集客の手の上限
+    permA: 0.2,
+    permS: 0.45,
+    permN: 0.35,
+    switchP1: 0.28,
+    switchP2: 0.126,
+    searchMax: 4,
+    searchRun: 2,
+    switchCost: 0.5,
+    partP: 0.35,
+    backP: 0.6,
+    pilotP: 0.3,
+    netYen: 940,
+    infraYen: 3000,
+    churnQ: 0.115264,
+    growth: 0.08,
+    conv: 0.04,
+    growMax: 4,
+    adsMax: 4,
+    retainMax: 1,
   },
   ...SENTENCES,
   playbook: PLAYBOOK,

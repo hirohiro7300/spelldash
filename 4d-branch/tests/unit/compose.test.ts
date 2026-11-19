@@ -3,9 +3,10 @@ import world from "../../scripts/impact/world.json";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { MapData } from "../../src/deepmap/mapData";
 import { SENTENCES } from "../../src/demo/compose/banks/sentences";
-import { adviceIn, adviceMatchers, asciiIds, checkBanks, checkCard, checkPaths, digitsOutside, numberWording, TWO_IF, TWO_LASTS, wishIndex } from "../../src/demo/compose/checks";
+import { adviceIn, adviceMatchers, asciiIds, checkBanks, checkCard, checkPaths, digitsOutside, eventMonthIssues, numberWording, OVERCLAIMS, TWO_IF, TWO_LASTS, wishIndex } from "../../src/demo/compose/checks";
 import { BANKS, composeCard, composeCont, composeMarkedCard, materializeBody, ripple, type Banks, type Card } from "../../src/demo/compose/index";
 import { calendarOf, weekday } from "../../src/demo/compose/path";
+import { strip, wari } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
 import wishData from "../../src/demo/wishlist-data.json";
 import { F_ENDS, F_PORTFOLIO, F_PROMO2, F_SCOPE, F_STILL, header, MIX_SPLIT, MIX_SURE, RULES, TREE } from "./composeFixture";
@@ -123,8 +124,16 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
     const c = world.constants;
     const k = world.kinds;
     // 3 か月ごとの世界（scripts/impact/q/world.ts）があればその値で、まだ無ければ SPEC §2.3 #6 の値で確かめる（W-gen と合わさると、違えばここで落ちる。facts-2）
-    const qw = Object.values(import.meta.glob("../../scripts/impact/q/world.ts", { eager: true }))[0] as { quarterWorld?: (w: unknown) => { q: { feeFirst: number; feeRaised: number; raiseAt: number } } } | undefined;
-    const tier = qw?.quarterWorld ? qw.quarterWorld(world).q : { feeFirst: 3, feeRaised: 5, raiseAt: 4 };
+    const qw = Object.values(import.meta.glob("../../scripts/impact/q/world.ts", { eager: true }))[0] as
+      | { quarterWorld?: (w: unknown) => { q: { feeFirst: number; feeRaised: number; raiseAt: number; searchMax: number; searchRun: number; churnQ: number }; qSwitch2: { pHigh: number; pMid: number } } }
+      | undefined;
+    const qr = Object.values(import.meta.glob("../../scripts/impact/q/quarter.ts", { eager: true }))[0] as { LIMITS?: { sd_grow: number; sd_ads: number; sd_retain: number } } | undefined;
+    const W = qw?.quarterWorld ? qw.quarterWorld(world) : null;
+    const tier = W ? W.q : { feeFirst: 3, feeRaised: 5, raiseAt: 4, searchMax: 4, searchRun: 2, churnQ: 1 - Math.pow(1 - c.churn, 3) };
+    const sw2 = W ? W.qSwitch2 : { pHigh: 0.074, pMid: 0.052 };
+    const lim = qr?.LIMITS ?? { sd_grow: 4, sd_ads: 4, sd_retain: 1 };
+    // 和や 3 か月分の割合は、文が言う桁（割・分）より細かい所で丸めて比べる
+    const r6 = (x: number): number => Math.round(x * 1e6) / 1e6;
     expect(BANKS.C).toEqual({
       feeFirst: tier.feeFirst,
       feeRaised: tier.feeRaised,
@@ -154,7 +163,33 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
       partFactor: c.partFactor,
       schoolSeats: c.schoolSeats,
       baseHours: c.baseHours,
+      // 0.7（fact-12）: 届け出の答え・転職・週 4 日・会社員に戻る・試用の見込み、転職活動の上限、移る月の賞与の取り逃し、Pro の円の額、
+      //   顧客が離れる見込み、遊ぶ人の伸びと有料になる割合、集客の手の上限（3 か月ごとの世界と、その手の決まり q/quarter.ts の LIMITS）
+      permA: c.perm.a,
+      permS: c.perm.s,
+      permN: c.perm.n,
+      switchP1: r6(k.fc_switch.p.pHigh3 + k.fc_switch.p.pMid3),
+      switchP2: r6(sw2.pHigh + sw2.pMid),
+      searchMax: tier.searchMax,
+      searchRun: tier.searchRun,
+      switchCost: c.switchCost,
+      partP: k.part.p.p,
+      backP: k.back_emp.p.p,
+      pilotP: k.sd_pilot.p.p,
+      netYen: Math.round(c.net * 10000),
+      infraYen: Math.round(c.infra * 10000),
+      churnQ: r6(tier.churnQ),
+      growth: c.g0,
+      conv: c.conv,
+      growMax: lim.sd_grow,
+      adsMax: lim.sd_ads,
+      retainMax: lim.sd_retain,
     });
+    // 3 か月ごとの世界が無い環境でも上の値で確かめたことにならないよう、世界と手の決まりがあることも確かめる
+    expect(W, "scripts/impact/q/world.ts の quarterWorld").not.toBeNull();
+    expect(qr?.LIMITS, "scripts/impact/q/quarter.ts の LIMITS").toBeDefined();
+    // 文の見込みの言い方（割・分）は、丸める前の世界の数と同じ（2 割・4 割 5 分・3 割 5 分・2 割 8 分・1 割 3 分・3 割 5 分・6 割・3 割・1 割 2 分）
+    expect([BANKS.C.permA, BANKS.C.permS, BANKS.C.permN, BANKS.C.switchP1, BANKS.C.switchP2, BANKS.C.partP, BANKS.C.backP, BANKS.C.pilotP, BANKS.C.churnQ].map((p) => strip(wari(p)))).toEqual(["2 割", "4 割 5 分", "3 割 5 分", "2 割 8 分", "1 割 3 分", "3 割 5 分", "6 割", "3 割", "1 割 2 分"]);
   });
 
   it("今日の手は、この手の先の分かれ道（判断・出来事の分かれ・結果ごと）と行き先（まとめた見積もりを分けて）を書く", () => {
@@ -263,10 +298,12 @@ describe("SPEC §4.2: 数の行と数の言い方", () => {
     // Pro の前もサーバー代はかかる（本文の月の稼ぎと合わせる。reader-4）
     expect(composeCard(map, 0, { annual: 360 }).numbers).toEqual(["年収 360 万円（月にならして 30 万円）", "広告運用の顧客なし", "Pro はまだ出していない（サーバー代 月 3,000 円の持ち出し）", "月に遊んだ人 40 人", "週 52 時間"]);
     const s = composeCard(map, byKey(map, "r.ad_permside.a0_a1.1ad.cl2"), { annual: 360 });
-    expect(s.numbers).toEqual(["年収 360 万円（月にならして 30 万円）", "広告運用 2 社（売上 月 10 万円）", "有料 3 人（手数料とサーバー代を引いて月 200 円の持ち出し）", "月に遊んだ人 70 人（3 か月前より +19 人）", "週 57 時間（今日より +5 時間）"]);
+    // 有料の稼ぎは書いた人数から出せる（3 人 × 940 円 − 3,000 円 = 180 円の持ち出し。fact-4）
+    expect(s.numbers).toEqual(["年収 360 万円（月にならして 30 万円）", "広告運用 2 社（売上 月 10 万円）", "有料 3 人（手数料とサーバー代を引いて月 180 円の持ち出し）", "月に遊んだ人 70 人（3 か月前より +19 人）", "週 57 時間（今日より +5 時間）"]);
     expect(composeCard(map, byKey(map, "r.ind_quit.cl0"), { annual: 360 }).numbers.slice(0, 2)).toEqual(["給与なし（独立）", "広告運用の顧客なし"]);
     // 学校の席は有料の人数に入っている（別に足さない。truth-5）
-    expect(composeCard(map, byKey(map, "r.sd_pilot.yes.1ss.yes"), { annual: 360 }).numbers[2]).toBe("有料 40 人（うち学校の席 40・手数料とサーバー代を引いて月 1.2 万円）");
+    // 稼ぎは席の額から（40 席 × 300 円 − サーバー代 3,000 円。fact-4）
+    expect(composeCard(map, byKey(map, "r.sd_pilot.yes.1ss.yes"), { annual: 360 }).numbers[2]).toBe("有料 40 人（うち学校の席 40・手数料とサーバー代を引いて月 9,000 円）");
     // 本当の行き先は 5 つ（3 か月前との差と週の時間）
     const real = composeCard(map, byKey(map, "r.keep.all.1k.all.2k.all.3k.all.4k.all.5k.all.6k.all.7k.all.8k.all.9k.all.10k.all.11k.all"), { annual: 360 });
     expect(real.numbers).toHaveLength(5);
@@ -399,15 +436,17 @@ describe("SPEC §4.2: まとめた行き先（truth-5）", () => {
   });
 
   it("標準の続きがあれば「この後の目安」を書く（同じ手が続く期はまとめ、5 つを超える分は「ほか N 期」。仕事・届け出の期と出来事のある期を残す。名前の無い手と出来事は英数字を出さない）", () => {
-    expect(body(rules, sure)).toContain("この後の目安: 2027 年 2 月 今のまま（3 期） → 11 月 転職活動 → 2028 年 2 月 転職活動の続き（移る） → 5 月 昇格狙い（昇格） → ほか 1 期 → 11 月 副業の 1 社目探し（決まる） → ほか 3 期 → 2029 年 11 月（平均 月 43.1 万円）。");
+    // 移る・昇格する期は、その出来事の月を添える（期の手の月とは違う。fact-1）
+    expect(body(rules, sure)).toContain("この後の目安: 2027 年 2 月 今のまま（3 期） → 11 月 転職活動 → 2028 年 2 月 転職活動の続き（5 月に移る） → ほか 2 期 → 11 月 副業の 1 社目探し（決まる） → 2029 年 2 月 昇格狙い（4 月に昇格） → ほか 2 期 → 11 月（平均 月 43.1 万円）。");
     // 月の稼ぎは今の年収で決まる（給与 1.07 倍 × 月 45 万円 + 広告運用 8 + SpellDash 3）。中身の道の平均で、1 本の道の数ではない（facts-9）
-    expect(body(rules, sure, 540)).toContain("→ 2029 年 11 月（平均 月 59.2 万円）。");
+    expect(body(rules, sure, 540)).toContain("→ 11 月（平均 月 59.2 万円）。");
     expect(body(rules, split)).toContain("この後の目安: 2027 年 2 月 集客 → 5 月 別の手 → 8 月 今のまま → 2029 年 11 月（平均 月 30 万円）。");
     expect(body(rules, avg)).toContain("この後の目安: 2027 年 2 月 今のまま（3 期）");
     // 短くしても会社員に戻る期は残す（facts-9）。同じことを 2 回言わない（「会社員に戻ること（会社員に戻る）」としない。reader-5）
+    // 会社員に戻るのはその期の 3 か月目なので、期の月（5 月）と戻る月（8 月）を分けて言う（fact-1・点検 C11）
     const back = body(rules, byKey(rules, "r.contback.all"));
-    expect(back).toContain("→ 2029 年 5 月 会社員に戻る →");
-    expect(back).not.toMatch(/会社員に戻ること|（会社員に戻る）/);
+    expect(back).toContain("→ 2029 年 5 月 会社員に戻る仕事探し（8 月に戻る） →");
+    expect(back).not.toMatch(/会社員に戻ること|（会社員に戻る）|5 月 会社員に戻る →/);
   });
 
   it("まとめた手とまとめた行き先は「標準の選び方で続けた見積もり」と書く", () => {
@@ -437,7 +476,9 @@ describe("SPEC §4.2: 確定申告と住民税（truth-10）", () => {
     expect(ind).not.toContain("2026 年分");
     expect(body(rules, find(rules, "r.ind", "s", 12))).toContain("2027 年分の確定申告は 2028 年 2 月 16 日〜3 月 15 日。独立してからの売上と経費を申告する。");
     // 独立して最初の年の住民税は、会社員だった前の年の所得で決まる
-    expect(body(rules, find(rules, "r.ind", "s", 6))).toContain("6 月に届く住民税は、会社員だった前の年の所得で決まる。");
+    // 住民税は前の年の所得で決まり、独立した後は自分で納める（高くなるとは言わない。fact-6）
+    expect(body(rules, find(rules, "r.ind", "s", 6))).toContain("6 月に届く住民税は、会社員だった前の年の所得で決まり、独立した後は給与から引かれずに自分で納める。");
+    expect(body(rules, find(rules, "r.ind", "s", 6))).not.toContain("高くなりやすい");
     // 2027 年 4 月に独立: 辞めるまでの給与と、独立してからの売上と経費
     expect(body(rules, find(rules, "r.quit", "s", 12))).toContain("2027 年分は辞めた年で、確定申告は 2028 年 2 月 16 日〜3 月 15 日。辞めるまでの給与（会社の源泉徴収票）と、独立してからの売上と経費を一緒に申告する。");
     // 2027 年 8 月に会社員へ戻った: 会社員の間の給与と、独立していた間の売上と経費
@@ -484,9 +525,12 @@ describe("SPEC §4.2: 移った会社・戻った会社（truth-11）", () => {
   const REFILE = /副業の届け出は、新しい会社で出し直す。|移った会社では、副業の届け出をあらためて出す。|届け出の答えは前の会社の物なので、この会社でもう一度届け出る。/;
 
   it("届け出の範囲を持っていける・出し直す・初めて出す・SpellDash だけを認める会社に戻る。顧客は引き継ぎ先に渡す", () => {
-    expect(at("r.carry", 6)).toContain("移る先は今の届け出の範囲を認める会社に絞ったので、広告運用の副業も SpellDash もそのまま続けられる。");
+    // 移った会社で届け出が要らないとは言わない。面接で確かめた会社を選んだ、この地図の見方として言う（fact-3）
+    expect(at("r.carry", 6)).toContain("移る先は、広告運用の副業と SpellDash を続けてよいと面接で確かめた会社に絞り、この地図では答えを『全部可』のまま数える。");
     expect(at("r.carry", 6)).not.toContain("出し直す");
-    expect(at("r.keeps", 6)).toContain("移る先は SpellDash を認める会社に絞ったので、SpellDash はそのまま続けられる。");
+    expect(at("r.keeps", 6)).toContain("移る先は、SpellDash を続けてよいと面接で確かめた会社に絞り、この地図では答えを『SpellDash だけ可』のまま数える。");
+    // 移った月の賞与は、この地図の数え方として言う（給与が減ると言い切らない。fact-2）
+    expect(at("r.keeps", 6)).toContain("移った月は、前の会社の賞与の取り逃しとして給与の半月分を引いて数えている（実際は賞与の支給日と在籍の条件で変わる）。");
     expect(at("r.refile", 6)).toMatch(REFILE);
     expect(body(rules, byKey(rules, "r.first.0fc_switch.high_mid"))).toContain("副業の届け出はまだ出していない。出すなら新しい会社の就業規則を読んでから。");
     // 顧客は引き継ぎ先に渡した（離れた顧客とは言わない）
@@ -495,7 +539,7 @@ describe("SPEC §4.2: 移った会社・戻った会社（truth-11）", () => {
     const sonly = at("r.sonly", 6);
     expect(sonly).toContain("独立をやめて会社員に戻った。");
     expect(sonly).toContain("広告運用の顧客 2 社は、引き継ぎ先に渡して手放した。");
-    expect(sonly).toContain("戻る先は SpellDash を認める会社に絞ったので、届け出をし直さずに SpellDash を続けられる。");
+    expect(sonly).toContain("戻る先は、SpellDash を続けてよいと面接で確かめた会社に絞った。この地図では新しく届け出る手は使わず、『SpellDash だけ可』として数える。");
     expect(at("r.backrefile", 6)).toMatch(REFILE);
   });
 
@@ -654,7 +698,8 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     expect(stubA).toMatch(/3 年後の顧客は/);
     expect(stubA).not.toContain("まだ無い");
     // 結果の中身が同じなら、まとめて言う
-    expect(body(rules, byKey(rules, "r.twins"))).toContain("『顧客 0 社』でも『顧客 1 社』でも、多くの道で 2029 年 5 月に会社員に戻り");
+    // 戻るのは標準の続きの会社員に戻る期（2029 年 5 月に選ぶ）の 3 か月目（fact-1）
+    expect(body(rules, byKey(rules, "r.twins"))).toContain("『顧客 0 社』でも『顧客 1 社』でも、多くの道で 2029 年 8 月に会社員に戻り");
     // 中身の同じまとめた行き先は、同じだと言う
     expect(body(rules, byKey(rules, "r.twins.cl0"))).toContain("『顧客 1 社』の後と、標準の続きも 3 年後の姿も同じ。");
   });
@@ -688,7 +733,7 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     const rows = Array.from({ length: (rules.cont(i) ?? []).length }, (_, k) => composeCont(rules, i, k, { annual: 360 })!);
     expect(rows).toHaveLength(11);
     expect(rows[0]!.body).toMatch(/^2027 年 3 月〜5 月は、標準の選び方では『今のまま』の 3 か月。/);
-    expect(rows[4]!.title).toBe("転職活動の続き（移る）");
+    expect(rows[4]!.title).toBe("転職活動の続き（5 月に移る）");
     expect(rows[4]!.body).toContain("この期に一番ありそうな出来事は『転職』。");
     const cites = rows.flatMap((r) => r.todo.map((t) => t.cite));
     expect(new Set(cites).size).toBe(cites.length);
@@ -806,8 +851,10 @@ describe("最後の点検の指摘（F2〜F6）", () => {
       expect(cm.body).not.toMatch(/担当を広げ続け|もう一段広げる/);
       expect(cm.body).toContain("今の会社で");
       const cp = composeCard(m, push, { annual });
-      expect(used(cp, "lead.fc_push")).toEqual([group("fc_push", "n>=1")]);
+      expect(used(cp, "lead.fc_push")).toEqual([group("fc_push", "joined=1")]);
       expect(cp.body).not.toMatch(/前の評価で足りなかった|評価の資料にまとめ直す/);
+      // 入社して 1 年に満たない会社の評価は、対象になるかを先に人事に確かめる（移ったのは 2027 年 8 月、評価は 2028 年 4 月。fact-5）
+      expect(cp.body).toMatch(/入社(?:して)? 8 か月で[^。]*。[^。]*人事に/);
       expect(used(composeCard(m, same, { annual }), "lead.fc_scope")).toEqual([group("fc_scope", "here>=1")]);
     }
   });
@@ -831,3 +878,116 @@ describe("最後の点検の指摘（F2〜F6）", () => {
     expect(texts(Object.values(BANKS.eventTitle).flat()).filter((v) => /回目のまとめ/.test(v))).toEqual([]);
   });
 });
+
+describe("文章の波 1 の W1（事実と余白: text-w1/audit の fact-*・rep-5・rep-7）", () => {
+  const rules = fromDevTree(RULES);
+  const map = fromDevTree(TREE);
+
+  it("fact-1・C11: まとめた手が言う会社員に戻る月は、標準の続きの会社員に戻る期の 3 か月目（前は期の月で、1 期早かった）", () => {
+    // 標準の続きの会社員に戻る期は 2029 年 5 月に選ぶ（CONT_BACK の m 30）。戻るのはその 3 か月目の 8 月（eventMonth・back_emp は +3）
+    for (const k of ["r.twins", "r.contback"]) {
+      const i = byKey(rules, k);
+      for (const annual of [360, 540]) {
+        const b = body(rules, i, annual);
+        if (k === "r.twins") expect(b).toContain("2029 年 8 月に会社員に戻り");
+        expect(b).not.toContain("5 月に会社員に戻り");
+        expect(eventMonthIssues(rules, i, b), `${k} ${annual}`).toEqual([]);
+      }
+    }
+    // 前の言い方（期の月で戻ると言う）は C11 で止まる
+    const twins = byKey(rules, "r.twins");
+    const old = body(rules, twins).replace("2029 年 8 月に会社員に戻り", "2029 年 5 月に会社員に戻り");
+    expect(eventMonthIssues(rules, twins, old)).toHaveLength(1);
+    expect(checkCard(rules, twins, { ...composeMarkedCard(rules, twins, { annual: 360 }), body: old }, BANKS, wish).filter((x) => x.startsWith("C11"))).toHaveLength(1);
+    // この後の目安も、会社員に戻る期に戻る月を添える（期の月と戻る月を分けて言う）
+    const end = byKey(rules, "r.contback.all");
+    const eb = body(rules, end);
+    expect(eb).toContain("2029 年 5 月 会社員に戻る仕事探し（8 月に戻る）");
+    expect(eventMonthIssues(rules, end, eb)).toEqual([]);
+    expect(eventMonthIssues(rules, end, eb.replace("（8 月に戻る）", "（5 月に戻る）"))).toHaveLength(1);
+    // 標準の続きの 1 期の題も同じ月
+    const rows = Array.from({ length: (rules.cont(end) ?? []).length }, (_, k) => composeCont(rules, end, k, { annual: 360 })!);
+    expect(rows.find((r) => r.kind === "back_emp")!.title).toBe("会社員に戻る仕事探し（8 月に戻る）");
+  });
+
+  it("fact-4: 数の行の有料の稼ぎは、書いた人数から出せる（人数 × 940 円 − サーバー代 3,000 円、学校の席は 1 席 300 円）。端数が大きければ人数の幅と平均", () => {
+    const yen = (t: string): number => {
+      const m = /月 ([\d,.]+) ?(万円|円)(の持ち出し)?/.exec(t)!;
+      const v = Number(m[1]!.replace(/,/g, "")) * (m[2] === "万円" ? 10000 : 1);
+      return m[3] ? -v : v;
+    };
+    let exact = 0;
+    let band = 0;
+    for (const m of [map, rules])
+      for (const i of all(m)) {
+        if (m.role(i) === "a" || (m.role(i) === "e" && m.sum(i))) continue;
+        const row = composeCard(m, i, { annual: 360 }).numbers.find((x) => x.startsWith("有料"));
+        if (!row) continue;
+        const one = /^有料 ([\d,]+) 人（(?:うち学校の席 ([\d,]+)・)?手数料とサーバー代を引いて月 /.exec(row);
+        const two = /^有料 ([\d,]+) 人か ([\d,]+) 人（手数料とサーバー代を引いて平均 月 /.exec(row);
+        if (one) {
+          exact++;
+          const n = Number(one[1]!.replace(/,/g, ""));
+          const seats = Number((one[2] ?? "0").replace(/,/g, ""));
+          const want = (n - seats) * BANKS.C.netYen + seats * BANKS.C.seatYen - BANKS.C.infraYen;
+          // 1 万円より下は 10 円まで、上は万円の小数 1 桁（1,000 円）まで
+          expect(Math.abs(yen(row) - want), `${m.key(i)} ${row}`).toBeLessThanOrEqual(Math.abs(want) >= 10000 ? 500 : 0);
+        } else if (two) {
+          band++;
+          const lo = Number(two[1]) * BANKS.C.netYen - BANKS.C.infraYen;
+          const hi = Number(two[2]) * BANKS.C.netYen - BANKS.C.infraYen;
+          expect(yen(row), `${m.key(i)} ${row}`).toBeGreaterThanOrEqual(lo - 500);
+          expect(yen(row), `${m.key(i)} ${row}`).toBeLessThanOrEqual(hi + 500);
+        } else expect(row, m.key(i)).toMatch(/^有料 平均 /);
+      }
+    expect(exact).toBeGreaterThan(10);
+    // 端数のある人数（見込みの平均）は「N 人か M 人」と書き、その数の言い方も点検する（C10）
+    expect(numberWording("有料 3 人か 4 人（手数料とサーバー代を引いて平均 月 200 円）")).toEqual([]);
+    expect(numberWording("有料 3 人か 4 人（平均 月 200 円）")).toHaveLength(1);
+    expect(band + exact).toBeGreaterThan(10);
+  });
+
+  it("fact-2〜11・fact-23（C2）: 束の文は、この地図の前提を事実や会社の決まりとして言い過ぎない", () => {
+    const strings: string[] = [];
+    const walk = (x: unknown): void => {
+      if (typeof x === "string") strings.push(x);
+      else if (Array.isArray(x)) x.forEach(walk);
+      else if (x && typeof x === "object") Object.values(x).forEach(walk);
+    };
+    walk(SENTENCES);
+    for (const t of strings) for (const [re, why] of OVERCLAIMS) expect(re.test(t), `${why}: ${t}`).toBe(false);
+    // 前の言い方は止まる
+    for (const t of ["移る月は給与の半月分が減る。", "届け出をし直さずに SpellDash を続けられる。", "広告運用は競業として認められず", "独立して最初の年は高くなりやすいので", "書類で落ちる先が多く、面接に進めなかった。", "この会社でもう一度は聞けないので", "給与（年収 360 万円）が 2028 年 1 月で止まる。"]) expect(OVERCLAIMS.some(([re]) => re.test(t)), t).toBe(true);
+    // 前提の言い方: 4 月の昇給と評価・届け出の答えの時期・聞き直さないは「この地図では」
+    expect(SENTENCES.cal.APRIL!.flatMap((g) => g.v).every((v) => v.startsWith("この地図"))).toBe(true);
+    expect(SENTENCES.hint.flatMap((g) => g.v).filter((v) => v.includes("1 か月ほど")).every((v) => v.includes("この地図では"))).toBe(true);
+    // 独立の訳: 給与が止まる月は「…から入らなくなる」「…から止まり」で言う（fact-11）
+    expect(SENTENCES.avoid.ind_quit!.flatMap((g) => g.v).filter((v) => /で止まる/.test(v))).toEqual([]);
+    // 広告運用を足す道は転職だけと言わない（fact-10）
+    expect(SENTENCES.after.flatMap((g) => g.v).filter((v) => /広告運用を足すには、副業を認める会社への転職が要る/.test(v))).toEqual([]);
+  });
+
+  it("fact-12: 文の型が差し込みなしで書ける数は、文の型が使う数だけ（前提に無い数は C1 で止まる）", () => {
+    expect(digitsOutside("資金が 6 か月分を切る前に")).toEqual(["6"]);
+    expect(digitsOutside("在籍 2 年を過ぎた")).toEqual(["2"]);
+    expect(digitsOutside("面接は 5 日で終わる")).toEqual(["5"]);
+    expect(digitsOutside("1 人 940 円")).toEqual(["940"]);
+    // 使う数は通る
+    expect(digitsOutside("Pro（月 980 円）。週 10 時間と週 4 日・週 5 日。1 校。4 月と 6 月。3 か月。1 か月ほど。1 年後と 3 年後。1 社目と 2 社目。1 回。1 つと 2 つ。1 件。1 本。1 期。1 日。1 人")).toEqual([]);
+  });
+
+  it("rep-7: 届け出の結果の意味は結果ごとに 1 文で、結果の名前を言い直さない。「転職か独立」は、どちらも不可の言い換えのうち 1 つだけで言う", () => {
+    for (const kind of ["ad_permside", "sd_permpro", "ad_perm"]) {
+      const cells = BANKS.branch[kind]!;
+      for (const [cls, groups] of Object.entries(cells))
+        for (const g of groups)
+          for (const v of g.v) {
+            expect(v, `${kind}.${cls}`).not.toContain("。");
+            expect(v, `${kind}.${cls}`).not.toMatch(/^全部可で|^全部可だが/);
+          }
+      expect(cells.n!.flatMap((g) => g.v).filter((v) => v.includes("転職か独立")).length, kind).toBeLessThanOrEqual(1);
+    }
+    expect([...SENTENCES.event.PERM_N!, ...SENTENCES.hint].flatMap((g) => g.v).filter((v) => v.includes("転職か独立"))).toEqual([]);
+  });
+});
+

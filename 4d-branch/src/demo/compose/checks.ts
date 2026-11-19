@@ -4,18 +4,24 @@
 //   C3 長さ・C4 地図の文の決まり（% と差・敬語・位置・気持ち・埋まっていない差し込み）・C4b 英数字の名前を書かない・C5 結果の名前と顧客の数（本当の状態）・
 //   C5b 顧客と席は整数・C7 モデルに無い月額（人が見る）・C10 数の言い方（給与は月にならして・有料は手数料とサーバー代を引いて・月に遊んだ人・
 //   3 か月は 3 つの月・数の行の数を今日・状態・行き先の本文に書かない）・D1 / D2 文では直せないデータ（計算の側へ返す。まとめた行き先は除く）
-//   C11 手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が、その結果の状態と合う（reader-4）・
+//   C11 手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が、その結果の状態と合う（reader-4）。まとめた手と行き先が言う
+//   出来事の月（会社員に戻る月など）が、標準の続きの出来事の月と合う（fact-1）・C2 には前提の言い過ぎ（fact-2〜11・fact-23）も入る・
 //   C12 道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間。reader-6。前の会社で選んだ手の続きと言わない・何も変えなかった結果を
 //   月の稼ぎを一番動かした物と言わない。F4・F5）
 // 道ごと: C9 道で 1 回だけの文（暦・静かな期の一言・出来事の助言・避けたい訳）が、今日から行き先までの道で 2 回出ない
 import type { MapData } from "../../deepmap/mapData";
 import type { WishData } from "../wishlist";
-import { calendarOf, clBand, mergedFact, newFeeOf, quarterSal, type Calendar } from "./path";
+import { calendarOf, clBand, eventMonth, mergedFact, newFeeOf, quarterSal, type Calendar } from "./path";
 import { clr, f2, man, ME, MS, n0, PE, PS, spaceJa, strip } from "./text";
 import type { Banks, Card, Consts } from "./types";
 
-/** 文の型が差し込みなしで書いてよい数字（決まった言い方・月・少ない数） */
-export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /週 4 日/g, /1 校/g, /\d{1,2} ?月/g, /[1-9] ?か月/g, /[1-3] ?年/g, /[1-3] ?社目/g, /[1-9] ?回/g, /[1-5] ?つ/g, /[1-9] ?件/g, /[1-9] ?本/g, /[1-9] ?期/g, /[0-9] ?円/g, /[1-9] ?日/g, /[1-9] ?人/g, /もう 1 社/g, /1 社 月/g, /1 社あたり/g, /1on1/g, /A4/g, /GA4/g, /D1|D7|D30/g];
+/**
+ * 文の型が差し込みなしで書いてよい数字（決まった言い方・暦の月・1 つ 2 つの数え方）。0.7: どの数でも通していた形（N か月・N 日・N 円・N 人・
+ * N 回 など）を、文の型が実際に使う数だけにした（前提に無い数「6 か月分」などが通らない。前提の数は差し込みで入れる。fact-12）。
+ * Pro の月額 980 円（spell-revenue-d02）・週 10 時間・週 4 日と週 5 日・1 校・4 月（昇給と評価）と 6 月（住民税の通知）・3 か月（1 期）・
+ * 届け出の答えの「1 か月ほど」・1 年と 3 年（毎年 4 月・地図の 3 年）・1 社目と 2 社目
+ */
+export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /週 [45] 日/g, /1 校/g, /[46] ?月/g, /3 ?か月/g, /1 ?か月ほど/g, /[13] ?年/g, /[12] ?社目/g, /1 ?回/g, /[12] ?つ/g, /1 ?件/g, /1 ?本/g, /1 ?期/g, /1 ?日/g, /1 ?人/g, /もう 1 社/g, /1 社 月/g, /1 社あたり/g, /1on1/g, /A4/g, /GA4/g, /D1|D7|D30/g];
 
 /**
  * 役割ごとの長さ（題の字数・本文の字数の下と上）。今日の手は先に読むので本文を長くしてよい。
@@ -28,9 +34,11 @@ export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /�
  *   520 → 560（W-gen が生成の点検につないだ時に直した。W-text が確かめる）。
  *   560 → 660: 今日の手の本文に、見積もり方の名前・一番良い選び方の平均・地図にある行き先と一番良い選び方で着く行き先を足した
  *   （truth-4・reader-4。画面と同じ数。届け出て副業の本文は年収 360 で 604 字ほど）
+ *   660 → 700（0.7・W1 で測り直した）: 届け出の結果の意味を、結果ごとの 1 文でその月と額まで言うようにした（rep-7）。届け出て副業の本文は
+ *   年収 360 で 652 字・540 で 650 字（前は 621）。手の上と同じにして、W2 が今日の手に足す分の余白を残す
  */
 export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 400 }, e: { title: 24, min: 80, max: 560 }, r: { title: 40, min: 0, max: 600 } } as const;
-export const FIRST_MOVE_MAX = 660;
+export const FIRST_MOVE_MAX = 700;
 export const TODO_MAX = 24;
 
 const SLOT_SPAN = new RegExp(`${MS}[^${ME}]*${ME}`, "g");
@@ -102,7 +110,7 @@ export function asciiIds(text: string): string[] {
 export function numberWording(text: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(/給与[^。、]{0,16}?月 ?[0-9.,]+ ?万円/g)) if (!/にならして|賞与込み/.test(m[0])) out.push(`給与の月額に「月にならして」が無い「${m[0]}」`);
-  for (const m of text.matchAll(/有料(?:会員)?(?:は)? ?(?:平均 )?[0-9,]+ ?人(?:ほど)?（([^）]*)）/g)) if (/円/.test(m[1] ?? "") && !/^(?:うち学校の席 [0-9,]+・)?手数料とサーバー代を引いて/.test(m[1] ?? "")) out.push(`有料会員の稼ぎに「手数料とサーバー代を引いて」が無い「${m[0]}」`);
+  for (const m of text.matchAll(/有料(?:会員)?(?:は)? ?(?:平均 )?[0-9,]+ ?人(?:か [0-9,]+ ?人)?(?:ほど)?（([^）]*)）/g)) if (/円/.test(m[1] ?? "") && !/^(?:うち学校の席 [0-9,]+・)?手数料とサーバー代を引いて/.test(m[1] ?? "")) out.push(`有料会員の稼ぎに「手数料とサーバー代を引いて」が無い「${m[0]}」`);
   for (const m of text.matchAll(/遊ぶ人(?:は)? ?月 ?[0-9,]+ ?人/g)) out.push(`遊ぶ人の数の言い方「${m[0]}」`);
   for (const m of text.matchAll(/遊んだ人 [0-9,]+ 人（[+−-]/g)) out.push(`3 か月の差に「3 か月前より」が無い「${m[0]}」`);
   for (const m of text.matchAll(/(\d{1,2}) ?月〜(?:\d{4} ?年 ?)?(\d{1,2}) ?月(?! ?\d+ ?日)/g)) {
@@ -113,7 +121,98 @@ export function numberWording(text: string): string[] {
 }
 
 /** 数の行の数を、今日・状態・行き先の本文に書いていないか（SPEC §4.2・user-9b） */
-const ROW_IN_PROSE: readonly RegExp[] = [/年収 (?:平均 )?[0-9,]+ ?万円/, /月にならして [0-9.]+ ?万円/, /月に遊んだ人 (?:平均 )?[0-9,]+ ?人/, /有料 (?:平均 )?[0-9,]+ 人（/, /週 [0-9]+ 時間/, /広告運用 (?:平均 )?[0-9〜]+ ?社（売上/];
+const ROW_IN_PROSE: readonly RegExp[] = [/年収 (?:平均 )?[0-9,]+ ?万円/, /月にならして [0-9.]+ ?万円/, /月に遊んだ人 (?:平均 )?[0-9,]+ ?人/, /有料 (?:平均 )?[0-9,]+ 人(?:か [0-9,]+ 人)?（/, /週 [0-9]+ 時間/, /広告運用 (?:平均 )?[0-9〜]+ ?社（売上/];
+
+/**
+ * この地図の前提を、事実や会社の決まりとして言い過ぎる言い方（C2・fact-2・3・6・7・8・9・11・fact-23）。前提は「この地図では…とみる」で言い、
+ * 決まらなかった訳は作らず、会社の断った訳は言わない
+ */
+export const OVERCLAIMS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/半月分が減る/, "賞与の取り逃しを、給与が減ると言い切る"],
+  [/そのまま続けられる|届け出をし直さずに/, "移った会社・戻った会社では届け出が要らないと言う"],
+  [/競業として認められず/, "会社の断った訳を言う"],
+  [/高くなりやすい/, "住民税が高くなると言う"],
+  [/書類で落ちる先が多く|面接まで進んだ先はあったが|面接は受けたが/, "決まらなかった訳を作る"],
+  [/聞けない|聞き直せない/, "聞き直さないこの地図の決まりを、会社の決まりとして言う"],
+  [/[0-9] 月で止まる/, "給与が止まる月を、その月まで払われるように言う"],
+];
+
+/** 本文の、前提の言い過ぎ（OVERCLAIMS）と、独立が 2027 年 1 月より後に始まった道で「（独立して）3 年がたった」と言うこと（C2・fact-23） */
+export function overclaimIssues(map: MapData, i: number, text: string): string[] {
+  const out: string[] = [];
+  for (const [re, why] of OVERCLAIMS) {
+    const m = re.exec(text);
+    if (m) out.push(`前提を言い過ぎる（${why}）「${m[0]}」`);
+  }
+  if (map.role(i) === "e" && /独立[^。]*3 年がたった/.test(text)) {
+    const from = indStartOf(map, i);
+    if (from === null || from > 2) out.push(`独立して 3 年に満たない道（独立は ${from ?? "無し"} か月目から）で「3 年がたった」と言う`);
+  }
+  return out;
+}
+
+/** カード i までの道で、今続いている独立が始まった月（独立していなければ null）。独立する手の出来事の月（その 3 か月の 2 か月目） */
+function indStartOf(map: MapData, i: number): number | null {
+  let x = map.role(i) === "a" ? map.parent(i) : i;
+  if (map.st(x).j !== "i") return null;
+  for (;;) {
+    const mv = map.parent(x);
+    if (mv < 0) return null;
+    const up = map.parent(mv);
+    if (up < 0 || map.st(up).j !== "i") return eventMonth(calOf(map), map.kind(mv) ?? "ind_quit", map.month(mv));
+    x = up;
+  }
+}
+
+/** まとめた手・まとめた行き先が月を言う出来事の言い方: 会社員に戻る・独立・週 4 日・移る・昇格（C11・fact-1） */
+const EVENT_MONTH_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
+  // まとめた手の「標準の続きでは 2027 年 8 月に会社員に戻り」（行き先の節目「2027 年 5 月に会社員に戻る」は道の出来事なので見ない）
+  [/(?:(\d{4}) 年 )?(\d{1,2}) 月に会社員に戻り/g, "BACK_EMP"],
+  [/（(?:(\d{4}) 年 )?(\d{1,2}) 月に戻る）/g, "BACK_EMP"],
+  [/独立（(?:(\d{4}) 年 )?(\d{1,2}) 月から）/g, "IND_START"],
+  [/（(?:(\d{4}) 年 )?(\d{1,2}) 月から週 4 日）/g, "PART_ON"],
+  [/（(?:(\d{4}) 年 )?(\d{1,2}) 月に移る）/g, "SWITCH"],
+  [/（(?:(\d{4}) 年 )?(\d{1,2}) 月に昇格）/g, "PROMO"],
+];
+
+/**
+ * まとめた手（stub）とまとめた行き先が、標準の続きの出来事について言う月が、モデルの出来事の月（その期の手の月 + その手の出来事の月。
+ * path.ts の eventMonth: 会社員に戻るは +3）と同じか（C11・fact-1: 会社員に戻る月を、その期の手の月で言っていた）。
+ * 年の無い月は、その前に書いた年（この後の目安の「2027 年 5 月 会社員に戻る仕事探し（8 月に戻る）」）。text は仕上げた本文
+ */
+export function eventMonthIssues(map: MapData, i: number, text: string): string[] {
+  const role = map.role(i);
+  const ends: number[] = [];
+  if (role === "e" && map.sum(i)) ends.push(i);
+  else if (role === "a" && map.stub(i)) for (let k = 0; k < map.childCount(i); k++) if (map.sum(map.child(i, k))) ends.push(map.child(i, k));
+  if (!ends.length) return [];
+  const cal = calOf(map);
+  const ok = new Map<string, Set<number>>();
+  for (const o of ends)
+    for (const st of map.cont(o) ?? []) {
+      if (!st.ev) continue;
+      const code = st.ev.startsWith("SWITCH_") ? "SWITCH" : st.ev;
+      let set = ok.get(code);
+      if (!set) ok.set(code, (set = new Set()));
+      set.add(eventMonth(cal, st.kind, st.m));
+    }
+  const years = [...text.matchAll(/(\d{4}) 年/g)].map((m) => [m.index ?? 0, Number(m[1])] as const);
+  const yearAt = (k: number): number | null => {
+    let y: number | null = null;
+    for (const [at, v] of years) if (at < k) y = v;
+    return y;
+  };
+  const out: string[] = [];
+  for (const [re, code] of EVENT_MONTH_PHRASES)
+    for (const m of text.matchAll(re)) {
+      const y = m[1] ? Number(m[1]) : yearAt(m.index ?? 0);
+      if (y === null) continue;
+      const at = cal.monthOf(y, Number(m[2]));
+      const want = ok.get(code);
+      if (!want?.has(at)) out.push(`まとめた見積もりの出来事の月「${m[0]}」が、標準の続きの出来事の月（${want ? [...want].map((x) => cal.parts(x).join("-")).join("・") : "無し"}）と違う`);
+    }
+  return out;
+}
 
 /** 顧客が確かに 1 社のときだけ言える「2 社目が決まれば（埋まれば）」（C2。F2） */
 export const TWO_IF = /2 社目が(?:埋ま|決ま)れば/;
@@ -168,6 +267,10 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
   // C10: 数の言い方
   for (const x of numberWording(all)) out.push(`C10 ${x}`);
   if (role !== "a") for (const re of ROW_IN_PROSE) if (re.test(plain)) out.push(`C10 数の行の数を本文に書いている（${re.source}）`);
+  // C2: この地図の前提を、事実や会社の決まりとして言い過ぎない（fact-2〜11・fact-23）
+  for (const x of overclaimIssues(map, i, plain)) out.push(`C2 ${x}`);
+  // C11: まとめた手と行き先が言う出来事の月（会社員に戻る月など）は、標準の続きの出来事の月（fact-1）
+  for (const x of eventMonthIssues(map, i, plain)) out.push(`C11 ${x}`);
   // C5b: 顧客と学校の席は整数（ならした値の端数を書かない。truth-5・truth-9）。本文と題の「N 席」は 1 校の席の倍数（3 年後の平均の席を言わない。facts-3）
   if (/[0-9]+\.[0-9]+ ?(?:社|席)/.test(all)) out.push("C5b 顧客か席に端数");
   for (const m of `${plain}\n${title}`.matchAll(/([0-9][0-9,]*) ?席/g)) if (Number(m[1]!.replace(/,/g, "")) % banks.C.schoolSeats !== 0) out.push(`C5b 学校の席が 1 校の席の倍数でない「${m[0]}」`);
@@ -377,6 +480,7 @@ export function checkCont(map: MapData, d: number, t: { title: string; body: str
   const ascii = asciiIds(all);
   if (ascii.length) out.push(`C4b 英数字の名前: ${ascii.join(",")}`);
   for (const x of numberWording(all)) out.push(`C10 ${x}`);
+  for (const [re, why] of OVERCLAIMS) if (re.test(all)) out.push(`C2 前提を言い過ぎる（${why}）`);
   const [lo, hi] = clBand(map, d);
   if (lo !== hi) for (const m of all.replace(/『[^』]*』/g, "『』").matchAll(/([1-9]) 社目/g)) out.push(`C2 標準の続きの期が「${m[0]}」と言うが、判断の顧客は ${lo}〜${hi} 社の幅`);
   if (t.todo.length > 3) out.push(`C3 やることが ${t.todo.length} つ`);

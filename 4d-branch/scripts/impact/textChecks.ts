@@ -35,7 +35,7 @@ export interface TextCheckDef {
 export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C1", name: "数はどれもデータから（差し込みの印の外に数字が無い）", block: true },
   { id: "C1b", name: "手引きの文の数字は、引いたやりたいことリストの項目にある", block: true },
-  { id: "C2", name: "状態と食い違わない（まとめた行き先は中身の幅と平均・社数の幅で 2 社目を決めて言わない）", block: true },
+  { id: "C2", name: "状態と食い違わない（まとめた行き先は中身の幅と平均・社数の幅で 2 社目を決めて言わない）・この地図の前提を事実や会社の決まりとして言い過ぎない", block: true },
   { id: "C3", name: "長さ・題・やること 3 つ・数の行", block: true },
   { id: "C4", name: "地図の文の決まり（% と差・敬語・位置・気持ち）", block: true },
   { id: "C4b", name: "英数字の名前を書かない", block: true },
@@ -46,7 +46,7 @@ export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C8", name: "言葉の間・カードの年月を言い直さない", block: true },
   { id: "C9", name: "道で 1 回だけの文が、道で 2 回出ない", block: true },
   { id: "C10", name: "数の言い方（月にならして・手数料とサーバー代を引いて・月に遊んだ人・3 つの月）", block: true },
-  { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う", block: true },
+  { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う・まとめた手と行き先が言う出来事の月（会社員に戻る月など）が標準の続きの出来事の月と合う", block: true },
   { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果・次の判断に無い手を勧めない）", block: true },
   { id: "C13", name: "本文の「おすすめ」が画面のおすすめ（その年収の一番良い選び方の手）と同じ手で、おすすめより多いと言い切らない", block: true },
   { id: "T4", name: "兄弟の題が違う（手も結果も）", block: true },
@@ -138,9 +138,9 @@ export function skeleton(sentence: string): string | null {
 // ---- C8（言葉の間・カードの年月の言い直し）
 
 /** 文の型に差し込む言葉のうち、日本語で始まることがある物（前に空白を置くと「は 年収」になる） */
-const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "partLoss", "job", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
+const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "salBack", "partLoss", "job", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
 /** 日本語で終わる物（後ろに空白を置くと「社 の」になる） */
-const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "job", "salx", "salYen", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "share", "hiX", "midX", "hiYen", "midYen"]);
+const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "hiX", "midX", "hiYen", "midYen"]);
 
 /** 束の言い換えの、差し込みの隣の空白（間は組み立てが空ける。R2 の C8） */
 export function bankSpacing(banks: Banks): string[] {
@@ -241,6 +241,22 @@ export interface PathRepeats {
   worst: Array<{ key: string; n: number; repeated: string[] }>;
   /** よく繰り返す骨組み（道の数で数える） */
   top: Array<[string, number]>;
+  /**
+   * 1 つの枠を一番多く使う数（道ごと。構造の文も入れる。行ごとに 1 回）の分布と、目安（FRAME_SOFT）を超える道の数・一番多く使われる枠
+   * （道の数）。止めない（作業メモ text-w1 の L2: 数の枠を構造の文にしてよい代わりに、道でいくつ並ぶかを報告する）
+   */
+  frames: { dist: Dist; hist: Record<number, number>; over: number; top: Array<[string, number]> };
+}
+
+/** 道 1 本で 1 つの枠を使う数の目安（報告だけ。止めない。L2） */
+export const FRAME_SOFT = 4;
+
+/** 文の枠: 構造の文は「構造 N」（STRUCTURAL の何番目か）、ほかは骨組みの『』の中も伏せた物（L2 の報告で数える） */
+export function frameOf(sentence: string): string | null {
+  const k = mask(sentence).replace(/^(?:# 年 # 月|今月)、/, "").replace(/^『[^』]*』を受けて、/, "");
+  if ([...k].length <= 8) return null;
+  const si = STRUCTURAL.findIndex((re) => re.test(k));
+  return si >= 0 ? `構造 ${si}` : k.replace(/『[^』]*』/g, "『』");
 }
 
 export interface Siblings {
@@ -251,6 +267,11 @@ export interface Siblings {
   titlePairs: number;
   titleSame: number;
   titleSameByRole: Record<string, number>;
+  /** 手の兄弟で、本文の書き出し（数字を伏せた最初の 14 字）が同じ組（報告だけ。rep-6・L6） */
+  openerSame: number;
+  /** 結果が 3 つ以上で、どれも別の結果と比べる文を持つ組と、そのうち比べる文の枠がどれも同じ組（報告だけ。rep-4・L6） */
+  cmpGroups: number;
+  cmpSame: number;
 }
 
 /** 判断ごとの繰り返し: 続く 2 つの判断に並ぶ同じ種類の手（道で選ばなかった方）どうしが同じ骨組みで言う構造でない文の数 */
@@ -280,6 +301,8 @@ export interface TextCheckRun {
   cousins: { pairs: number; same: number; skeleton: number };
   /** 本文が完全に同じカードの割合（参考） */
   identical: number;
+  /** 状態の本文がほかのカードの本文と同じ数と、状態の数（参考。rep-3） */
+  identicalState: { same: number; states: number };
   ms: { compose: number; perCardUs: number; cardChecks: number; paths: number; siblings: number };
 }
 
@@ -470,6 +493,13 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   for (let i = 1; i < n; i++) bodies.set(fin[i]!.body, (bodies.get(fin[i]!.body) ?? 0) + 1);
   let dup = 0;
   for (const v of bodies.values()) if (v > 1) dup += v;
+  // 状態の本文がほかのカードと同じ（参考。rep-3）
+  const identicalState = { same: 0, states: 0 };
+  for (let i = 1; i < n; i++)
+    if (map.role(i) === "s") {
+      identicalState.states++;
+      if ((bodies.get(fin[i]!.body) ?? 0) > 1) identicalState.same++;
+    }
   onTitles(fin.map((c) => c.title));
   return {
     annual,
@@ -483,6 +513,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
     siblings,
     cousins,
     identical: n > 1 ? dup / (n - 1) : 0,
+    identicalState,
     ms: { compose: Math.round(tCompose), perCardUs: Math.round((tCompose / Math.max(1, n)) * 10000) / 10, cardChecks: Math.round(tCards), paths: Math.round(tPaths), siblings: Math.round(tSibs) },
   };
 }
@@ -541,6 +572,57 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
     const bodies = contOf(i);
     if (bodies.length) contIds.set(i, bodies.map(idsOf));
   }
+  // 枠（構造の文も入れる。報告だけ。L2）: 行ごとに 1 回数え、道の終わりで一番多く使った枠の数
+  const fIds = new Map<string, number>();
+  const fNames: string[] = [];
+  const framesOf = (body: string): Int32Array => {
+    const arr: number[] = [];
+    for (const x of sentencesOf(body)) {
+      const fr = frameOf(x);
+      if (fr === null) continue;
+      let id = fIds.get(fr);
+      if (id === undefined) {
+        id = fNames.length;
+        fIds.set(fr, id);
+        fNames.push(fr);
+      }
+      arr.push(id);
+    }
+    return Int32Array.from(arr);
+  };
+  const perFrame: Int32Array[] = new Array<Int32Array>(map.n);
+  for (let i = 0; i < map.n; i++) perFrame[i] = framesOf(fin[i]!.body);
+  const contFrames = new Map<number, Int32Array[]>();
+  for (let i = 0; i < map.n; i++) if (!map.childCount(i) && contOf(i).length) contFrames.set(i, contOf(i).map(framesOf));
+  const fRuns = new Int32Array(fNames.length);
+  const fLast = new Int32Array(fNames.length).fill(-2);
+  const fOn: number[] = [];
+  const fMax: number[] = [];
+  const fHist: Record<number, number> = {};
+  const fTop = new Map<number, number>();
+  // 元に戻す記録: [枠, 前の fLast（−3 は同じ行の中）]
+  type FUndo = Array<[number, number]>;
+  const countF = (ids: Int32Array, r: number, u: FUndo): void => {
+    for (const f of ids) {
+      if (fLast[f] === r) {
+        u.push([f, -3]);
+        continue;
+      }
+      fRuns[f]!++;
+      fOn.push(f);
+      u.push([f, fLast[f]!]);
+      fLast[f] = r;
+    }
+  };
+  const undoF = (u: FUndo): void => {
+    for (let j = u.length - 1; j >= 0; j--) {
+      const [f, last] = u[j]!;
+      if (last === -3) continue;
+      fRuns[f]!--;
+      fLast[f] = last;
+      fOn.pop();
+    }
+  };
   const cnt = new Int32Array(names.length);
   const runs = new Int32Array(names.length);
   const lastRun = new Int32Array(names.length).fill(-2);
@@ -589,20 +671,24 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       }
     }
   };
-  // [カード, 行の番号, 前の行の値, 戻るときの記録]
-  const stack: Array<[number, number, RowJoin | null, Undo | null]> = [[0, -1, null, null]];
+  // [カード, 行の番号, 前の行の値, 戻るときの記録（骨組みと枠）]
+  const stack: Array<[number, number, RowJoin | null, [Undo, FUndo] | null]> = [[0, -1, null, null]];
   while (stack.length) {
     const [i, run, prev, undo] = stack.pop()!;
     if (undo) {
-      undoAll(undo);
+      undoAll(undo[0]);
+      undoF(undo[1]);
       continue;
     }
     const role = map.role(i);
     let r = run;
     let next = prev;
     const u: Undo = [];
-    if (role === "r") count(perCard[i]!, r, u);
-    else if (role === "s" || role === "e") {
+    const uf: FUndo = [];
+    if (role === "r") {
+      count(perCard[i]!, r, u);
+      countF(perFrame[i]!, r, uf);
+    } else if (role === "s" || role === "e") {
       // 行（判断・手・結果）: 道の画面が前の行とまとめるなら同じ行の番号、そうでなければ新しい行
       const a = map.parent(i);
       const row = rowOf(map, prev, r, i);
@@ -610,13 +696,28 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       next = row.key;
       count(perCard[a]!, r, u);
       count(perCard[i]!, r, u);
+      countF(perFrame[a]!, r, uf);
+      countF(perFrame[i]!, r, uf);
     }
-    if (role !== "a") stack.push([i, r, next, u]);
+    if (role !== "a") stack.push([i, r, next, [u, uf]]);
     const kids = map.childCount(i);
     if (!kids) {
       // 標準の続きの期（期ごとに別の行。行の番号は道の行の月と重ならないように 100 + 月）
       const uc: Undo = [];
+      const ucf: FUndo = [];
       (contIds.get(i) ?? []).forEach((ids, j) => count(ids, 100 + contMonth(i, j), uc));
+      (contFrames.get(i) ?? []).forEach((ids, j) => countF(ids, 100 + contMonth(i, j), ucf));
+      let fm = 0;
+      let fa = -1;
+      for (const f of fOn)
+        if (fRuns[f]! > fm) {
+          fm = fRuns[f]!;
+          fa = f;
+        }
+      fMax.push(fm);
+      fHist[fm] = (fHist[fm] ?? 0) + 1;
+      if (fa >= 0) fTop.set(fa, (fTop.get(fa) ?? 0) + 1);
+      undoF(ucf);
       per.push(rep);
       perRaw.push(raw);
       hist[rep] = (hist[rep] ?? 0) + 1;
@@ -637,7 +738,16 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
   const top: Array<[string, number]> = [];
   for (let s = 0; s < names.length; s++) if (repAt[s]! > 0) top.push([names[s]!, repAt[s]!]);
   top.sort((a, b) => b[1] - a[1]);
-  return { paths: per.length, dist: dist(per), hist, raw: dist(perRaw), histRaw, overGate: per.filter((x) => x > gates.pathRepeats).length, worst: worst.slice(0, Math.max(k, 10)), top: top.slice(0, 15) };
+  const frames = {
+    dist: dist(fMax),
+    hist: fHist,
+    over: fMax.filter((x) => x > FRAME_SOFT).length,
+    top: [...fTop]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([f, c]) => [fNames[f]!, c] as [string, number]),
+  };
+  return { paths: per.length, dist: dist(per), hist, raw: dist(perRaw), histRaw, overGate: per.filter((x) => x > gates.pathRepeats).length, worst: worst.slice(0, Math.max(k, 10)), top: top.slice(0, 15), frames };
 }
 
 /**
@@ -692,14 +802,30 @@ function repeatsByDecision(map: MapData, marked: readonly Card[], gates: TextGat
  * 束に無い種類どうし（どちらも「別の手」と書く）の組は比べない
  */
 function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: number, fail: (msg: string, role: string, key: string) => void): Siblings {
-  const r: Siblings = { movePairs: 0, moveSame: 0, outPairs: 0, outSame: 0, titlePairs: 0, titleSame: 0, titleSameByRole: {} };
+  const r: Siblings = { movePairs: 0, moveSame: 0, outPairs: 0, outSame: 0, titlePairs: 0, titleSame: 0, titleSameByRole: {}, openerSame: 0, cmpGroups: 0, cmpSame: 0 };
   const known = (i: number): boolean => !!banks.title[map.kind(i) ?? ""];
+  // 別の結果と比べる文の枠: 比べ方の言い方（「同じ手で『…』だった場合より、」「（同じ手で『…』だった場合と比べて）」など。数字と『』の中は伏せる。
+  // 差の中身は兄弟で違うので見ない。報告だけ。rep-4・L6）
+  const cmpFrame = (body: string): string | null => {
+    const x = sentencesOf(body).find((t) => /だった場合|と比べ|の場合に比べ|の場合より|の場合とも|場合と、数字/.test(t));
+    if (x === undefined) return null;
+    const t = mask(x).replace(/『[^』]*』/g, "『』");
+    const m = /（[^）]*比べて）$/.exec(t) ?? /^[^、]*?(?:場合より|と比べると|と比べて|に比べ|この結果は)/.exec(t);
+    return m ? m[0] : t;
+  };
   for (let p = 0; p < map.n; p++) {
     const kc = map.childCount(p);
     if (kc < 2) continue;
     const ks: number[] = [];
     for (let c = 0; c < kc; c++) ks.push(map.child(p, c));
     const sk = ks.map((x) => mask(fin[x]!.body));
+    if (kc >= 3 && map.role(ks[0]!) === "s") {
+      const fr = ks.map((x) => cmpFrame(fin[x]!.body));
+      if (fr.every((x) => x !== null)) {
+        r.cmpGroups++;
+        if (fr.every((x) => x === fr[0])) r.cmpSame++;
+      }
+    }
     for (let a = 0; a < ks.length; a++)
       for (let b = a + 1; b < ks.length; b++) {
         const x = ks[a]!;
@@ -710,6 +836,7 @@ function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: 
         if (role === "a") {
           r.movePairs++;
           if (same) r.moveSame++;
+          if ([...sk[a]!].slice(0, 14).join("") === [...sk[b]!].slice(0, 14).join("")) r.openerSame++;
         } else {
           r.outPairs++;
           if (same) r.outSame++;
@@ -995,6 +1122,11 @@ export function reportMarkdown(rep: TextCheckReport): string {
       .slice(0, 10)
       .map(([x, c]) => `「${x.slice(0, 32)}…」${f(c)}`)
       .join(" / ")}`);
+    L.push(`  - 1 つの枠を一番多く使う数（構造の文も入れ、行ごとに 1 回。目安 ${FRAME_SOFT} まで・止めない）: ${dl(pr.frames.dist).replace(/ 枚）/, " 本）")}・目安を超える道 ${f(pr.frames.over)}`);
+    L.push(`    - 数ごとの道: ${Object.entries(pr.frames.hist)
+      .map(([x, c]) => `${x}: ${f(c)}`)
+      .join("・")}`);
+    L.push(`    - 一番多く使う枠（道の数）: ${pr.frames.top.map(([x, c]) => `「${x.slice(0, 28)}…」${f(c)}`).join(" / ")}`);
     const dr = r.decisionRepeats;
     L.push(`- 判断ごとの繰り返し（続く 2 つの判断の同じ種類の手が同じ骨組みで言う文。${f(dr.pairs)} 組）: 門を超える組 ${f(dr.overGate)}`);
     L.push(`  - 同じ文の数ごとの組: ${Object.entries(dr.hist)
@@ -1006,7 +1138,8 @@ export function reportMarkdown(rep: TextCheckReport): string {
       .join(" / ")}`);
     const s = r.siblings;
     L.push(`- 兄弟: 手 ${f(s.movePairs)} 組で骨組みが同じ ${f(s.moveSame)}・結果 ${f(s.outPairs)} 組で ${f(s.outSame)}・題が同じ ${f(s.titleSame)} 組（${f(s.titlePairs)} 組のうち）`);
-    L.push(`- いとこ（参考）: ${f(r.cousins.pairs)} 組で文が同じ ${pct(r.cousins.same / Math.max(1, r.cousins.pairs))}・骨組みが同じ ${pct(r.cousins.skeleton / Math.max(1, r.cousins.pairs))}。本文が完全に同じカード ${pct(r.identical)}`);
+    L.push(`  - 参考（止めない）: 手の書き出し（最初の 14 字）が同じ組 ${f(s.openerSame)}（${pct(s.openerSame / Math.max(1, s.movePairs))}）・結果が 3 つ以上でどれも別の結果と比べる組 ${f(s.cmpGroups)} のうち、比べる文の枠がどれも同じ組 ${f(s.cmpSame)}`);
+    L.push(`- いとこ（参考）: ${f(r.cousins.pairs)} 組で文が同じ ${pct(r.cousins.same / Math.max(1, r.cousins.pairs))}・骨組みが同じ ${pct(r.cousins.skeleton / Math.max(1, r.cousins.pairs))}。本文が完全に同じカード ${pct(r.identical)}・状態の本文がほかのカードと同じ ${f(r.identicalState.same)} / ${f(r.identicalState.states)}（${pct(r.identicalState.same / Math.max(1, r.identicalState.states))}）`);
     L.push("");
   }
   return L.join("\n");

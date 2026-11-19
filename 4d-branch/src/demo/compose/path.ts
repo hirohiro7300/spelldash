@@ -362,14 +362,31 @@ export function countKindHere(link: Link, kind: string): number {
 }
 
 /**
+ * 道の上で一番新しく勤め先が変わった月（転職して移った月・会社員に戻った月。採用の有無をまとめた結果はその 3 か月の終わり）。
+ * 道の上で勤め先が変わっていなければ null（今日の会社のまま。入社してすぐの評価の一言に使う。fact-5）
+ */
+export function joinedAt(c: Ctx, link: Link): number | null {
+  for (let l: Link | null = link; l && l.up; l = l.up) {
+    if (!l.newEmp) continue;
+    const e = l.evs.find((x) => x.code.startsWith("SWITCH_") || x.code === "BACK_EMP" || x.code === "BACK_MIX");
+    return e ? e.m : c.map.month(l.move) + 3;
+  }
+  return null;
+}
+
+/**
  * 手を選ぶ判断の道から決まる条件の値（手の書き出し・手引きの条件に使う。reader-6）:
  * emp6 その判断と 1 つ前の判断で会社員か週 4 日（過去 6 か月の月次報告がある）・prevSearch 前の 3 か月が転職活動・
- * search 今の会社での転職活動の期の数（この手を除く）・f5 次に増える副業の顧客が上の月額か
+ * search 今の会社での転職活動の期の数（この手を除く）・f5 次に増える副業の顧客が上の月額か・
+ * joined 道の上で勤め先が変わった（今の会社は地図の途中で入った会社。fact-5）
  */
 export function pathEnv(c: Ctx, link: Link): Env {
   const js = jobsUp(c, link, 2);
-  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0 };
+  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0, joined: joinedAt(c, link) !== null ? 1 : 0 };
 }
+
+/** 独立してからの月の数（m か月目の時点。その月を含む。独立していなければ 0）。行き先の「独立して N か月目」と同じ数え方（rep-5） */
+export const indMonthsAt = (link: Link, m: number, j: ImpactSt["j"]): number => (j === "i" && link.indFrom !== null ? m - link.indFrom + 1 : 0);
 
 /** 次に増える副業の顧客の月額（万円）: 独立なら独立の月額、会社員・週 4 日は顧客が raiseAt 社に届いた後なら上の月額（SPEC §2.3 #6・facts-2） */
 export const newFeeOf = (C: Consts, j: ImpactSt["j"], f5: boolean): number => (j === "i" ? C.indFee : f5 ? C.feeRaised : C.feeFirst);

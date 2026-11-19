@@ -71,9 +71,11 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
   });
 
   it("C6: 道の繰り返しの門は、道の画面と同じまとめ方で数える（門を 0 にすると、手で作った地図でも止まる。code-2）", () => {
-    // TREE は今のままが 12 期続く道（結果が 1 つの同じ手が続く）で、まとめない数は多いが、まとめると 0
+    // TREE は今のままが 12 期続く道（結果が 1 つの同じ手が続く）で、まとめない数はあるが、まとめると 0
+    // （0.7 で今のままの書き出しを何期目かで分けたので、まとめない数も門の 4 までに減った。rep-5）
     const tree = runTextChecks(fromDevTree(TREE), { annuals: [360] }).runs[0]!.pathRepeats;
-    expect(tree.raw.max).toBeGreaterThan(TEXT_GATES.pathRepeats);
+    expect(tree.raw.max).toBeGreaterThan(tree.dist.max);
+    expect(tree.raw.max).toBeLessThanOrEqual(TEXT_GATES.pathRepeats);
     expect(tree.dist.max).toBe(0);
     const rep = runTextChecks(fromDevTree(RULES), { annuals: [360], gates: { pathRepeats: 0 } });
     const pr = rep.runs[0]!.pathRepeats;
@@ -204,10 +206,12 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
       expect(r.decisionRepeats.pairs).toBe(1);
       expect(r.decisionRepeats.hist).toEqual({ 0: 1 });
     }
-    // 0.4 の束（初めての書き出しの言い換えが 1 つ）: 同じ 2 文を言い、門（1 文まで）で止まる
+    // 0.4 の束（初めての書き出しの言い換えが 1 つ）: 同じ 2 文を言い、門（1 文まで）で止まる（続けて探す期の組は 0.7 で何組かに分けた）
     const old = editBanks((b) => {
       const g = b.lead.back_emp!;
-      b.lead.back_emp = [g[0]!, { if: "clr>=1", v: [g[1]!.v[0]!] }, { v: [g[2]!.v[0]!] }];
+      const first = g.find((x) => x.if === "clr>=1")!;
+      const plain = g.find((x) => !x.if)!;
+      b.lead.back_emp = [...g.filter((x) => (x.if ?? "").startsWith("n>=1")), { if: "clr>=1", v: [first.v[0]!] }, { v: [plain.v[0]!] }];
     });
     const rep = runTextChecks(map, { banks: old, annuals: [360] });
     expect(rep.runs[0]!.decisionRepeats.overGate).toBe(1);
