@@ -38,6 +38,7 @@ import {
   ThinWriteError,
   StoredTooLargeError,
   toStored,
+  upgradeNotice,
   type ReadFailure,
   type ThinErrorCode,
   type ThinUpgradeInfo,
@@ -870,10 +871,9 @@ export class Persistence {
     if (stored?.upgrade) {
       // 前の版の地図・違う組み立ての地図を、ページの地図に当て直して開いた: 当て直す前の記録を安全用バックアップに残す（そのページで戻せる）
       if (!opts.reopen) await this.backupRawRecord("地図を新しい版で開く前に保存されていた内容");
-      const u = stored.upgrade;
-      notices.push(
-        `地図を新しい版（版 ${u.to.release}）で開きました。前の版で書き換えたカード ${u.applied} 枚の選んだ手・チェック・文章は引き継ぎ${u.detached ? `、地図から無くなったカード ${u.detached} 枚は「前の版で決めたこと」に残しました` : ""}${u.lostTicks ? `（引き継げなかったチェック ${u.lostTicks} 件）` : ""}。前の内容はバックアップに残しています。`,
-      );
+      // 知らせは当て直した結果の数のまま（版 6 までの地図は、移した手・引き継いだカード・別のカードに残したカードを数で: user-6）。
+      // 次に保存するとき、ページの地図を持つ文書として薄い形で書く
+      notices.push(upgradeNotice(stored.upgrade, "boot"));
       this.dirty = true;
     }
     if (stored) {

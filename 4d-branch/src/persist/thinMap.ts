@@ -35,7 +35,7 @@ import type { MapData } from "../deepmap/mapData";
 import { fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf } from "../demo/impact";
 import { impactBaselineDigest } from "../demo/impactDigest";
 import { buildQuarterDoc, type QuarterLayout } from "../demo/quarterDoc";
-import { NODE_TYPE_ORDER, STATUS_ORDER } from "../model/constants";
+import { NODE_H, NODE_TYPE_ORDER, NODE_W, STATUS_ORDER } from "../model/constants";
 import { impactConfigOf, setPreferredRelease } from "../model/forks";
 import { DocFormatError, NewerDocError, normalizeDoc, SCHEMA, SCHEMA_VERSION, setReadableVersion, THIN_VERSION, type NormalizeReport } from "../model/schema";
 import { normalizeText } from "../model/search";
@@ -678,6 +678,73 @@ export function thinBaselineDoc(base: Partial<MapBase> = {}): DocData {
   const scenarios: DocData["scenarios"] = {};
   for (const id of d.scenarioOrder) scenarios[id] = { ...d.scenarios[id]!, meta: {}, createdAt: full.at, updatedAt: full.at };
   return { ...d, createdAt: full.at, updatedAt: full.at, projects, scenarios, nodes, edges, projectOrder: [...d.projectOrder], scenarioOrder: [...d.scenarioOrder], meta: {} };
+}
+
+/**
+ * ページの地図の基準（版 6 までの地図の引き上げ ./legacyMap.ts が読む物）。番号はページの地図（MapData）の番号と同じ。
+ * view のカード・線・meta は基準と共有（開発とテストでは凍っている）: 書き換えるときは写す
+ */
+export interface PageMapAccess {
+  readonly map: MapData;
+  readonly release: number;
+  readonly hash: string;
+  readonly anchor: string;
+  readonly n: number;
+  readonly keys: readonly string[];
+  readonly parent: Int32Array;
+  readonly kidStart: Int32Array;
+  readonly kids: Int32Array;
+  readonly keyIndex: ReadonlyMap<string, number>;
+  /** 組み立てた基準の時刻と、今日の位置 */
+  readonly at: string;
+  readonly rootX: number;
+  readonly rootY: number;
+  readonly projects: ReadonlyArray<{ id: ID; name: string }>;
+  readonly scenarios: ReadonlyArray<{ id: ID; name: string }>;
+  /** カードのやることの枠の名前（元の番号。同じ番号の 2 つ目からは "#2"…） */
+  slots(i: number): readonly string[];
+  /** 組み立てたカードのプロジェクト（基準のプロジェクトの ID。読み替える前） */
+  projectIdsOf(i: number): readonly ID[];
+  /** 基準の写し（at・dx・dy・pmap・smap を当てた物） */
+  view(base: MapBase): { readonly nodes: readonly GNode[]; readonly edges: readonly (GEdge | null)[] };
+  /** 今日のカードの futureVersion・futureRelease をページの地図の物に */
+  withRelease(root: GNode): GNode;
+}
+
+/** ページの地図の基準を読む口（無ければ null。基準をまだ組み立てていなければ、at の時刻で組み立てる） */
+export function pageMapAccess(at: string | null): PageMapAccess | null {
+  const pb = page;
+  if (!pb) return null;
+  const core = coreOf(pb.map, at);
+  return {
+    map: core.map,
+    release: pb.release,
+    hash: pb.hash,
+    anchor: pb.anchor,
+    n: core.n,
+    keys: core.keys,
+    parent: core.parent,
+    kidStart: core.kidStart,
+    kids: core.kids,
+    keyIndex: core.keyIndex,
+    at: core.at,
+    rootX: core.nodes[0]!.x,
+    rootY: core.nodes[0]!.y,
+    projects: core.projects,
+    scenarios: core.scenarios,
+    slots: (i) => slotsOf(core, i),
+    projectIdsOf: (i) => core.nodes[i]!.projectIds,
+    view: (base) => {
+      const v = viewOf(core, base);
+      return { nodes: v.nodes, edges: v.edges };
+    },
+    withRelease: (root) => withRelease(root, pb),
+  };
+}
+
+/** ページの地図の今日の鍵（ページの地図が無ければ null。基準を組み立てずに分かる） */
+export function pageRootKey(): string | null {
+  return page ? page.map.key(0) : null;
 }
 
 // ---------------------------------------------------------------- 書く（文書 → 薄い形）
@@ -1348,6 +1415,39 @@ export interface ThinUpgradeInfo {
   lostTicks: number;
   /** 当てられなかった同梱の線の変更（子の鍵がページの地図に無い） */
   droppedEdges: number;
+  /** 版 6 までの地図（太い形）から引き上げた内訳（./legacyMap.ts。無ければ、薄い形の版をまたいだ当て直し） */
+  legacy?: LegacyUpgradeDetail;
+}
+
+/**
+ * 利用者の物を持つカードの数。選んだ手・見送った手は状態で数え、そのほかのカード（cards − picks − drops 枚）だけを、
+ * チェック・書き換え・線の種類ごとに数える（そのほかの 1 枚が 2 つの種類に入ることもある）
+ */
+export interface CardCounts {
+  /** カードの枚数 */
+  cards: number;
+  /** そのうち選んだ手（進める・済み） */
+  picks: number;
+  /** 見送った手 */
+  drops: number;
+  /** そのほかのうち、やることをチェックしたカード */
+  ticks: number;
+  /** そのほかのうち、書き換えたカード（題名・本文・やること・タグ・見込みや線の説明・利用者の meta） */
+  edits: number;
+  /** そのほかのうち、利用者の線（利用者のカードへの線も）がつながるカード */
+  links: number;
+}
+
+/** 版 6 までの地図（太い形）を、ページの 3 か月ごとの地図に引き上げたときの内訳（知らせの文に、そのままの数で出す: user-6） */
+export interface LegacyUpgradeDetail {
+  /** 鍵がそのまま残ったカード（最初の手・3 か月後。今日を除く）で、利用者の物を引き継いだ物 */
+  kept: CardCounts;
+  /** 3 か月後の手を、ページの地図の最初の 3 か月の同じ手へ移した物（利用者の物を持つ物） */
+  moved: CardCounts;
+  /** 「前の版で決めたこと」に別のカードとして残した物 */
+  detached: CardCounts;
+  /** 移した先の手を選ぶ年月（「2027 年 2 月」） */
+  movedAt: string;
 }
 
 /** 読んだ結果（当て直したときは upgrade に数） */
@@ -1619,8 +1719,8 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
 //     「前の版で決めたこと」の見出しの下（今日の左）に残す。題名・本文・状態・やること（チェックした項目は文ごと）・利用者の線はそのまま
 //   - 今日（丸ごと保存してある）: ページの地図の今日に、利用者の物（書き換えた題名と本文・状態・付けたタグ・位置・年収）を当てる
 
-/** 組み立てが作るカードの meta（版が変われば新しい版の物にする。利用者の meta とは分ける） */
-const BUILDER_NODE_META = new Set([
+/** 組み立てが作るカードの meta（版が変われば新しい版の物にする。利用者の meta とは分ける。版 6 の組み立ての物も含む） */
+export const BUILDER_NODE_META: ReadonlySet<string> = new Set([
   "forecastRoot",
   "futureVersion",
   "futureRelease",
@@ -1652,14 +1752,80 @@ const BUILDER_NODE_META = new Set([
   "sum",
 ]);
 /** 組み立てが作る線の meta（直した見込み prob は利用者の物として当てる） */
-const BUILDER_EDGE_META = new Set(["r", "ln", "rv", "p0", "c0"]);
+export const BUILDER_EDGE_META: ReadonlySet<string> = new Set(["r", "ln", "rv", "p0", "c0"]);
 
 const NODE_TYPES = new Set<string>(NODE_TYPE_ORDER);
 const NODE_STATUSES = new Set<string>(STATUS_ORDER);
 
-/** 「前の版で決めたこと」の見出し・カードを置く所（今日の左。列の幅と行の高さ） */
+/** 「前の版で決めたこと」の見出しの題名 */
+export const PREV_GROUP_TITLE = "前の版で決めたこと";
+/** 「前の版で決めたこと」の見出し・カードを置く所（今日の左。列の幅と行の高さ）と、ほかのカードとあける間 */
 const PREV_GROUP_DX = -1400;
-const PREV_ROW = 140;
+export const PREV_ROW = 140;
+const PREV_GAP = 60;
+
+/**
+ * 「前の版で決めたこと」の列（見出しとその下の rows 枚）の横の位置（カードの中心）。今日（rx, ry）の左に置き、ほかのカード（others。
+ * 地図のカードは除く）と重なれば、重なったカードのさらに左へずらす（どの端末でも同じ位置: 文書の中身だけで決まる）
+ */
+export function prevColumnX(rx: number, ry: number, rows: number, others: ReadonlyArray<{ x: number; y: number }>): number {
+  const top = ry - NODE_H / 2 - PREV_GAP;
+  const bottom = ry + PREV_ROW * rows + NODE_H / 2 + PREV_GAP;
+  const band = others.filter((o) => o.y + NODE_H / 2 >= top && o.y - NODE_H / 2 <= bottom);
+  let x = Math.round(rx + PREV_GROUP_DX);
+  for (let guard = 0; guard <= band.length; guard++) {
+    let hit: number | null = null;
+    for (const o of band) if (Math.abs(o.x - x) < NODE_W + PREV_GAP && (hit === null || o.x < hit)) hit = o.x;
+    if (hit === null) return x;
+    x = Math.floor(hit - NODE_W - PREV_GAP);
+  }
+  return x;
+}
+
+/**
+ * 「前の版で決めたこと」の見出しのカード（その下に、地図から無くなったカードで利用者の物を持つ物を並べる）。
+ * from: 前の版の版の順番・to: ページの地図の版の順番・at: 作った時刻（保存してあった物から決める）
+ */
+export function prevGroupCard(id: ID, from: number, to: number, x: number, y: number, at: string): GNode {
+  return {
+    id,
+    type: "goal",
+    title: PREV_GROUP_TITLE,
+    body: `地図が新しい版（版 ${to}）になり、前の版（版 ${from}）の地図から無くなったカードのうち、あなたが選んだ・見送った・書き換えた・チェックした・タグや線を付けたカードです（カードの中身は前の版のまま）。`,
+    status: "open",
+    time: { due: null, start: null },
+    conditions: [],
+    tags: [],
+    projectIds: [],
+    scenarioIds: [],
+    x,
+    y,
+    collapsed: false,
+    createdAt: at,
+    updatedAt: at,
+    meta: { prevGroup: from },
+  };
+}
+
+/**
+ * 基準のプロジェクト・シナリオ（list）を文書の物（have）へ: 保存した読み替え（m）があればそれ、無ければ同じ ID、同じ名前、無い（null）。
+ * 読み替えの先は文書にある物だけ
+ */
+export function looseIdMap(list: ReadonlyArray<{ id: ID; name: string }>, m: Record<ID, ID | null> | undefined, have: Readonly<Record<string, unknown>>): Record<ID, ID | null> {
+  const byName = new Map<string, ID>();
+  for (const id of Object.keys(have)) {
+    const g = have[id];
+    const name = isObj(g) && typeof g.name === "string" ? nameKey(g.name) : null;
+    if (name !== null && !byName.has(name)) byName.set(name, id);
+  }
+  const out: Record<ID, ID | null> = {};
+  for (const g of list) {
+    let t: ID | null = m && own(m, g.id) ? m[g.id]! : own(have, g.id) ? g.id : (byName.get(nameKey(g.name)) ?? null);
+    if (t !== null && !own(have, t)) t = null;
+    out[g.id] = t;
+  }
+  return out;
+}
 
 /** 書き換えたカードが利用者の物を持つか（鍵が無くなったときに残す物）。位置・折りたたみ・時刻だけの変更は持たない */
 function carriesUserState(p: NodePatch): boolean {
@@ -1748,8 +1914,11 @@ function detachedCard(k: string, p: NodePatch | null, pin: CardPin | null, id: I
   };
 }
 
-/** 今日: ページの地図の今日に、保存してあった今日の利用者の物を当てる（書き換えた題名と本文・状態・付けたタグ・位置・年収・利用者の meta） */
-function carryRoot(pr: GNode, sr: GNode): GNode {
+/**
+ * 今日: ページの地図の今日に、保存してあった今日の利用者の物を当てる（書き換えた題名と本文・状態・付けたタグ・位置・年収・利用者の meta）。
+ * 保存してあった今日は、前の版の薄い形の今日でも、版 6 までの地図（太い形）の今日でもよい（どちらも前の版の指紋 t0・b0 を持つ）
+ */
+export function carryRoot(pr: GNode, sr: GNode): GNode {
   const t0 = sr.meta.t0;
   const b0 = sr.meta.b0;
   const title = typeof t0 === "string" && fnv36(sr.title) !== t0 ? sr.title : pr.title;
@@ -1798,22 +1967,7 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   // プロジェクト・シナリオ: 保存した読み替えのうち、ページの地図にある物。無ければ同じ ID・同じ名前・無い（読み替えの先は文書にある物だけ）
   const projects = isObj(rest.projects) ? rest.projects : {};
   const scenarios = isObj(rest.scenarios) ? rest.scenarios : {};
-  const looseMap = (list: ReadonlyArray<{ id: ID; name: string }>, m: Record<ID, ID | null> | undefined, have: Obj): Record<ID, ID | null> => {
-    const byName = new Map<string, ID>();
-    for (const id of Object.keys(have)) {
-      const g = have[id];
-      const name = isObj(g) && typeof g.name === "string" ? nameKey(g.name) : null;
-      if (name !== null && !byName.has(name)) byName.set(name, id);
-    }
-    const out: Record<ID, ID | null> = {};
-    for (const g of list) {
-      let t: ID | null = m && own(m, g.id) ? m[g.id]! : own(have, g.id) ? g.id : (byName.get(nameKey(g.name)) ?? null);
-      if (t !== null && !own(have, t)) t = null;
-      out[g.id] = t;
-    }
-    return out;
-  };
-  const base: MapBase = { at: s.at, dx: Math.round(s.dx), dy: Math.round(s.dy), pmap: looseMap(core.projects, s.pmap, projects), smap: looseMap(core.scenarios, s.smap, scenarios) };
+  const base: MapBase = { at: s.at, dx: Math.round(s.dx), dy: Math.round(s.dy), pmap: looseIdMap(core.projects, s.pmap, projects), smap: looseIdMap(core.scenarios, s.smap, scenarios) };
   const view = viewOf(core, base);
   const nPatch = s.n ?? {};
   const ePatch = s.e ?? {};
@@ -1856,7 +2010,7 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     if (used.has(id)) id = impactNodeId64(`${k}#prev`);
     if (used.has(id)) return;
     used.add(id);
-    detached.push(detachedCard(k, p, pin, id, rx + PREV_GROUP_DX, ry + PREV_ROW * (detached.length + 1), s));
+    detached.push(detachedCard(k, p, pin, id, 0, 0, s));
   };
   const detachedKeys = new Set<string>();
   for (const k of Object.keys(nPatch)) {
@@ -1874,6 +2028,17 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     detach(k, null, pins[k]!);
   }
   info.detached = detached.length;
+  // 列の位置: 今日の左。保存したノード（今日・利用者のカード）と重なれば、さらに左へ（文書の中身だけで決まる）
+  const placed: Array<{ x: number; y: number }> = [];
+  for (const k of Object.keys(rawNodes)) {
+    const x = rawNodes[k];
+    if (isObj(x) && typeof x.x === "number" && typeof x.y === "number" && Number.isFinite(x.x) && Number.isFinite(x.y)) placed.push({ x: x.x, y: x.y });
+  }
+  const gx = detached.length ? prevColumnX(rx, ry, detached.length, placed) : rx;
+  detached.forEach((d, j) => {
+    d.x = gx;
+    d.y = ry + PREV_ROW * (j + 1);
+  });
   // 書き換えたカード（ページの地図にある鍵）と、整える前のノード: 今日 → 書き換えたカード → 前の版で決めたこと → 利用者のノード
   const nodesIn: Obj = { [s.root]: rootRaw };
   const carried = new Uint8Array(n);
@@ -1889,24 +2054,7 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     groupId = `n_prev_${fnv64x36(`${s.root}\u0000${s.release}\u0000${s.hash}`)}`;
     if (used.has(groupId)) groupId = `n_prev_${fnv64x36(`${s.root}\u0000${s.release}\u0000${s.hash}#2`)}`;
     used.add(groupId);
-    nodesIn[groupId] = {
-      id: groupId,
-      type: "goal",
-      title: "前の版で決めたこと",
-      body: `地図が新しい版（版 ${pb.release}）になり、前の版（版 ${s.release}）の地図から無くなったカードのうち、あなたが選んだ・書き換えた・チェックした・線でつないだカードです。`,
-      status: "open",
-      time: { due: null, start: null },
-      conditions: [],
-      tags: [],
-      projectIds: [],
-      scenarioIds: [],
-      x: rx + PREV_GROUP_DX,
-      y: ry,
-      collapsed: false,
-      createdAt: s.at,
-      updatedAt: s.at,
-      meta: { prevGroup: s.release },
-    };
+    nodesIn[groupId] = prevGroupCard(groupId, s.release, pb.release, gx, ry, s.at);
     for (const d of detached) nodesIn[d.id as string] = d;
   }
   for (const k of Object.keys(rawNodes)) if (rawNodes[k] !== rootRaw) nodesIn[k] = rawNodes[k];

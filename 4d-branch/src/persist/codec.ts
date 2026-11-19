@@ -12,6 +12,8 @@
 //   - 地図は要るときに初めて読む（gaps-17）: 保存してあった物に地図がある（decodeStoredAsync）・利用者が地図を開く（ensurePageMap）
 //   - 前の版の地図は、鍵でページの地図に当て直して読む（thinMap.ts の「版をまたいで読む」。既定）。同じ版で合わない物は止める
 //     （「この版で開き直す」・取り込みだけ upgrade: "any" で当て直す: safety-5）
+//   - 版 6 までの地図（太い形の版 1 の文書）は、ページの地図に引き上げて読む（./legacyMap.ts。SPEC §8・D11）。id と更新時刻は変えず、
+//     次に保存するとき薄い形で書く。引き上げられなければ（ページに地図が無い・途中で失敗した）、今までどおり版 6 の地図のまま読む
 // 呼ぶ所（保存・同期・書き出し・履歴は、ほかの道で文書を書いたり読んだりしない）:
 //   src/persist/persistence.ts（writeStored・writeEmergency・createBackup → toStored、readStored・readEmergencies・readBackup → decodeStoredAsync）、
 //   src/persist/cloud.ts（encodeDoc・decodeDoc）、src/persist/io.ts（exportText・previewImportAsync）。
@@ -34,12 +36,14 @@ import {
   thinReadable,
   ThinMapError,
   ThinNewerError,
+  type CardCounts,
   type StoredDoc,
   type ThinDecodeOpts,
   type ThinStats,
   type ThinUpgradeInfo,
   THIN_BASELINE_VERSION,
 } from "./thinMap";
+import { isLegacyRootRaw, upgradeLegacyMap } from "./legacyMap";
 
 export {
   ensurePageMap,
@@ -61,7 +65,8 @@ export {
   THIN_BASELINE_VERSION,
   THIN_LAYOUT,
 } from "./thinMap";
-export type { MapBase, PageMapRecord, StoredDoc, ThinDecodeOpts, ThinDecoded, ThinErrorCode, ThinSection, ThinStats, ThinUpgradeInfo, ThinUpgradeMode } from "./thinMap";
+export type { CardCounts, LegacyUpgradeDetail, MapBase, PageMapRecord, StoredDoc, ThinDecodeOpts, ThinDecoded, ThinErrorCode, ThinSection, ThinStats, ThinUpgradeInfo, ThinUpgradeMode } from "./thinMap";
+export { legacyRootOf, upgradeLegacyMap } from "./legacyMap";
 
 /**
  * このページは、ページに入れた 3 か月ごとの地図で薄い形を読み書きする（main.ts が、地図を入れたビルドで起動のときに呼ぶ）。
@@ -124,8 +129,46 @@ export function storedVersion(stored: Pick<StoredDoc, "version">): number {
  * 入れていなければ decodeStoredAsync）
  */
 export function decodeStored(raw: unknown, opts: ThinDecodeOpts = {}): StoredDecoded {
-  if (isThinShape(raw) && thinReadable()) return decodeThin(raw, opts);
-  return normalizeDoc(raw);
+  if (isThinShape(raw) && thinReadable()) return noted(decodeThin(raw, opts));
+  const r = normalizeDoc(raw);
+  if (opts.upgrade === "none") return r;
+  // 版 6 までの地図（太い形）は、ページの地図に引き上げる（ページの地図を入れてあるときだけ。既定のビルドでは何もしない）
+  const up = legacyUpgrade(r.doc);
+  return up ? noted({ doc: up.doc, report: r.report, upgrade: up.info }) : r;
+}
+
+/**
+ * 版 6 までの地図の引き上げ。途中で失敗したら引き上げずに null（版 1 の文書は、このページでも版 6 の地図のまま読める。
+ * 失敗を壊れたデータと取り違えて、バックアップで始めたりしない: safety-3）
+ */
+function legacyUpgrade(doc: DocData): ReturnType<typeof upgradeLegacyMap> {
+  try {
+    return upgradeLegacyMap(doc);
+  } catch (e) {
+    warn(`版 6 の地図を新しい版にできなかったため、前の版の地図のまま開きます（${e instanceof Error ? e.message : String(e)}）`);
+    return null;
+  }
+}
+
+/**
+ * 版をまたいで読んだ文書と、そのときの数（読んだ文書ごと）。アカウントの突き合わせで、まだ送っていない変更・アカウントの写しが、
+ * どの版の地図の上で書かれた物かを見る（safety-2）。アカウントの内容を読み込んだときの知らせにも使う
+ */
+const storedUpgrades = new WeakMap<DocData, ThinUpgradeInfo>();
+
+function noted(d: StoredDecoded): StoredDecoded {
+  if (d.upgrade) storedUpgrades.set(d.doc, d.upgrade);
+  return d;
+}
+
+/** 版をまたいで読んだ文書の、保存してあった形の地図の版の順番（そのまま読んだ文書は undefined） */
+export function storedMapReleaseOf(doc: DocData): number | undefined {
+  return storedUpgrades.get(doc)?.from.release;
+}
+
+/** 版をまたいで読んだ文書の、そのときの数（そのまま読んだ文書は undefined） */
+export function storedUpgradeOf(doc: DocData): ThinUpgradeInfo | undefined {
+  return storedUpgrades.get(doc);
 }
 
 /** 保存した形を読む（文書だけ） */
@@ -134,8 +177,8 @@ export function fromStored(raw: unknown, opts: ThinDecodeOpts = {}): DocData {
 }
 
 /**
- * 読むのにページの地図が要る物か: 薄い形（地図の変更がある）か、3 か月ごとの地図の今日を持つ文書（次に書くとき薄い形にする）。
- * 薄い形を読めないページでは false（読み込まない）
+ * 読むのにページの地図が要る物か: 薄い形（地図の変更がある）か、3 か月ごとの地図の今日を持つ文書（次に書くとき薄い形にする）か、
+ * 版 6 までの地図の今日を持つ文書（ページの地図へ引き上げる）。薄い形を読めないページでは false（読み込まない）
  */
 export function needsPageMap(raw: unknown): boolean {
   if (!thinReadable() || !raw || typeof raw !== "object") return false;
@@ -144,7 +187,11 @@ export function needsPageMap(raw: unknown): boolean {
   if (r.maps !== undefined && !Array.isArray(r.maps)) return true;
   const nodes = r.nodes;
   if (!nodes || typeof nodes !== "object") return false;
-  for (const id of Object.keys(nodes)) if (isQuarterRoot((nodes as Record<string, GNode | undefined>)[id])) return true;
+  for (const id of Object.keys(nodes)) {
+    const n = (nodes as Record<string, GNode | undefined>)[id];
+    // 3 か月ごとの地図の今日（次に書くとき薄い形にする）・版 6 までの地図の今日（読むときにページの地図へ引き上げる）
+    if (isQuarterRoot(n) || isLegacyRootRaw(n)) return true;
+  }
   return false;
 }
 
@@ -251,4 +298,66 @@ export function storedJson(doc: DocData, where: "local" | "idb" | "cloud" | "exp
   const json = JSON.stringify(toStored(doc));
   checkStoredSize(json.length, where);
   return json;
+}
+
+// ---------------------------------------------------------------- 版をまたいで読んだときの知らせ
+
+/**
+ * 知らせを出す所: boot 起動・import 取り込み（確認の警告）・backup バックアップから戻す（確認）・confirm 地図を新しい版にするか聞く・
+ * swap 地図を新しい版にした（お知らせ）・adopt アカウントの内容（前の版の地図）を読み込んだ（お知らせ）
+ */
+export type UpgradeNoticeWhere = "boot" | "import" | "backup" | "confirm" | "swap" | "adopt";
+
+/** 利用者の物を持つカードの数の言い方（「選んだ手 3 件・見送った手 1 件・書き換えた・チェックしたカード 2 件」） */
+function cardsLabel(c: CardCounts, noun: string): string {
+  const parts: string[] = [];
+  if (c.picks) parts.push(`選んだ手 ${c.picks} 件`);
+  if (c.drops) parts.push(`見送った手 ${c.drops} 件`);
+  const rest = c.cards - c.picks - c.drops;
+  if (rest > 0) {
+    const how = [c.edits ? "書き換えた" : "", c.ticks ? "チェックした" : "", c.links ? "線でつないだ" : ""].filter(Boolean);
+    parts.push(`${how.length ? how.join("・") : "手を入れた"}${noun} ${rest} 件`);
+  }
+  return parts.join("・");
+}
+
+/**
+ * 地図を新しい版で読んだときの知らせの文（数は当て直した結果そのまま: user-6・gaps-14。「そのまま残ります」とは言わない）。
+ * 版 6 までの地図の引き上げ（u.legacy）は、移した手・引き継いだカード・別のカードに残したカードを、それぞれの数で言う
+ */
+export function upgradeNotice(u: ThinUpgradeInfo, where: UpgradeNoticeWhere): string {
+  const L = u.legacy;
+  if (!L) {
+    const carried = `書き換えたカード ${u.applied} 枚の選んだ手・チェック・文章は引き継ぎ`;
+    const detached = u.detached ? `、地図から無くなったカード ${u.detached} 枚は「前の版で決めたこと」に残し${where === "boot" || where === "swap" || where === "adopt" ? "ました" : "ます"}` : "";
+    if (where === "boot") return `地図を新しい版（版 ${u.to.release}）で開きました。前の版で${carried}${detached}${u.lostTicks ? `（引き継げなかったチェック ${u.lostTicks} 件）` : ""}。前の内容はバックアップに残しています。`;
+    if (where === "import")
+      return `地図はこのページの版（版 ${u.to.release}）に合わせて読み込みます（ファイルは版 ${u.from.release} の地図）。書き換えたカード ${u.applied} 枚を引き継ぎ${detached}${u.lostTicks ? `。引き継げないチェックが ${u.lostTicks} 件あります` : ""}。`;
+    if (where === "backup") return `このバックアップの地図は前の版（版 ${u.from.release}）の物です。このページの版（版 ${u.to.release}）に合わせて戻します（${carried}${detached}）。`;
+    if (where === "confirm") return `地図を新しい版（版 ${u.to.release}）にします。${carried}${detached}。`;
+    if (where === "adopt") return `アカウントの内容は前の版の地図だったため、新しい版（版 ${u.to.release}）にして読み込みました。${carried}${detached}。`;
+    return `未来の道筋を新しい版（版 ${u.to.release}）にしました。${carried}${detached}。`;
+  }
+  // 版の順番を残す前に読み込んだ地図（版の順番が無い）は「前の版」とだけ言う
+  const known = u.from.release > 0;
+  const next = `3 か月ごとの新しい地図（版 ${u.to.release}）`;
+  const head =
+    where === "boot"
+      ? `地図を、${next}で開きました。`
+      : where === "import"
+        ? `地図は、このページの${next}に合わせて読み込みます（ファイルは${known ? `版 ${u.from.release} の` : "前の版の"}地図）。`
+        : where === "backup"
+          ? `このバックアップの地図は前の版${known ? `（版 ${u.from.release}）` : ""}の物です。このページの${next}に合わせて戻します。`
+          : where === "confirm"
+            ? `未来の道筋を、${next}にします。`
+            : where === "adopt"
+              ? `アカウントの内容は前の版の地図だったため、${next}にして読み込みました。`
+              : `未来の道筋を、${next}にしました。`;
+  const done = where === "boot" || where === "swap" || where === "adopt";
+  const parts: string[] = [];
+  if (L.moved.cards) parts.push(`${cardsLabel(L.moved, "手")}は ${L.movedAt}の同じ手へ移${done ? "しました" : "します"}`);
+  if (L.kept.cards) parts.push(`最初の手と 3 か月後のカードで決めたこと ${L.kept.cards} 件はそのまま引き継${done ? "ぎました" : "ぎます"}`);
+  if (L.detached.cards) parts.push(`新しい地図に無いカードの${cardsLabel(L.detached, "カード")}は、別のカードとして「前の版で決めたこと」（今日の左）に残${done ? "しました" : "します"}`);
+  const body = parts.length ? `${parts.join("。")}。` : "";
+  return `${head}${body}${where === "boot" ? "前の内容はバックアップに残しています。" : ""}`;
 }

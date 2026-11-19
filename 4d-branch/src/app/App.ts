@@ -11,9 +11,9 @@ import { createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
 import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
 import { isDisposableDoc } from "../demo/demo";
-import { CloudRepo, CloudSync, baseCovered, dbBackend, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
+import { CloudRepo, CloudSync, baseCovered, dbBackend, mapReleaseOf, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
-import { holdsPageMap, pageRelease, thinReadable } from "../persist/codec";
+import { holdsPageMap, pageRelease, storedMapReleaseOf, storedUpgradeOf, thinReadable, upgradeNotice } from "../persist/codec";
 import type { BackupKind, BlockInfo, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
@@ -60,7 +60,9 @@ function asBootDoc(v: unknown): BootDoc | null {
   if (!o || typeof o !== "object" || typeof o.id !== "string" || typeof o.updatedAt !== "string") return null;
   const on = o.on;
   const okOn = on === null || (!!on && typeof on === "object" && typeof on.gen === "string" && typeof on.docId === "string" && typeof on.docUpdatedAt === "string");
-  return { id: o.id, updatedAt: o.updatedAt, fallback: !!o.fallback, on: okOn ? (on ? { gen: on.gen, docId: on.docId, docUpdatedAt: on.docUpdatedAt } : null) : undefined };
+  const rel = o.mapRelease;
+  const mapRelease = rel === null || (typeof rel === "number" && Number.isFinite(rel)) ? rel : undefined;
+  return { id: o.id, updatedAt: o.updatedAt, fallback: !!o.fallback, on: okOn ? (on ? { gen: on.gen, docId: on.docId, docUpdatedAt: on.docUpdatedAt } : null) : undefined, ...(mapRelease !== undefined ? { mapRelease } : {}) };
 }
 
 /** 記録したときの基準が同じか */
@@ -145,6 +147,8 @@ export class App implements AppContext {
   private adopting = false;
   /** 起動したときに読み込んだ手元（どの編集よりも前）。アカウントの同期で、手元が古いかを決める */
   private readonly bootDoc: BootDoc;
+  /** 起動したときの手元の、保存してあった形の地図の版の順番（地図が無ければ null） */
+  private readonly bootMapRelease: number | null;
   /** 起動したときの手元を記録し終えた（同期を始める前に待つ） */
   private readonly bootRecorded: Promise<void>;
 
@@ -174,6 +178,9 @@ export class App implements AppContext {
     this.mount = opts.mount;
     const d0 = this.store.doc;
     this.bootDoc = { id: d0.id, updatedAt: d0.updatedAt, fallback: !!opts.bootFallback && !opts.ephemeral };
+    // 起動したときの手元の地図の版の順番は、保存してあった形の物（前の版の地図をページの地図に引き上げて読んでも、前の版: アカウントの突き合わせで、
+    // まだ送っていない変更がどの版の地図の上で書かれた物かを見る。safety-2）
+    this.bootMapRelease = storedMapReleaseOf(d0) ?? mapReleaseOf(d0);
     this.bootRecorded = this.recordBootDoc();
     this.vm = new ViewModel(this.store, this.ui);
     this.view = new CanvasView(this.store, this.ui, this.vm);
@@ -299,7 +306,8 @@ export class App implements AppContext {
         this.view.camera.zoom = cam.zoom;
         this.view.cameraChanged();
       } else this.view.fit(undefined, { animate: false });
-      for (const n of opts.notices) toast(n, { tone: "warn", ms: 9000 });
+      // 長い知らせ（地図を新しい版で開いたときの、移した手・残したカードの数など）は、読み切れるだけ長く出す（短い物は今までどおり 9 秒）
+      for (const n of opts.notices) toast(n, { tone: "warn", ms: Math.max(9000, n.length * 80) });
       if (opts.firstRun && !this.ui.prefs.onboardingDone && !this.ephemeral) openWelcome(this);
       else this.offerOnce();
       this.offerFutureUpdate();
@@ -1249,21 +1257,33 @@ export class App implements AppContext {
     const pageRel = pageRelease() ?? futureRelease();
     const othersOld = pre.maps.every((m) => m.root === upRoot || (m.release !== null && m.release < pageRel));
     const { stats } = built;
-    const kept = printed
-      ? "あなたが足したカード・選んだ手・見送った手・やることのチェック・年収・自分で書き換えた見込み（%）や文章はそのまま残ります。"
-      : "あなたが足したカード・選んだ手・見送った手・やることのチェック・年収はそのまま残ります。この地図は前の版のアプリで開いたため、自分で書き換えた見込み（%）・文章・やることは見分けられず、新しい版の物になります。";
+    // 新しい版にした結果を先に作り、その数のまま確かめる（新しい版に無いカードで決めたことは、消さずに別のカードとして残る。
+    // 「そのまま残ります」とは、そのままのときだけ言う: user-6・gaps-14）
+    const docAt = this.store.doc;
+    const dry = swapFutureDoc(docAt, built.pv.doc);
+    const restKept = printed ? "選んだ手・見送った手・やることのチェック・自分で書き換えた見込み（%）や文章" : "選んだ手・見送った手・やることのチェック";
+    const unprinted = printed ? "" : "この地図は前の版のアプリで開いたため、自分で書き換えた見込み（%）・文章・やることは見分けられず、新しい版の物になります。";
+    const kept = dry.detached
+      ? `あなたが足したカード・年収はそのまま残ります。新しい版にもあるカードの${restKept}もそのまま残ります。新しい版に無いカードのうち、あなたが選んだ・書き換えた・チェックした・線でつないだ ${n(dry.detached)} 枚は、別のカードとして「前の版で決めたこと」（今日の左）に残します。${unprinted}`
+      : `あなたが足したカード・${restKept}・年収はそのまま残ります。${unprinted}`;
     const ok = await confirmDialog(
-      inPlace
+      dry.legacy
         ? {
             title: "未来の道筋を新しい版にしますか？",
-            body: `3 年の分かれ道の文章と数字を新しい版にします。${kept}${others.size ? `ほかの${othersOld ? "古い" : ""}未来の道筋（ノード ${n(others.size)} 件）は消えます。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+            body: `${upgradeNotice(dry.legacy, "confirm")}あなたが足したカード・年収はそのまま残ります。${others.size ? `ほかの${othersOld ? "古い" : ""}未来の道筋（ノード ${n(others.size)} 件）はそのまま残ります。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
             ok: "新しい版にする",
           }
-        : {
-            title: "未来の道筋を新しい版に差し替えますか？",
-            body: `今の地図にある未来の道筋（ノード ${n(old)} 件）を、新しい版「3 年の分かれ道」（判断 ${n(stats.decisions)}・選択肢 ${n(stats.options)}・3 年後の行き先 ${n(stats.ends)}。選択肢ごとに 3 年の稼ぎへの影響が見えます）に入れ替えます。ほかのノードはそのままです。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
-            ok: "差し替える",
-          },
+        : inPlace
+          ? {
+              title: "未来の道筋を新しい版にしますか？",
+              body: `3 年の分かれ道の文章と数字を新しい版にします。${kept}${others.size ? `ほかの${othersOld ? "古い" : ""}未来の道筋（ノード ${n(others.size)} 件）は消えます。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+              ok: "新しい版にする",
+            }
+          : {
+              title: "未来の道筋を新しい版に差し替えますか？",
+              body: `今の地図にある未来の道筋（ノード ${n(old)} 件）を、新しい版「3 年の分かれ道」（判断 ${n(stats.decisions)}・選択肢 ${n(stats.options)}・3 年後の行き先 ${n(stats.ends)}。選択肢ごとに 3 年の稼ぎへの影響が見えます）に入れ替えます。ほかのノードはそのままです。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+              ok: "差し替える",
+            },
     );
     if (!ok) {
       // 「未来の道筋」から聞いて断った: この版ではもう聞かない（お知らせ・メニューからは新しい版にできる。ボタンの「新」の印は残る）
@@ -1284,17 +1304,26 @@ export class App implements AppContext {
       toast("確かめている間に地図が変わったため、新しい版にしませんでした。もう一度試してください", { tone: "warn", ms: 6000 });
       return;
     }
+    // 確かめた物（そのとき作った結果）のまま。確かめている間に地図が変わっていれば作り直し、言った数と違えばしない
+    const res = this.store.doc === docAt ? dry : swapFutureDoc(this.store.doc, built.pv.doc);
+    if (res.detached !== dry.detached || !!res.legacy !== !!dry.legacy) {
+      toast("確かめている間に地図が変わったため、新しい版にしませんでした。もう一度試してください", { tone: "warn", ms: 6000 });
+      return;
+    }
     const label = inPlace ? "未来の道筋を新しい版にする" : "未来の道筋を新しい版に差し替える";
     void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
-    const res = swapFutureDoc(this.store.doc, built.pv.doc);
     this.store.replaceDoc(res.doc, label);
     this.ui.setPrefs({ futureNotified: futureVersion(), futureOffered: true });
     this.ui.clearSelection();
     if (res.root && this.store.doc.nodes[res.root]) this.view.fit(nearFutureRoot(this.store.doc), { minZoom: FUTURE_MIN_ZOOM });
-    if (inPlace) {
+    if (res.legacy) {
+      toast(upgradeNotice(res.legacy, "swap"), { tone: "ok", action: this.cmd.undoAction(), ms: 12000 });
+    } else if (inPlace) {
       const changes = [res.updated ? `カードの更新 ${n(res.updated)}` : "", res.added ? `追加 ${n(res.added)}` : "", res.removed ? `削除 ${n(res.removed)}` : ""].filter(Boolean).join("・");
       const mine = res.userKept ? `あなたが足したカード ${n(res.userKept)} 件と、` : "";
-      toast(`未来の道筋を新しい版にしました（${changes || "変わったカードはありません"}）。${mine}選んだ手・チェック・年収${printed ? "・書き換えた文章や見込み" : ""}はそのままです`, { tone: "ok", action: this.cmd.undoAction(), ms: 9000 });
+      // 新しい版に無いカードで決めたことは、別のカードとして残した（その数をそのまま）
+      const detached = res.detached ? `。新しい版に無いカードで決めたこと ${n(res.detached)} 枚は「前の版で決めたこと」（今日の左）に残しました` : "";
+      toast(`未来の道筋を新しい版にしました（${changes || "変わったカードはありません"}）。${mine}選んだ手・チェック・年収${printed ? "・書き換えた文章や見込み" : ""}はそのままです${detached}`, { tone: "ok", action: this.cmd.undoAction(), ms: 9000 });
     } else {
       toast(`未来の道筋を新しい版に差し替えました（ノード ${n(res.removed)} 件 → ${n(res.added)} 件${res.kept ? `・選んだ手や年収など ${n(res.kept)} 件を引き継ぎ` : ""}）`, { tone: "ok", action: this.cmd.undoAction() });
     }
@@ -1337,7 +1366,7 @@ export class App implements AppContext {
       const opts = { ms: 20000, onClose: () => off() };
       const close =
         inPlaceRoot(this.store.doc) !== null
-          ? toast("未来の道筋の新しい版があります（3 年の分かれ道の文章と数字）。あなたが足したカードや選んだ手はそのまま残ります", { ...opts, action: { label: "新しい版にする", run: () => void this.swapFuture("notice") } })
+          ? toast("未来の道筋の新しい版があります（3 年の分かれ道の文章と数字）。あなたが足したカードや決めたことは消えません（新しい版に無いカードの物は、別のカードとして残します）", { ...opts, action: { label: "新しい版にする", run: () => void this.swapFuture("notice") } })
           : toast("未来の道筋が新しくなりました（選択肢ごとに 3 年の影響が見えます）。今の地図の未来の道筋だけを入れ替えます（ほかのノードはそのまま）", { ...opts, action: { label: "差し替える", run: () => void this.swapFuture("notice") } });
       // 出している間に地図が入れ替わり（アカウントの内容を読み込んだ・別のタブの変更・元に戻した など）、古い版の地図が無くなったら
       // （新しい版になった・地図が無くなった・このページより新しい版になった）、もう当たらないお知らせなので下げる
@@ -1612,6 +1641,9 @@ export class App implements AppContext {
           this.view.fit(nowMap ? nearFutureRoot(this.store.doc) : undefined, { animate: false, minZoom: nowMap ? FUTURE_MIN_ZOOM : undefined });
         }
         void this.refreshLastBackup();
+        // アカウントの内容が前の版の地図だった（読むときにページの地図へ引き上げた）: 移した手・別のカードに残したカードを数で知らせる（user-6）
+        const up = storedUpgradeOf(doc);
+        if (up) toast(upgradeNotice(up, "adopt"), { ms: 12000 });
         return ident;
       },
       backup: async (doc, label, kind) => {
@@ -1665,8 +1697,13 @@ export class App implements AppContext {
       const base = owner ? await this.persistence.readKv<SyncBase>(`cloud:${owner}`) : null;
       const on: BootDoc["on"] = owner ? (base ? { gen: base.gen, docId: base.docId, docUpdatedAt: base.docUpdatedAt } : null) : undefined;
       const cur = asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY));
+      // 起動したときの手元に、まだ送っていない変更があった（基準と違う）なら、その保存してあった形の地図の版を記録に残す（その変更は、
+      // その版までの地図の上で書いた物。前の版のページで止める前に書いた編集を、起動で引き上げて読んでも: safety-2）。一番古い版を残す
+      const changed = !base || this.bootDoc.id !== base.docId || this.bootDoc.updatedAt !== base.docUpdatedAt;
+      const rel = changed && typeof this.bootMapRelease === "number" ? this.bootMapRelease : undefined;
       // 前の記録は、同じ基準のままなら残す。基準が書き換わっていた（前の版のタブが書いた など）・代わりの内容で始めたなら、この起動で記録し直す
-      if (!cur || this.bootDoc.fallback || !sameOn(cur.on, on)) await this.persistence.writeKv(BOOT_DOC_KEY, { ...this.bootDoc, on });
+      if (!cur || this.bootDoc.fallback || !sameOn(cur.on, on)) await this.persistence.writeKv(BOOT_DOC_KEY, { ...this.bootDoc, on, ...(rel !== undefined ? { mapRelease: rel } : {}) });
+      else if (rel !== undefined && !(typeof cur.mapRelease === "number" && cur.mapRelease <= rel)) await this.persistence.writeKv(BOOT_DOC_KEY, { ...cur, mapRelease: rel });
     } catch {
       /* 記録できなくても続ける（その場合は、今の手元だけで古いかを見る） */
     }

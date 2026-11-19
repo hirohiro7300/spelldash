@@ -9,7 +9,7 @@ import { newId } from "../model/ids";
 import { cloneDocShallow, docCounts, DocFormatError, serializeDoc, type NormalizeReport } from "../model/schema";
 import { normalizeText } from "../model/search";
 import type { DocData, GEdge, GNode, ID } from "../model/types";
-import { decodeStored, decodeStoredAsync, guardStoredSize, toStored, type ThinUpgradeInfo } from "./codec";
+import { decodeStored, decodeStoredAsync, guardStoredSize, toStored, upgradeNotice, type ThinUpgradeInfo } from "./codec";
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -63,13 +63,7 @@ function previewOf(d: { doc: DocData; report: NormalizeReport; upgrade?: ThinUpg
   if (d.upgrade) {
     const u = d.upgrade;
     pv.upgrade = u;
-    pv.report = {
-      ...d.report,
-      warnings: [
-        `地図はこのページの版（版 ${u.to.release}）に合わせて読み込みます（ファイルは版 ${u.from.release} の地図）。書き換えたカード ${u.applied} 枚を引き継ぎ${u.detached ? `、地図から無くなったカード ${u.detached} 枚は「前の版で決めたこと」に残します` : ""}${u.lostTicks ? `。引き継げないチェックが ${u.lostTicks} 件あります` : ""}。`,
-        ...d.report.warnings,
-      ],
-    };
+    pv.report = { ...d.report, warnings: [upgradeNotice(u, "import"), ...d.report.warnings] };
   }
   return pv;
 }

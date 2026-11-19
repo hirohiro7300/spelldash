@@ -6,6 +6,7 @@ import { DocFormatError } from "../model/schema";
 import type { DocData } from "../model/types";
 import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { buildWishlist } from "../demo/wishlistBundle";
+import { upgradeNotice } from "../persist/codec";
 import { previewImportAsync, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, isBlockedBackup, isNewerBackup, type BackupMeta } from "../persist/persistence";
@@ -154,13 +155,15 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
   restore.addEventListener("click", async () => {
     if (isNewerBackup(b)) return refuseNewer();
     if (isBlockedBackup(b)) return refuseBlocked();
-    const { doc, newer, blocked: cannot, message } = await per.readBackupChecked(b.id);
+    const { doc, newer, blocked: cannot, message, upgrade } = await per.readBackupChecked(b.id);
     if (newer) return refuseNewer();
     if (cannot) return refuseBlocked(message);
     if (!doc) return toast("このバックアップを読めませんでした", { tone: "error" });
+    // 前の版の地図のバックアップは、このページの地図に合わせて戻す（数は合わせた後の物。移した手・別のカードに残す物をそのまま言う）
+    const counts = upgrade ? { nodes: Object.keys(doc.nodes).length.toLocaleString("ja-JP"), edges: Object.keys(doc.edges).length.toLocaleString("ja-JP") } : b.counts;
     const ok = await confirmDialog({
       title: "このバックアップに戻しますか？",
-      body: `${fmtWhen(b.createdAt)} の内容（ノード ${b.counts.nodes} 件・接続 ${b.counts.edges} 本）に入れ替えます。今の内容は「安全用」バックアップに残り、「元に戻す」でも戻せます。`,
+      body: `${fmtWhen(b.createdAt)} の内容（ノード ${counts.nodes} 件・接続 ${counts.edges} 本）に入れ替えます。${upgrade ? upgradeNotice(upgrade, "backup") : ""}今の内容は「安全用」バックアップに残り、「元に戻す」でも戻せます。`,
       ok: "復元する",
     });
     if (!ok) return;
@@ -588,7 +591,7 @@ export function chooseReleaseSource(o: { local: DocData; remote: { title: string
         "div",
         { class: "sync-choice" },
         card("アカウント（新しい版の地図）", remote.title, remote.nodes, remote.savedAt ? `保存 ${fmtWhen(remote.savedAt)}` : "保存日時不明"),
-        card("このブラウザ（前の版の地図）", o.local.title, Object.keys(o.local.nodes).length, `更新 ${fmtWhen(o.local.updatedAt)}`),
+        card("このブラウザ（前の版の地図で編集した内容）", o.local.title, Object.keys(o.local.nodes).length, `更新 ${fmtWhen(o.local.updatedAt)}`),
       ),
     );
     const pick = (r: "remote" | "local" | "later") => () => {

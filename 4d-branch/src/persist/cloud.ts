@@ -28,7 +28,7 @@ import { newId, nowISO } from "../model/ids";
 import { DocFormatError, NewerDocError, docCounts, isNewerVersion } from "../model/schema";
 import type { DocData } from "../model/types";
 import { Emitter } from "../store/emitter";
-import { decodeStoredAsync, ensurePageMap, hasThinBaseline, needsPageMap, storedVersion, thinReadable, ThinMapError, toStored, guardStoredSize } from "./codec";
+import { decodeStoredAsync, ensurePageMap, hasThinBaseline, needsPageMap, storedMapReleaseOf, storedVersion, thinReadable, ThinMapError, toStored, guardStoredSize } from "./codec";
 
 // ------------------------------------------------------------ 保存先（db の薄い包み。テストでは差し替える）
 
@@ -632,6 +632,12 @@ export interface BootDoc extends DocIdent {
    * （前の版のタブが書いた・書きかけで閉じた）、記録は古いので使わない
    */
   on?: { gen: string; docId: string; docUpdatedAt: string } | null;
+  /**
+   * 記録したときの基準の後に、まだ送っていない変更を持って起動したときの、保存してあった形の地図の版の順番（一番古い物。版をまたいで
+   * 読んだなら前の版）。その変更は、この版までの地図の上で書いた物（アカウントの写しの地図がそれより新しい版なら、黙って手元で
+   * 上書きせずに聞く: safety-2）。そういう起動が無かった・前の版のページの記録なら無い
+   */
+  mapRelease?: number | null;
 }
 
 export interface CloudSyncDeps {
@@ -1506,11 +1512,28 @@ export class CloudSync {
     return this.keepLocal(remote, "conflict", "アカウントの内容（手元の古い内容と重なった）", "この端末の内容がアカウントの記録より古かったため、アカウントの内容をバックアップに残してから手元で同期しました。", "warn");
   }
 
-  /** アカウントの写しの地図が、手元の地図より新しい版か（どちらにも版の順番のある地図があるときだけ） */
+  /**
+   * アカウントの写しの地図が、手元の地図より新しい版か（どちらにも版の順番のある地図があるときだけ）。どちらも、書いたときの版で比べる:
+   * 写しは保存してあった形の版（前の版の地図をページの地図に当て直して・引き上げて読んでも、前の版）、手元はまだ送っていない変更を書いた版
+   * （起動したときの記録に、その前の変更が残っていれば、その記録の版。前の版のページで止める前に書いた編集は、起動で引き上げても前の版の上の変更）
+   */
   private remoteMapAhead(remote: DocData): boolean {
-    const r = mapReleaseOf(remote);
-    const l = mapReleaseOf(this.deps.getDoc());
+    const r = storedMapReleaseOf(remote) ?? mapReleaseOf(remote);
+    const l = this.localMapRelease();
     return r !== null && l !== null && r > l;
+  }
+
+  /**
+   * 手元のまだ送っていない変更を書いた地図の版の順番（地図が無ければ null）: 今の地図の版と、起動したときの記録の版（まだ送っていない
+   * 変更を持って起動したときの、保存してあった形の版）の古い方。記録は、記録したときの基準のままの間だけ使う（その後に送った・
+   * 読み込んだなら、その前の変更はもう基準に入っている）
+   */
+  private localMapRelease(): number | null {
+    const now = mapReleaseOf(this.deps.getDoc());
+    const b = this.base;
+    const rec = this.boot;
+    if (!b || !rec || typeof rec.mapRelease !== "number" || !rec.on || !sameBase(rec.on, b)) return now;
+    return now === null ? rec.mapRelease : Math.min(now, rec.mapRelease);
   }
 
   /**
