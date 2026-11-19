@@ -9,6 +9,8 @@ import type { MapData } from "../../src/deepmap/mapData";
 import { swapFutureDoc } from "../../src/demo/futureSwap";
 import { decodeBundle } from "../../src/demo/impactBundle";
 import { loadPageMap, PAGE_Q } from "../../src/demo/pageBundle";
+import { mapBaselineDigest } from "../../src/demo/impactDigest";
+import qB64 from "@impact-q-bundle?raw";
 import { createEmptyDoc, makeEdge, makeNode, THIN_VERSION } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
 import { CloudRepo, type CloudBackend, type CloudDoc } from "../../src/persist/cloud";
@@ -29,8 +31,14 @@ const AT = "2026-11-19T03:00:00.000Z";
 
 async function pageMap(): Promise<MapData> {
   if (PAGE_Q) return (await loadPageMap())!;
+  return decodeBundle(await bundleText());
+}
+
+/** 同梱データの文字（冷えた開き直しを測るために、新しく伸ばす） */
+async function bundleText(): Promise<string> {
+  if (PAGE_Q) return qB64;
   const fs = await nodeFs();
-  return decodeBundle(new TextDecoder().decode(fs.readFileSync(`${DIR}/impact-q.b64`)));
+  return new TextDecoder().decode(fs.readFileSync(`${DIR}/impact-q.b64`));
 }
 
 /** 本物のストアを通した編集（アカウントの形・選ぶ・チェック・書き換え・自分のカード） */
@@ -88,7 +96,28 @@ describe.skipIf(!RUN)("8 万枚の木の保存の道（版 7 の候補をペー�
       expect(load).toHaveBeenCalledTimes(1);
       expect(loaded.blocked).toBe(false);
       expectDecoded(loaded.doc!, doc, rec.maps![0]!);
-      console.log(`保存先: 本体 ${chars.toLocaleString()} 文字・緊急コピー ${em.length.toLocaleString()} 文字・保存 ${saveMs.toFixed(0)} ms・開き直し（地図の読み込みと組み立てを含む）${loadMs.toFixed(0)} ms`);
+      q.close();
+      // 冷えた開き直し（起動と同じ: 同梱データを新しく伸ばし、基準を組み立てる）。版の記録の基準の文書の指紋があるとき・無いとき（見直し code-2）
+      const digest = mapBaselineDigest(map);
+      const cold: Record<string, number> = {};
+      for (const how of ["指紋なし", "指紋あり"] as const) {
+        const b64 = await bundleText();
+        setThinBaseline(null);
+        enableThinPage(() => decodeBundle(b64), how === "指紋あり" ? { digest } : {});
+        const c = new Persistence({ dbName: name, kv, locks: null, channel: false, debounceMs: 1 });
+        await c.open();
+        await c.acquireWriter();
+        const tc = performance.now();
+        const again = await c.loadInitial();
+        cold[how] = performance.now() - tc;
+        expect(again.blocked).toBe(false);
+        c.close();
+      }
+      setThinBaseline(map);
+      console.log(
+        `保存先: 本体 ${chars.toLocaleString()} 文字・緊急コピー ${em.length.toLocaleString()} 文字・保存 ${saveMs.toFixed(0)} ms・開き直し（地図は組み立て済み）${loadMs.toFixed(0)} ms・` +
+          `冷えた開き直し（同梱データの伸長・基準の組み立てを含む）: 指紋なし ${cold["指紋なし"]!.toFixed(0)} ms・指紋あり ${cold["指紋あり"]!.toFixed(0)} ms`,
+      );
       expect(chars).toBeLessThan(200_000);
       expect(em.length).toBeLessThan(1_000_000);
     },

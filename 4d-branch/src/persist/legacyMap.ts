@@ -12,7 +12,8 @@
 //     やること・タグ・期限・利用者の線はそのまま（ID もそのまま）。直した見込み・線の説明は meta.prevEdge に
 //   - 利用者の物を持たないカードと、地図のカードどうしの同梱の線は、ページの地図の物になる（直した見込み・説明は、残った線に当てる）
 //   利用者の物: 未着手でない状態・チェックしたやること・書き換えた題名・本文・やること（指紋 t0・b0・k0 と違う）・付けたタグ・
-//   直した見込みと線の説明（p0・c0 と違う）・利用者の meta・利用者の線（利用者のカード・ほかのカードへの線）
+//   直した見込みと線の説明（p0・c0 と違う）・利用者の meta・利用者の線（利用者のカード・ほかのカードへの線）・
+//   直した期限・開始・種類・プロジェクト・シナリオ（版 6 の組み立ての決まりと違う: r6Rules。見直し loss-3）
 
 import { anchorMonthStart } from "../demo/quarterDoc";
 import { edgeTextPrint, fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf } from "../demo/impact";
@@ -59,11 +60,168 @@ export interface FatCardState {
   edge: boolean;
   /** 利用者の線（利用者のカード・ほかのカードへの線）の数 */
   links: number;
+  /**
+   * 版 6 の組み立ての決まりと違う項目（利用者が直した期限 due・開始 start・種類 type・プロジェクト projects・シナリオ scenarios: loss-3）。
+   * 決まりは文書から多数決で決める（r6Rules）。決まりを渡さなければ空
+   */
+  fields: string[];
+}
+
+// ---------------------------------------------------------------- 版 6 の組み立ての決まり（期限・開始・種類・プロジェクト・シナリオ）
+
+/**
+ * 版 6 までの組み立て（src/demo/impact.ts の buildImpactDoc。版 1〜6 で同じ決まり）が、手を入れていないカードに付けた値を、文書から決める
+ * （版 6 の同梱データはページに無いので、地図のカードの多数決で: 見直し loss-3）:
+ *   期限・開始: 地図を読み込んだ日 today から、月の数で（今日の期限と最初の手の開始は today、ほかは月末: monthDate）。
+ *     today の年月は、カードの月 meta.m と期限・開始の年月の差の多数決。日付は、今日の期限と最初の手の開始の多数決
+ *   種類: 今日 goal・手 action・状態 branch・行き先 result
+ *   プロジェクト: 今日・状態・行き先は全部の領域（多数決で決めた組）、手は種類ごとの組（多数決。決まらなければ、全部の組か領域 1 つなら直していない）
+ *   シナリオ: カードは無し
+ */
+export interface R6Rules {
+  /** 地図を読み込んだ年月（年 × 12 ＋ 月 − 1。決まらなければ null） */
+  ym0: number | null;
+  /** 地図を読み込んだ日（"YYYY-MM-DD"。決まらなければ null） */
+  d0: string | null;
+  /** 全部の領域のプロジェクトの組（並べて "\u0000" でつないだ物。決まらなければ null）と、その ID */
+  all: string | null;
+  allSet: ReadonlySet<string>;
+  /** 手の種類ごとのプロジェクトの組（はっきり多数の物だけ） */
+  byKind: ReadonlyMap<string, string>;
+  /** 鍵 → その子のカードの月（手の期限は、子の月の月末） */
+  childMonth: ReadonlyMap<string, number>;
+}
+
+const setKey = (ids: readonly string[]): string => [...ids].sort().join("\u0000");
+
+/** はっきり多数（半分より多い）の物（無ければ null） */
+function majority<T>(xs: readonly T[]): T | null {
+  const count = new Map<T, number>();
+  for (const x of xs) count.set(x, (count.get(x) ?? 0) + 1);
+  for (const [x, c] of count) if (c * 2 > xs.length) return x;
+  return null;
+}
+
+/** "YYYY-MM-DD" の年月（年 × 12 ＋ 月 − 1。読めなければ null） */
+function ymOf(day: unknown): number | null {
+  if (typeof day !== "string") return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  return Number(m[1]) * 12 + Number(m[2]) - 1;
+}
+
+/** その月の日数（グレゴリオ暦。時計を使わない） */
+function daysIn(y: number, m0: number): number {
+  if (m0 === 1) return y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28;
+  return [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m0]!;
+}
+
+/** 年月（年 × 12 ＋ 月 − 1）の月末（"YYYY-MM-DD"） */
+function monthEnd(ym: number): string {
+  const y = Math.floor(ym / 12);
+  const m0 = ym - y * 12;
+  return `${y}-${String(m0 + 1).padStart(2, "0")}-${String(daysIn(y, m0)).padStart(2, "0")}`;
+}
+
+/** 版 6 のカードの役割（今日 r・手 a・状態 s・行き先 e） */
+function roleOf(meta: Meta): "r" | "a" | "s" | "e" {
+  return meta.forecastRoot === true ? "r" : meta.end === true ? "e" : isStr(meta.ak) ? "a" : "s";
+}
+
+const ROLE_TYPE: Record<"r" | "a" | "s" | "e", string> = { r: "goal", a: "action", s: "branch", e: "result" };
+
+/** 文書の版 6 の地図のカード（今日 root・鍵ごとのカード cards）から、組み立ての決まりを決める */
+export function r6Rules(root: GNode, cards: ReadonlyMap<string, GNode>): R6Rules {
+  const yms: number[] = [];
+  const days: string[] = [];
+  const allVotes: string[] = [];
+  const kindVotes = new Map<string, string[]>();
+  const childMonth = new Map<string, number>();
+  if (isStr(root.time.due)) {
+    days.push(root.time.due);
+    const ym = ymOf(root.time.due);
+    if (ym !== null) yms.push(ym);
+  }
+  allVotes.push(setKey(root.projectIds));
+  for (const [k, c] of cards) {
+    const meta = c.meta ?? {};
+    const m = typeof meta.m === "number" && Number.isFinite(meta.m) ? meta.m : null;
+    if (m === null) continue;
+    const pk = k.slice(0, k.lastIndexOf("."));
+    if (!childMonth.has(pk)) childMonth.set(pk, m);
+    const role = roleOf(meta);
+    if (role === "a") {
+      const ym = ymOf(c.time.start);
+      if (ym !== null) yms.push(ym - m);
+      if (m <= 0 && isStr(c.time.start)) days.push(c.time.start);
+      const kind = meta.ak as string;
+      const list = kindVotes.get(kind) ?? [];
+      list.push(setKey(c.projectIds));
+      kindVotes.set(kind, list);
+    } else {
+      const ym = ymOf(c.time.due);
+      if (ym !== null) yms.push(ym - m);
+      allVotes.push(setKey(c.projectIds));
+    }
+  }
+  const all = majority(allVotes);
+  const byKind = new Map<string, string>();
+  for (const [kind, list] of kindVotes) {
+    const v = list.length >= 2 ? majority(list) : null;
+    if (v !== null) byKind.set(kind, v);
+  }
+  return { ym0: majority(yms), d0: majority(days), all, allSet: new Set(all ? all.split("\u0000").filter(Boolean) : []), byKind, childMonth };
+}
+
+/** 版 6 の組み立ての決まりと違う項目（期限 due・開始 start・種類 type・プロジェクト projects・シナリオ scenarios）。今日は見ない */
+export function r6FieldEdits(rules: R6Rules, key: string, card: GNode): string[] {
+  const meta = card.meta ?? {};
+  const role = roleOf(meta);
+  if (role === "r") return [];
+  const out: string[] = [];
+  const m = typeof meta.m === "number" && Number.isFinite(meta.m) ? meta.m : null;
+  if (rules.ym0 !== null && m !== null) {
+    let due: string | null | undefined;
+    let start: string | null | undefined;
+    if (role === "a") {
+      start = m <= 0 ? (rules.d0 ?? undefined) : monthEnd(rules.ym0 + m);
+      const cm = rules.childMonth.get(key);
+      due = cm === undefined ? undefined : monthEnd(rules.ym0 + cm);
+    } else {
+      due = monthEnd(rules.ym0 + m);
+      start = null;
+    }
+    // 決まらない値（undefined）は比べない（直したと決めつけない）
+    if (due !== undefined && card.time.due !== due) out.push("due");
+    if (start !== undefined && card.time.start !== start) out.push("start");
+  }
+  if (card.type !== ROLE_TYPE[role]) out.push("type");
+  const pk = setKey(card.projectIds);
+  if (role === "a") {
+    const want = rules.byKind.get(meta.ak as string);
+    if (want !== undefined ? pk !== want : !(pk === rules.all || (card.projectIds.length === 1 && rules.allSet.has(card.projectIds[0]!)))) out.push("projects");
+  } else if (rules.all !== null && pk !== rules.all) out.push("projects");
+  if (card.scenarioIds.length) out.push("scenarios");
+  return out;
+}
+
+/** 決まりの組（プロジェクト）を ID の並びに（決まらなければ null） */
+function expectedProjects(rules: R6Rules, card: GNode): string[] | null {
+  const meta = card.meta ?? {};
+  const role = roleOf(meta);
+  const key = role === "a" ? (rules.byKind.get(meta.ak as string) ?? null) : rules.all;
+  return key === null ? null : key.split("\u0000").filter(Boolean);
 }
 
 const isStr = (v: unknown): v is string => typeof v === "string";
+const isObjMeta = (v: unknown): v is Meta => !!v && typeof v === "object" && !Array.isArray(v);
 const isoOk = (s: unknown): s is string => typeof s === "string" && Number.isFinite(Date.parse(s));
 const own = (o: object, k: string): boolean => Object.hasOwn(o, k);
+
+/** 版 6 の組み立ての、親からの同梱の線の関係（手へは leads、状態・行き先へは condition）と違うか（利用者が関係を変えた） */
+export function relationEdited(e: GEdge, child: GNode): boolean {
+  return e.relation !== (isStr(child.meta?.ak) ? "leads" : "condition");
+}
 
 /** 同梱の線を利用者が直したか（元の見込み p0 と違う %・指紋 c0 と違う説明と条件・利用者の meta）。指紋の無い線は、見込みと文を直していないと見なす */
 export function fatEdgeEdited(e: GEdge): boolean {
@@ -74,10 +232,11 @@ export function fatEdgeEdited(e: GEdge): boolean {
 }
 
 /**
- * 太い形の地図のカードの、利用者の物（無ければ null）。inEdge: 親からの同梱の線・links: 利用者の線の数。
+ * 太い形の地図のカードの、利用者の物（無ければ null）。inEdge: 親からの同梱の線・links: 利用者の線の数・fields: 版 6 の組み立ての決まりと
+ * 違う項目（r6FieldEdits。期限・開始・種類・プロジェクト・シナリオ: loss-3）。
  * 指紋の無いカード（指紋を付ける前のアプリで読み込んだ地図）は、題名・本文・やることの書き換えを見分けられない（書き換えていないと見なす）
  */
-export function fatCardState(card: GNode, inEdge: GEdge | undefined, links: number): FatCardState | null {
+export function fatCardState(card: GNode, inEdge: GEdge | undefined, links: number, fields: readonly string[] = []): FatCardState | null {
   const meta = card.meta ?? {};
   const printed = isStr(meta.t0);
   const status = card.status !== "open" ? card.status : null;
@@ -103,12 +262,12 @@ export function fatCardState(card: GNode, inEdge: GEdge | undefined, links: numb
   const tags = card.tags.filter((t) => !given.has(t));
   const userMeta = Object.keys(meta).filter((k) => !BUILDER_NODE_META.has(k));
   const edge = !!inEdge && fatEdgeEdited(inEdge);
-  if (!status && !ticks && !title && !body && !todo && !tags.length && !userMeta.length && !edge && !links) return null;
-  return { status, ticks, title, body, todo, tags, meta: userMeta, edge, links };
+  if (!status && !ticks && !title && !body && !todo && !tags.length && !userMeta.length && !edge && !links && !fields.length) return null;
+  return { status, ticks, title, body, todo, tags, meta: userMeta, edge, links, fields: [...fields] };
 }
 
-/** カードの項目（状態・題名・本文・やること・タグ・meta）を変える物があるか（線だけ・線の見込みだけなら false） */
-const changesCard = (st: FatCardState): boolean => !!st.status || st.ticks > 0 || st.title || st.body || st.todo || st.tags.length > 0 || st.meta.length > 0;
+/** カードの項目（状態・題名・本文・やること・タグ・meta・期限など）を変える物があるか（線だけ・線の見込みだけなら false） */
+const changesCard = (st: FatCardState): boolean => !!st.status || st.ticks > 0 || st.title || st.body || st.todo || st.tags.length > 0 || st.meta.length > 0 || st.fields.length > 0;
 
 export const zeroCounts = (): CardCounts => ({ cards: 0, picks: 0, drops: 0, ticks: 0, edits: 0, links: 0 });
 
@@ -124,7 +283,7 @@ export function countCard(c: CardCounts, st: FatCardState): void {
     return;
   }
   if (st.ticks) c.ticks++;
-  if (st.title || st.body || st.todo || st.tags.length || st.meta.length || st.edge) c.edits++;
+  if (st.title || st.body || st.todo || st.tags.length || st.meta.length || st.edge || st.fields.length) c.edits++;
   if (st.links) c.links++;
 }
 
@@ -150,6 +309,8 @@ export function detachFatCard(c: GNode, key: string, st: FatCardState, inEdge: G
     for (const k of Object.keys(m6)) if (k !== "prob" && !BUILDER_EDGE_META.has(k)) pe[k] = m6[k];
     meta.prevEdge = pe;
   }
+  // 関係を変えた線（別のカードには線が無いので、関係も残す）
+  if (inEdge && relationEdited(inEdge, c)) meta.prevEdge = { ...(isObjMeta(meta.prevEdge) ? meta.prevEdge : {}), relation: inEdge.relation };
   return { ...c, x, y, meta };
 }
 
@@ -276,9 +437,24 @@ function carryFatTodo(next: readonly Condition[], slots: readonly string[], c: G
   return list;
 }
 
-/** ページの地図のカードに、版 6 のカードの利用者の物を当てる（ID・時刻は版 6 のカードの物。位置・期限・プロジェクトはページの地図の物） */
-function carryFat(v: GNode, c: GNode, st: FatCardState, slots: readonly string[], key: string): GNode {
+/**
+ * ページの地図のカードに、版 6 のカードの利用者の物を当てる（ID・時刻は版 6 のカードの物。位置はページの地図の物。期限・開始・種類・
+ * シナリオは、利用者が直した物だけ版 6 のカードの値。プロジェクトは、ページの地図の組に、利用者が足した物を足し外した物を外す: loss-3）
+ */
+function carryFat(v: GNode, c: GNode, st: FatCardState, slots: readonly string[], key: string, rules: R6Rules | null): GNode {
   const out: GNode = { ...v, id: c.id, createdAt: c.createdAt, updatedAt: c.updatedAt };
+  const f = new Set(st.fields);
+  if (f.has("due") || f.has("start")) out.time = { ...v.time, ...(f.has("due") ? { due: c.time.due } : {}), ...(f.has("start") ? { start: c.time.start } : {}) };
+  if (f.has("type")) out.type = c.type;
+  if (f.has("scenarios")) out.scenarioIds = c.scenarioIds;
+  if (f.has("projects")) {
+    const want = rules ? expectedProjects(rules, c) : null;
+    const added = c.projectIds.filter((p) => (want ? !want.includes(p) : !rules?.allSet.has(p)));
+    const removed = want ? want.filter((p) => !c.projectIds.includes(p)) : [];
+    const next = v.projectIds.filter((p) => !removed.includes(p));
+    for (const p of added) if (!next.includes(p)) next.push(p);
+    out.projectIds = next;
+  }
   if (st.status) out.status = st.status;
   if (st.title) out.title = c.title;
   if (st.body) out.body = c.body;
@@ -421,9 +597,11 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
   const moved = zeroCounts();
   const det = zeroCounts();
   const detachList: Array<{ key: string; card: GNode; st: FatCardState }> = [];
+  // 版 6 の組み立ての決まり（期限・開始・種類・プロジェクト・シナリオ）: 違うカードは利用者が直した物（loss-3）
+  const rules = r6Rules(P, byKey);
   for (const k of [...byKey.keys()].sort()) {
     const card = byKey.get(k)!;
-    const st = fatCardState(card, inEdge.get(card.id), links.get(card.id) ?? 0);
+    const st = fatCardState(card, inEdge.get(card.id), links.get(card.id) ?? 0, r6FieldEdits(rules, k, card));
     let i = pa.keyIndex.get(k) ?? -1;
     let how: CardCounts = kept;
     if (i < 0) {
@@ -436,9 +614,14 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
       if (st) countCard(how, st);
       continue;
     }
-    if (st) {
-      detachList.push({ key: k, card, st });
-      countCard(det, st);
+    // 新しい地図に無いカード: 親からの線の関係だけを変えた物も残す（関係は meta.prevEdge に。別のカードには線が無い）
+    const ie = inEdge.get(card.id);
+    const rel = !!ie && relationEdited(ie, card);
+    const left = st ?? (rel ? { status: null, ticks: 0, title: false, body: false, todo: false, tags: [], meta: [], edge: true, links: 0, fields: [] } : null);
+    if (left) {
+      if (rel) left.edge = true;
+      detachList.push({ key: k, card, st: left });
+      countCard(det, left);
     }
   }
 
@@ -507,7 +690,7 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
     const m = matchOf[i];
     const st = stateOf[i];
     if (!m || !st || !changesCard(st)) continue;
-    nodesIn[m.id] = carryFat(view.nodes[i]!, m, st, pa.slots(i), pa.keys[i]!);
+    nodesIn[m.id] = carryFat(view.nodes[i]!, m, st, pa.slots(i), pa.keys[i]!, rules);
     carried[i] = 1;
   }
   const rx = Math.round(P.x);
@@ -539,6 +722,7 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
   const edgesIn: Record<ID, GEdge> = {};
   const carriedE = new Uint8Array(n);
   const skipE = new Uint8Array(n);
+  let relations = 0;
   for (let i = 1; i < n; i++) {
     const s = idOf[pa.parent[i]!]!;
     const t = idOf[i]!;
@@ -549,6 +733,8 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
     const c = matchOf[i];
     const pc = matchOf[pa.parent[i]!];
     const e6 = c && pc ? inEdge.get(c.id) : undefined;
+    // 関係を変えた同梱の線は、新しい地図の関係に戻す（数えて知らせる: loss-6）
+    if (e6 && e6.source === pc!.id && relationEdited(e6, c!)) relations++;
     if (!e6 || e6.source !== pc!.id || !fatEdgeEdited(e6)) continue;
     edgesIn[edgeIdOf[i]!] = carryFatEdge(view.edges[i]!, e6, edgeIdOf[i]!, s, t);
     carriedE[i] = 1;
@@ -599,7 +785,7 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
     detached: detachList.length,
     lostTicks: 0,
     droppedEdges: 0,
-    legacy: { kept, moved, detached: det, movedAt: ymLabel(anchorMonthStart(pa.anchor, 3)) },
+    legacy: { kept, moved, detached: det, movedAt: ymLabel(anchorMonthStart(pa.anchor, 3)), ...(relations ? { relations } : {}) },
   };
   return { doc: { ...nd, nodes, edges }, info };
 }

@@ -238,9 +238,17 @@ describe("保存先（IndexedDB・localStorage・緊急コピー・バックア�
     await p.flush();
     expect(p.status).toBe("error");
     expect(p.statusMessage).toContain("大きすぎます");
+    // 文書の大きさで保存できない: 画面の帯は「元に戻す」も出す（loss-1）
+    expect(p.saveErrorFromDoc).toBe(true);
     expect(kv.get(`${name}:doc`)).toBe(text);
     p.writeEmergency(true);
     expect(kv.get(emergencyKeys(kv)[0]!)).toBe(copy);
+    // 元に戻すと（大きな本文の無い文書）保存でき、印も下がる
+    cur = { ...doc, updatedAt: nextStamp(big.updatedAt) };
+    p.markDirty();
+    await p.flush();
+    expect(p.status).toBe("saved");
+    expect(p.saveErrorFromDoc).toBe(false);
   });
 
   it("地図は要るときだけ読む: 地図の無い本体では読まない。薄い形の本体・地図を持つ文書の保存では 1 度だけ読む（gaps-17）", async () => {
@@ -304,6 +312,26 @@ describe("記録の形で止める（safety-3）: 版 2 以上か地図の変更
     p.close();
     return { kv, name, doc, rec: (await rawGet(name, "kv", "doc")) as StoredDoc };
   }
+
+  it("版の記録だけが新しい版の地図を指す（本体を読む前に分かる。地図を読んであるページ）: 新しい版として止め、何も書かない（code-5）", async () => {
+    setThinBaseline(qMap);
+    const doc = editedDoc(qMap, 41, 5);
+    const kv = memoryKV();
+    const { p, name } = await saved(kv, doc);
+    p.close();
+    const meta = (await rawGet(name, "kv", "meta")) as Record<string, unknown>;
+    await rawPut(name, "kv", { ...meta, mapRelease: qMap.header.release + 1 }, "meta");
+    const before = await rawDump(name);
+    const q = await opened(kv, name);
+    const loaded = await q.loadInitial();
+    expect(loaded.blocked).toBe(true);
+    expect(q.blockedWhy?.kind).toBe("newer");
+    q.attach(() => doc);
+    q.markDirty();
+    await q.flush();
+    expect(await rawDump(name)).toBe(before);
+    q.close();
+  });
 
   /** 止めた起動の後に、書く道を全部試しても、保存先が変わらないこと */
   async function expectBlockedNoWrites(kv: ReturnType<typeof memoryKV>, name: string, code?: string): Promise<Persistence> {
@@ -484,6 +512,63 @@ describe("緊急コピー（薄い形の写し・開けない写し・版の違�
     expect(loaded.notices).toContain("前回、保存しきれなかった変更を復元しました。");
     expect(Object.values(loaded.doc!.nodes).some((n) => n.title === "閉じる直前のカード")).toBe(true);
     expect(emergencyKeys(kv)).toHaveLength(0);
+  });
+
+  it("地図の無い本体の後に、地図を初めて開いて保存する前に閉じた（薄い形の写しだけ）: 地図を 1 度だけ読んで写しを採る。引き継ぎでも（code-3）", async () => {
+    for (const via of ["boot", "takeOver"] as const) {
+      const kv = memoryKV();
+      const name = `em-map-${++dbSeq}`;
+      // 地図の無い本体（版 1）を保存した
+      const mine = createEmptyDoc("自分の地図");
+      const own = makeNode({ title: "地図より前のカード" });
+      mine.nodes[own.id] = own;
+      const p = await opened(kv, name);
+      await p.loadInitial();
+      p.attach(() => mine);
+      p.markDirty();
+      await p.flush();
+      // 同じタブで地図を足し（ページの地図）、保存する前に閉じた: 緊急コピーだけが薄い形で残る
+      setThinBaseline(qMap);
+      const withMap = mergeDocs(mine, thinBaselineDoc({ at: AT }), { keepIds: true }).doc;
+      withMap.updatedAt = nextStamp(mine.updatedAt);
+      p.attach(() => withMap);
+      p.markDirty();
+      p.writeEmergency();
+      p.close();
+      expect(JSON.parse(kv.get(emergencyKeys(kv)[0]!)!).doc.version).toBe(THIN_VERSION);
+      // 次のページ: 地図はまだ読んでいない（読み込み方だけ決めてある）
+      setThinBaseline(null);
+      const load = vi.fn(async () => qMap);
+      enableThinPage(load);
+      let doc: DocData | null;
+      if (via === "boot") {
+        const q = await opened(kv, name);
+        const loaded = await q.loadInitial();
+        expect(loaded.blocked).toBe(false);
+        expect(loaded.notices).toContain("前回、保存しきれなかった変更を復元しました。");
+        doc = loaded.doc;
+        q.close();
+      } else {
+        // 閲覧のみのタブ（別のタブがロックを持つ）が引き継ぐ
+        const lk = fakeLocks();
+        const holder = makeP(kv, name, { locks: lk.locks });
+        await holder.open();
+        expect(await holder.acquireWriter()).toBe(true);
+        const q = makeP(kv, name, { locks: lk.locks });
+        await q.open();
+        expect(await q.acquireWriter()).toBe(false);
+        await q.loadInitial();
+        doc = await q.takeOver();
+        expect(q.blocked).toBe(false);
+        holder.close();
+        q.close();
+      }
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(holdsPageMap(doc!)).toBe(true);
+      expect(Object.values(doc!.nodes).some((n) => n.title === "地図より前のカード")).toBe(true);
+      expect(emergencyKeys(kv)).toHaveLength(0);
+      enableThinPage(null);
+    }
   });
 
   it("このページでは開けない写し: 本体より後なら起動で止める（写しも本体も残す）。本体より後でなければ、残したまま始める", async () => {
@@ -830,6 +915,19 @@ describe("アカウントの写し: 同じ入れ物で docVersion 2", () => {
     expectDecoded(back!.doc, doc, stored.maps![0]!);
   });
 
+  it("地図をまだ読んでいないページで、ページの地図を持つ文書を初めて送る: 送る形を作る前に地図を 1 度だけ読んで薄い形（code-5）", async () => {
+    const doc = editedDoc(qMap, 83, 5);
+    setThinBaseline(null);
+    const load = vi.fn(async () => qMap);
+    enableThinPage(load);
+    const { be } = memoryBackend();
+    const p = await new CloudRepo(be, "u", "dev").prepare(doc);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(p.docVersion).toBe(THIN_VERSION);
+    expect(p.parts).toHaveLength(1);
+    expect(p.mapRelease).toBe(qMap.header.release);
+  });
+
   it("前の版のページ（v32・v33 の読み方）は、docVersion 2 の写しを新しい版と見分けて止まる（入れ物を確かめる前に。上書きしない）", async () => {
     const doc = editedDoc(qMap, 82, 10);
     const { be } = memoryBackend();
@@ -1047,6 +1145,45 @@ describe("書き出しと取り込み", () => {
     expect(encodeStored(res.doc).stats!.fatKeyed).toBe(0);
   });
 
+  it("書き出した端末の地図のカードどうしの自分の線は、鍵でつなぎ直して足す。地図で決めた・書き換えた物は足さずに数える（loss-5）", async () => {
+    setThinBaseline(qMap);
+    // 端末 A: 地図のカードどうしの自分の線（ぶつかる）・選んだ手と書き換え・地図のカードから自分のカードへの線
+    const a = new Store(thinBaselineDoc({ at: AT }));
+    const cards = Object.values(a.doc.nodes).filter((n) => keyOf(n) !== null && n.meta.forecastRoot !== true);
+    const [c1, c2, c3, c4] = [cards[3]!, cards[40]!, cards[200]!, cards[900]!];
+    const own = makeNode({ type: "action", title: "Aで足したカード", x: -2000, y: 0 });
+    a.transact("A", (tx) => {
+      tx.updateNode(c1.id, { status: "active" });
+      tx.updateNode(c2.id, { status: "dropped", title: `${c2.title}（見送り）` });
+      tx.addEdge(makeEdge({ source: c3.id, target: c4.id, relation: "blocks", label: "Aで引いた線: ぶつかる" }));
+      tx.addNode(own);
+      tx.addEdge(makeEdge({ source: c1.id, target: own.id }));
+    });
+    const file = exportText(a.doc, "test");
+    // 端末 B: 同じ地図（手を付けていない）に「追加する」（App.mergeDoc と同じ決め方）
+    const b = thinBaselineDoc({ at: AT });
+    const pv = await previewImportAsync(file);
+    const res = mergeDocs(b, pv.doc, { ...(holdsPageMap(pv.doc) ? { keepIds: true } : {}), ...(thinReadable() ? { skipSameMaps: true } : {}) });
+    const out = res.doc;
+    const byKey = (k: string) => Object.values(out.nodes).find((n) => keyOf(n) === k)!;
+    // 地図のカードどうしの線は、今の地図の同じ鍵のカードの間に
+    const line = Object.values(out.edges).find((e) => e.label === "Aで引いた線: ぶつかる")!;
+    expect(line).toBeDefined();
+    expect([line.source, line.target, line.relation]).toEqual([byKey(keyOf(c3)!).id, byKey(keyOf(c4)!).id, "blocks"]);
+    expect(Object.values(out.nodes).some((n) => n.title === "Aで足したカード")).toBe(true);
+    expect(res.retargeted).toBe(2);
+    expect(res.droppedEdges).toBe(0);
+    // 同梱の線は足さない（地図は 1 つ・線は同梱の線と利用者の線 2 本だけ増える）
+    expect(Object.keys(out.edges).length).toBe(Object.keys(b.edges).length + 2);
+    // 地図で決めた・書き換えた物は足さない（今の地図のまま）。その数を返す（知らせに出す）
+    expect(byKey(keyOf(c1)!).status).toBe("open");
+    expect(byKey(keyOf(c2)!).title).toBe(c2.title);
+    expect(res.skippedDecisions).toBe(2);
+    // 同じ物をもう一度足しても、同じ線を 2 本にしない
+    const again = mergeDocs(out, pv.doc, { keepIds: true, skipSameMaps: true });
+    expect(Object.values(again.doc.edges).filter((e) => e.label === "Aで引いた線: ぶつかる")).toHaveLength(1);
+  });
+
   it("入口が 2 つあるときは、ページの地図の版の入口を先に選ぶ。ページの地図が無ければ今までどおり", () => {
     // ページの地図の方を後に作った（今までの決まりなら、先に作った版 6 の入口を選ぶ）
     setThinBaseline(qMap);
@@ -1261,7 +1398,10 @@ describe("見出しの印・読める版・捨ててよい中身", () => {
     setThinBaseline(qMap);
     const rec = toStored(freshDoc(qMap));
     expect(recordInfo(rec)).toEqual({ format: THIN_VERSION, mapRelease: qMap.header.release, mapHash: qMap.header.hash, mapBv: THIN_BASELINE_VERSION });
-    expect(headerBlock({ docVersion: THIN_VERSION, mapRelease: qMap.header.release, mapHash: qMap.header.hash, mapBv: THIN_BASELINE_VERSION + 1 })).toBe("blocked");
+    // 組み立ての版が新しい: 新しい版（読まない・間引かない）。前の組み立て: 中身を読めば当て直せる（skew-2）
+    expect(headerBlock({ docVersion: THIN_VERSION, mapRelease: qMap.header.release, mapHash: qMap.header.hash, mapBv: THIN_BASELINE_VERSION + 1 })).toBe("newer");
+    expect(headerBlock({ docVersion: THIN_VERSION, mapRelease: qMap.header.release, mapHash: qMap.header.hash, mapBv: THIN_BASELINE_VERSION - 1 })).toBeNull();
+    expect(headerBlock({ docVersion: THIN_VERSION, mapRelease: qMap.header.release, mapHash: "x", mapBv: THIN_BASELINE_VERSION })).toBe("blocked");
     expect(recordInfo(createEmptyDoc())).toEqual({ format: SCHEMA_VERSION });
     expect(headerBlock({ docVersion: THIN_VERSION, mapRelease: qMap.header.release, mapHash: qMap.header.hash })).toBeNull();
     expect(headerBlock({ docVersion: THIN_VERSION, mapRelease: qMap.header.release + 1 })).toBe("newer");

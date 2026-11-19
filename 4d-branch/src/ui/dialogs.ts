@@ -9,7 +9,7 @@ import { buildWishlist } from "../demo/wishlistBundle";
 import { upgradeNotice } from "../persist/codec";
 import { previewImportAsync, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
-import { BACKUP_LABELS, isBlockedBackup, isNewerBackup, type BackupMeta } from "../persist/persistence";
+import { BACKUP_LABELS, isBlockedBackup, isNewerBackup, isRawDownloadBackup, type BackupMeta } from "../persist/persistence";
 import { MOD, clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { confirmDialog, openModal, toast } from "./overlays";
@@ -155,7 +155,7 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
   restore.addEventListener("click", async () => {
     if (isNewerBackup(b)) return refuseNewer();
     if (isBlockedBackup(b)) return refuseBlocked();
-    const { doc, newer, blocked: cannot, message, upgrade } = await per.readBackupChecked(b.id);
+    const { doc, newer, blocked: cannot, message, upgrade, warning } = await per.readBackupChecked(b.id);
     if (newer) return refuseNewer();
     if (cannot) return refuseBlocked(message);
     if (!doc) return toast("このバックアップを読めませんでした", { tone: "error" });
@@ -163,7 +163,7 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
     const counts = upgrade ? { nodes: Object.keys(doc.nodes).length.toLocaleString("ja-JP"), edges: Object.keys(doc.edges).length.toLocaleString("ja-JP") } : b.counts;
     const ok = await confirmDialog({
       title: "このバックアップに戻しますか？",
-      body: `${fmtWhen(b.createdAt)} の内容（ノード ${counts.nodes} 件・接続 ${counts.edges} 本）に入れ替えます。${upgrade ? upgradeNotice(upgrade, "backup") : ""}今の内容は「安全用」バックアップに残り、「元に戻す」でも戻せます。`,
+      body: `${fmtWhen(b.createdAt)} の内容（ノード ${counts.nodes} 件・接続 ${counts.edges} 本）に入れ替えます。${upgrade ? upgradeNotice(upgrade, "backup") : ""}${warning ? `${warning}。` : ""}今の内容は「安全用」バックアップに残り、「元に戻す」でも戻せます。`,
       ok: "復元する",
     });
     if (!ok) return;
@@ -178,7 +178,8 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
       if (rec) app.exportRawText(rec.text, name.replace(/\.json$/, "_raw.json"));
       else toast("このバックアップを読めませんでした", { tone: "error" });
     };
-    if (blocked || isBlockedBackup(b)) return raw();
+    // 当て直す前の記録・前の形・前の版の地図のバックアップも、そのままの形で（読むと当て直すので、当て直す前の内容を外へ出せるように: loss-6）
+    if (blocked || isBlockedBackup(b) || isRawDownloadBackup(b)) return raw();
     const { doc, newer, blocked: cannot } = await per.readBackupChecked(b.id);
     if (newer) return refuseNewer(BACKUP_NEWER_EXPORT);
     if (cannot) {
@@ -195,6 +196,11 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
   });
   if (isNewerBackup(b)) markNewer();
   else if (isBlockedBackup(b)) markBlocked();
+  else if (isRawDownloadBackup(b)) {
+    dl.title = "そのままの形でダウンロード（地図を新しい版にする前の内容）";
+    // 当て直す前の記録（間引かない）: 印を付ける
+    if (b.raw) when.append(h("span", { class: "backup-newer", title: "地図を新しい版で開く前の記録を、そのままの形で残しています（自動では消えません）" }, "変える前の記録"));
+  }
   return h(
     "div",
     { class: "backup-row" },

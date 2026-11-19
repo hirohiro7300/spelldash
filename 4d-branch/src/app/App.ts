@@ -11,9 +11,9 @@ import { createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
 import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
 import { isDisposableDoc } from "../demo/demo";
-import { CloudRepo, CloudSync, baseCovered, dbBackend, mapReleaseOf, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
+import { CloudRepo, CloudSync, asBootDoc, baseCovered, dbBackend, mapReleaseOf, nextBootDoc, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
-import { holdsPageMap, pageRelease, storedMapReleaseOf, storedUpgradeOf, thinReadable, upgradeNotice } from "../persist/codec";
+import { holdsPageMap, pageRelease, setCodecWarn, storedMapReleaseOf, storedUpgradeOf, thinReadable, upgradeNotice, type CodecWarnKind } from "../persist/codec";
 import type { BackupKind, BlockInfo, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
@@ -54,23 +54,6 @@ export interface AppOptions {
  * 最後に基準を書いてから最初の起動の物。代わりの内容（デモ・バックアップ）で始めたときは、その起動の物
  */
 const BOOT_DOC_KEY = "cloud:bootDoc";
-
-function asBootDoc(v: unknown): BootDoc | null {
-  const o = v as Partial<BootDoc> | null;
-  if (!o || typeof o !== "object" || typeof o.id !== "string" || typeof o.updatedAt !== "string") return null;
-  const on = o.on;
-  const okOn = on === null || (!!on && typeof on === "object" && typeof on.gen === "string" && typeof on.docId === "string" && typeof on.docUpdatedAt === "string");
-  const rel = o.mapRelease;
-  const mapRelease = rel === null || (typeof rel === "number" && Number.isFinite(rel)) ? rel : undefined;
-  return { id: o.id, updatedAt: o.updatedAt, fallback: !!o.fallback, on: okOn ? (on ? { gen: on.gen, docId: on.docId, docUpdatedAt: on.docUpdatedAt } : null) : undefined, ...(mapRelease !== undefined ? { mapRelease } : {}) };
-}
-
-/** 記録したときの基準が同じか */
-function sameOn(a: BootDoc["on"], b: BootDoc["on"]): boolean {
-  if (a === undefined || b === undefined) return a === b;
-  if (a === null || b === null) return a === b;
-  return a.gen === b.gen && a.docId === b.docId && a.docUpdatedAt === b.docUpdatedAt;
-}
 
 /** 「未来の道筋」を押したが、アカウントとの突き合わせが済むのを待つときのお知らせ */
 const WAIT_FUTURE = "アカウントの内容を確かめています。済んだら未来の道筋を開きます";
@@ -282,6 +265,17 @@ export class App implements AppContext {
     this.view.onCamera(() => this.onCamera());
     this.persistence.on("status", () => this.renderBanner());
     this.persistence.on("notice", (n) => toast(n.text, { tone: n.level === "error" ? "error" : n.level === "warn" ? "warn" : "info", ms: 7000 }));
+    // 保存の口の知らせ（版 6 の地図を新しい版にできなかった・地図ごと書いた・大きくなった）は、知らせの帯に（コンソールだけにしない: code-6）。
+    // 自動の保存のたびに出さないよう、種類ごとにこのページで 1 度だけ
+    if (!this.ephemeral) {
+      const told = new Set<CodecWarnKind>();
+      setCodecWarn((message, kind) => {
+        console.warn(message);
+        if (told.has(kind)) return;
+        told.add(kind);
+        toast(message, { tone: "warn", ms: 9000 });
+      });
+    }
 
     this.persistence.on("remote", () => this.scheduleRemoteReload());
     // 開いている間に、別のタブの新しい版のページが保存した（保存の競合・引き継ぎ・読み直し・保存先の版が上がったことで気づく）: 編集をやめる
@@ -429,7 +423,9 @@ export class App implements AppContext {
         h("button", { class: "btn btn-sm btn-danger", type: "button", onClick: () => void this.resolveConflict("overwrite") }, "このタブの内容で上書き"),
       );
     } else if (per.status === "error") {
-      add("danger", "alert", per.statusMessage || "保存できませんでした。", h("button", { class: "btn btn-sm", type: "button", onClick: () => this.exportJson() }, "JSON で書き出す"));
+      // 文書の形・大きさで保存できない（大きすぎる など）: 直前の操作を元に戻すと保存できることがある（loss-1）
+      const undo = per.saveErrorFromDoc && this.store.history.canUndo ? [h("button", { class: "btn btn-sm", type: "button", onClick: () => this.cmd.undo() }, "元に戻す")] : [];
+      add("danger", "alert", per.statusMessage || "保存できませんでした。", ...undo, h("button", { class: "btn btn-sm", type: "button", onClick: () => this.exportJson() }, "JSON で書き出す"));
     }
   }
 
@@ -440,6 +436,9 @@ export class App implements AppContext {
     // 保存されているのがこのページより新しい版だった: 引き継がずに止めた（画面は "blocked" の知らせで差し替わる）
     if (this.persistence.blocked) return;
     if (doc) this.store.load(doc, "load");
+    // 引き継いだ手元を記録してから突き合わせる（閲覧のみで起動したタブは起動で記録していない。前の版のページのタブの、止める前の変更を
+    // 前の版の地図の上の物と分かるように: loss-2・skew-1）
+    if (doc) await this.recordBootDoc(doc);
     // 引き継ぐ間にアカウントの新しい版に気づいていたら、閲覧のみのまま（決まりは applyReadOnly の 1 か所）
     this.applyReadOnly();
     this.cloud?.resync();
@@ -464,6 +463,8 @@ export class App implements AppContext {
     // 保存されているのがこのページより新しい版だった: 開きも上書きもせずに止めた（画面は "blocked" の知らせで差し替わる）
     if (this.persistence.blocked) return;
     if (doc) this.store.load(doc, "load");
+    // 開いた最新（別のタブ・前の版のページが保存した物かもしれない）を記録する（loss-2・skew-1）
+    if (doc) await this.recordBootDoc(doc);
     if (choice === "reload" && doc) toast("保存されている最新を開きました。このタブの内容はバックアップに残してあります（メニュー →「バックアップと復元」）。", { ms: 6000 });
     this.renderBanner();
   }
@@ -976,9 +977,9 @@ export class App implements AppContext {
     this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, added) : added, { minZoom: opts.fitMinZoom });
     const n = (v: number) => v.toLocaleString("ja-JP");
     const reused = [res.reusedProjects ? `プロジェクト ${res.reusedProjects} 件` : "", res.reusedScenarios ? `シナリオ ${res.reusedScenarios} 件` : ""].filter(Boolean).join("・");
-    const skipped = res.skippedMaps
-      ? `。同じ地図はもうあるので足さず、あなたが足したカードと線だけを今の地図につなぎました${res.droppedEdges ? `（つなぎ先の無い線 ${n(res.droppedEdges)} 本は足していません）` : ""}`
-      : "";
+    // 足さなかった物も数で言う（ファイルの地図で決めた・書き換えたカード、つなぎ先の無い線: loss-5）
+    const notAdded = [res.skippedDecisions ? `ファイルの地図で選んだ・書き換えたカード ${n(res.skippedDecisions)} 枚` : "", res.droppedEdges ? `つなぎ先の無い線 ${n(res.droppedEdges)} 本` : ""].filter(Boolean).join("・");
+    const skipped = res.skippedMaps ? `。同じ地図はもうあるので足さず、あなたが足したカードと線（地図のカードどうしの線も）を今の地図につなぎました${notAdded ? `（${notAdded}は足していません）` : ""}` : "";
     toast(`${opts.done ?? ""}ノード ${n(res.added.nodes)} 件・接続 ${n(res.added.edges)} 本を追加しました${reused ? `（同じ名前の${reused}はまとめました）` : ""}${skipped}`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
   }
@@ -1687,23 +1688,21 @@ export class App implements AppContext {
 
   /**
    * 起動したときの手元を記録する（基準を書くまで残す）。前の記録が残っていればそれを残す（最後に基準を書いてから
-   * 最初の起動の物）。代わりの内容で始めたときは、この起動の物にする。編集できるタブだけが書く
+   * 最初の起動の物）。代わりの内容で始めたときは、この起動の物にする。編集できるタブだけが書く。
+   * 起動のほか、別のタブから引き継いだとき・保存されている最新を開いたとき（読み込んだ手元: loaded）にも書く（閲覧のみで起動したタブは
+   * 起動で記録しない。前の版のページのタブから引き継いでも、その前の変更が前の版の地図の上の物と分かるように: loss-2・skew-1）。決まりは nextBootDoc
    */
-  private async recordBootDoc(): Promise<void> {
+  private async recordBootDoc(loaded?: DocData): Promise<void> {
     if (this.ephemeral || !this.persistence.writer) return;
     try {
       // 今の基準（このブラウザの内容を最後に同期したアカウントの物）。記録はこの基準に結び付ける
       const owner = await this.persistence.readKv<string>("cloud:owner");
       const base = owner ? await this.persistence.readKv<SyncBase>(`cloud:${owner}`) : null;
-      const on: BootDoc["on"] = owner ? (base ? { gen: base.gen, docId: base.docId, docUpdatedAt: base.docUpdatedAt } : null) : undefined;
       const cur = asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY));
-      // 起動したときの手元に、まだ送っていない変更があった（基準と違う）なら、その保存してあった形の地図の版を記録に残す（その変更は、
-      // その版までの地図の上で書いた物。前の版のページで止める前に書いた編集を、起動で引き上げて読んでも: safety-2）。一番古い版を残す
-      const changed = !base || this.bootDoc.id !== base.docId || this.bootDoc.updatedAt !== base.docUpdatedAt;
-      const rel = changed && typeof this.bootMapRelease === "number" ? this.bootMapRelease : undefined;
-      // 前の記録は、同じ基準のままなら残す。基準が書き換わっていた（前の版のタブが書いた など）・代わりの内容で始めたなら、この起動で記録し直す
-      if (!cur || this.bootDoc.fallback || !sameOn(cur.on, on)) await this.persistence.writeKv(BOOT_DOC_KEY, { ...this.bootDoc, on, ...(rel !== undefined ? { mapRelease: rel } : {}) });
-      else if (rel !== undefined && !(typeof cur.mapRelease === "number" && cur.mapRelease <= rel)) await this.persistence.writeKv(BOOT_DOC_KEY, { ...cur, mapRelease: rel });
+      const boot = loaded ? { id: loaded.id, updatedAt: loaded.updatedAt, fallback: false } : this.bootDoc;
+      const rel = loaded ? (storedMapReleaseOf(loaded) ?? mapReleaseOf(loaded)) : this.bootMapRelease;
+      const next = nextBootDoc(cur, boot, rel, base, !!owner);
+      if (next) await this.persistence.writeKv(BOOT_DOC_KEY, next);
     } catch {
       /* 記録できなくても続ける（その場合は、今の手元だけで古いかを見る） */
     }

@@ -9,7 +9,7 @@ import { App } from "./app/App";
 import { UiState } from "./app/uiState";
 import { buildDemoDoc } from "./demo/demo";
 import { loadImpactBundle } from "./demo/futureBundle";
-import { loadPageMap, PAGE_Q } from "./demo/pageBundle";
+import { loadPageMap, PAGE_Q, PAGE_Q_RELEASE } from "./demo/pageBundle";
 import { buildStressDoc } from "./demo/stress";
 import type { DocData } from "./model/types";
 import { enableThinPage, thinReadable } from "./persist/codec";
@@ -40,8 +40,9 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
       const next = readMode();
       if (next.stress !== mode.stress || next.demo !== mode.demo) location.reload();
     });
-  // ページに 3 か月ごとの地図を入れたビルド: 薄い形を読み書きする（地図はまだ読まない。保存してあった物に地図があれば、読むときに読む）
-  if (PAGE_Q) enableThinPage(loadPageMap);
+  // ページに 3 か月ごとの地図を入れたビルド: 薄い形を読み書きする（地図はまだ読まない。保存してあった物に地図があれば、読むときに読む）。
+  // 版の記録に基準の文書の指紋があれば、起動で数え直さない（7 万枚で約 0.4 秒: 見直し code-2）
+  if (PAGE_Q) enableThinPage(loadPageMap, PAGE_Q_RELEASE?.digest ? { digest: PAGE_Q_RELEASE.digest } : {});
   const persistence = new Persistence({ mode: ephemeral ? "memory" : "auto" });
   await persistence.open();
   // 同梱の地図（未来の道筋・版 6）を、保存してあった文書を読む前に 1 度だけ読み込む（画面・同期・地図の版の見分けは、

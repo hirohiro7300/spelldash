@@ -28,7 +28,7 @@ import { newId, nowISO } from "../model/ids";
 import { DocFormatError, NewerDocError, docCounts, isNewerVersion } from "../model/schema";
 import type { DocData } from "../model/types";
 import { Emitter } from "../store/emitter";
-import { decodeStoredAsync, ensurePageMap, hasThinBaseline, needsPageMap, storedMapReleaseOf, storedVersion, thinReadable, ThinMapError, toStored, guardStoredSize } from "./codec";
+import { decodeStoredAsync, ensurePageMap, hasThinBaseline, needsPageMap, storedMapReleaseOf, storedVersion, thinReadable, ThinMapError, ThinWriteError, toStored, guardStoredSize } from "./codec";
 
 // ------------------------------------------------------------ 保存先（db の薄い包み。テストでは差し替える）
 
@@ -350,6 +350,8 @@ export interface Prepared {
   nodes: number;
   edges: number;
   savedAt: string;
+  /** 中身の地図の版の順番（地図が無ければ null。確定したら基準に書く） */
+  mapRelease: number | null;
 }
 
 export class CloudRepo {
@@ -439,7 +441,7 @@ export class CloudRepo {
     const parts: string[] = [];
     for (let i = 0; i < payload.length; i += PART_CHARS) parts.push(payload.slice(i, i + PART_CHARS));
     if (parts.length === 0) parts.push("");
-    return { gen: `g${newId("b").slice(2)}`, enc, parts, hash: await sha256Hex(payload), bytes, docId, docUpdatedAt, docVersion, title, nodes: counts.nodes, edges: counts.edges, savedAt: nowISO() };
+    return { gen: `g${newId("b").slice(2)}`, enc, parts, hash: await sha256Hex(payload), bytes, docId, docUpdatedAt, docVersion, title, nodes: counts.nodes, edges: counts.edges, savedAt: nowISO(), mapRelease: mapReleaseOf(doc) };
   }
 
   /** 分割を書く（まだ確定ではない。失敗したら書けた分を消す） */
@@ -585,7 +587,16 @@ export interface SyncBase {
   unheld?: string[];
   /** 基準を書くたびに変わる印（同じ世代・同じ時刻でも、別のタブが書き直したと分かる） */
   at?: string;
+  /**
+   * 基準を書いたときの手元の地図の版の順番（地図が無ければ null）。基準より後の手元の変更は、この版の地図の上で書き始めた物
+   * （アカウントの写しの地図がそれより新しい版なら、黙って手元で上書きせずに聞く: safety-2・loss-2・skew-1）。
+   * 無い（undefined）のは、薄い形の前の版のページ（v32・v33）が書いた基準（その地図は版 PRE_THIN_RELEASE まで）
+   */
+  mapRelease?: number | null;
 }
+
+/** 薄い形の前の版のページ（v32・v33）が持てる地図の、一番新しい版の順番（版 6 が太い形の最後の版。版の記録は増えるだけ） */
+export const PRE_THIN_RELEASE = 6;
 
 /**
  * 基準を書いてよいか（stored = 手元に保存できた最新の印）。基準が手元に保存できた内容を超えるなら書かない。
@@ -638,6 +649,45 @@ export interface BootDoc extends DocIdent {
    * 上書きせずに聞く: safety-2）。そういう起動が無かった・前の版のページの記録なら無い
    */
   mapRelease?: number | null;
+}
+
+/** 保存してあった起動したときの手元の記録を読む（形の違う物・読めない物は null） */
+export function asBootDoc(v: unknown): BootDoc | null {
+  const o = v as Partial<BootDoc> | null;
+  if (!o || typeof o !== "object" || typeof o.id !== "string" || typeof o.updatedAt !== "string") return null;
+  const on = o.on;
+  const okOn = on === null || (!!on && typeof on === "object" && typeof on.gen === "string" && typeof on.docId === "string" && typeof on.docUpdatedAt === "string");
+  const rel = o.mapRelease;
+  const mapRelease = rel === null || (typeof rel === "number" && Number.isFinite(rel)) ? rel : undefined;
+  return { id: o.id, updatedAt: o.updatedAt, fallback: !!o.fallback, on: okOn ? (on ? { gen: on.gen, docId: on.docId, docUpdatedAt: on.docUpdatedAt } : null) : undefined, ...(mapRelease !== undefined ? { mapRelease } : {}) };
+}
+
+/** 記録したときの基準が同じか */
+function sameOn(a: BootDoc["on"], b: BootDoc["on"]): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  if (a === null || b === null) return a === b;
+  return a.gen === b.gen && a.docId === b.docId && a.docUpdatedAt === b.docUpdatedAt;
+}
+
+/**
+ * 起動したときの手元の記録の決まり（App が、起動したとき・別のタブから引き継いだとき・保存されている最新を開いたときに書く。
+ * 見直し loss-2・skew-1・code-4）。cur: 今の記録（無ければ null）・boot: 読み込んだ手元（id・更新時刻・代わりの内容で始めたか）・
+ * mapRelease: その手元の保存してあった形の地図の版の順番（版をまたいで読んだなら前の版。地図が無ければ null）・base: 今の基準
+ * （このブラウザの内容を最後に同期したアカウントの物。無ければ null）・owned: このブラウザの内容がどこかのアカウントの物か。
+ * 書く記録を返す（今の記録のままでよければ null）:
+ *   - 記録が無い・代わりの内容で始めた・記録したときの基準と今の基準が違う: この手元で記録し直す
+ *   - 同じ基準の記録: 残す（最後に基準を書いてから最初の物）。ただし読み込んだ手元にまだ送っていない変更があり、その地図の版が記録の版より
+ *     古い（記録に版が無い: 前の版のページの記録）なら、版だけ古い方にする
+ */
+export function nextBootDoc(cur: BootDoc | null, boot: { id: string; updatedAt: string; fallback: boolean }, mapRelease: number | null, base: Pick<SyncBase, "gen" | "docId" | "docUpdatedAt"> | null, owned: boolean): BootDoc | null {
+  const on: BootDoc["on"] = owned ? (base ? { gen: base.gen, docId: base.docId, docUpdatedAt: base.docUpdatedAt } : null) : undefined;
+  // 読み込んだ手元に、まだ送っていない変更がある（基準と違う）なら、その保存してあった形の地図の版を記録に残す（その変更は、その版までの
+  // 地図の上で書いた物。前の版のページで止める前に書いた編集を、引き上げて読んでも: safety-2）
+  const changed = !base || boot.id !== base.docId || boot.updatedAt !== base.docUpdatedAt;
+  const rel = changed && typeof mapRelease === "number" ? mapRelease : undefined;
+  if (!cur || boot.fallback || !sameOn(cur.on, on)) return { id: boot.id, updatedAt: boot.updatedAt, fallback: boot.fallback, on, ...(rel !== undefined ? { mapRelease: rel } : {}) };
+  if (rel !== undefined && !(typeof cur.mapRelease === "number" && cur.mapRelease <= rel)) return { ...cur, mapRelease: rel };
+  return null;
 }
 
 export interface CloudSyncDeps {
@@ -770,7 +820,7 @@ export class CloudSync {
    */
   private behindOf: SyncBase | null = null;
   /** 確定に失敗したように見えた送信（返事が届かなかっただけで、書けているかもしれない）。on = そのときの基準の世代 */
-  private unconfirmed: { on: string | null; gen: string; docId: string; docUpdatedAt: string; seq: number; chain: string; lineage: string[]; lost: string[]; parent: string } | null = null;
+  private unconfirmed: { on: string | null; gen: string; docId: string; docUpdatedAt: string; seq: number; chain: string; lineage: string[]; lost: string[]; parent: string; mapRelease: number | null } | null = null;
   /** 確定に失敗したように見えた世代（次の確定の系譜に入れる。後から届いても、古い書き込みと分かる） */
   private failedGens: string[] = [];
   /** 確定している途中の世代（確定してから基準を書き終えるまで。その知らせは自分の書き込み） */
@@ -1098,8 +1148,10 @@ export class CloudSync {
     return run;
   }
 
-  private async setBase(gen: string, doc: DocIdent, extra: { seq?: number; chain?: string; own: boolean; parent?: string; lineage?: string[]; lost?: string[]; unheld?: string[] }): Promise<void> {
-    this.base = { gen, docId: doc.id, docUpdatedAt: doc.updatedAt, seq: extra.seq, chain: extra.chain, own: extra.own, parent: extra.parent, lineage: extra.lineage, lost: extra.lost ?? [], at: newId("b") };
+  /** 基準を書く。mapRelease: その手元の地図の版の順番（送った物なら送った中身の物。無ければ今の手元の物: 読み込んだ・同じ中身だった） */
+  private async setBase(gen: string, doc: DocIdent, extra: { seq?: number; chain?: string; own: boolean; parent?: string; lineage?: string[]; lost?: string[]; unheld?: string[]; mapRelease?: number | null }): Promise<void> {
+    const mapRelease = extra.mapRelease !== undefined ? extra.mapRelease : mapReleaseOf(this.deps.getDoc());
+    this.base = { gen, docId: doc.id, docUpdatedAt: doc.updatedAt, seq: extra.seq, chain: extra.chain, own: extra.own, parent: extra.parent, lineage: extra.lineage, lost: extra.lost ?? [], at: newId("b"), mapRelease };
     if (extra.unheld?.length) this.base.unheld = extra.unheld;
     this.unheld = [];
     // 基準を決め直した: 古かった手元・代わりに始めた内容・確かめられなかった送信・戻ってきた古い世代の扱いは済んだ
@@ -1200,7 +1252,7 @@ export class CloudSync {
         const now = await this.repo.readManifest().catch(() => null);
         if (now?.gen !== prep.gen) {
           this.inFlightGen = null;
-          this.unconfirmed = { on: this.base?.gen ?? null, gen: prep.gen, docId: prep.docId, docUpdatedAt: prep.docUpdatedAt, ...nextSeq(remoteM, extra.after), lineage: nextLineage(remoteM, prep.gen, extra.lineage), lost: nextLost(remoteM, extra), parent: remoteM?.gen ?? "" };
+          this.unconfirmed = { on: this.base?.gen ?? null, gen: prep.gen, docId: prep.docId, docUpdatedAt: prep.docUpdatedAt, ...nextSeq(remoteM, extra.after), lineage: nextLineage(remoteM, prep.gen, extra.lineage), lost: nextLost(remoteM, extra), parent: remoteM?.gen ?? "", mapRelease: prep.mapRelease };
           if (!this.failedGens.includes(prep.gen)) this.failedGens = [...this.failedGens, prep.gen].slice(-LOST_MAX);
           this.orphans.push({ gen: prep.gen, parts: prep.parts.length, savedAt: prep.savedAt });
           this.scheduleOrphanSweep();
@@ -1216,7 +1268,7 @@ export class CloudSync {
       this.notBefore = 0;
       // 系譜に入れた失敗の世代は、もう覚えておかなくてよい（後の確定の系譜に引き継がれる）
       this.failedGens = this.failedGens.filter((g) => !manifest.lineage.includes(g));
-      await this.setBase(manifest.gen, { id: prep.docId, updatedAt: prep.docUpdatedAt }, { seq: manifest.seq, chain: manifest.chain, own: true, parent: remoteM?.gen ?? "", lineage: manifest.lineage, lost: manifest.lost });
+      await this.setBase(manifest.gen, { id: prep.docId, updatedAt: prep.docUpdatedAt }, { seq: manifest.seq, chain: manifest.chain, own: true, parent: remoteM?.gen ?? "", lineage: manifest.lineage, lost: manifest.lost, mapRelease: prep.mapRelease });
       this.inFlightGen = null;
       void this.repo.deleteGens(committed.drop).catch(() => undefined);
       if (repairing) this.deps.notice("アカウントの写しが読めなくなっていたため、この端末の内容で書き直しました。", "warn");
@@ -1344,7 +1396,7 @@ export class CloudSync {
     // （その送信の後に基準が変わっていたら、もう当てはまらない）
     const u = this.unconfirmed;
     if (u && u.on === (this.base?.gen ?? null) && (remoteM.gen === u.gen || remoteM.lineage.includes(u.gen))) {
-      await this.setBase(u.gen, { id: u.docId, updatedAt: u.docUpdatedAt }, { seq: u.seq, chain: u.chain, own: true, parent: u.parent, lineage: u.lineage, lost: u.lost });
+      await this.setBase(u.gen, { id: u.docId, updatedAt: u.docUpdatedAt }, { seq: u.seq, chain: u.chain, own: true, parent: u.parent, lineage: u.lineage, lost: u.lost, mapRelease: u.mapRelease });
     }
     // 基準の系譜にある世代が戻ってきた（古い書き込み・失敗したように見えた自分の書き込みが、後から届いた）:
     // 取り込まずに、手元の内容で戻す。手元が古いなら、ほかの端末に任せて待つ（利用者が「同期をやり直す」を押したら、
@@ -1524,16 +1576,31 @@ export class CloudSync {
   }
 
   /**
-   * 手元のまだ送っていない変更を書いた地図の版の順番（地図が無ければ null）: 今の地図の版と、起動したときの記録の版（まだ送っていない
-   * 変更を持って起動したときの、保存してあった形の版）の古い方。記録は、記録したときの基準のままの間だけ使う（その後に送った・
-   * 読み込んだなら、その前の変更はもう基準に入っている）
+   * 手元のまだ送っていない変更を書いた地図の版の順番（地図が無く、手がかりも無ければ null）。次のうち一番古い物（どれか 1 つに頼らない:
+   * 起動したときの記録は、引き継いだタブ・前の版のページが消した後には無い。見直し loss-2・skew-1）:
+   *   - 今の手元の地図の版
+   *   - 手元を版をまたいで読んだなら、保存してあった形の版（同じ物を持ち続けている間。読み込んだ・入れ替えたら外れる）
+   *   - 基準を書いたときの地図の版（基準より後の変更は、その版の地図の上で書き始めた物）。版の無い基準は、薄い形の前の版のページ
+   *     （v32・v33）が書いた物: その地図は版 PRE_THIN_RELEASE まで
+   *   - 起動したときの記録の版（まだ送っていない変更を持って起動したときの、保存してあった形の版）。記録したときの基準のままの間だけ
    */
   private localMapRelease(): number | null {
-    const now = mapReleaseOf(this.deps.getDoc());
+    const doc = this.deps.getDoc();
+    const found: number[] = [];
+    const now = mapReleaseOf(doc);
+    if (now !== null) found.push(now);
+    const stored = storedMapReleaseOf(doc);
+    if (typeof stored === "number") found.push(stored);
     const b = this.base;
+    if (b) {
+      if (typeof b.mapRelease === "number") found.push(b.mapRelease);
+      else if (b.mapRelease === undefined) found.push(PRE_THIN_RELEASE);
+    }
     const rec = this.boot;
-    if (!b || !rec || typeof rec.mapRelease !== "number" || !rec.on || !sameBase(rec.on, b)) return now;
-    return now === null ? rec.mapRelease : Math.min(now, rec.mapRelease);
+    if (b && rec && typeof rec.mapRelease === "number" && rec.on && sameBase(rec.on, b)) found.push(rec.mapRelease);
+    let min: number | null = null;
+    for (const r of found) if (min === null || r < min) min = r;
+    return min;
   }
 
   /**
@@ -1667,6 +1734,11 @@ export class CloudSync {
     // 書き手でなくなっていた（入れ替えの途中で引き継がれた など）: 失敗として待たない。そのタブが同期する
     if (!this.deps.isWriter()) {
       this.setState("pending", "別のタブが編集中");
+      return;
+    }
+    // 送る形にできない（地図の基準を用意できない など）: つながらないのと取り違えて繰り返さない。手元には保存できている（loss-1）
+    if (e instanceof ThinWriteError) {
+      this.pause(`アカウントへ送る形にできません（${e.message}）。このブラウザには保存しています。ページを開き直してください`);
       return;
     }
     const code = e instanceof CloudError ? e.code : errorCode(e);

@@ -375,7 +375,9 @@ describe("閉じて失敗する（同じ版で合わない物は読まない: sa
     expect(fromStored(base)).toBeDefined();
     const unknown = "r.zz_unknown.k";
     const s0 = base.maps[0]!;
-    const somePatchKey = Object.keys(s0.n!).find((k) => typeof s0.n![k] === "object")!;
+    // 書き換えたカード（親も地図のカードで、今日ではない物）
+    const parentOf = (k: string): string => k.slice(0, k.lastIndexOf("."));
+    const somePatchKey = Object.keys(s0.n!).find((k) => typeof s0.n![k] === "object" && k.split(".").length >= 3 && s0.n![parentOf(k)] === undefined)!;
     const cases: Array<[string, (s: ThinSection) => void]> = [
       ["変更", (s) => (s.n = { ...s.n, [unknown]: { f: { title: "x" }, was: { t: "", s: "", m: 0 } } })],
       ["消し 0", (s) => (s.n = { ...s.n, [unknown]: 0 })],
@@ -389,6 +391,9 @@ describe("閉じて失敗する（同じ版で合わない物は読まない: sa
       ["知らないチェック", (s) => ((s.n![somePatchKey] as { k?: string[] }).k = ["no-such-cite"])],
       ["元の題名が違う", (s) => ((s.n![somePatchKey] as { was: { t: string } }).was.t = "別の題名")],
       ["知らないプロジェクトの読み替え", (s) => (s.pmap = { ...s.pmap, p_unknown: null })],
+      // 知っている鍵でも、印の題名が基準と違う・消したカード（0）の先のカードの変更（code-5）
+      ["印の題名が違う", (s) => (s.pin = { ...s.pin, [somePatchKey]: { t: "別の題名", s: "", m: 0 } })],
+      ["消したカードの先の変更", (s) => (s.n = { ...s.n, [parentOf(somePatchKey)]: 0 })],
     ];
     for (const [what, f] of cases) {
       const rec = structuredClone(base);
@@ -398,12 +403,11 @@ describe("閉じて失敗する（同じ版で合わない物は読まない: sa
     }
   });
 
-  it("中身の指紋・基準の文書の指紋・組み立ての版・地図の年月・今日の鍵が違う", () => {
+  it("中身の指紋・基準の文書の指紋・地図の年月・今日の鍵が違う", () => {
     const base = recordOf(freshDoc(qMap));
     for (const [k, v] of [
       ["hash", "0000000000000x"],
       ["digest", "0000000000000x"],
-      ["bv", THIN_BASELINE_VERSION + 1],
       ["anchor", "2027-02"],
       ["key", "r2"],
     ] as const) {
@@ -411,6 +415,32 @@ describe("閉じて失敗する（同じ版で合わない物は読まない: sa
       (rec.maps[0] as unknown as Record<string, unknown>)[k] = v;
       blocked(rec, "mismatch");
     }
+    // 組み立ての版（bv）が新しい: 新しい版のデータとして止める（この版で当て直さない。tests/unit/builderSkew.test.ts: skew-2）
+    const newer = structuredClone(base);
+    newer.maps[0]!.bv = THIN_BASELINE_VERSION + 1;
+    expect(() => fromStored(newer)).toThrow(ThinNewerError);
+  });
+
+  it("消したカード（0）の先のカードの変更は読まない（ほかの印が無い、書き換えだけの文書でも: code-5）", () => {
+    const fresh = freshDoc(qMap);
+    const store = new Store(fresh);
+    const card = Object.values(store.doc.nodes).find((n) => (keyOf(n) ?? "").split(".").length === 4)!;
+    store.transact("題名", (tx) => tx.updateNode(card.id, { title: `${card.title}（自分の言葉）` }));
+    const rec = recordOf(store.doc);
+    const k = keyOf(card)!;
+    expect(Object.keys(rec.maps[0]!.n!)).toEqual([k]);
+    expect(rec.maps[0]!.nid).toBeUndefined();
+    expect(rec.maps[0]!.pin).toBeUndefined();
+    rec.maps[0]!.n![k.slice(0, k.lastIndexOf("."))] = 0;
+    blocked(rec, "mismatch");
+  });
+
+  it("読み手の中で思わぬ失敗が起きても（ページの地図の読み口が壊れた など）、止める側の失敗（corrupt）にまとめる（code-5）", () => {
+    const rec = recordOf(freshDoc(qMap));
+    // 同じ入口の、読み口だけが壊れた地図（基準を組み立てる途中で投げる）
+    const broken = { ...qMap, kind: () => { throw new TypeError("読み口が壊れた"); } } as unknown as MapData;
+    setThinBaseline(broken);
+    blocked(rec, "corrupt");
   });
 
   it("組み立てが変わった（同じ版の順番・同じ中身の指紋で、基準の文書の指紋が違う）: 書いた地図と違う基準では読まない", () => {
@@ -557,22 +587,29 @@ describe("書くときの守り（safety-15）", () => {
     expect(toStored(createEmptyDoc())).toBeDefined();
   });
 
-  it("ページの地図のカードがあるのに今日のカードが無い・入口の形でない（壊れた形）: 太い形で書かずに止める。少しなら今までどおり", () => {
+  it("ページの地図のカードがあるのに今日のカードが無い・入口の形でない: 今日を消した地図として薄い形で書く（地図ごと書かない: loss-1）。少しなら今までどおり", () => {
     const fresh = freshDoc(qMap);
     const rootId = Object.keys(fresh.nodes).find((id) => fresh.nodes[id]!.meta.forecastRoot === true)!;
     const r = fresh.nodes[rootId]!;
-    const noRoot: DocData = { ...fresh, nodes: { ...fresh.nodes } };
+    const noRoot: DocData = { ...fresh, nodes: { ...fresh.nodes }, edges: { ...fresh.edges } };
     delete noRoot.nodes[rootId];
-    expect(() => toStored(noRoot)).toThrow(ThinWriteError);
+    for (const id of Object.keys(noRoot.edges)) if (noRoot.edges[id]!.source === rootId) delete noRoot.edges[id];
+    const a = checkRoundTrip(noRoot);
+    expect(a.sec.n?.[qMap.key(0)]).toBe(-1);
+    expect(a.stored.maps![0]!.root).toBe(rootId);
+    // 入口の形でない今日（鍵だけ同じ）は、利用者のノードとして丸ごと書く
     const notRoot: DocData = { ...fresh, nodes: { ...fresh.nodes, [rootId]: { ...r, meta: { ...r.meta, forecastRoot: false } } } };
-    expect(() => toStored(notRoot)).toThrow(ThinWriteError);
+    const b = checkRoundTrip(notRoot);
+    expect(b.sec.n?.[qMap.key(0)]).toBe(-1);
+    expect(b.stored.nodes[rootId]?.meta.forecastRoot).toBe(false);
     // 基準をまだ組み立てていないページでも
     setThinBaseline(fromDevTreeWithRelease(qMap.header.release));
-    expect(() => toStored(noRoot)).toThrow(ThinWriteError);
+    expect(toStored(noRoot).maps![0]!.n?.[qMap.key(0)]).toBe(-1);
     // 鍵のカードが少しだけ（前の版の地図の一部など）なら、今までどおりそのまま
     const few = createEmptyDoc();
     for (const id of Object.keys(fresh.nodes).slice(1, 50)) few.nodes[id] = fresh.nodes[id]!;
     expect(toStored(few)).toBe(few);
+    expect(ThinWriteError).toBeDefined();
   });
 
   it("大きさの見張り: 1 MB を超えたら知らせ、localStorage に 400 万文字を超えて書かない", () => {
@@ -665,7 +702,7 @@ describe("組み立ての版（THIN_BASELINE_VERSION）の上げ忘れ", () => {
   it("小さい木とやることのある木の基準の全部の指紋が決まった値（変わったら THIN_BASELINE_VERSION を上げてから、この値を直す）", () => {
     // 基準の文書の指紋（4DQD2）に入らない所（カードの種類・線の関係・印・指紋・順位・位置・題名と文）も見る。
     // 組み立て（src/demo/quarterDoc.ts）を変えてこれが変わったら、同じ版の順番で保存した薄い形を読むと、黙って違う地図になる。
-    // THIN_BASELINE_VERSION を上げれば、前の bv の文書は読まずに止まる（版をまたぐ道へ回す）
+    // THIN_BASELINE_VERSION を上げれば、前の bv の文書は鍵で当て直して読む（同じ木なら消したカードは消したまま。新しい bv は新しい版: skew-2）
     expect({ bv: THIN_BASELINE_VERSION, q: baselinePrint(qMap), todo: baselinePrint(todoMap) }).toEqual({ bv: 1, q: "0kfl3bj1ad693n", todo: "134vakb0yf1dl3" });
   });
 

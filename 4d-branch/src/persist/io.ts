@@ -2,6 +2,7 @@
 // 書き出しも取り込みも保存の口（./codec.ts）を通す: ページの地図を持つ文書は薄い形で書き出し、薄い形のファイルは地図から組み立て直して読む
 // （前の版・違う組み立ての地図は、鍵でページの地図に当て直す。新しい版のファイルは今までどおり読まない）
 
+import { impactEdgeId64 } from "../demo/impact";
 import { NODE_W } from "../model/constants";
 import { isForecastRoot } from "../model/forecast";
 import { isFlowEdge } from "../model/forks";
@@ -9,7 +10,7 @@ import { newId } from "../model/ids";
 import { cloneDocShallow, docCounts, DocFormatError, serializeDoc, type NormalizeReport } from "../model/schema";
 import { normalizeText } from "../model/search";
 import type { DocData, GEdge, GNode, ID } from "../model/types";
-import { decodeStored, decodeStoredAsync, guardStoredSize, toStored, upgradeNotice, type ThinUpgradeInfo } from "./codec";
+import { decodeStored, decodeStoredAsync, guardStoredSize, onCodecWarn, toStoredOrFull, upgradeNotice, type ThinUpgradeInfo } from "./codec";
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -19,9 +20,12 @@ export function exportFileName(date = new Date(), prefix = "4d-branch"): string 
   return `${prefix}_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}.json`;
 }
 
-/** 書き出す JSON（保存の口を通した形: ページの地図を持つ文書は薄い形。そのまま取り込める） */
+/**
+ * 書き出す JSON（保存の口を通した形: ページの地図を持つ文書は薄い形。そのまま取り込める）。薄い形にできなければ、そのままの形
+ * （書き出しは保存できないときの逃げ道: loss-1）
+ */
 export function exportText(doc: DocData, appVersion: string): string {
-  const text = serializeDoc(toStored(doc), appVersion);
+  const text = serializeDoc(toStoredOrFull(doc).stored, appVersion);
   guardStoredSize(text.length, "export");
   return text;
 }
@@ -73,12 +77,31 @@ function previewOf(d: { doc: DocData; report: NormalizeReport; upgrade?: ThinUpg
  * （まだなら previewImportAsync）。前の版・違う組み立ての地図は当て直す。新しい版のファイルは NewerDocError（今までと同じ文）
  */
 export function previewImport(text: string): ImportPreview {
-  return previewOf(decodeStored(parseJson(text), { upgrade: "any" }));
+  const heard = hearUpgradeWarnings();
+  try {
+    return heard.add(previewOf(decodeStored(parseJson(text), { upgrade: "any" })));
+  } finally {
+    heard.off();
+  }
 }
 
 /** 読み込む前の確認用（薄い形のファイルなら、ページの地図を読み込んでから） */
 export async function previewImportAsync(text: string): Promise<ImportPreview> {
-  return previewOf(await decodeStoredAsync(parseJson(text), { upgrade: "any" }));
+  const heard = hearUpgradeWarnings();
+  try {
+    return heard.add(previewOf(await decodeStoredAsync(parseJson(text), { upgrade: "any" })));
+  } finally {
+    heard.off();
+  }
+}
+
+/** 読む間の保存の口の知らせ（版 6 の地図を新しい版にできなかった など）を、取り込みの確認の警告に足す（コンソールだけにしない: code-6） */
+function hearUpgradeWarnings(): { add: (pv: ImportPreview) => ImportPreview; off: () => void } {
+  const heard: string[] = [];
+  const off = onCodecWarn((m, kind) => {
+    if (kind === "upgrade" && !heard.includes(m)) heard.push(m);
+  });
+  return { add: (pv) => (heard.length ? { ...pv, report: { ...pv.report, warnings: [...heard, ...pv.report.warnings] } } : pv), off };
 }
 
 /** 同じ名前と見なす鍵（全角半角・大文字小文字・カタカナひらがなをそろえる） */
@@ -112,6 +135,11 @@ export interface MergeResult {
   /** 飛ばした地図のカードへの線を、今の文書の同じ鍵のカードにつなぎ直した数・つなぎ先が無くて足さなかった数 */
   retargeted?: number;
   droppedEdges?: number;
+  /**
+   * 飛ばした地図のカードで、取り込む側で決めた・書き換えた物（選んだ・見送った・チェック・題名・本文が今の文書の同じ鍵のカードと違う）の数。
+   * 足していないので、知らせで数を言う（loss-5）
+   */
+  skippedDecisions?: number;
 }
 
 /** 鍵（meta.key） */
@@ -289,10 +317,13 @@ export function mergeDocs(base: DocData, incoming: DocData, opts: MergeOpts = {}
   let addedEdges = 0;
   let retargeted = 0;
   let droppedEdges = 0;
+  // 今の文書にある線（同じ 2 枚・同じ関係の線を 2 本にしない）
+  const have = new Set<string>();
+  if (same) for (const id of Object.keys(doc.edges)) have.add(edgeSig(doc.edges[id]!));
   for (const e of Object.values(incoming.edges)) {
     const both = skip.has(e.source) && skip.has(e.target);
-    // 飛ばした地図の中の線（同梱の線）は足さない
-    if (both) continue;
+    // 飛ばした地図の同梱の線（親の鍵のカード → 子の鍵のカード）は足さない。地図のカードどうしの利用者の線は、鍵でつなぎ直して足す（loss-5）
+    if (both && isBundleLine(e, incoming)) continue;
     const source = retarget(e.source);
     const target = retarget(e.target);
     const moved = skip.has(e.source) || skip.has(e.target);
@@ -300,6 +331,7 @@ export function mergeDocs(base: DocData, incoming: DocData, opts: MergeOpts = {}
       if (moved) droppedEdges++;
       continue;
     }
+    if (moved && have.has(edgeSig({ source, target, relation: e.relation }))) continue;
     if (moved) retargeted++;
     const keep = !!opts.keepIds && kept.has(source) && kept.has(target) && !Object.hasOwn(doc.edges, e.id);
     const id = keep ? e.id : newId("e");
@@ -318,6 +350,32 @@ export function mergeDocs(base: DocData, incoming: DocData, opts: MergeOpts = {}
     res.skippedCards = skip.size;
     res.retargeted = retargeted;
     res.droppedEdges = droppedEdges;
+    // 飛ばした地図のカードで、取り込む側で決めた・書き換えた物（足していない）
+    let decisions = 0;
+    for (const id of skip) {
+      const n = incoming.nodes[id]!;
+      const k = keyOf(n);
+      const mine = k === null ? undefined : same.baseByKey.get(k);
+      const b = mine === undefined ? undefined : base.nodes[mine];
+      if (!b) continue;
+      const met = (x: GNode) => x.conditions.filter((c) => c.met).map((c) => c.text).join("\u0000");
+      if (n.status !== b.status || n.title !== b.title || n.body !== b.body || met(n) !== met(b)) decisions++;
+    }
+    res.skippedDecisions = decisions;
   }
   return res;
+}
+
+/** 線の印（両端と関係。同じ 2 枚・同じ関係の線を 2 本にしない） */
+const edgeSig = (e: Pick<GEdge, "source" | "target" | "relation">): string => `${e.source}\u0000${e.target}\u0000${e.relation}`;
+
+/**
+ * 地図の同梱の線か（親の鍵のカード → 子の鍵のカードで、組み立ての指紋 c0 があるか、組み立ての ID）。地図のカードどうしの利用者の線
+ * （関係を変えていない同梱の線と同じ 2 枚でも、指紋の無い物）とは分ける（loss-5）
+ */
+function isBundleLine(e: GEdge, d: DocData): boolean {
+  const sk = keyOf(d.nodes[e.source]);
+  const tk = keyOf(d.nodes[e.target]);
+  if (sk === null || tk === null || tk.slice(0, tk.lastIndexOf(".")) !== sk) return false;
+  return typeof e.meta?.c0 === "string" || e.id === impactEdgeId64(tk) || e.id.startsWith("e_i_");
 }

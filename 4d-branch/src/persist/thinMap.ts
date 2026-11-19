@@ -8,17 +8,21 @@
 //     基準  release・hash（同梱データの中身の指紋）・digest（基準の文書の指紋）・bv（組み立てとこの読み手の決まりの版）・anchor・
 //           at（手を付けていないカードの時刻）・dx・dy（位置のずれ）・pmap・smap（基準のプロジェクト・シナリオ → 文書の物。違う物だけ。null は無い）
 //     n     カードの鍵 → 変えた所（f: 項目・fd: 消した項目・m: meta・md: 消した meta・k: チェックしたやること・was: 元の題名と短い名前と月）、
-//           0（このカードとその先の同梱のカードを全部消した。一番上だけ書く）、−1（このカードだけ消した）
+//           0（このカードとその先の同梱のカードを全部消した。一番上だけ書く）、−1（このカードだけ消した）。
+//           今日の鍵の −1 は、今日のカードだけを消した地図（利用者のカードが地図のカードへつながっていて、残ったカードが多いとき: loss-1）。
+//           そのとき nodes に今日は無く、root は基準の今日の ID（使わない）。今日から出る同梱の線も無い
 //     e     子の鍵 → 親からの同梱の線の変えた所、0（線だけ消した）
 //     nid   鍵 → カードの ID（基準の ID と違うときだけ。線の両端も読み替える）・eid 子の鍵 → 線の ID
-//     pin   利用者の線（利用者のノードへの線も）が指す地図のカード → {t, s, m}（次の版で鍵が無くなっても、空のカードにしない: safety-7）
+//     pin   利用者の線（利用者のノードへの線も）が指す地図のカード・直した同梱の線の先のカード → {t, s, m}（次の版で鍵が無くなっても、
+//           空のカードにしない: safety-7。直した見込み・説明を題名つきのカードに残せる: loss-4）
 //   基準 = ページの地図を buildQuarterDoc で組み立てた文書に、at・dx・dy・pmap・smap を当てた物。手を付けていないカードは基準と同じ物なので書かない。
 //   やることのチェックは元の番号（cite）と枠で覚える（文が変わっても外れない: safety-8）。
 //
 // 決まり:
-//   - 読み手は閉じて失敗する（safety-4）: 同じ版の順番で、中身の指紋・基準の文書の指紋・bv・地図の年月・今日の鍵が違う、知らない鍵の変更・消し・
-//     ID の読み替え・印・チェック、どこにもつながらない利用者の線は、黙って読まずに ThinMapError（mismatch）。版の順番が違えば older・新しければ
-//     ThinNewerError（NewerDocError の一種）。ページに地図が無ければ unavailable。形が読めなければ corrupt。どれも「止める」側の失敗
+//   - 読み手は閉じて失敗する（safety-4）: 同じ版の順番・同じ組み立て（bv）で、中身の指紋・基準の文書の指紋・地図の年月・今日の鍵が違う、知らない鍵の
+//     変更・消し・ID の読み替え・印・チェック、どこにもつながらない利用者の線は、黙って読まずに ThinMapError（mismatch）。版の順番が新しい・同じ版で
+//     組み立てが新しければ ThinNewerError（NewerDocError の一種）。前の版・同じ版で前の組み立ては、鍵で当て直して読む（skew-2。当て直さない読み方
+//     では older）。ページに地図が無ければ unavailable。形が読めなければ corrupt。どれも「止める」側の失敗
 //     （保存してあるデータは壊れていない。消さない・上書きしない・代わりの内容で始めない: safety-3）
 //   - 基準は地図ごとに 1 度だけ組み立てて持ち（時刻だけは最初に使った物）、ほかの at・dx・dy・pmap・smap は使うたびに、変わるカードだけ写して当てる
 //     （写しは基準ごとに 3 つまで持つ）。どの読み込みも新しい入れ物（nodes・edges・projects・scenarios・並び・meta）を返す（safety-11）。
@@ -50,8 +54,10 @@ export const THIN_SECTION_V = 1;
 
 /**
  * 基準の組み立ての版。buildQuarterDoc が作る物のうち、基準の文書の指紋（impactBaselineDigest）にも中身の指紋（header.hash）にも入らない所
- * （カードの種類・線の関係・印・指紋 t0/b0/k0/c0・順位・位置）と、この読み手の決まりを変えたら上げる。同じ版の順番でも、保存した文書の bv が
- * 違えば読まずに止める（SPEC §6 の「組み立ての版」。tests/unit/thinMap.test.ts が小さい木の基準の全部の指紋で、上げ忘れを見つける）
+ * （カードの種類・線の関係・印・指紋 t0/b0/k0/c0・順位・位置）と、この読み手の決まりを変えたら上げる（SPEC §6 の「組み立ての版」。
+ * tests/unit/thinMap.test.ts が小さい木の基準の全部の指紋で、上げ忘れを見つける）。同じ版の順番で、保存した文書の bv が
+ * 小さい（前の組み立て）なら、前の版の地図と同じく鍵で当て直して読む（同じ中身の地図なら、消したカードは消したまま）。
+ * 大きい（このページより新しい組み立て）なら新しい版のデータとして止まる（見直し skew-2）
  */
 export const THIN_BASELINE_VERSION = 1;
 
@@ -129,7 +135,7 @@ export interface CardPin {
 /** 保存した文書の maps の 1 つ（ページの地図の変更） */
 export interface ThinSection {
   v: number;
-  /** 今日のカードの ID（今日のカードは nodes に丸ごとある） */
+  /** 今日のカードの ID（今日のカードは nodes に丸ごとある。今日を消した地図 n[今日の鍵] = −1 では、基準の今日の ID） */
   root: ID;
   /** 今日のカードの鍵 */
   key: string;
@@ -210,7 +216,11 @@ export class ThinNewerError extends NewerDocError {
   }
 }
 
-/** 地図のある文書を薄い形で書けない（太い形でも書かない。地図の本体ごと書くと 7,000 万文字を超える: safety-15） */
+/**
+ * 地図のある文書を薄い形で書けない（この形ではアカウントへは送らない。地図の本体ごと書くと 7,000 万文字を超える: safety-15）。
+ * 本体・緊急コピー・バックアップ・書き出しは、書けない訳がこれでも、そのままの形で書く（codec.ts の toStoredOrFull。利用者の物を
+ * どこにも残せなくしない: loss-1）
+ */
 export class ThinWriteError extends Error {
   override name = "ThinWriteError";
 }
@@ -223,7 +233,10 @@ export class ThinBaselineMissingError extends ThinWriteError {
   }
 }
 
-/** 今日のカードが無いのに、ページの地図のカードがこれより多くあれば、書かずに止める（太い形にしない） */
+/**
+ * 今日のカードが無いのに、ページの地図のカードがこれ以上あれば、今日を消した地図として薄い形で書く（n[今日の鍵] = −1。地図の本体ごと書くと
+ * 大きすぎる: loss-1）。これより少なければ、今までどおりそのままの形（版 1）
+ */
 const ROOTLESS_MAX = 1000;
 
 // ---------------------------------------------------------------- 小さな道具
@@ -770,17 +783,20 @@ function inferBase(core: Core, doc: DocData, cards: ReadonlyArray<GNode | undefi
   const ats: string[] = [];
   const dxs: number[] = [];
   const dys: number[] = [];
-  for (const i of core.spread) {
+  const sample = (i: number): void => {
     const c = cards[i];
-    if (!c) continue;
+    if (!c) return;
     ats.push(c.createdAt);
     dxs.push(c.x - core.nodes[i]!.x);
     dys.push(c.y - core.nodes[i]!.y);
-  }
-  const root = cards[0]!;
-  const at = vote(ats) ?? (isoOk(root.createdAt) ? root.createdAt : core.at);
-  const dx = Math.round(vote(dxs) ?? root.x - core.nodes[0]!.x);
-  const dy = Math.round(vote(dys) ?? root.y - core.nodes[0]!.y);
+  };
+  for (const i of core.spread) sample(i);
+  const root = cards[0];
+  // 今日を消した地図で、散らした見本のカードが残っていない: 残ったカードを番号の順に（文書の中身だけで決まる）
+  if (!root && !ats.length) for (let i = 1; i < core.n && ats.length < core.spread.length; i++) sample(i);
+  const at = vote(ats) ?? (root && isoOk(root.createdAt) ? root.createdAt : core.at);
+  const dx = Math.round(vote(dxs) ?? (root ? root.x - core.nodes[0]!.x : 0));
+  const dy = Math.round(vote(dys) ?? (root ? root.y - core.nodes[0]!.y : 0));
   // プロジェクト: 1 つのプロジェクトだけのカード・全部のプロジェクトのカードの、文書の並びで多数決。決まらなければ同じ ID・同じ名前・無い
   const pVotes = new Map<ID, Array<ID | null>>();
   const pv = (p: ID, t: ID | null): void => {
@@ -1048,11 +1064,10 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
       else dups.set(j, [cur, node]);
     }
   }
-  if (cards[0] === undefined) {
-    // 今日のカードが無いのにページの地図のカードが多い（壊れた形）: 太い形で書かずに止める
-    if (found + byKey.length >= ROOTLESS_MAX) throw new ThinWriteError(`3 か月ごとの地図のカード（${(found + byKey.length).toLocaleString("ja-JP")} 枚）があるのに、今日のカードが見つかりません（地図の本体ごと書くと大きすぎるので書きません）`);
-    return null;
-  }
+  // 今日のカードが無い（今日を消したが、利用者のカードがつながる地図のカードは残った: loss-1）。残ったページの地図のカードが多ければ、
+  // 今日を消した地図として薄い形で書く（n[今日の鍵] = −1）。少なければ今までどおりそのままの形
+  const rootless = cards[0] === undefined;
+  if (rootless && found + byKey.length < ROOTLESS_MAX) return null;
   const docEdges = doc.edges;
   const edgeIds = Object.keys(docEdges);
   // 同じ鍵が 2 つ以上: 今日は先へ進む線のある物 → 早く作った物 → ID の順。ほかは madeFirst（入口から道の線でたどる）
@@ -1084,8 +1099,9 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
         if (list) list.push(e.target);
         else out.set(e.source, [e.target]);
       }
-      const depth = new Map<ID, number>([[cards[0]!.id, 0]]);
-      const order = [cards[0]!.id];
+      // 今日を消した地図では、どれもたどれない（作った時刻・ID の順）
+      const depth = new Map<ID, number>(cards[0] ? [[cards[0].id, 0]] : []);
+      const order = cards[0] ? [cards[0].id] : [];
       for (let q = 0; q < order.length; q++) {
         const d = depth.get(order[q]!)! + 1;
         for (const t of out.get(order[q]!) ?? []) {
@@ -1103,7 +1119,8 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
       }
     }
   }
-  const root = cards[0]!;
+  /** 今日のカード（今日を消した地図では無い） */
+  const root = cards[0];
   // カードの ID → 番号（基準の ID と違うカードだけ。鍵で見つけた物の中にしか無い）
   const nidIndex = new Map<ID, number>();
   for (const i of byKey) {
@@ -1161,6 +1178,8 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
   const nid: Record<string, ID> = {};
   const eid: Record<string, ID> = {};
   const stats: ThinStats = { cards: 0, patched: 0, tombs: 0, patchedEdges: 0, edgeTombs: 0, nid: 0, eid: 0, pins: 0, storedNodes: 0, storedEdges: 0, fatKeyed: 0, compared: 0 };
+  // 今日を消した地図: 今日の鍵に −1（今日だけ消した。今日から出る同梱の線も無い）
+  if (!root) (nPatch[keys[0]!] = -1), stats.tombs++;
   // 消したカード: その先の同梱のカードも全部無ければ 0（一番上だけ）、ほかは −1
   const allGone = new Uint8Array(n);
   for (let i = n - 1; i >= 1; i--) {
@@ -1219,7 +1238,7 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
   }
   // ---- 丸ごと書くノードと線（今日を先に）。利用者の線が指す地図のカードには印
   const nodesOut: Record<ID, GNode> = {};
-  nodesOut[root.id] = withRelease(root, page);
+  if (root) nodesOut[root.id] = withRelease(root, page);
   // 文書の順に（同じ鍵の 2 つ目があるときだけ、順を数え直す）
   let stored = others;
   if (losers.length) {
@@ -1232,7 +1251,7 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
     nodesOut[id] = node;
     if (typeof node.meta?.key === "string" && core.keyIndex.has(node.meta.key)) stats.fatKeyed++;
   }
-  stats.storedNodes = stored.length + 1;
+  stats.storedNodes = stored.length + (root ? 1 : 0);
   const edgesOut: Record<ID, GEdge> = {};
   const pinned = new Set<number>();
   for (const id of userEdges) {
@@ -1244,6 +1263,8 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
     if (t !== undefined && t > 0) pinned.add(t);
   }
   stats.storedEdges = userEdges.length;
+  // 直した同梱の線の先のカードにも印（次の版で鍵が無くなっても、直した見込み・説明を題名つきのカードに残せるように: loss-4）
+  for (const k of Object.keys(ePatch)) if (ePatch[k] !== 0) pinned.add(core.keyIndex.get(k)!);
   const pin: Record<string, CardPin> = {};
   for (const i of [...pinned].sort((a, b) => a - b)) {
     const v = view.nodes[i]!;
@@ -1252,7 +1273,7 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
   stats.pins = pinned.size;
   const section: ThinSection = {
     v: THIN_SECTION_V,
-    root: root.id,
+    root: root ? root.id : ids[0]!,
     key: keys[0]!,
     release: page.release,
     hash: page.hash,
@@ -1403,8 +1424,9 @@ export interface ThinDecodeOpts {
 
 /** 当て直したときの数（知らせに使う） */
 export interface ThinUpgradeInfo {
-  from: { release: number; hash: string };
-  to: { release: number; hash: string };
+  /** 保存してあった地図の版の順番・中身の指紋（薄い形なら組み立ての版 bv も） */
+  from: { release: number; hash: string; bv?: number };
+  to: { release: number; hash: string; bv?: number };
   /** 鍵でページの地図のカードに当てた、書き換えたカード */
   applied: number;
   /** 消してあったカード（ページの地図のカードとして戻った。一番上だけ数える） */
@@ -1448,6 +1470,8 @@ export interface LegacyUpgradeDetail {
   detached: CardCounts;
   /** 移した先の手を選ぶ年月（「2027 年 2 月」） */
   movedAt: string;
+  /** 関係を変えた同梱の線で、新しい地図の関係に戻した物の数（引き継がない物を知らせる: loss-6。無ければ省く） */
+  relations?: number;
 }
 
 /** 読んだ結果（当て直したときは upgrade に数） */
@@ -1497,7 +1521,12 @@ function decodeThinInner(raw: unknown, mode: ThinUpgradeMode): ThinDecoded {
   const pb = page;
   if (!pb) throw new ThinMapError("unavailable", "このページでは、保存されている地図を組み立てられません（ページに地図の同梱データがありません）。ページを開き直してください。保存されているデータには触れていません。", { release: s.release });
   if (s.release > pb.release) throw new ThinNewerError(s.release);
-  if (s.release < pb.release) {
+  // 同じ版の順番で、このページより新しい組み立て（bv）の記録: 新しいページで書いた物（開き直すと読める。この版では当て直さない: skew-2）
+  if (s.release === pb.release && s.bv > THIN_BASELINE_VERSION)
+    throw new ThinNewerError(s.release, "この地図は、このページより新しい組み立てのページで保存されています。ページを開き直してください（保存されているデータには触れていません）。");
+  // 前の版の地図・同じ版でも前の組み立て（bv）の記録: 鍵でページの地図に当て直して読む（どの読み口でも。組み立てを変えたページで、
+  // どの端末も止まらないように: skew-2）
+  if (s.release < pb.release || s.bv < THIN_BASELINE_VERSION) {
     if (mode === "none") throw new ThinMapError("older", `保存されている地図は前の版（版 ${s.release}）の物です。このページ（版 ${pb.release}）では、そのままでは読めません。保存されているデータには触れていません。`, { release: s.release });
     return rebaseThin(rest, s, pb);
   }
@@ -1540,13 +1569,16 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   };
   const base: MapBase = { at: s.at, dx: s.dx, dy: s.dy, pmap: fullMap(core.projects, s.pmap, projects, "プロジェクト"), smap: fullMap(core.scenarios, s.smap, scenarios, "シナリオ") };
   const view = viewOf(core, base);
-  // 消したカード
+  // 消したカード（今日の鍵は −1 だけ: 今日を消した地図）
   const gone = new Uint8Array(n);
   const nPatch = s.n ?? {};
+  const rootGone = own(nPatch, keys[0]!) && nPatch[keys[0]!] === -1;
+  // 今日を消した地図の root は基準の今日の ID（書き手はそれしか書かない。違えば読まない）
+  if (rootGone && s.root !== view.nodes[0]!.id) throw corrupt("今日を消した地図の今日の ID", s.release);
   const stack: number[] = [];
   for (const k of Object.keys(nPatch)) {
-    const i = known(k, "カードの変更");
     const p = nPatch[k]!;
+    const i = known(k, "カードの変更", rootGone && k === keys[0]);
     if (p === 0) stack.push(i);
     else if (p === -1) gone[i] = 1;
   }
@@ -1559,22 +1591,22 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     const p = nPatch[k]!;
     if (p !== 0 && p !== -1 && gone[core.keyIndex.get(k)!]) throw mismatch(`消したカードの変更: ${k.slice(0, 80)}`, s.release);
   }
-  // カードの ID（今日は保存した ID、ほかは読み替えか基準の ID）。重なれば読まない
+  // カードの ID（今日は保存した ID、ほかは読み替えか基準の ID）。重なれば読まない。今日を消した地図では、今日の ID は使わない
   const idOf = new Array<ID | undefined>(n);
-  idOf[0] = s.root;
+  if (!rootGone) idOf[0] = s.root;
   const nidIndex = new Map<ID, number>();
   for (const k of Object.keys(s.nid ?? {})) {
     const i = known(k, "ID の読み替え");
     if (gone[i]) throw mismatch(`消したカードの ID の読み替え: ${k.slice(0, 80)}`, s.release);
     const id = s.nid![k]!;
-    if (nidIndex.has(id) || id === s.root) throw corrupt("カードの ID が重なっています", s.release);
+    if (nidIndex.has(id) || (!rootGone && id === s.root)) throw corrupt("カードの ID が重なっています", s.release);
     nidIndex.set(id, i);
   }
   for (let i = 1; i < n; i++) if (!gone[i]) idOf[i] = s.nid?.[keys[i]!] ?? view.nodes[i]!.id;
   const cardAt = (id: ID): number | undefined => {
     const j = nidIndex.get(id);
     if (j !== undefined) return j;
-    if (id === s.root) return 0;
+    if (!rootGone && id === s.root) return 0;
     const k = core.idIndex.get(id);
     return k !== undefined && k > 0 && !gone[k] && idOf[k] === id ? k : undefined;
   };
@@ -1582,7 +1614,7 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     const k = core.idIndex.get(id);
     if (k !== undefined && k !== i && !gone[k] && idOf[k] === id) throw corrupt("カードの ID が重なっています", s.release);
   }
-  if (core.idIndex.get(s.root) !== undefined && core.idIndex.get(s.root) !== 0 && !gone[core.idIndex.get(s.root)!] && idOf[core.idIndex.get(s.root)!] === s.root) throw corrupt("今日の ID が重なっています", s.release);
+  if (!rootGone && core.idIndex.get(s.root) !== undefined && core.idIndex.get(s.root) !== 0 && !gone[core.idIndex.get(s.root)!] && idOf[core.idIndex.get(s.root)!] === s.root) throw corrupt("今日の ID が重なっています", s.release);
   // 保存したノードと線（今日・利用者の物）
   const rawNodes = dict(rest.nodes ?? {}, "nodes");
   const rawEdges = dict(rest.edges ?? {}, "edges");
@@ -1590,13 +1622,16 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   const storedIds = new Set<string>();
   for (const k of Object.keys(rawNodes)) {
     const ref = refOf(k, rawNodes[k]);
-    if (ref !== s.root && cardAt(ref) !== undefined) throw corrupt(`保存したノードの ID がカードと重なっています: ${ref.slice(0, 40)}`, s.release);
+    if ((rootGone || ref !== s.root) && cardAt(ref) !== undefined) throw corrupt(`保存したノードの ID がカードと重なっています: ${ref.slice(0, 40)}`, s.release);
     storedIds.add(ref);
   }
-  const rootRaw = Object.keys(rawNodes)
-    .map((k) => rawNodes[k])
-    .find((x) => isObj(x) && x.id === s.root);
-  if (!isObj(rootRaw) || !isObj(rootRaw.meta) || rootRaw.meta.key !== keys[0]) throw mismatch("今日のカードがありません", s.release);
+  // 今日のカード（今日を消した地図では無い。保存したノードはどれも利用者の物）
+  const rootRaw = rootGone
+    ? undefined
+    : Object.keys(rawNodes)
+        .map((k) => rawNodes[k])
+        .find((x) => isObj(x) && x.id === s.root);
+  if (!rootGone && (!isObj(rootRaw) || !isObj(rootRaw.meta) || rootRaw.meta.key !== keys[0])) throw mismatch("今日のカードがありません", s.release);
   const endOk = (v: unknown): boolean => {
     const r = typeof v === "number" && Number.isFinite(v) ? String(v) : v;
     return typeof r === "string" && (storedIds.has(r) || cardAt(r) !== undefined);
@@ -1645,7 +1680,7 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     if (j !== undefined && edgeLive(j) && edgeIdOf(j) === ref) throw corrupt(`保存した線の ID が地図の線と重なっています: ${ref.slice(0, 40)}`, s.release);
   }
   // 書き換えたカードと線を作り、保存したノードと線と一緒に整える（地図のほかのカードの ID は外にある物として、線を残す）
-  const nodesIn: Obj = { [s.root]: rootRaw };
+  const nodesIn: Obj = rootRaw ? { [s.root]: rootRaw } : {};
   for (const k of Object.keys(rawNodes)) if (rawNodes[k] !== rootRaw) nodesIn[k] = rawNodes[k];
   const patched = new Uint8Array(n);
   for (const k of Object.keys(nPatch)) {
@@ -1675,10 +1710,15 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   for (const t of Object.values(base.smap)) if (t !== null && !own(nd.scenarios, t)) throw corrupt(`シナリオの読み替えの先: ${t}`, s.release);
   // 新しい入れ物: 今日 → 地図のカード（番号の順）→ 保存したノード、地図の線（番号の順）→ 保存した線
   const nodes: Record<ID, GNode> = {};
-  const rootNode = nd.nodes[s.root];
-  // 今日のカードはページの地図の入口の形であること（入口でなくなった今日は、次に書くとき地図ごと太い形になる）
-  if (!rootNode || !isPageRoot(core, rootNode)) throw mismatch("今日のカードがページの地図の入口の形ではありません", s.release);
-  nodes[s.root] = withRelease(rootNode, pb);
+  if (rootGone) {
+    // 今日を消した地図に、ページの地図の今日があれば合わない（書き手は今日があれば −1 を書かない）
+    for (const id of Object.keys(nd.nodes)) if (isPageRoot(core, nd.nodes[id]!)) throw mismatch("今日を消した印があるのに、今日のカードがあります", s.release);
+  } else {
+    const rootNode = nd.nodes[s.root];
+    // 今日のカードはページの地図の入口の形であること（入口でなくなった今日は、次に書くとき地図ごと太い形になる）
+    if (!rootNode || !isPageRoot(core, rootNode)) throw mismatch("今日のカードがページの地図の入口の形ではありません", s.release);
+    nodes[s.root] = withRelease(rootNode, pb);
+  }
   for (let i = 1; i < n; i++) {
     const id = idOf[i];
     if (id === undefined) continue;
@@ -1827,18 +1867,51 @@ export function looseIdMap(list: ReadonlyArray<{ id: ID; name: string }>, m: Rec
   return out;
 }
 
-/** 書き換えたカードが利用者の物を持つか（鍵が無くなったときに残す物）。位置・折りたたみ・時刻だけの変更は持たない */
+/**
+ * 書き換えたカードが利用者の物を持つか（鍵が無くなったときに残す物）: 未着手でない状態・チェック・題名・本文・やること・タグ・期限と開始・
+ * 種類・プロジェクト・シナリオ・利用者の meta（loss-4）。位置・折りたたみ・作った時刻だけの変更は持たない
+ */
 function carriesUserState(p: NodePatch): boolean {
   const f = (p.f ?? {}) as Obj;
   if (typeof f.status === "string" && f.status !== "open") return true;
   if ((p.k?.length ?? 0) > 0) return true;
   if (typeof f.title === "string" || (typeof f.body === "string" && f.body !== "")) return true;
   if (Array.isArray(f.conditions) || Array.isArray(f.tags)) return true;
+  if (own(f, "time") || own(f, "type") || own(f, "projectIds") || own(f, "scenarioIds")) return true;
   return Object.keys(p.m ?? {}).some((k) => !BUILDER_NODE_META.has(k));
 }
 
+/**
+ * チェックした枠（k）のうち、新しい版のカードに同じ枠が無い物を、チェックした項目の文（was.kt。k と同じ順）で当てる: 同じ文の項目があれば
+ * それにチェック、無ければチェックした項目として後ろに足す（文の無い古い書き方なら、引き継げなかったチェックとして数える: loss-4）
+ */
+function carryLostTicks(list: Condition[], p: NodePatch, slots: readonly string[], key: string, info: ThinUpgradeInfo): Condition[] {
+  const k = p.k ?? [];
+  const kt = p.was.kt;
+  let out = list;
+  const ids = new Set(list.map((c) => c.id));
+  k.forEach((slot, j) => {
+    if (slots.includes(slot)) return;
+    const text = kt && kt.length === k.length ? kt[j] : undefined;
+    if (text === undefined) {
+      info.lostTicks++;
+      return;
+    }
+    const same = out.findIndex((c) => c.text === text);
+    if (same >= 0) {
+      if (!out[same]!.met) out = out.map((c, t) => (t === same ? { ...c, met: true } : c));
+      return;
+    }
+    let id = `c_${fnv64x36(`${key}#${text}`)}`;
+    for (let t = 2; ids.has(id); t++) id = `c_${fnv64x36(`${key}#${text}`)}_${t}`;
+    ids.add(id);
+    out = [...out, { id, text, met: true }];
+  });
+  return out;
+}
+
 /** ページの地図のカードに、前の版の変更のうち利用者の物を当てる（位置は新しい地図の物のまま）。整える前の形を返す */
-function carryNode(v: GNode, p: NodePatch, id: ID, slots: readonly string[], info: ThinUpgradeInfo): Obj {
+function carryNode(v: GNode, p: NodePatch, id: ID, slots: readonly string[], info: ThinUpgradeInfo, key: string): Obj {
   const f = (p.f ?? {}) as Obj;
   const out: Obj = { ...v, id };
   for (const k of ["type", "title", "body", "status", "time", "collapsed", "createdAt", "updatedAt", "projectIds", "scenarioIds"] as const) if (own(f, k)) out[k] = f[k];
@@ -1847,8 +1920,13 @@ function carryNode(v: GNode, p: NodePatch, id: ID, slots: readonly string[], inf
   if (own(f, "conditions")) out.conditions = f.conditions;
   else if (p.k) {
     const on = new Set(p.k);
-    out.conditions = v.conditions.map((c, t) => (on.has(slots[t]!) && !c.met ? { ...c, met: true } : c));
-    for (const x of on) if (!slots.includes(x)) info.lostTicks++;
+    out.conditions = carryLostTicks(
+      v.conditions.map((c, t) => (on.has(slots[t]!) && !c.met ? { ...c, met: true } : c)),
+      p,
+      slots,
+      key,
+      info,
+    );
   }
   if (own(f, "tags") && Array.isArray(f.tags)) {
     // 付けたタグ（前の版で役割と月から付いたタグでも、新しい版で付くタグでもない物）だけを、新しい版のタグの後ろに
@@ -1880,8 +1958,24 @@ function carryEdge(v: GEdge, p: EdgePatch, id: ID, source: ID, target: ID): Obj 
   return out;
 }
 
-/** 鍵が無くなったカードを、鍵の無い利用者のカードにする（題名・本文・状態・やること・タグ・時刻は利用者の物、無ければ元の題名） */
-function detachedCard(k: string, p: NodePatch | null, pin: CardPin | null, id: ID, x: number, y: number, s: ThinSection): Obj {
+/**
+ * 親からの同梱の線の変更のうち、利用者の物（直した見込み・説明・条件・関係・利用者の meta）。鍵が無くなったカードに meta.prevEdge として残す
+ * （版 6 までの地図の引き上げ ./legacyMap.ts と同じ名前: loss-4）。無ければ null
+ */
+function prevEdgeOf(e: EdgePatch | undefined): Obj | null {
+  if (!e) return null;
+  const f = (e.f ?? {}) as Obj;
+  const pe: Obj = {};
+  for (const k of ["relation", "label", "condition"] as const) if (own(f, k)) pe[k] = f[k];
+  for (const k of Object.keys(e.m ?? {})) if (!BUILDER_EDGE_META.has(k)) pe[k] = e.m![k];
+  return Object.keys(pe).length ? pe : null;
+}
+
+/**
+ * 鍵が無くなったカードを、鍵の無い利用者のカードにする（題名・本文・状態・やること・タグ・時刻は利用者の物、無ければ元の題名）。
+ * edge: 親からの同梱の線の変更（直した見込み・説明は meta.prevEdge に）
+ */
+function detachedCard(k: string, p: NodePatch | null, pin: CardPin | null, id: ID, x: number, y: number, s: ThinSection, edge?: EdgePatch): Obj {
   const f = (p?.f ?? {}) as Obj;
   const w: { t: string; s: string } = p ? p.was : pin!;
   let conditions: unknown = [];
@@ -1894,6 +1988,8 @@ function detachedCard(k: string, p: NodePatch | null, pin: CardPin | null, id: I
   const meta: Obj = { prevKey: k, prevRelease: s.release };
   if (w.s) meta.prevShort = w.s;
   for (const mk of Object.keys(p?.m ?? {})) if (!BUILDER_NODE_META.has(mk)) meta[mk] = p!.m![mk];
+  const pe = prevEdgeOf(edge);
+  if (pe) meta.prevEdge = pe;
   return {
     id,
     type: typeof f.type === "string" && NODE_TYPES.has(f.type) ? (f.type as NodeType) : "action",
@@ -1956,14 +2052,18 @@ export function carryRoot(pr: GNode, sr: GNode): GNode {
 
 /**
  * 前の版・違う組み立ての地図の変更（s）を、ページの地図に鍵で当て直して読む。rest は maps を除いた保存した文書。
- * 保存した物とページの地図だけから決まる（同じ物からは、どの端末でも同じ文書）
+ * 保存した物とページの地図だけから決まる（同じ物からは、どの端末でも同じ文書）。
+ * 同じ版の順番・同じ中身の指紋（組み立ての版 bv か基準の文書の指紋だけが違う: 同じ木）なら、消したカードと線は消したまま（skew-2）。
+ * 版をまたぐときは、今までどおり戻す
  */
 function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   const core = coreOf(pb.map, s.at);
   if (s.key !== core.keys[0]) throw mismatch("今日の鍵（別の地図）", s.release);
   const n = core.n;
   const keys = core.keys;
-  const info: ThinUpgradeInfo = { from: { release: s.release, hash: s.hash }, to: { release: pb.release, hash: pb.hash }, applied: 0, restored: 0, detached: 0, lostTicks: 0, droppedEdges: 0 };
+  const info: ThinUpgradeInfo = { from: { release: s.release, hash: s.hash, bv: s.bv }, to: { release: pb.release, hash: pb.hash, bv: THIN_BASELINE_VERSION }, applied: 0, restored: 0, detached: 0, lostTicks: 0, droppedEdges: 0 };
+  /** 同じ木（同じ版の順番・同じ中身）: 消したカードと線は消したまま */
+  const sameTree = s.release === pb.release && s.hash === pb.hash;
   // プロジェクト・シナリオ: 保存した読み替えのうち、ページの地図にある物。無ければ同じ ID・同じ名前・無い（読み替えの先は文書にある物だけ）
   const projects = isObj(rest.projects) ? rest.projects : {};
   const scenarios = isObj(rest.scenarios) ? rest.scenarios : {};
@@ -1974,7 +2074,26 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   const nidMap = s.nid ?? {};
   const eidMap = s.eid ?? {};
   const pins = s.pin ?? {};
-  // 保存したノードと線（今日・利用者の物）
+  // 保存したノードと線（今日・利用者の物）。今日を消した地図（n[今日の鍵] = −1）は今日が無い: ページの地図の今日が戻る
+  // （消したカードは版をまたぐと戻る。今までと同じ決まり: loss-1）。同じ木なら今日も消したまま
+  const rootGone = own(nPatch, s.key) && nPatch[s.key] === -1;
+  /** 同じ木で消したままのカード（番号ごと） */
+  const gone = new Uint8Array(n);
+  if (sameTree) {
+    const stack: number[] = [];
+    for (const k of Object.keys(nPatch)) {
+      const i = core.keyIndex.get(k);
+      const p = nPatch[k];
+      if (i === undefined) continue;
+      if (p === 0) stack.push(i);
+      else if (p === -1) gone[i] = 1;
+    }
+    while (stack.length) {
+      const i = stack.pop()!;
+      gone[i] = 1;
+      for (let k = core.kidStart[i]!; k < core.kidStart[i + 1]!; k++) stack.push(core.kids[k]!);
+    }
+  }
   const rawNodes = dict(rest.nodes ?? {}, "nodes");
   const rawEdges = dict(rest.edges ?? {}, "edges");
   const refOf = (key: string, value: unknown): string => (isObj(value) && (typeof value.id === "string" || typeof value.id === "number") ? String(value.id) : key);
@@ -1982,17 +2101,24 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   const storedIds = new Set<ID>();
   for (const k of Object.keys(rawNodes)) {
     const x = rawNodes[k];
-    if (isObj(x) && x.id === s.root) rootRaw = x;
+    if (!rootGone && isObj(x) && x.id === s.root) rootRaw = x;
     storedIds.add(refOf(k, x));
   }
-  if (!rootRaw || !isObj(rootRaw.meta) || rootRaw.meta.key !== keys[0]) throw mismatch("今日のカードがありません", s.release);
+  if (!rootGone && (!rootRaw || !isObj(rootRaw.meta) || rootRaw.meta.key !== keys[0])) throw mismatch("今日のカードがありません", s.release);
   const storedEdgeIds = new Set<ID>();
   for (const k of Object.keys(rawEdges)) storedEdgeIds.add(refOf(k, rawEdges[k]));
   // ページの地図のカードの ID: 読み替えがあればそれ（利用者の線がつながったまま）、無ければ基準の ID。保存したノードと重なれば、鍵から決まる別の ID
   const used = new Set<ID>(storedIds);
   const idOf = new Array<ID>(n);
-  idOf[0] = s.root;
+  let rootId = s.root;
+  if (rootGone) {
+    if (used.has(rootId)) rootId = view.nodes[0]!.id;
+    for (let t = 2; used.has(rootId); t++) rootId = impactNodeId64(`${keys[0]}#${t}`);
+  }
+  used.add(rootId);
+  idOf[0] = rootId;
   for (let i = 1; i < n; i++) {
+    if (gone[i]) continue;
     const k = keys[i]!;
     let id = own(nidMap, k) ? nidMap[k]! : view.nodes[i]!.id;
     if (used.has(id)) id = view.nodes[i]!.id;
@@ -2001,32 +2127,43 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     used.add(id);
     idOf[i] = id;
   }
-  // 鍵が無くなったカード（利用者の物を持つ物・利用者の線や利用者のカードがつながる物）: 前の ID のまま、利用者のカードとして残す
-  const rx = typeof rootRaw.x === "number" && Number.isFinite(rootRaw.x) ? Math.round(rootRaw.x) : 0;
-  const ry = typeof rootRaw.y === "number" && Number.isFinite(rootRaw.y) ? Math.round(rootRaw.y) : 0;
+  // 鍵が無くなったカード（利用者の物を持つ物・利用者の線や利用者のカードがつながる物・親からの同梱の線を直した物）: 前の ID のまま、
+  // 利用者のカードとして残す（直した見込み・線の説明は meta.prevEdge に: loss-4）
+  const r0 = rootRaw ?? (view.nodes[0]! as unknown as Obj);
+  const rx = typeof r0.x === "number" && Number.isFinite(r0.x) ? Math.round(r0.x) : 0;
+  const ry = typeof r0.y === "number" && Number.isFinite(r0.y) ? Math.round(r0.y) : 0;
+  /** 子の鍵がページの地図に無い、直した同梱の線（鍵が無くなったカードに残す） */
+  const goneEdge = new Map<string, EdgePatch>();
+  for (const k of Object.keys(ePatch)) {
+    const p = ePatch[k]!;
+    if (p !== 0 && !core.keyIndex.has(k)) goneEdge.set(k, p);
+  }
   const detached: Obj[] = [];
+  const detachedKeys = new Set<string>();
   const detach = (k: string, p: NodePatch | null, pin: CardPin | null): void => {
     let id = own(nidMap, k) ? nidMap[k]! : impactNodeId64(k);
     if (used.has(id)) id = impactNodeId64(`${k}#prev`);
-    if (used.has(id)) return;
+    for (let t = 2; used.has(id); t++) id = impactNodeId64(`${k}#prev${t}`);
     used.add(id);
-    detached.push(detachedCard(k, p, pin, id, 0, 0, s));
+    detachedKeys.add(k);
+    detached.push(detachedCard(k, p, pin, id, 0, 0, s, goneEdge.get(k)));
   };
-  const detachedKeys = new Set<string>();
   for (const k of Object.keys(nPatch)) {
     const p = nPatch[k]!;
     if (core.keyIndex.has(k)) {
-      if (p === 0 || p === -1) info.restored++;
+      // 消してあったカード: 版をまたぐと戻る（同じ木なら消したまま）
+      if ((p === 0 || p === -1) && !sameTree) info.restored++;
       continue;
     }
-    if (p === 0 || p === -1 || !carriesUserState(p)) continue;
-    detachedKeys.add(k);
+    if (p === 0 || p === -1 || (!carriesUserState(p) && !goneEdge.has(k))) continue;
     detach(k, p, null);
   }
   for (const k of Object.keys(pins)) {
     if (core.keyIndex.has(k) || detachedKeys.has(k)) continue;
     detach(k, null, pins[k]!);
   }
+  // 直した線の先のカードの題名が分からない（元の題名の印が無い古い書き方）: 残せない線の変更として数える
+  for (const k of goneEdge.keys()) if (!detachedKeys.has(k)) info.droppedEdges++;
   info.detached = detached.length;
   // 列の位置: 今日の左。保存したノード（今日・利用者のカード）と重なれば、さらに左へ（文書の中身だけで決まる）
   const placed: Array<{ x: number; y: number }> = [];
@@ -2040,12 +2177,12 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     d.y = ry + PREV_ROW * (j + 1);
   });
   // 書き換えたカード（ページの地図にある鍵）と、整える前のノード: 今日 → 書き換えたカード → 前の版で決めたこと → 利用者のノード
-  const nodesIn: Obj = { [s.root]: rootRaw };
+  const nodesIn: Obj = rootRaw ? { [s.root]: rootRaw } : {};
   const carried = new Uint8Array(n);
   for (let i = 1; i < n; i++) {
     const p = nPatch[keys[i]!];
-    if (p === undefined || p === 0 || p === -1) continue;
-    nodesIn[idOf[i]!] = carryNode(view.nodes[i]!, p, idOf[i]!, slotsOf(core, i), info);
+    if (p === undefined || p === 0 || p === -1 || gone[i]) continue;
+    nodesIn[idOf[i]!] = carryNode(view.nodes[i]!, p, idOf[i]!, slotsOf(core, i), info, keys[i]!);
     carried[i] = 1;
     info.applied++;
   }
@@ -2067,6 +2204,7 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   const usedE = new Set<ID>(storedEdgeIds);
   const edgeIdOf = new Array<ID>(n);
   for (let i = 1; i < n; i++) {
+    if (gone[i] || gone[core.parent[i]!]) continue;
     const k = keys[i]!;
     let id = own(eidMap, k) ? eidMap[k]! : view.edges[i]!.id;
     if (usedE.has(id)) id = view.edges[i]!.id;
@@ -2079,28 +2217,31 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   const skipE = new Uint8Array(n);
   for (const k of Object.keys(ePatch)) {
     const i = core.keyIndex.get(k);
-    if (i === undefined || i === 0) {
-      info.droppedEdges++;
-      continue;
-    }
+    // 子の鍵が無くなった線の変更は、上で鍵が無くなったカードに残した（消した線の印は、戻すので要らない）
+    if (i === undefined || i === 0 || gone[i] || gone[core.parent[i]!]) continue;
     const p = ePatch[k]!;
     if (p === 0) {
-      if (pairs.has(`${idOf[core.parent[i]!]!}\u0000${idOf[i]!}`)) skipE[i] = 1;
+      // 消してあった線: 版をまたぐと戻す（同じ木なら消したまま。同じ 2 枚の間に利用者が引き直した線があっても戻さない）
+      if (sameTree || pairs.has(`${idOf[core.parent[i]!]!}\u0000${idOf[i]!}`)) skipE[i] = 1;
       continue;
     }
     edgesIn[edgeIdOf[i]!] = carryEdge(view.edges[i]!, p, edgeIdOf[i]!, idOf[core.parent[i]!]!, idOf[i]!);
     carriedE[i] = 1;
   }
   for (const k of Object.keys(rawEdges)) edgesIn[k] = rawEdges[k];
-  const pageIds = new Set<ID>(idOf);
+  const pageIds = new Set<ID>();
+  for (let i = sameTree && rootGone ? 1 : 0; i < n; i++) if (idOf[i] !== undefined && !gone[i]) pageIds.add(idOf[i]!);
   const norm = normalizeDoc({ ...rest, version: 1, nodes: nodesIn, edges: edgesIn }, { externalNodeIds: (id) => pageIds.has(id) });
   const nd = norm.doc;
-  const sr = nd.nodes[s.root];
-  if (!sr) throw corrupt("今日のカードを読めません", s.release);
+  const sr = rootGone ? null : nd.nodes[s.root];
+  if (!rootGone && !sr) throw corrupt("今日のカードを読めません", s.release);
   // 新しい入れ物: 今日 → 地図のカード（番号の順）→ 前の版で決めたこと・利用者のノード、地図の線（番号の順）→ 利用者の線
   const nodes: Record<ID, GNode> = {};
-  nodes[s.root] = withRelease(carryRoot(view.nodes[0]!, sr), pb);
+  const vr = view.nodes[0]!;
+  // 今日を消した地図: 版をまたぐと今日が戻る（同じ木なら消したまま）
+  if (!(sameTree && rootGone)) nodes[rootId] = withRelease(sr ? carryRoot(vr, sr) : rootId === vr.id ? vr : { ...vr, id: rootId }, pb);
   for (let i = 1; i < n; i++) {
+    if (gone[i]) continue;
     const id = idOf[i]!;
     if (carried[i]) {
       const x = nd.nodes[id];
@@ -2114,7 +2255,7 @@ function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   for (const id of Object.keys(nd.nodes)) if (!own(nodes, id)) nodes[id] = nd.nodes[id]!;
   const edges: Record<ID, GEdge> = {};
   for (let i = 1; i < n; i++) {
-    if (skipE[i]) continue;
+    if (skipE[i] || gone[i] || gone[core.parent[i]!]) continue;
     const id = edgeIdOf[i]!;
     if (carriedE[i]) {
       const x = nd.edges[id];

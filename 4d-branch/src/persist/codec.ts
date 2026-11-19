@@ -4,7 +4,9 @@
 //   - ページの地図（同梱の 3 か月ごとの地図。setThinBaseline で入れる）を持つ文書は、地図の本体を省いた薄い形（版 2・maps つき。./thinMap.ts）
 //   - それ以外の文書（地図が無い・版 6 の地図・ほかの年月の地図）は今までと同じ形のまま（同じ物を返す。既定のビルドは何も変わらない）
 //   - 地図の基準を入れる前に、3 か月ごとの地図を持つ文書を書こうとしたら ThinBaselineMissingError（地図ごと書くと 7,000 万文字を超える: safety-15）。
-//     ページの地図のカードが多いのに今日のカードが無い（壊れた形）ときも ThinWriteError で書かない
+//     本体・緊急コピー・バックアップ・書き出しは、薄い形にできないときもそのままの形で書く（toStoredOrFull。どこにも残せなくしない: loss-1）。
+//     アカウントへは送らない（同期が止まって知らせる）
+//   - 今日を消した地図（利用者のカードがつながる地図のカードが残った）は、今日の鍵に −1 の印を付けた薄い形（loss-1）
 //   - 薄い形の文書（版 2 以上か maps がある）は、どんな失敗でも止める側の失敗（ThinMapError・NewerDocError）にする。壊れたデータと見なして
 //     バックアップで始めたり、消したり、上書きしたりしない（safety-3）。版 1 の文書の読めない JSON・形だけが、今までどおり壊れたデータ
 //   - 薄い形を読めるのは、ページに地図があるページ（setThinBaseline）か、地図の読み込み方を決めたページ（enableThinPage: main.ts が
@@ -98,23 +100,56 @@ export class StoredTooLargeError extends Error {
   }
 }
 
-/** 知らせる先（既定はコンソール。テストと画面が差し替える） */
-let warn: (message: string) => void = (m) => console.warn(m);
-export function setCodecWarn(fn: ((message: string) => void) | null): void {
-  warn = fn ?? ((m) => console.warn(m));
+/**
+ * 保存の口の知らせの種類: upgrade 版 6 の地図を新しい版にできなかった（前の版の地図のまま開く）・full 薄い形にできずそのままの形で書いた・
+ * fat 地図のカードを丸ごと書いた（同じ地図が 2 つ以上）・size 書いた形が大きい
+ */
+export type CodecWarnKind = "upgrade" | "full" | "fat" | "size";
+
+/** 知らせる先（既定はコンソール。画面（App）が知らせの帯に、テストが差し替える: code-6） */
+let warnSink: (message: string, kind: CodecWarnKind) => void = (m) => console.warn(m);
+/** 知らせを聞いている所（起動・取り込みの間だけ、その知らせに足す） */
+const warnListeners = new Set<(message: string, kind: CodecWarnKind) => void>();
+export function setCodecWarn(fn: ((message: string, kind: CodecWarnKind) => void) | null): void {
+  warnSink = fn ?? ((m) => console.warn(m));
+}
+function warn(message: string, kind: CodecWarnKind): void {
+  warnSink(message, kind);
+  for (const l of warnListeners) l(message, kind);
+}
+/**
+ * 保存の口の知らせを聞く（起動・取り込み・バックアップから戻すときに、その間の知らせを、画面の知らせに足す: code-6）。やめる関数を返す
+ */
+export function onCodecWarn(fn: (message: string, kind: CodecWarnKind) => void): () => void {
+  warnListeners.add(fn);
+  return () => void warnListeners.delete(fn);
 }
 
 /** 書く形と、薄い形にしたときの数（地図が無ければ stats は null） */
 export function encodeStored(doc: DocData): { stored: StoredDoc; stats: ThinStats | null } {
   const r = encodeThin(doc);
   if (!r) return { stored: doc, stats: null };
-  if (r.stats.fatKeyed > 1000) warn(`地図のカードを ${r.stats.fatKeyed.toLocaleString("ja-JP")} 枚、丸ごと書きました（同じ地図が 2 つ以上あるかもしれません）`);
+  if (r.stats.fatKeyed > 1000) warn(`地図のカードを ${r.stats.fatKeyed.toLocaleString("ja-JP")} 枚、丸ごと書きました（同じ地図が 2 つ以上あるかもしれません）`, "fat");
   return r;
 }
 
 /** 保存先に書く形（I1: 本体・緊急コピー・バックアップ・アカウント・書き出しのどれもここを通す） */
 export function toStored(doc: DocData): StoredDoc {
   return encodeStored(doc).stored;
+}
+
+/**
+ * 保存先に書く形。薄い形にできなければ（地図の基準を用意できない・書き手の誤り）、文書をそのままの形（版 1）で返す: 本体・緊急コピー・
+ * バックアップ・書き出しの最後の守り（どこにも残せなくしない: loss-1）。そのままの形は大きいことがあるので、localStorage に書く物は
+ * 呼ぶ側が大きさを見る（400 万文字まで）。アカウントへ送る物は使わない（toStored のまま。送れなければ同期が止まって知らせる）
+ */
+export function toStoredOrFull(doc: DocData): { stored: StoredDoc; full: boolean } {
+  try {
+    return { stored: toStored(doc), full: false };
+  } catch (e) {
+    warn(`地図を薄い形で保存できなかったため、そのままの形で保存しました（${e instanceof Error ? e.message : String(e)}）`, "full");
+    return { stored: doc, full: true };
+  }
 }
 
 /** 保存した形の版（版の記録・バックアップの見出し・マニフェストの docVersion に書く物） */
@@ -145,7 +180,7 @@ function legacyUpgrade(doc: DocData): ReturnType<typeof upgradeLegacyMap> {
   try {
     return upgradeLegacyMap(doc);
   } catch (e) {
-    warn(`版 6 の地図を新しい版にできなかったため、前の版の地図のまま開きます（${e instanceof Error ? e.message : String(e)}）`);
+    warn(`版 6 の地図を新しい版にできなかったため、前の版の地図のまま開きます（${e instanceof Error ? e.message : String(e)}）`, "upgrade");
     return null;
   }
 }
@@ -225,7 +260,17 @@ export function classifyReadFailure(raw: unknown, e: unknown, metaVersion?: unkn
 }
 
 /**
- * 保存してあった物が、このページより新しい版か（整えずに印だけ見る: 文書の版・薄い形の地図の変更の形の版と版の順番）。
+ * 地図の版の順番と組み立ての版（bv）が、このページより新しいか: 版の順番が新しい・同じ版の順番で組み立てが新しい（skew-2）。
+ * ページの地図を入れてあるときだけ比べる（無ければ false）
+ */
+export function isNewerMap(release: unknown, bv: unknown): boolean {
+  const rel = pageRelease();
+  if (typeof release !== "number" || rel === null) return false;
+  return release > rel || (release === rel && typeof bv === "number" && bv > THIN_BASELINE_VERSION);
+}
+
+/**
+ * 保存してあった物が、このページより新しい版か（整えずに印だけ見る: 文書の版・薄い形の地図の変更の形の版と版の順番と組み立ての版）。
  * 地図の版の順番は、ページの地図を入れてあるときだけ比べる
  */
 export function isNewerRecord(raw: unknown): boolean {
@@ -233,8 +278,7 @@ export function isNewerRecord(raw: unknown): boolean {
   if (!thinReadable() || !isThinShape(raw)) return false;
   try {
     const s = sectionOf(raw);
-    const rel = pageRelease();
-    return !!s && rel !== null && s.release > rel;
+    return !!s && isNewerMap(s.release, s.bv);
   } catch (e) {
     return e instanceof ThinNewerError || e instanceof NewerDocError;
   }
@@ -262,8 +306,9 @@ export function recordInfo(stored: unknown): RecordInfo {
 }
 
 /**
- * 見出しの印から、このページでは読めないと分かるか（中身を読まずに）: newer 新しい版（形の版か地図の版の順番）・
- * blocked 同じ版の順番で中身の指紋か組み立ての版が違う地図（このページでは開けない）・null 中身を読まないと分からない
+ * 見出しの印から、このページでは読めないと分かるか（中身を読まずに）: newer 新しい版（形の版か地図の版の順番、同じ版の順番で新しい組み立て）・
+ * blocked 同じ版の順番・同じ組み立てで中身の指紋が違う地図（このページでは開けない）・null 中身を読まないと分からない
+ * （前の組み立て bv の地図は、鍵で当て直して読める: skew-2）
  */
 export function headerBlock(h: { docVersion?: unknown; mapRelease?: unknown; mapHash?: unknown; mapBv?: unknown }): "newer" | "blocked" | null {
   const v = h.docVersion;
@@ -271,9 +316,9 @@ export function headerBlock(h: { docVersion?: unknown; mapRelease?: unknown; map
   if (typeof v === "number" && Number.isFinite(v) && Math.floor(v) >= THIN_VERSION && !thinReadable()) return "newer";
   const rel = pageRelease();
   if (typeof h.mapRelease === "number" && rel !== null) {
-    if (h.mapRelease > rel) return "newer";
-    if (h.mapRelease === rel && typeof h.mapHash === "string" && h.mapHash !== pageHash()) return "blocked";
-    if (h.mapRelease === rel && typeof h.mapBv === "number" && h.mapBv !== THIN_BASELINE_VERSION) return "blocked";
+    if (isNewerMap(h.mapRelease, h.mapBv)) return "newer";
+    const olderBv = typeof h.mapBv === "number" && h.mapBv < THIN_BASELINE_VERSION;
+    if (h.mapRelease === rel && !olderBv && typeof h.mapHash === "string" && h.mapHash !== pageHash()) return "blocked";
   }
   return null;
 }
@@ -283,7 +328,7 @@ export function headerBlock(h: { docVersion?: unknown; mapRelease?: unknown; map
  */
 export function checkStoredSize(chars: number, where: "local" | "idb" | "cloud" | "export"): void {
   if (where === "local" && chars > LOCAL_MAX_CHARS) throw new StoredTooLargeError(chars);
-  if (chars > STORED_WARN_CHARS) warn(`保存する内容が大きくなっています（${chars.toLocaleString("ja-JP")} 文字・${where}）`);
+  if (chars > STORED_WARN_CHARS) warn(`保存する内容が大きくなっています（${chars.toLocaleString("ja-JP")} 文字・${where}）`, "size");
 }
 
 /**
@@ -293,9 +338,9 @@ export function guardStoredSize(chars: number, where: "local" | "idb" | "cloud" 
   if (thinReadable()) checkStoredSize(chars, where);
 }
 
-/** 書く形の JSON（大きさを見てから返す。localStorage に書く物は where に "local"） */
+/** 書く形の JSON（大きさを見てから返す。localStorage に書く物は where に "local"。アカウントへ送る物のほかは、薄い形にできなければそのままの形） */
 export function storedJson(doc: DocData, where: "local" | "idb" | "cloud" | "export"): string {
-  const json = JSON.stringify(toStored(doc));
+  const json = JSON.stringify(where === "cloud" ? toStored(doc) : toStoredOrFull(doc).stored);
   checkStoredSize(json.length, where);
   return json;
 }
@@ -303,10 +348,15 @@ export function storedJson(doc: DocData, where: "local" | "idb" | "cloud" | "exp
 // ---------------------------------------------------------------- 版をまたいで読んだときの知らせ
 
 /**
- * 知らせを出す所: boot 起動・import 取り込み（確認の警告）・backup バックアップから戻す（確認）・confirm 地図を新しい版にするか聞く・
- * swap 地図を新しい版にした（お知らせ）・adopt アカウントの内容（前の版の地図）を読み込んだ（お知らせ）
+ * 知らせを出す所: boot 起動・view 閲覧のみのタブの起動（保存しない）・import 取り込み（確認の警告）・backup バックアップから戻す（確認）・
+ * confirm 地図を新しい版にするか聞く・swap 地図を新しい版にした（お知らせ）・adopt アカウントの内容（前の版の地図）を読み込んだ（お知らせ）
  */
-export type UpgradeNoticeWhere = "boot" | "import" | "backup" | "confirm" | "swap" | "adopt";
+export type UpgradeNoticeWhere = "boot" | "view" | "import" | "backup" | "confirm" | "swap" | "adopt";
+
+/** 起動の知らせの終わり: 当て直す前の記録は、そのままの形でバックアップに残している（ダウンロードできる: loss-6） */
+const KEPT_RAW = "前の内容は、そのままの形でバックアップに残しています（メニュー →「バックアップと復元」からダウンロードできます）。";
+/** 閲覧のみのタブ: 当て直した地図を見せるだけ（保存先には何も書かない: skew-3） */
+const VIEW_ONLY = "（このタブは閲覧のみのため、まだ保存していません）";
 
 /** 利用者の物を持つカードの数の言い方（「選んだ手 3 件・見送った手 1 件・書き換えた・チェックしたカード 2 件」） */
 function cardsLabel(c: CardCounts, noun: string): string {
@@ -328,36 +378,50 @@ function cardsLabel(c: CardCounts, noun: string): string {
 export function upgradeNotice(u: ThinUpgradeInfo, where: UpgradeNoticeWhere): string {
   const L = u.legacy;
   if (!L) {
-    const carried = `書き換えたカード ${u.applied} 枚の選んだ手・チェック・文章は引き継ぎ`;
-    const detached = u.detached ? `、地図から無くなったカード ${u.detached} 枚は「前の版で決めたこと」に残し${where === "boot" || where === "swap" || where === "adopt" ? "ました" : "ます"}` : "";
-    if (where === "boot") return `地図を新しい版（版 ${u.to.release}）で開きました。前の版で${carried}${detached}${u.lostTicks ? `（引き継げなかったチェック ${u.lostTicks} 件）` : ""}。前の内容はバックアップに残しています。`;
+    // 同じ版の順番で組み立て（bv）だけが違う: 「新しい版」「前の版」とは言わない（skew-2）
+    const rebuilt = u.from.release === u.to.release;
+    const done = where === "boot" || where === "view" || where === "swap" || where === "adopt";
+    const past = (s: string): string => `${s}${done ? "ました" : "ます"}`;
+    const parts: string[] = [];
+    if (u.applied) parts.push(past(`前の${rebuilt ? "組み立て" : "版"}で書き換えたカード ${u.applied} 枚の選んだ手・チェック・文章・期限などは引き継ぎ`));
+    if (u.detached) parts.push(past(`地図から無くなったカード ${u.detached} 枚（直した見込みや線の説明も）は「前の版で決めたこと」に残し`));
+    if (!u.applied && !u.detached) parts.push("前の地図で書き換えたカードはありません");
+    // 残せなかった物は数で言う（黙って落とさない: loss-4）
+    const lost = [u.lostTicks ? `引き継げなかったチェック ${u.lostTicks} 件` : "", u.droppedEdges ? `残せなかった線の変更 ${u.droppedEdges} 本` : ""].filter(Boolean).join("・");
+    const body = `${parts.join("。")}${lost ? `（${lost}）` : ""}。`;
+    if (where === "boot")
+      return `${rebuilt ? "地図の組み立てが新しくなったため、保存してあった変更を地図に当て直して開きました。" : `地図を新しい版（版 ${u.to.release}）で開きました。`}${body}${KEPT_RAW}`;
+    if (where === "view")
+      return `${rebuilt ? "地図の組み立てが新しくなったため、保存してあった変更を地図に当て直して表示しています" : `地図を新しい版（版 ${u.to.release}）で表示しています`}${VIEW_ONLY}。${body}`;
     if (where === "import")
-      return `地図はこのページの版（版 ${u.to.release}）に合わせて読み込みます（ファイルは版 ${u.from.release} の地図）。書き換えたカード ${u.applied} 枚を引き継ぎ${detached}${u.lostTicks ? `。引き継げないチェックが ${u.lostTicks} 件あります` : ""}。`;
-    if (where === "backup") return `このバックアップの地図は前の版（版 ${u.from.release}）の物です。このページの版（版 ${u.to.release}）に合わせて戻します（${carried}${detached}）。`;
-    if (where === "confirm") return `地図を新しい版（版 ${u.to.release}）にします。${carried}${detached}。`;
-    if (where === "adopt") return `アカウントの内容は前の版の地図だったため、新しい版（版 ${u.to.release}）にして読み込みました。${carried}${detached}。`;
-    return `未来の道筋を新しい版（版 ${u.to.release}）にしました。${carried}${detached}。`;
+      return `${rebuilt ? "地図はこのページの組み立てに合わせて読み込みます。" : `地図はこのページの版（版 ${u.to.release}）に合わせて読み込みます（ファイルは版 ${u.from.release} の地図）。`}${body}`;
+    if (where === "backup")
+      return `${rebuilt ? "このバックアップの地図は前の組み立ての物です。このページの組み立てに合わせて戻します。" : `このバックアップの地図は前の版（版 ${u.from.release}）の物です。このページの版（版 ${u.to.release}）に合わせて戻します。`}${body}`;
+    if (where === "confirm") return `地図を新しい版（版 ${u.to.release}）にします。${body}`;
+    if (where === "adopt")
+      return `${rebuilt ? "アカウントの内容は前の組み立ての地図だったため、このページの組み立てに当て直して読み込みました。" : `アカウントの内容は前の版の地図だったため、新しい版（版 ${u.to.release}）にして読み込みました。`}${body}`;
+    return `未来の道筋を新しい版（版 ${u.to.release}）にしました。${body}`;
   }
   // 版の順番を残す前に読み込んだ地図（版の順番が無い）は「前の版」とだけ言う
   const known = u.from.release > 0;
   const next = `3 か月ごとの新しい地図（版 ${u.to.release}）`;
-  const head =
-    where === "boot"
-      ? `地図を、${next}で開きました。`
-      : where === "import"
-        ? `地図は、このページの${next}に合わせて読み込みます（ファイルは${known ? `版 ${u.from.release} の` : "前の版の"}地図）。`
-        : where === "backup"
-          ? `このバックアップの地図は前の版${known ? `（版 ${u.from.release}）` : ""}の物です。このページの${next}に合わせて戻します。`
-          : where === "confirm"
-            ? `未来の道筋を、${next}にします。`
-            : where === "adopt"
-              ? `アカウントの内容は前の版の地図だったため、${next}にして読み込みました。`
-              : `未来の道筋を、${next}にしました。`;
-  const done = where === "boot" || where === "swap" || where === "adopt";
+  const heads: Record<UpgradeNoticeWhere, string> = {
+    boot: `地図を、${next}で開きました。`,
+    view: `地図を、${next}で表示しています${VIEW_ONLY}。`,
+    import: `地図は、このページの${next}に合わせて読み込みます（ファイルは${known ? `版 ${u.from.release} の` : "前の版の"}地図）。`,
+    backup: `このバックアップの地図は前の版${known ? `（版 ${u.from.release}）` : ""}の物です。このページの${next}に合わせて戻します。`,
+    confirm: `未来の道筋を、${next}にします。`,
+    adopt: `アカウントの内容は前の版の地図だったため、${next}にして読み込みました。`,
+    swap: `未来の道筋を、${next}にしました。`,
+  };
+  const head = heads[where];
+  const done = where === "boot" || where === "view" || where === "swap" || where === "adopt";
   const parts: string[] = [];
   if (L.moved.cards) parts.push(`${cardsLabel(L.moved, "手")}は ${L.movedAt}の同じ手へ移${done ? "しました" : "します"}`);
   if (L.kept.cards) parts.push(`最初の手と 3 か月後のカードで決めたこと ${L.kept.cards} 件はそのまま引き継${done ? "ぎました" : "ぎます"}`);
   if (L.detached.cards) parts.push(`新しい地図に無いカードの${cardsLabel(L.detached, "カード")}は、別のカードとして「前の版で決めたこと」（今日の左）に残${done ? "しました" : "します"}`);
+  // 引き継がない物も数で言う（loss-6）
+  if (L.relations) parts.push(`関係を変えた地図の線 ${L.relations} 本は、新しい地図の関係に戻${done ? "しました" : "します"}`);
   const body = parts.length ? `${parts.join("。")}。` : "";
-  return `${head}${body}${where === "boot" ? "前の内容はバックアップに残しています。" : ""}`;
+  return `${head}${body}${where === "boot" ? KEPT_RAW : ""}`;
 }

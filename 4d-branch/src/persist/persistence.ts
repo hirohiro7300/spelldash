@@ -16,7 +16,7 @@
 
 import { toDateStr } from "../model/dates";
 import { newId, nowISO } from "../model/ids";
-import { NewerDocError, docCounts, isNewerVersion } from "../model/schema";
+import { NewerDocError, THIN_VERSION, docCounts, isNewerVersion } from "../model/schema";
 import type { DocData, ID } from "../model/types";
 import { Emitter } from "../store/emitter";
 import {
@@ -27,17 +27,20 @@ import {
   ensurePageMap,
   hasThinBaseline,
   headerBlock,
+  isNewerMap,
   isNewerRecord,
   isThinShape,
   needsPageMap,
+  onCodecWarn,
   pageRelease,
   recordInfo,
   thinReadable,
   ThinMapError,
   ThinNewerError,
   ThinWriteError,
+  THIN_BASELINE_VERSION,
   StoredTooLargeError,
-  toStored,
+  toStoredOrFull,
   upgradeNotice,
   type ReadFailure,
   type ThinErrorCode,
@@ -69,6 +72,26 @@ export interface BackupMeta {
   mapRelease?: number;
   mapHash?: string;
   mapBv?: number;
+  /**
+   * 変える前の記録をそのまま残した物（地図を新しい版で開く前・「この版で開き直す」の前）。間引かない（消すのは利用者だけ）。
+   * 一覧ではそのままの形でダウンロードする（loss-6）。rawOf: どの記録か（同じ記録は 1 度だけ残す: skew-3）
+   */
+  raw?: boolean;
+  rawOf?: string;
+}
+
+/**
+ * このページより前の形・前の版の地図・前の組み立てのバックアップか、変える前の記録をそのまま残した物か（見出しで分かる物）。
+ * 一覧のダウンロードは、そのままの形（読むと当て直すので、当て直す前の内容を外へ出せるように: loss-6）。薄い形を読めないページでは false
+ */
+export function isRawDownloadBackup(b: Pick<BackupMeta, "docVersion" | "mapRelease" | "mapBv" | "raw">): boolean {
+  if (b.raw) return true;
+  if (!thinReadable()) return false;
+  const fmt = typeof b.docVersion === "number" && Number.isFinite(b.docVersion) ? Math.floor(b.docVersion) : 1;
+  if (fmt < THIN_VERSION) return true;
+  const rel = pageRelease();
+  if (typeof b.mapRelease === "number" && rel !== null && b.mapRelease < rel) return true;
+  return typeof b.mapBv === "number" && b.mapBv < THIN_BASELINE_VERSION;
 }
 
 /** このページより新しい版で作られたバックアップか（見出しの版で分かる物。中身でしか分からない物は readBackupChecked で） */
@@ -103,15 +126,14 @@ interface StoredMeta {
 function checkMetaVersion(meta: StoredMeta | null): void {
   const v = meta?.docVersion;
   if (isNewerVersion(v)) throw new NewerDocError(Math.floor(v));
-  const rel = pageRelease();
-  if (typeof meta?.mapRelease === "number" && rel !== null && meta.mapRelease > rel) throw new ThinNewerError(meta.mapRelease);
+  // 新しい版の地図・同じ版の順番で新しい組み立ての地図（skew-2）
+  if (meta && isNewerMap(meta.mapRelease, meta.mapBv)) throw new ThinNewerError(meta.mapRelease!);
 }
 
-/** 版の記録が、このページでは上書きしてはいけない本体を指しているか（新しい版の形・新しい版の地図） */
+/** 版の記録が、このページでは上書きしてはいけない本体を指しているか（新しい版の形・新しい版の地図・新しい組み立ての地図） */
 function metaForbidsWrite(meta: StoredMeta | null | undefined): boolean {
   if (isNewerVersion(meta?.docVersion)) return true;
-  const rel = pageRelease();
-  return typeof meta?.mapRelease === "number" && rel !== null && meta.mapRelease > rel;
+  return !!meta && isNewerMap(meta.mapRelease, meta.mapBv);
 }
 
 /**
@@ -201,7 +223,12 @@ interface StoredDoc {
   meta: StoredMeta;
   /** 前の版・違う組み立ての地図を、鍵でページの地図に当て直して読んだ（数） */
   upgrade?: ThinUpgradeInfo;
+  /** 読んだときの知らせ（版 6 の地図を新しい版にできず、前の版の地図のまま読んだ: code-1） */
+  warning?: string;
 }
+
+/** 版 6 の地図を新しい版にできず、前の版の地図のまま開いたときの知らせ */
+const LEGACY_KEPT = "版 6 の地図を新しい版にできなかったため、前の版の地図のまま開きます。保存されているデータには触れていません";
 
 /** 同期で読み書きする小さな保存先（localStorage）。テストではメモリに差し替える */
 export interface SyncKV {
@@ -306,6 +333,13 @@ function rawTitle(raw: unknown): string {
   return typeof t === "string" ? t : "";
 }
 
+/** そのまま残す記録の更新時刻（読めなければ、文字の記録なら長さ） */
+function rawUpdatedAt(raw: unknown): string {
+  if (typeof raw === "string") return `text${raw.length}`;
+  const t = raw && typeof raw === "object" ? (raw as { updatedAt?: unknown }).updatedAt : undefined;
+  return typeof t === "string" ? t : "";
+}
+
 function errorMessage(e: unknown): string {
   if (e instanceof DOMException && (e.name === "QuotaExceededError" || e.code === 22)) {
     return "保存容量が足りません。不要なバックアップを消すか、エクスポートしてください。";
@@ -322,6 +356,11 @@ export class Persistence {
   status: SaveStatus = "idle";
   private lastFailEmergencyAt = 0;
   statusMessage = "";
+  /**
+   * 保存に失敗している訳が、文書の形・大きさ（大きすぎる・薄い形にできない）か。そうなら、直前の操作を元に戻すと保存できることがある
+   * （画面の帯が「元に戻す」も出す: loss-1）。失敗していなければ false
+   */
+  saveErrorFromDoc = false;
   savedAt: string | null = null;
   rev = 0;
   writer = false;
@@ -626,7 +665,20 @@ export class Persistence {
       if (thinReadable() && classifyReadFailure(undefined, null, rec.meta?.docVersion) === "blocked") throw new ThinMapError("corrupt", "版の記録はあるのに、保存されている本体が見つかりません。保存されているデータには触れていません。");
       return null;
     }
-    const d = await decodeStoredAsync(rec.raw, opts);
+    let d: Awaited<ReturnType<typeof decodeStoredAsync>>;
+    try {
+      d = await decodeStoredAsync(rec.raw, opts);
+    } catch (e) {
+      // 版 1 の記録が読めない: 地図の引き上げで失敗したのかもしれない。引き上げずにもう一度読む（壊れたと取り違えて、バックアップで始めたり
+      // 上書きしたりしない: code-1）。それでも読めなければ、今までどおりの訳で投げる
+      if (opts.upgrade === "none" || classifyReadFailure(rec.raw, e, rec.meta?.docVersion) !== "corrupt") throw e;
+      try {
+        d = decodeStored(rec.raw, { upgrade: "none" });
+      } catch {
+        throw e;
+      }
+      return { doc: d.doc, meta: rec.meta ?? { rev: 0, savedAt: d.doc.updatedAt, writer: "" }, warning: `${LEGACY_KEPT}（${e instanceof Error ? e.message : String(e)}）` };
+    }
     return { doc: d.doc, meta: rec.meta ?? { rev: 0, savedAt: d.doc.updatedAt, writer: "" }, ...(d.upgrade ? { upgrade: d.upgrade } : {}) };
   }
 
@@ -825,6 +877,20 @@ export class Persistence {
    * reopen: 「この版で開き直す」。薄い形の本体を、安全用バックアップにそのまま残してから、鍵でページの地図に当て直して開く（残せなければ止める）
    */
   async loadInitial(opts: { reopen?: boolean } = {}): Promise<{ doc: DocData | null; notices: string[]; recovered: boolean; blocked: boolean; why?: BlockInfo; upgrade?: ThinUpgradeInfo }> {
+    // 読む間の保存の口の知らせ（版 6 の地図を新しい版にできなかった など）は、起動の知らせに足す（コンソールだけにしない: code-6）
+    const heard: string[] = [];
+    const off = onCodecWarn((m, kind) => {
+      if ((kind === "upgrade" || kind === "full") && !heard.includes(m)) heard.push(m);
+    });
+    try {
+      const r = await this.loadInitialInner(opts);
+      return r.blocked ? r : { ...r, notices: [...r.notices, ...heard.filter((m) => !r.notices.includes(m))] };
+    } finally {
+      off();
+    }
+  }
+
+  private async loadInitialInner(opts: { reopen?: boolean }): Promise<{ doc: DocData | null; notices: string[]; recovered: boolean; blocked: boolean; why?: BlockInfo; upgrade?: ThinUpgradeInfo }> {
     const notices: string[] = [];
     if (this.mode === "memory") return { doc: null, notices, recovered: false, blocked: false };
     // 止めた結果（新しい版で止めたときの形は前と同じ。why は、このページでは開けない保存してあるデータで止めたときだけ）
@@ -868,13 +934,20 @@ export class Persistence {
       // 保存してあった物より前の版のバックアップは、自分では戻さない（選んでもらう）
       if (skipped.older) notices.push(`前の版のバックアップ（${skipped.older} 件）は自動では戻しませんでした。メニュー →「バックアップと復元」から選べます。`);
     }
+    if (stored?.warning) notices.push(`${stored.warning}。`);
     if (stored?.upgrade) {
-      // 前の版の地図・違う組み立ての地図を、ページの地図に当て直して開いた: 当て直す前の記録を安全用バックアップに残す（そのページで戻せる）
-      if (!opts.reopen) await this.backupRawRecord("地図を新しい版で開く前に保存されていた内容");
-      // 知らせは当て直した結果の数のまま（版 6 までの地図は、移した手・引き継いだカード・別のカードに残したカードを数で: user-6）。
-      // 次に保存するとき、ページの地図を持つ文書として薄い形で書く
-      notices.push(upgradeNotice(stored.upgrade, "boot"));
-      this.dirty = true;
+      if (this.writer) {
+        // 前の版の地図・違う組み立ての地図を、ページの地図に当て直して開いた: 当て直す前の記録をそのまま安全用バックアップに残す（間引かない。
+        // 同じ記録は 1 度だけ: loss-6）。知らせは当て直した結果の数のまま（版 6 までの地図は、移した手・引き継いだカード・別のカードに残した
+        // カードを数で: user-6）。次に保存するとき、ページの地図を持つ文書として薄い形で書く
+        if (!opts.reopen) await this.backupRawRecord("地図を新しい版で開く前に保存されていた内容");
+        notices.push(upgradeNotice(stored.upgrade, "boot"));
+        this.dirty = true;
+      } else {
+        // 閲覧のみのタブ: 当て直した文書は見るだけ（保存先には何も書かない。バックアップも緊急コピーも作らない: skew-3）。
+        // 当て直す前の記録は、このタブが引き継いだとき（takeOver）か、編集できるタブが開いたときに残す
+        notices.push(upgradeNotice(stored.upgrade, "view"));
+      }
     }
     if (stored) {
       this.rev = stored.meta.rev;
@@ -924,7 +997,7 @@ export class Persistence {
     for (const em of this.readEmergencies()) {
       if (!em.blocked) continue;
       try {
-        await this.putBackup("safety", label, em.rawDoc, rawCounts(em.rawDoc), rawTitle(em.rawDoc));
+        await this.putRawBackup(label, em.rawDoc, `copy:${em.tabId}:${em.baseRev}:${em.rawUpdatedAt}`);
       } catch {
         return false;
       }
@@ -934,7 +1007,8 @@ export class Persistence {
 
   /**
    * 保存してある本体の記録を、整えずにそのまま安全用バックアップに残す（「この版で開き直す」・地図を新しい版で開く前）。
-   * 見出しには記録の形の版と地図の版の順番を書く（間引き・復元の見分けに）。残せたら true（本体が無ければ true）
+   * 見出しには記録の形の版と地図の版の順番を書く（間引き・復元の見分けに）。間引かない（変える前の内容へ戻る道: loss-6）。
+   * 同じ記録（版番号と更新時刻が同じ）は 1 度だけ残す（開くたびに増やさない: skew-3）。残せたら true（本体が無ければ true）
    */
   private async backupRawRecord(label: string): Promise<boolean> {
     if (!this.canBackup || this.blocked) return false;
@@ -947,11 +1021,18 @@ export class Persistence {
     if (rec.raw == null && rec.text === null) return true;
     const raw = rec.raw !== undefined ? rec.raw : rec.text;
     try {
-      await this.putBackup("safety", label, raw, rawCounts(raw), rawTitle(raw));
+      await this.putRawBackup(label, raw, `body:${rec.meta?.rev ?? 0}:${rawUpdatedAt(raw)}`);
       return true;
     } catch {
       return false;
     }
+  }
+
+  /** 変える前の記録をそのまま残す（of: どの記録か。同じ物がもう残っていれば書かない。間引かない印 raw を付ける） */
+  private async putRawBackup(label: string, raw: unknown, of: string): Promise<void> {
+    const list = await this.listBackups();
+    if (list.some((b) => b.raw && b.rawOf === of)) return;
+    await this.putBackup("safety", label, raw, rawCounts(raw), rawTitle(raw), { raw: true, rawOf: of });
   }
 
   // ------------------------------------------------------------ 保存
@@ -1022,6 +1103,7 @@ export class Persistence {
         if (this.blocked) return;
         this.rev = newRev;
         this.lastStored = ident;
+        this.saveErrorFromDoc = false;
         this.savedAt = nowISO();
         if (!this.dirty) this.kv.remove(this.keys.emergency);
         this.bc?.postMessage({ type: "saved", rev: newRev, tabId: this.tabId });
@@ -1048,6 +1130,7 @@ export class Persistence {
             this.lastFailEmergencyAt = Date.now();
             this.writeEmergency(true);
           }
+          this.saveErrorFromDoc = e instanceof StoredTooLargeError || e instanceof ThinWriteError;
           this.setStatus("error", errorMessage(e));
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null;
@@ -1071,9 +1154,10 @@ export class Persistence {
    */
   private async writeStored(doc: DocData, expectedRev: number): Promise<number> {
     if (this.blocked) throw new ConflictError("newer");
-    // ページの地図を持つ文書は薄い形で書く（地図をまだ読んでいなければ、先に読む: 地図ごと書かない）
+    // ページの地図を持つ文書は薄い形で書く（地図をまだ読んでいなければ、先に読む: 地図ごと書かない）。薄い形にできなければ、
+    // そのままの形で書く（保存できない状態にしない: loss-1。localStorage は下で大きさを見る）
     if (thinReadable() && !hasThinBaseline() && needsPageMap(doc)) await ensurePageMap();
-    const stored = toStored(doc);
+    const { stored } = toStoredOrFull(doc);
     const meta: StoredMeta = { rev: expectedRev + 1, savedAt: nowISO(), writer: this.tabId, ...headerOf(stored) };
     if (this.mode === "idb") {
       if (!this.db) throw new Error("IndexedDB が閉じています");
@@ -1110,9 +1194,12 @@ export class Persistence {
     return meta.rev;
   }
 
-  /** 閉じる・隠れる瞬間に、未保存の内容を同期で残す（次の起動で採るか比べる） */
+  /**
+   * 閉じる・隠れる瞬間に、未保存の内容を同期で残す（次の起動で採るか比べる）。閲覧のみのタブは書かない（編集できないので、残す変更が無い。
+   * 書くと、次に編集できるタブが開いたとき、別の版のページの写しとして退避バックアップを押し出す: skew-3）
+   */
   writeEmergency(force = false): void {
-    if (this.mode === "memory" || this.blocked || !this.getDoc) return;
+    if (this.mode === "memory" || this.blocked || !this.getDoc || !this.writer) return;
     if (!force && !this.hasUnsaved) return;
     try {
       this.putEmergency(this.getDoc());
@@ -1126,7 +1213,7 @@ export class Persistence {
    * 400 万文字を超える物は書かない（前の緊急コピーを残す: safety-15）
    */
   private putEmergency(doc: DocData): void {
-    const json = JSON.stringify({ v: EMERGENCY_FORMAT, baseRev: this.rev, at: nowISO(), tabId: this.tabId, doc: toStored(doc) });
+    const json = JSON.stringify({ v: EMERGENCY_FORMAT, baseRev: this.rev, at: nowISO(), tabId: this.tabId, doc: toStoredOrFull(doc).stored });
     guardStoredSize(json.length, "local");
     this.kv.set(this.keys.emergency, json);
   }
@@ -1223,14 +1310,14 @@ export class Persistence {
   async createBackup(kind: BackupKind, label: string, doc?: DocData): Promise<BackupMeta | null> {
     const d = doc ?? this.getDoc?.();
     if (!d || !this.canBackup || this.blocked) return null;
-    // 中身は保存の口を通した形（ページの地図なら薄い形）。件数は手元の文書で数える
+    // 中身は保存の口を通した形（ページの地図なら薄い形。できなければそのままの形: loss-1）。件数は手元の文書で数える
     if (thinReadable() && !hasThinBaseline() && needsPageMap(d)) await ensurePageMap();
-    return this.putBackup(kind, label, toStored(d), docCounts(d), d.title);
+    return this.putBackup(kind, label, toStoredOrFull(d).stored, docCounts(d), d.title);
   }
 
-  /** バックアップを書く（stored: 保存する形・止めたときの記録そのまま）。見出しには形の版と地図の版の順番 */
-  private async putBackup(kind: BackupKind, label: string, stored: unknown, counts: BackupMeta["counts"], docTitle: string): Promise<BackupMeta> {
-    const meta: BackupMeta = { id: newId("b"), kind, label, createdAt: nowISO(), docTitle, counts, ...headerOf(stored) };
+  /** バックアップを書く（stored: 保存する形・止めたときの記録そのまま）。見出しには形の版と地図の版の順番（extra: そのまま残した記録の印） */
+  private async putBackup(kind: BackupKind, label: string, stored: unknown, counts: BackupMeta["counts"], docTitle: string, extra: Pick<BackupMeta, "raw" | "rawOf"> = {}): Promise<BackupMeta> {
+    const meta: BackupMeta = { id: newId("b"), kind, label, createdAt: nowISO(), docTitle, counts, ...headerOf(stored), ...extra };
     const t = this.db!.transaction(["backupMeta", "backupData"], "readwrite");
     try {
       // 中身を先に（写せない中身なら、見出しだけの行を残さない）
@@ -1266,7 +1353,7 @@ export class Persistence {
    * 読まない・復元しない）。blocked: このページでは開けない地図（薄い形の中身の読めない訳はどれも: safety-3。復元しない・間引かない）。
    * doc が null で newer でも blocked でもなければ、無いか壊れている。前の版の地図は、ページの地図に当て直して読む（upgrade に数）
    */
-  async readBackupChecked(id: ID): Promise<{ doc: DocData | null; newer: boolean; blocked?: boolean; upgrade?: ThinUpgradeInfo; message?: string }> {
+  async readBackupChecked(id: ID): Promise<{ doc: DocData | null; newer: boolean; blocked?: boolean; upgrade?: ThinUpgradeInfo; message?: string; warning?: string }> {
     if (!this.canBackup) return { doc: null, newer: false };
     const t = this.db!.transaction(["backupMeta", "backupData"], "readonly");
     const [meta, rec] = await Promise.all([req(t.objectStore("backupMeta").get(id)), req(t.objectStore("backupData").get(id))]);
@@ -1274,13 +1361,20 @@ export class Persistence {
     if (head === "newer") return { doc: null, newer: true };
     const data = rec as { doc?: unknown } | undefined;
     if (!data?.doc) return { doc: null, newer: false };
+    // 読む間の知らせ（版 6 の地図を新しい版にできなかった など）は、戻すかの確認に出す（code-6）
+    let warning: string | undefined;
+    const off = onCodecWarn((m, kind) => {
+      if (kind === "upgrade") warning ??= m;
+    });
     try {
       const d = await decodeStoredAsync(data.doc);
-      return { doc: d.doc, newer: false, ...(d.upgrade ? { upgrade: d.upgrade } : {}) };
+      return { doc: d.doc, newer: false, ...(d.upgrade ? { upgrade: d.upgrade } : {}), ...(warning ? { warning } : {}) };
     } catch (e) {
       const cls = classifyReadFailure(data.doc, e, (meta as BackupMeta | undefined)?.docVersion);
       if (cls === "newer") return { doc: null, newer: true };
       return cls === "blocked" ? { doc: null, newer: false, blocked: true, message: errorText(e) } : { doc: null, newer: false };
+    } finally {
+      off();
     }
   }
 
@@ -1307,10 +1401,10 @@ export class Persistence {
 
   /**
    * 種類ごとに件数で間引く。このページより新しい版のバックアップ・このページでは開けない地図のバックアップ（見出しで分かる物）は
-   * 数えず、消さない（読めるページが間引く: safety-3）
+   * 数えず、消さない（読めるページが間引く: safety-3）。変える前の記録をそのまま残した物（raw）も数えず、消さない（loss-6）
    */
   private async prune(kind: BackupKind): Promise<void> {
-    const list = (await this.listBackups()).filter((b) => b.kind === kind && headerBlock(b) === null);
+    const list = (await this.listBackups()).filter((b) => b.kind === kind && headerBlock(b) === null && !b.raw);
     const extra = list.slice(KEEP[kind]);
     if (extra.length === 0) return;
     const t = this.db!.transaction(["backupMeta", "backupData"], "readwrite");
@@ -1382,16 +1476,25 @@ export class Persistence {
     if (stored) {
       this.rev = stored.meta.rev;
       this.savedAt = stored.meta.savedAt;
-      this.lastStored = { id: stored.doc.id, updatedAt: stored.doc.updatedAt };
+      // 当て直して読んだ本体は、まだこの形で保存できていない（起動と同じ）
+      if (!stored.upgrade) this.lastStored = { id: stored.doc.id, updatedAt: stored.doc.updatedAt };
     }
     this.stopped = false;
     this.dirty = false;
     this.setWriter(true);
     const notices: string[] = [];
+    if (stored?.warning) notices.push(`${stored.warning}。`);
+    if (stored?.upgrade) {
+      // 前の版の地図・前の組み立ての本体を当て直して引き継いだ（閲覧のみで開いていたタブ）: 編集できるタブになったここで、当て直す前の記録を
+      // そのまま安全用バックアップに残し（同じ記録は 1 度だけ）、次の保存で薄い形にする（起動と同じ: skew-3・loss-6）
+      await this.backupRawRecord("地図を新しい版で開く前に保存されていた内容");
+      notices.push(upgradeNotice(stored.upgrade, "boot"));
+      this.dirty = true;
+    }
     const adopted = await this.consumeEmergencies(stored, notices);
     if (this.blocked) return null;
     for (const n of notices) this.notice("info", n);
-    if (adopted) this.schedule();
+    if (adopted || this.dirty) this.schedule();
     else this.setStatus(this.savedAt ? "saved" : "idle");
     return adopted ?? stored?.doc ?? null;
   }

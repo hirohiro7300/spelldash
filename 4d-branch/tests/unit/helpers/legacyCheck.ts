@@ -37,6 +37,8 @@ export interface Inventory {
 /** 版 6 の文書に利用者が入れた物を、凍結した版 6 の地図と比べて数え上げる */
 export function inventory(doc: DocData): Inventory {
   const refDoc = buildR6MapDoc(JSON.parse(R6_RAW) as R6Bundle, ACCOUNT_R6_LOAD_DAY, R6_RELEASE, "2026-11-12T10:30:00.000Z") as unknown as DocData;
+  // プロジェクトは名前で比べる（アカウントの地図は「追加する」で入ったので、同じ名前でも ID が違うプロジェクトがある）
+  const projNames = (d: DocData, ids: readonly string[]): string => ids.map((id) => d.projects[id]?.name ?? id).sort().join("\u0000");
   const ref = new Map<string, GNode>(Object.values(refDoc.nodes).map((n) => [keyOf(n)!, n]));
   const refEdge = new Map<string, GEdge>(Object.values(refDoc.edges).map((e) => [keyOf(refDoc.nodes[e.target])!, e]));
   const card = new Map<string, GNode>();
@@ -60,6 +62,12 @@ export function inventory(doc: DocData): Inventory {
     if (n.title !== r.title) mark(k, "title");
     if (n.body !== r.body) mark(k, "body");
     if (n.tags.some((t) => !impactTagsOf(n.meta).includes(t))) mark(k, "tag");
+    // 期限・開始・種類・プロジェクト・シナリオ（右のパネル・右クリックで直せる: 見直し loss-3）
+    if (n.time.due !== r.time.due) mark(k, "due");
+    if (n.time.start !== r.time.start) mark(k, "start");
+    if (n.type !== r.type) mark(k, "type");
+    if (projNames(doc, n.projectIds) !== projNames(refDoc, r.projectIds)) mark(k, "project");
+    if (n.scenarioIds.length) mark(k, "scenario");
   }
   const inEdge = new Map<string, GEdge>();
   const userEdges: GEdge[] = [];
@@ -140,6 +148,15 @@ export function checkUpgrade(input: DocData, out: DocData, map: MapData): { kept
         expect(bySlot || n!.conditions.some((y) => y.met && y.text === m.text), `${key} のチェック ${m.text}`).toBe(true);
       }
       for (const m of ownTodo) expect(n!.conditions.some((y) => y.text === m.text && y.met === m.met), `${key} の自分の項目`).toBe(true);
+      // 直した期限・開始・種類・シナリオはそのまま、足したプロジェクトは足したまま（loss-3）
+      if (set.has("due")) expect(n!.time.due, `${key} の期限`).toBe(c.time.due);
+      if (set.has("start")) expect(n!.time.start, `${key} の開始`).toBe(c.time.start);
+      if (set.has("type")) expect(n!.type, `${key} の種類`).toBe(c.type);
+      if (set.has("scenario")) expect(n!.scenarioIds, `${key} のシナリオ`).toEqual(c.scenarioIds);
+      if (set.has("project")) {
+        const refNames = new Set(inv.ref.get(key)!.projectIds.map((id) => id));
+        for (const p of c.projectIds) if (!refNames.has(p) && !n!.projectIds.includes(p) && !["p_spelldash", "p_fcmarketing"].includes(p)) expect(n!.projectIds, `${key} のプロジェクト`).toContain(p);
+      }
       if (set.has("prob") || set.has("edge-text")) {
         const e = edgeInto(out, c.id)!;
         expect(e, `${key} の線`).toBeDefined();
@@ -150,7 +167,17 @@ export function checkUpgrade(input: DocData, out: DocData, map: MapData): { kept
       // 鍵の無い利用者のカードとして、題名・本文・状態・やること・タグ・期限はそのまま
       expect(keyOf(n), key).toBeNull();
       expect(n!.meta.prevKey, key).toBe(key);
-      expect({ title: n!.title, body: n!.body, status: n!.status, conditions: n!.conditions, tags: n!.tags, time: n!.time }, key).toEqual({ title: c.title, body: c.body, status: c.status, conditions: c.conditions, tags: c.tags, time: c.time });
+      expect({ title: n!.title, body: n!.body, status: n!.status, conditions: n!.conditions, tags: n!.tags, time: n!.time, type: n!.type, projectIds: n!.projectIds, scenarioIds: n!.scenarioIds }, key).toEqual({
+        title: c.title,
+        body: c.body,
+        status: c.status,
+        conditions: c.conditions,
+        tags: c.tags,
+        time: c.time,
+        type: c.type,
+        projectIds: c.projectIds,
+        scenarioIds: c.scenarioIds,
+      });
       expect(n!.x, key).toBeLessThan(outRoot.x);
       expect(group, "前の版で決めたこと").not.toBeNull();
       expect(n!.x).toBe(group!.x);

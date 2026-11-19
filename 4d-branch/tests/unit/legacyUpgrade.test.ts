@@ -18,7 +18,7 @@ import { computeForecast } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
 import { computeImpact } from "../../src/model/impact";
 import { keyDecisions, worthRanking } from "../../src/model/impactRank";
-import { createEmptyDoc, makeNode, normalizeDoc, THIN_VERSION } from "../../src/model/schema";
+import { createEmptyDoc, makeNode, makeProject, normalizeDoc, THIN_VERSION } from "../../src/model/schema";
 import type { DocData, GNode } from "../../src/model/types";
 import {
   decodeStored,
@@ -37,6 +37,8 @@ import {
 } from "../../src/persist/codec";
 import { CloudRepo, CloudSync, mapReleaseOf, type BootDoc, type CloudBackend, type CloudCodec, type CloudDoc, type SyncBase } from "../../src/persist/cloud";
 import { exportText, previewImportAsync } from "../../src/persist/io";
+import { movedIndex } from "../../src/persist/legacyMap";
+import { pageMapAccess } from "../../src/persist/thinMap";
 import { memoryKV, Persistence } from "../../src/persist/persistence";
 import { Store } from "../../src/store/store";
 import { rawAll, rawGet, rawPut } from "./helpers/idbRaw";
@@ -88,7 +90,7 @@ describe("版 6 の地図の引き上げ: 利用者が入れた物は、どの�
     // 小さい木には最初の手が 3 つ（今のまま・届け出て副業・今すぐ独立）しか無い: ほかの手の下の物は別のカードに、届け出て副業の 3 か月後の手は読み替えて移す
     expect(r.moved).toBeGreaterThanOrEqual(1);
     expect(r.detached).toBeGreaterThanOrEqual(8);
-    for (const kind of ["active", "dropped", "tick", "own-todo", "title", "body", "tag", "prob", "edge-text", "own-edge", "own-child"]) expect([kind, (r.kinds[kind] ?? 0) > 0]).toEqual([kind, true]);
+    for (const kind of ["active", "dropped", "tick", "own-todo", "title", "body", "tag", "prob", "edge-text", "own-edge", "own-child", "due", "start", "type", "project", "scenario"]) expect([kind, (r.kinds[kind] ?? 0) > 0]).toEqual([kind, true]);
     // 読み替えた手: 届け出て副業 → 1 社目が見つかった 3 か月後の副業の手のチェックは、新しい地図の同じ状態の 3 か月目の同じ種類の手へ（項目は文ごと）
     const side = inv.card.get("r.ad_permside.a0_a1.ad_side")!;
     const moved = doc.nodes[side.id]!;
@@ -216,6 +218,98 @@ describe("版 6 の地図の引き上げ: 利用者が入れた物は、どの�
   });
 });
 
+describe("期限・開始・種類・プロジェクト・シナリオの書き換えも引き継ぐ（loss-3）", () => {
+  it("鍵の同じカード・読み替えた手は直した値のまま。それだけを直した、無くなったカードは「前の版で決めたこと」に残す。知らせの数にも入る", () => {
+    setThinBaseline(page);
+    const pa = pageMapAccess(null)!;
+    const store = new Store(buildR6Future().pv.doc);
+    const cards = Object.values(store.doc.nodes).filter((n) => keyOf(n) !== null && n.meta.forecastRoot !== true);
+    const kept = cards.filter((n) => pa.keyIndex.has(keyOf(n)!));
+    const moved = cards.filter((n) => !pa.keyIndex.has(keyOf(n)!) && movedIndex(pa, keyOf(n)!, n) > 0);
+    const vanished = cards.filter((n) => !pa.keyIndex.has(keyOf(n)!) && movedIndex(pa, keyOf(n)!, n) < 0);
+    const k1 = kept[1]!; // 選んだ手・期限・種類・自分のプロジェクト
+    const k2 = kept[2]!; // 期限だけ
+    const m1 = moved[0]!; // 選んだ手・開始・種類
+    const v1 = vanished[5]!; // 期限だけ
+    const v2 = vanished[9]!; // 種類だけ
+    const v3 = vanished[13]!; // 自分のプロジェクトだけ
+    const v4 = vanished[17]!; // シナリオだけ
+    const proj = makeProject({ name: "家計の見直し" });
+    const scen = store.doc.scenarioOrder[0]!;
+    store.transact("edits", (tx) => {
+      tx.addProject(proj);
+      tx.updateNode(k1.id, { status: "active", time: { ...k1.time, due: "2027-06-30" }, type: "goal", projectIds: [...k1.projectIds, proj.id] });
+      tx.updateNode(k2.id, { time: { ...k2.time, due: "2027-01-15" } });
+      tx.updateNode(m1.id, { status: "active", time: { ...m1.time, start: "2027-04-10" }, type: "goal" });
+      tx.updateNode(v1.id, { time: { ...v1.time, due: "2028-04-30" } });
+      tx.updateNode(v2.id, { type: v2.type === "result" ? "goal" : "result" });
+      tx.updateNode(v3.id, { projectIds: [...v3.projectIds, proj.id] });
+      tx.updateNode(v4.id, { scenarioIds: [scen] });
+    });
+    const before = structuredClone(store.doc) as DocData;
+    const d = decodeStored(JSON.parse(JSON.stringify(before)));
+    const doc = d.doc;
+    expect(doc.nodes[k1.id]).toMatchObject({ status: "active", type: "goal", time: { due: "2027-06-30" } });
+    expect(doc.nodes[k1.id]!.projectIds).toContain(proj.id);
+    // 同じ鍵のページの地図のカードの組（領域）はそのまま、足したプロジェクトを足す
+    const v7 = thinBaselineDoc({ at: "2026-11-19T03:04:05.006Z" });
+    const k1v7 = Object.values(v7.nodes).find((n) => keyOf(n) === keyOf(k1))!;
+    for (const p of k1v7.projectIds) if (Object.hasOwn(before.projects, p)) expect(doc.nodes[k1.id]!.projectIds).toContain(p);
+    expect(doc.nodes[k2.id]!.time.due).toBe("2027-01-15");
+    // 手を入れていない値（開始）は新しい地図の物
+    expect(doc.nodes[k2.id]!.time.start).toBe(Object.values(v7.nodes).find((n) => keyOf(n) === keyOf(k2))!.time.start);
+    expect(doc.nodes[m1.id]).toMatchObject({ status: "active", type: "goal", time: { start: "2027-04-10" } });
+    for (const v of [v1, v2, v3, v4]) {
+      const n = doc.nodes[v.id]!;
+      expect(n, keyOf(v)!).toBeDefined();
+      expect(n.meta.prevKey).toBe(keyOf(v));
+    }
+    expect(doc.nodes[v1.id]!.time.due).toBe("2028-04-30");
+    expect(doc.nodes[v2.id]!.type).toBe(v2.type === "result" ? "goal" : "result");
+    expect(doc.nodes[v3.id]!.projectIds).toContain(proj.id);
+    expect(doc.nodes[v4.id]!.scenarioIds).toEqual([scen]);
+    const L = d.upgrade!.legacy!;
+    expect(L.detached.cards).toBe(4);
+    expect(L.detached.edits).toBe(4);
+    const text = upgradeNotice(d.upgrade!, "boot");
+    expect(text).toContain("書き換えたカード 4 件");
+    // 薄い形で書いて読み直しても同じ（直した値は書き換えとして残る）
+    const back = decodeStored(JSON.parse(JSON.stringify(toStored(doc)))).doc;
+    expect(back.nodes[k1.id]!.time.due).toBe("2027-06-30");
+    expect(back.nodes[v1.id]!.time.due).toBe("2028-04-30");
+  });
+
+  it("関係を変えた地図の線: 残るカードの線は新しい地図の関係に戻して数を言い、無くなるカードは関係を prevEdge に残す（loss-6）", () => {
+    setThinBaseline(page);
+    const pa = pageMapAccess(null)!;
+    const store = new Store(buildR6Future().pv.doc);
+    const cards = Object.values(store.doc.nodes).filter((n) => keyOf(n) !== null && n.meta.forecastRoot !== true);
+    const keptCard = cards.find((n) => keyOf(n) === "r.keep")!;
+    const gone = cards.filter((n) => !pa.keyIndex.has(keyOf(n)!) && movedIndex(pa, keyOf(n)!, n) < 0)[3]!;
+    const into = (id: string) => Object.values(store.doc.edges).find((e) => e.target === id && typeof e.meta.c0 === "string")!;
+    store.transact("関係", (tx) => {
+      tx.updateEdge(into(keptCard.id).id, { relation: "supports" });
+      tx.updateEdge(into(gone.id).id, { relation: "blocks" });
+    });
+    const d = decodeStored(JSON.parse(JSON.stringify(store.doc)));
+    expect(d.upgrade!.legacy!.relations).toBe(1);
+    expect(upgradeNotice(d.upgrade!, "boot")).toContain("関係を変えた地図の線 1 本は、新しい地図の関係に戻しました");
+    const left = d.doc.nodes[gone.id]!;
+    expect(left.meta.prevKey).toBe(keyOf(gone));
+    expect(left.meta.prevEdge).toMatchObject({ relation: "blocks" });
+  });
+
+  it("手を入れていない版 6 の地図では、どのカードも直したと見なさない（どの時差で読み込んだ地図でも）", () => {
+    setThinBaseline(page);
+    for (const day of [new Date(2026, 10, 12, 9), new Date(2026, 0, 31, 23, 30), new Date(2028, 1, 29, 1)]) {
+      const fresh = buildR6Future(day).pv.doc;
+      const d = decodeStored(JSON.parse(JSON.stringify(fresh)));
+      expect(d.upgrade!.legacy!.detached.cards, String(day)).toBe(0);
+      expect(d.upgrade!.applied, String(day)).toBe(0);
+    }
+  });
+});
+
 describe("知らせと確認の文（user-6）: 移した数・残した数をそのまま", () => {
   it("起動の知らせ: 3 か月後の手は何年何月の同じ手へ移し、無いカードは別のカードとして残したと、数で言う（「そのまま残ります」と言わない）", () => {
     const { info } = upgraded();
@@ -227,7 +321,8 @@ describe("知らせと確認の文（user-6）: 移した数・残した数を�
     expect(text).toContain(`は、別のカードとして「前の版で決めたこと」（今日の左）に残しました`);
     if (L.detached.picks) expect(text).toContain(`選んだ手 ${L.detached.picks} 件`);
     if (L.detached.drops) expect(text).toContain(`見送った手 ${L.detached.drops} 件`);
-    expect(text).toContain("前の内容はバックアップに残しています。");
+    // 当て直す前の記録は、そのままの形でダウンロードできる（loss-6）
+    expect(text).toContain("前の内容は、そのままの形でバックアップに残しています（メニュー →「バックアップと復元」からダウンロードできます）。");
     expect(text).not.toContain("そのまま残ります");
     // 数の合計は、移した・引き継いだ・残したカードの数
     const nums = [...text.matchAll(/(\d+) 件/g)].map((m) => Number(m[1]));
@@ -520,9 +615,11 @@ describe("アカウント: 引き上げは読むときだけ（アカウント�
     expect(re.has(kept.doc, "新しいページで足したカード")).toBe(true);
   });
 
-  it("起動したときの記録が無い（前の版のページの記録・記録の前に送った）と、今の地図の版で比べる（今までの重なりと同じ: 聞かない）", async () => {
-    const { re } = await reopened("later", false);
-    expect(re.local.asked).toBe(0);
+  it("起動したときの記録が無くても（閲覧のみで起動して引き継いだ・前の版のページが消した）聞く: 基準の地図の版と、読んだ手元の保存してあった形の版で分かる（loss-2・skew-1）", async () => {
+    const { re, acct } = await reopened("later", false);
+    expect(re.local.asked).toBe(1);
+    expect(re.has(acct.doc, "新しいページで足したカード")).toBe(true);
+    expect(re.has(acct.doc, "前の版のページで止める前に書いたカード")).toBe(false);
   });
 });
 

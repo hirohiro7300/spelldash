@@ -8,3 +8,8 @@ declare module "@impact-q-bundle?raw" {
   const b64: string;
   export default b64;
 }
+
+declare module "@impact-q-release?raw" {
+  const json: string;
+  export default json;
+}

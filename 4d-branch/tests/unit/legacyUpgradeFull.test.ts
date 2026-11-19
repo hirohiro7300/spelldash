@@ -95,15 +95,24 @@ describe.skipIf(!RUN)("版 6 の地図の引き上げ（8 万枚の木・版 7 �
         "r.fc_switch.none.fc_switch.high.plan_side.a",
         "r.fc_switch.none.fc_switch.none",
         "r.fc_switch.none.fc_switch.none.ind_quit",
+        // 期限・種類・プロジェクト・シナリオだけを直したカード（新しい地図に無い: loss-3）
+        "r.ind_quit.cl2.ad_more.cl5",
+        "r.keep.all.fc_switch.high",
+        "r.sd_grow.all.fc_switch.high.plan_side",
+        "r.sd_grow.all.fc_switch.mid.keep",
       ]);
+      // 鍵の同じカード・読み替えた手の、直した期限・種類・開始はそのまま（loss-3）
+      expect(byKey("r.ad_permside").time.due).toBe("2027-05-31");
+      expect(byKey("r.keep.all").type).toBe("goal");
+      expect(byKey("r.ad_permside.a0_a1.ad_side").time.start).toBe("2027-03-10");
       // 77% に直した見込みは、ページの地図の同じ線に
       const high = byKey("r.fc_switch.high");
       expect(Object.values(d.doc.edges).find((e) => e.target === high.id)!.meta.prob).toBe(77);
       // 知らせ: 移した手は 2027 年 2 月の同じ手へ・残したカードは別のカードとして（数のまま）
       const text = upgradeNotice(d.upgrade!, "boot");
       expect(text).toContain("見送った手 1 件・書き換えた・チェックした手 2 件は 2027 年 2 月の同じ手へ移しました");
-      expect(text).toContain("最初の手と 3 か月後のカードで決めたこと 8 件はそのまま引き継ぎました");
-      expect(text).toContain("新しい地図に無いカードの選んだ手 2 件・見送った手 1 件・書き換えた・線でつないだカード 4 件は、別のカードとして「前の版で決めたこと」（今日の左）に残しました");
+      expect(text).toContain("最初の手と 3 か月後のカードで決めたこと 10 件はそのまま引き継ぎました");
+      expect(text).toContain("新しい地図に無いカードの選んだ手 2 件・見送った手 1 件・書き換えた・線でつないだカード 8 件は、別のカードとして「前の版で決めたこと」（今日の左）に残しました");
       console.log(`版 6 → 版 7 の引き上げ: 最初の 1 回 ${firstMs.toFixed(0)} ms・その後 ${ms.toFixed(0)} ms（3 回のうち一番速い値）。引き継ぎ ${r.kept}・移した手 ${r.moved}・別のカード ${r.detached}`);
       console.log(`知らせ: ${text}`);
       expect(JSON.stringify(toStored(first.doc))).toBe(JSON.stringify(toStored(d.doc)));

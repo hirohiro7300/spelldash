@@ -13,7 +13,8 @@
 //      アカウントの地図は、この道で入ったので ID がどれも乱数（同梱の鍵の ID ではない）。mergeDocs の手順もここに写して持つ
 //   3. 深さ 1〜6（今日の手 → 3 か月後 → その手 → 1 年後 → 2 年の進め方 → 3 年後）のどこにも、利用者が手を入れた所を作る:
 //      選んだ手と見送り・やることのチェックと自分で足した項目・題名と本文の書き換え・見込みの書き換え（77%）・線の説明と条件の書き換え・
-//      自分のタグ・地図のカードどうしの自分の線・自分のカード（相乗効果・進む・条件付きの線で地図につなぐ）・自分のプロジェクト・年収
+//      自分のタグ・地図のカードどうしの自分の線・自分のカード（相乗効果・進む・条件付きの線で地図につなぐ）・自分のプロジェクト・年収・
+//      地図のカードの期限・開始・種類・プロジェクト・シナリオの書き換え（それだけを直したカードも: 見直し loss-3）
 //   4. ノード・線は 1 行に 1 つで書き出す（差分が読める。どの物も版 6 の検証の後と同じ項目の順）
 // 書き出し: node scripts/fixtures/run.mjs --check（書いてある物と同じかだけを確かめる）。書いてある物を書き直すのは --force の時だけ。
 // 中身は tests/unit/fixturesR6.test.ts が確かめる
@@ -282,6 +283,16 @@ export function buildAccountR6(raw: string, release: R6Release): R6Doc {
   const work = addCard("result", "事務所で働く", doc.nodes[rent]!, [base.own]);
   link(rent, work, "leads");
   link(base.study, rent, "supports");
+
+  // 期限・開始・種類・プロジェクト・シナリオの書き換え（右のパネルの期限と開始・右クリックの種類とプロジェクト。見直し loss-3）:
+  // 深さ 1 の期限・深さ 2 の種類・深さ 3 の開始（読み替える手）と、それだけを直した深い所のカード（新しい地図に無い）
+  patchNode("r.ad_permside", (n) => ({ time: { ...n.time, due: "2027-05-31" } }));
+  patchNode("r.keep.all", () => ({ type: "goal" }));
+  patchNode("r.ad_permside.a0_a1.ad_side", (n) => ({ time: { ...n.time, start: "2027-03-10" } }));
+  patchNode("r.keep.all.fc_switch.high", (n) => ({ time: { ...n.time, due: "2028-05-15" } }));
+  patchNode("r.ind_quit.cl2.ad_more.cl5", () => ({ type: "goal" }));
+  patchNode("r.sd_grow.all.fc_switch.high.plan_side", (n) => ({ projectIds: [...n.projectIds, base.own] }));
+  patchNode("r.sd_grow.all.fc_switch.mid.keep", () => ({ scenarioIds: ["s_early"] }));
 
   doc.updatedAt = stamp();
   // 書き出す形（JSON）に写す。版 6 のページはここで検証を通したが、どの物も検証の後と同じ形で作ってあるので、今のアプリの検証は通さない
