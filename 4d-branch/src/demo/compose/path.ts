@@ -195,6 +195,11 @@ export interface Link {
   readonly salMix: boolean;
   /** この判断に並ぶ手の種類（言い換えを判断ごとに回す数に使う。行き先は空） */
   readonly opts: ReadonlySet<string>;
+  /**
+   * その 3 か月の終わりに勤め先が変わったか（転職した・会社員に戻った。採用の有無をまとめた結果で独立から会社員か週 4 日に移った 3 か月も）。
+   * 覚えを作るときに 1 回だけ決める（今の会社で選んだ手の数を、道の上の状態を読み直さずに数える。F5）
+   */
+  readonly newEmp: boolean;
 }
 
 /** 判断 i に並ぶ手の種類 */
@@ -329,6 +334,19 @@ export function searchCount(link: Link): number {
 }
 
 /**
+ * 道の上で、今の会社に入ってから（転職・会社員に戻るより後）その種類の手を選んだ回数（覚えの手まで）。前の会社で選んだ手は数えない
+ * （「担当を広げ続ける」「前の評価の続き」は同じ会社でだけ言う。F5）。勤め先が変わった 3 か月は覚えの newEmp（点検 C12 の kindHereBefore と同じ決まり）
+ */
+export function countKindHere(link: Link, kind: string): number {
+  let n = 0;
+  for (let l: Link | null = link; l && l.up; l = l.up) {
+    if (l.newEmp) break;
+    if (l.kind === kind) n++;
+  }
+  return n;
+}
+
+/**
  * 手を選ぶ判断の道から決まる条件の値（手の書き出し・手引きの条件に使う。reader-6）:
  * emp6 その判断と 1 つ前の判断で会社員か週 4 日（過去 6 か月の月次報告がある）・prevSearch 前の 3 か月が転職活動・
  * search 今の会社での転職活動の期の数（この手を除く）・f5 次に増える副業の顧客が上の月額か
@@ -376,7 +394,7 @@ export function jobMonths(c: Ctx, link: Link, year: number): { sal: number; ind:
 
 function rootLink(c: Ctx, i: number): Link {
   const lo = clBand(c.map, i)[0];
-  return { up: null, i, kind: null, move: -1, steps: [], evs: [], side: 0, ad: 0, sideM: 0, sideFrom: 1, indFrom: null, first: -1, bestCl: lo, f5: lo >= c.C.raiseAt, salMix: false, opts: optKinds(c.map, i) };
+  return { up: null, i, kind: null, move: -1, steps: [], evs: [], side: 0, ad: 0, sideM: 0, sideFrom: 1, indFrom: null, first: -1, bestCl: lo, f5: lo >= c.C.raiseAt, salMix: false, opts: optKinds(c.map, i), newEmp: false };
 }
 
 /** 給与をまとめた結果の平均にする出来事（facts-1） */
@@ -417,6 +435,7 @@ function makeLink(c: Ctx, up: Link, n: number): Link {
     f5: (!dropped && up.f5) || lo >= C.raiseAt,
     salMix: up.salMix || evs.some((x) => SAL_MIX.has(x.code)),
     opts: optKinds(map, n),
+    newEmp: evs.some((x) => x.code.startsWith("SWITCH_") || x.code === "BACK_EMP") || (map.st(up.i).j === "i" && map.st(n).j !== "i"),
   };
 }
 

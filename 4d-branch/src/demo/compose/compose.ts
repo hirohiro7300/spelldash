@@ -13,7 +13,7 @@
 // 行き先: 年月と仕事 → まとめた行き先の注 → 節目 → 月の稼ぎ → この先の見通し → この道で月の稼ぎを一番動かした結果（まとめた行き先は、標準の続きの目安）
 import type { MapContStep, MapData, MapMix } from "../../deepmap/mapData";
 import type { ImpactSt, R3 } from "../impact";
-import { capOf, clBand, countEvent, countKind, endLink, eventMonth, eventsList, factShare, jobMonths, linkFor, linkOf, mergedFact, newFeeOf, optionValue, pathEnv, recentSteps, recommended, ripple, sideIn, stepsFor, usedSet, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
+import { capOf, clBand, countEvent, countKind, countKindHere, endLink, eventMonth, eventsList, factShare, jobMonths, linkFor, linkOf, mergedFact, newFeeOf, optionValue, pathEnv, recentSteps, recommended, ripple, sideIn, stepsFor, usedSet, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
 import { clPhrase, clr, cond, f2, hash, man, n0, pbText, renyo, slot, spaceJa, strip, wari, yenTxt, type Env } from "./text";
 import type { Card, Step, Variant } from "./types";
 
@@ -702,6 +702,8 @@ function moveCtx(c: Ctx, a: number): { env: Env; slots: Slots; seed: number; nth
   Object.assign(env, pe);
   env.n = nth;
   env.h = h;
+  // 今の会社で前にその種類の手を選んだ回数（前の会社の手の続きとは言わない。F5）
+  env.here = countKindHere(link, kind);
   const used = usedSet(link);
   const steps = stepsFor(c, a, nth, used, recentSteps(link), pe);
   const fresh = steps.filter((st) => !used.has(st.id));
@@ -1362,6 +1364,26 @@ function composeState(c: Ctx, n: number): Card {
 /** 行き先の節目に並べる出来事（大事な順） */
 const MILESTONE_RANK = ["IND_START", "BACK_EMP", "SWITCH_HIGH", "SWITCH_MID", "SWITCH_MIX", "PERM_A", "PERM_S", "PERM_N", "PART_ON", "PROMO", "FIRST_CLIENT", "SCHOOL_ON", "CLIENT_UP", "PILOT_ON", "PU_MILE", "PORTFOLIO_ON", "CLIENT_LOST", "PRO_START"];
 
+/** 同じ節目か（顧客の何社目・有料会員の人数の線は、数が違えば別の節目） */
+const sameMilestone = (x: Ev, e: Ev): boolean => x.code === e.code && (e.code !== "CLIENT_UP" || x.x.nth === e.x.nth) && (e.code !== "PU_MILE" || x.x.mile === e.x.mile);
+
+/**
+ * 節目の短い名前。道で同じ節目の 2 回目からは、同じ仲間の節目の何回目かを言う（「2 回目の昇格」。F3）。
+ * 差し込む値が空の出来事（社数の幅で離れた顧客の数など）は、その値を使う名前にしない
+ */
+function milestoneName(c: Ctx, e: Ev, evs: readonly Ev[], slots: Slots): string {
+  const { B } = c;
+  const x: Slots = {};
+  for (const [k, v] of Object.entries(e.x)) if (v !== "") x[k] = v;
+  const base = fill(B.eventShort[e.code] ?? "", { ...slots, ...x });
+  const before = evs.slice(0, evs.indexOf(e));
+  if (!before.some((y) => sameMilestone(y, e))) return base ?? "";
+  const fam = milestoneFamily(e.code);
+  const nth = slot(before.filter((y) => MILESTONE_RANK.includes(y.code) && milestoneFamily(y.code) === fam).length + 1);
+  const again = B.eventShortAgain[e.code] ?? B.eventShortAgain[fam];
+  return (again ? fill(again, { ...slots, ...x, nth }) : base ? `${nth} 回目の${base}` : null) ?? base ?? "";
+}
+
 const JOB_WORD: Record<string, string> = { e: "会社員", p: "週 4 日勤務", i: "独立" };
 const PM_WORD: Record<string, string> = { a: "全部可", s: "SpellDash だけ可", n: "どちらも不可" };
 
@@ -1456,11 +1478,25 @@ function sameSibs(c: Ctx, n: number): number[] {
 }
 
 /**
- * この道で月の稼ぎを一番動かした結果（その 3 か月で、判断の状態から結果の状態へ月の稼ぎが一番動いた物）。行き先の結びを道から作る（reader-8）。
- * 今の年収で決まる
+ * 何も変えなかった結果の出来事（据え置き・見送り・決まらない・断られた・どちらも不可）。その 3 か月に月の稼ぎが動いても、
+ * 動かしたのは定期の昇給や Pro の伸びで、この結果ではない（F4）
  */
-function leverSentence(c: Ctx, link: Link): string {
-  const { map, cal } = c;
+const NO_CHANGE: ReadonlySet<string> = new Set(["PROMO_NO", "SEARCH_NONE", "SCHOOL_NO", "PILOT_NO", "PORTFOLIO_NO", "PART_NO", "BACK_NO", "CLIENT_NOT_FOUND", "PERM_N"]);
+
+/** この道で月の稼ぎを一番動かした 3 か月。named は結果の名前で言うか（言わなければ、その 3 か月の手で言う） */
+interface Lever {
+  link: Link;
+  /** 月の稼ぎの動き（万円） */
+  d: number;
+  named: boolean;
+}
+
+/**
+ * この道で月の稼ぎを一番動かした 3 か月（判断の状態から結果の状態へ月の稼ぎが一番動いた物）。行き先の結びを道から作る（reader-8）。
+ * 結果の名前で言うのは、その結果が何かを変えたときだけ（どの場合も・結果が 1 つ・何も変えなかった結果は、3 か月の手で言う。F4）。今の年収で決まる
+ */
+function leverOf(c: Ctx, link: Link): Lever | null {
+  const { map } = c;
   let best: Link | null = null;
   let bestD = 0;
   const w = (i: number): number => {
@@ -1475,9 +1511,22 @@ function leverSentence(c: Ctx, link: Link): string {
       bestD = dd;
     }
   }
-  if (!best || Math.abs(bestD) < 1) return "";
-  const what = map.outId(best.i) === "all" || map.childCount(best.move) < 2 ? `『${titleOf(c, best.move, [])}』の 3 か月` : `『${labelOf(c, best.i)}』`;
-  return `この道で月の稼ぎを一番大きく動かしたのは、${cal.ym(map.month(best.i))}までの${what}で、月 ${sgn(bestD)}${slot(man(Math.abs(bestD)))} 万円。`;
+  if (!best || Math.abs(bestD) < 1) return null;
+  const named = map.outId(best.i) !== "all" && map.childCount(best.move) >= 2 && !best.evs.some((e) => NO_CHANGE.has(e.code));
+  return { link: best, d: bestD, named };
+}
+
+/** 3 か月の手の名前: 題（年月や「か月」を言う題は、結びの文の年月と重ねないように短い名前） */
+function quarterName(c: Ctx, a: number): string {
+  const t = titleOf(c, a, []);
+  return /年|か月/.test(strip(t)) ? kindShort(c, c.map.kind(a) ?? "") : t;
+}
+
+function leverSentence(c: Ctx, lv: Lever | null): string {
+  if (!lv) return "";
+  const { map, cal } = c;
+  const what = lv.named ? `『${labelOf(c, lv.link.i)}』` : `『${quarterName(c, lv.link.move)}』の 3 か月`;
+  return `この道で月の稼ぎを一番大きく動かしたのは、${cal.ym(map.month(lv.link.i))}までの${what}で、月 ${sgn(lv.d)}${slot(man(Math.abs(lv.d)))} 万円。`;
 }
 
 /** 移った会社にいる月の数（道で一番新しい転職から）。転職していなければ −1 */
@@ -1492,18 +1541,29 @@ function composeEnd(c: Ctx, n: number): Card {
   const trace: string[] = [];
   const { env, slots } = baseEnv(c, n);
   const link = endLink(c, n);
-  // 節目: 大事な物から 4 つまで（同じ出来事は道で最初の 1 回）、それを月の順に
+  const sum = map.sum(n);
+  // 結びの文（この道で月の稼ぎを一番動かした 3 か月）。本当の行き先だけ
+  const lever = sum ? null : leverOf(c, link);
+  // 節目: 大事な物から 4 つまで（同じ出来事は道で最初の 1 回）、それを月の順に。結びの文が結果の名前で言う 3 か月の節目は、
+  // 同じ出来事の 2 回目からでも必ず並べる（足りなければ一番大事でない物と入れ替える。節目と結びの文が食い違わない。F3）
   const rank = (e: Ev): number => MILESTONE_RANK.indexOf(e.code);
-  const ms = eventsList(link)
+  const evs = eventsList(link);
+  let ms = evs
     .filter((e) => rank(e) >= 0)
     .sort((x, y) => rank(x) - rank(y))
-    .filter((e, i, arr) => arr.findIndex((x) => x.code === e.code && (e.code !== "CLIENT_UP" || x.x.nth === e.x.nth) && (e.code !== "PU_MILE" || x.x.mile === e.x.mile)) === i)
-    .slice(0, 4)
-    .sort((x, y) => x.m - y.m);
+    .filter((e, i, arr) => arr.findIndex((x) => sameMilestone(x, e)) === i)
+    .slice(0, 4);
+  const credited = lever?.named
+    ? lever.link.evs
+        .filter((e) => rank(e) >= 0)
+        .sort((x, y) => rank(x) - rank(y))[0]
+    : undefined;
+  if (credited && !ms.includes(credited)) ms = ms.length >= 4 ? [...ms.slice(0, 3), credited] : [...ms, credited];
+  ms.sort((x, y) => x.m - y.m);
   let prev: number | null = null;
   const msText = ms
     .map((e) => {
-      const name = fill(B.eventShort[e.code] ?? "", { ...slots, ...e.x });
+      const name = milestoneName(c, e, evs, slots);
       if (!name) return "";
       const t = `${c.cal.ymRel(e.m, prev)}に${name}`;
       prev = e.m;
@@ -1514,7 +1574,6 @@ function composeEnd(c: Ctx, n: number): Card {
   const s = map.st(n);
   const rr = map.rr(n);
   const total = salMan(c, rr[0]) + rr[1] + rr[2];
-  const sum = map.sum(n);
   const mix = map.mix(n);
   const cont = map.cont(n);
   const path = msText ? `ここまでの節目は、${msText}。` : "";
@@ -1528,7 +1587,7 @@ function composeEnd(c: Ctx, n: number): Card {
     // 移って何か月か（在籍の長さを言う文はこの数で選ぶ。facts-8）
     const swm = switchedMonths(c, link);
     const after = choose(B.after, { ...env, swm }, s.fl, { ...slots, swn: slot(Math.max(0, swm)) }, hash(map.key(n)), trace, "after") ?? "";
-    body = join([head, path, monthly, endContrast(c, n), after, leverSentence(c, link)]);
+    body = join([head, path, monthly, endContrast(c, n), after, leverSentence(c, lever)]);
   } else {
     // まとめた行き先（truth-5・truth-2）: 中身の幅があれば 9 割がそろう事実だけを言い切り、無ければ平均だと書いて事実として言わない。
     // どの結果の後かを書き出しで言い、兄弟とはこの手からの稼ぎの合計で比べる（兄弟の行き先が同じ骨組みにならない。点検 C6）。

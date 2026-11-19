@@ -340,3 +340,99 @@ const RULES_ROOT: DevTreeNode = {
 
 /** SPEC §4.2 の決まりごとの地図（名前の無い手 zz_a・zz_b は header.kinds にも無い） */
 export const RULES: DevTree = { header, root: RULES_ROOT };
+
+// ---- 最後の点検の指摘（F1〜F6）を確かめる小さな地図（textChecks.test.ts と compose.test.ts が使う）
+
+/** 今日の手を並べた地図 */
+const mapOf = (...firsts: DevTreeNode[]): DevTree => ({ header, root: { k: "r", r: "r", m: 0, st: S0, rr: [1, 0, -0.3], kids: firsts } });
+
+/** 判断 k（その時点の状態 from）に並べる、道では選ばない『会社員に戻る』の手（戻れば顧客は引き継ぎ先へ） */
+const backAlt =
+  (from: ImpactSt) =>
+  (m: number, k: string): DevTreeNode[] => {
+    const back = st({ pm: "?", pro: 1, mau: from.mau, pu: from.pu });
+    return [
+      move(`${k}.${m / 3}be`, "back_emp", m, from, [
+        out(`${k}.${m / 3}be.e`, m + 3, back, "e", 40, "会社員に戻る", ["job", m + 3, null, null, "e"], [3, 0, -0.5], rrOf(back)),
+        out(`${k}.${m / 3}be.i`, m + 3, from, "i", 60, "独立のまま", ["job", m + 3, null, null, "i"], [0, 6, -0.5], rrOf(from)),
+      ]),
+    ];
+  };
+const sBack = st({ j: "i", pm: "a", pro: 1, mau: 50, pu: 1, cl: 1, fee: 7 });
+const sBack2 = st({ ...sBack, mau: 60, pu: 3 });
+/** F1: 独立して顧客 1 社の後、続く 2 つの判断に『会社員に戻る』が並び、道ではどちらも選ばない（判断ごとの繰り返しの門） */
+export const F_BACK: DevTree = mapOf(
+  line("r", 0, S0, [
+    { kind: "ind_quit", to: sBack, id: "cl1", lab: "顧客 1 社", ln: ["cl", 3, 1, null], e: [1, 1, -0.82] },
+    { kind: "sd_retain", to: sBack2, alts: backAlt(sBack) },
+    { kind: "keep", to: st({ ...sBack, mau: 70, pu: 4 }), alts: backAlt(sBack2) },
+  ]),
+);
+
+const sPA1 = st({ pm: "a", pro: 1, mau: 50, pu: 2, cl: 1, fee: 3 });
+/** 会社員・全部可・Pro ありのまま 3 年後に着く道（最後の結果の顧客の数 cl と、社数の違う場合をまとめた幅 band） */
+const toEnd = (key: string, first: string, cl: number, band: [number, number] | null): DevTreeNode =>
+  line(key, 0, S0, [{ kind: first, to: sPA1, id: "a0_a1", lab: "全部可", ln: ["permside", 3, null, null, "a0_a1"], e: [3, 3, -0.7] }, ...keeps(10, sPA1, [3, 9, 0]), { kind: "keep", to: st({ ...sPA1, cl }), ...(band ? { o: { band: { cl: band } } } : {}) }]);
+/** F2: 3 年後の見通しの顧客の数（確かに 1 社・幅 1〜2 社・幅 0〜2 社） */
+export const F_ENDS: DevTree = mapOf(toEnd("r.c1", "ad_permside", 1, null), toEnd("r.c12", "sd_permpro", 1.5, [1, 2]), toEnd("r.c02", "ad_perm", 1, [0, 2]));
+
+const sP = st({ pm: "a", pro: 1, mau: 50, pu: 1 });
+/** 昇格を狙う手（道は昇格 up、もう 1 つの結果は据え置き same） */
+const promo = (m: number, up: number, same: number): Step => ({
+  kind: "fc_push",
+  to: st({ ...sP, sal: up }),
+  id: "up",
+  lab: "昇格",
+  ln: ["sal", m + 3, null, null, "up"],
+  others: (mm, k) => [out(`${k}.same`, mm, st({ ...sP, sal: same }), "same", 70, "据え置き", ["sal", mm, null, null, "same"], [3 * same, 0, -0.2], rrOf(st({ ...sP, sal: same })))],
+});
+/** F3: 昇格が 2 回あり、2 回目（2028 年 4 月）が月の稼ぎを一番動かす */
+export const F_PROMO2: DevTree = mapOf(
+  line("r", 0, S0, [
+    { kind: "ad_permside", to: sP, id: "a0_a1", lab: "全部可", ln: ["permside", 3, null, null, "a0_a1"] },
+    promo(3, 1.1, 1.03),
+    ...keeps(3, st({ ...sP, sal: 1.1 })),
+    promo(15, 1.5, 1.13),
+    ...keeps(6, st({ ...sP, sal: 1.5 })),
+  ]),
+);
+
+const sS1 = st({ pm: "s", pro: 1, mau: 50, pu: 10 });
+const sS2 = st({ ...sS1, pu: 40, sal: 1.03 });
+/** F4: 据え置きだった 3 か月に、4 月の定期の昇給と Pro の伸びで月の稼ぎが一番動く */
+export const F_STILL: DevTree = mapOf(
+  line("r", 0, S0, [
+    { kind: "sd_permpro", to: sS1, id: "s", lab: "SpellDash だけ", ln: ["perm", 3, null, null, "s"] },
+    ...keeps(8, sS1),
+    { kind: "fc_push", to: sS2, id: "same", lab: "据え置き", ln: ["sal", 30, null, null, "same"], others: (m, k) => [out(`${k}.up`, m, st({ ...sS2, sal: 1.1 }), "up", 30, "昇格", ["sal", m, null, null, "up"], [3.2, 0, 3], rrOf(st({ ...sS2, sal: 1.1 })))] },
+    { kind: "sd_retain", to: sS2 },
+    { kind: "sd_grow", to: sS2 },
+  ]),
+);
+
+/** F5: 担当を広げて昇格を狙った後に転職し、移った会社でもう一度広げて昇格を狙う道と、同じ会社でもう一度広げる道 */
+export const F_SCOPE: DevTree = mapOf(
+  line("r", 0, S0, [
+    { kind: "fc_scope", to: st({ mau: 50, fl: ["scope"] }) },
+    { ...promo(3, 1.1, 1.03), to: st({ mau: 55, sal: 1.1, fl: ["scope"] }) },
+    { kind: "fc_switch", to: st({ mau: 60, sal: 1.3, fl: ["switched"] }), id: "high", lab: "大きく上げて転職", ln: ["sal", 9, null, null, "high"] },
+    { kind: "fc_scope", to: st({ mau: 65, sal: 1.3, fl: ["switched", "scope"] }) },
+    { kind: "keep", to: st({ mau: 70, sal: 1.3, fl: ["switched", "scope"] }) },
+    { ...promo(15, 1.45, 1.34), to: st({ mau: 75, sal: 1.45, fl: ["switched", "scope"] }) },
+  ]),
+  line("r", 0, S0, [{ kind: "keep", to: st({ mau: 50 }) }, { kind: "fc_scope", to: st({ mau: 55, fl: ["scope"] }) }, { kind: "keep", to: st({ mau: 60, fl: ["scope"] }) }, { kind: "fc_scope", to: st({ mau: 65, fl: ["scope"] }) }]),
+);
+
+/** F6: 今日の手が知人の店の無償の手伝い（顧客はまだいない） */
+export const F_PORTFOLIO: DevTree = mapOf(
+  line("r", 0, S0, [
+    {
+      kind: "ad_portfolio",
+      to: st({ mau: 50, fl: ["portfolio"] }),
+      id: "yes",
+      lab: "実績ができる",
+      ln: ["portfolio", 3, null, null, "yes"],
+      others: (m, k) => [out(`${k}.no`, m, st({ mau: 50 }), "no", 50, "成果が出ず", ["portfolio", 3, null, null, "no"], [3, 0, -0.9], rrOf(st({ mau: 50 })))],
+    },
+  ]),
+);

@@ -3,12 +3,12 @@ import world from "../../scripts/impact/world.json";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { MapData } from "../../src/deepmap/mapData";
 import { SENTENCES } from "../../src/demo/compose/banks/sentences";
-import { adviceIn, adviceMatchers, asciiIds, checkBanks, checkCard, checkPaths, digitsOutside, numberWording, wishIndex } from "../../src/demo/compose/checks";
+import { adviceIn, adviceMatchers, asciiIds, checkBanks, checkCard, checkPaths, digitsOutside, numberWording, TWO_IF, TWO_LASTS, wishIndex } from "../../src/demo/compose/checks";
 import { BANKS, composeCard, composeCont, composeMarkedCard, materializeBody, ripple, type Banks, type Card } from "../../src/demo/compose/index";
 import { calendarOf, weekday } from "../../src/demo/compose/path";
 import type { WishData } from "../../src/demo/wishlist";
 import wishData from "../../src/demo/wishlist-data.json";
-import { header, MIX_SPLIT, MIX_SURE, RULES, TREE } from "./composeFixture";
+import { F_ENDS, F_PORTFOLIO, F_PROMO2, F_SCOPE, F_STILL, header, MIX_SPLIT, MIX_SURE, RULES, TREE } from "./composeFixture";
 
 // 手で作った小さな地図は ./composeFixture.ts（TREE: R2 の組み立てを移したときの地図・RULES: SPEC §4.2 の決まりごとの地図）
 
@@ -741,3 +741,86 @@ function counting(inner: MapData): { map: MapData; touched: Set<number> } {
   });
   return { map, touched };
 }
+
+describe("最後の点検の指摘（F2〜F6）", () => {
+  /** 地図の行き先（36 か月目）の番号 */
+  const endsOf = (m: MapData): number[] => all(m).filter((i) => m.role(i) === "e");
+  /** そのカードが使った文の型（trace のうち、その束の組の番号まで） */
+  const used = (c: Card, cell: string): string[] => c.trace.filter((t) => t.startsWith(`${cell}#`)).map((t) => t.replace(/\.\d+$/, ""));
+
+  it("F2: 3 年後の見通しは顧客の数で言い分ける（確かに 1 社なら 2 社目が決まればと言い、社数の幅では 2 社目を決めて言わない）", () => {
+    const m = fromDevTree(F_ENDS);
+    const seen: Record<string, string> = {};
+    for (const i of endsOf(m)) {
+      const c = composeCard(m, i, { annual: 360 });
+      const band = m.band(i)?.cl ?? null;
+      seen[band ? band.join("-") : "1"] = c.trace.find((t) => t.startsWith("after#")) ?? "";
+      if (band) {
+        expect(c.body, m.key(i)).not.toMatch(TWO_IF);
+        expect(c.body, m.key(i)).not.toMatch(TWO_LASTS);
+      } else expect(c.body, m.key(i)).not.toMatch(TWO_LASTS);
+      expect(checkCard(m, i, composeMarkedCard(m, i, { annual: 360 }), BANKS, wish, 360).filter((x) => x.startsWith("C2")), m.key(i)).toEqual([]);
+    }
+    // 組の番号: 確かに 1 社・下が 1 社の幅・顧客がいない道を含む幅（sentences.ts の after の並び）
+    const at = (cond: string): number => BANKS.after.findIndex((g) => g.if === cond);
+    expect(Object.fromEntries(Object.entries(seen).map(([k, t]) => [k, Number(/^after#(\d+)/.exec(t)?.[1])]))).toEqual({ "1": at("pm=a & clo=1 & chi=1"), "1-2": at("pm=a & clo>=1"), "0-2": at("pm=a & cl>=0.5") });
+    // 2 社目が続くかは、2 社が確かなとき（上限に届いた組）だけ
+    for (const g of BANKS.after) for (const v of g.v) if (TWO_LASTS.test(v)) expect(g.if).toMatch(/clo>=2/);
+    for (const g of BANKS.after) for (const v of g.v) if (TWO_IF.test(v)) expect(g.if).toBe("pm=a & clo=1 & chi=1");
+  });
+
+  it("F3: 行き先の節目は、結びの文が言う結果を必ず並べる（同じ節目の 2 回目は「2 回目の昇格」）", () => {
+    const m = fromDevTree(F_PROMO2);
+    const [end] = endsOf(m);
+    const b = body(m, end!);
+    expect(b).toContain("ここまでの節目は、2026 年 12 月に全部可の答え、2027 年 4 月に昇格、2028 年 4 月に 2 回目の昇格。");
+    expect(b).toContain("この道で月の稼ぎを一番大きく動かしたのは、2028 年 5 月までの『昇格』で、月 +12 万円。");
+    expect(body(m, end!, 540)).toContain("2028 年 4 月に 2 回目の昇格");
+  });
+
+  it("F4: 何も変えなかった結果（据え置き）は、月の稼ぎを一番動かした物と言わず、その 3 か月の手で言う（題の年月と重ねない）", () => {
+    const m = fromDevTree(F_STILL);
+    for (const annual of [360, 540]) {
+      const b = body(m, endsOf(m)[0]!, annual);
+      expect(b).toMatch(/一番大きく動かしたのは、2029 年 5 月までの『昇格を狙う』の 3 か月で、月 \+[0-9.]+ 万円。/);
+      expect(b).not.toContain("『据え置き』で、月");
+    }
+  });
+
+  it("F5: 担当を広げ続ける・前の評価の続きと言うのは、今の会社で前にその手を選んだときだけ（転職した後は、今の会社では初めてと言う）", () => {
+    const m = fromDevTree(F_SCOPE);
+    const moved = byKey(m, "r.0fc_scope.all.1fc_push.up.2fc_switch.high.3fc_scope");
+    const push = byKey(m, "r.0fc_scope.all.1fc_push.up.2fc_switch.high.3fc_scope.all.4keep.all.5fc_push");
+    const same = byKey(m, "r.0keep.all.1fc_scope.all.2keep.all.3fc_scope");
+    const group = (kind: string, cond: string): string => `lead.${kind}#${BANKS.lead[kind]!.findIndex((g) => g.if === cond)}`;
+    for (const annual of [360, 540]) {
+      const cm = composeCard(m, moved, { annual });
+      expect(used(cm, "lead.fc_scope")).toEqual([group("fc_scope", "n>=1")]);
+      expect(cm.body).not.toMatch(/担当を広げ続け|もう一段広げる/);
+      expect(cm.body).toContain("今の会社で");
+      const cp = composeCard(m, push, { annual });
+      expect(used(cp, "lead.fc_push")).toEqual([group("fc_push", "n>=1")]);
+      expect(cp.body).not.toMatch(/前の評価で足りなかった|評価の資料にまとめ直す/);
+      expect(used(composeCard(m, same, { annual }), "lead.fc_scope")).toEqual([group("fc_scope", "here>=1")]);
+    }
+  });
+
+  it("F6: 言い方（今日の事例づくりは最初の事例を 1 つだけ言う・有料会員は後から増えると言う・次の機会は 1 枚に 1 回・状態の題に「回目のまとめ」と書かない）", () => {
+    const m = fromDevTree(F_PORTFOLIO);
+    const first = m.child(0, 0);
+    for (const v of BANKS.lead.ad_portfolio!.at(-1)!.v) {
+      // 今日の手の書き出し（言い換え 3 つ）のどれでも、手引きの文と合わせて「最初の」は 1 回まで
+      const banks = structuredClone(BANKS) as Banks;
+      banks.lead.ad_portfolio!.at(-1)!.v = [v];
+      const b = composeCard(fromDevTree(F_PORTFOLIO), first, { annual: 360, banks }).body;
+      expect(b.split("最初の").length - 1, b).toBeLessThanOrEqual(1);
+      expect(b).not.toContain("最初の事例にする");
+    }
+    expect(body(m, first)).toContain("SpellDash の広告運用も、事例に加える");
+    const texts = (vs: ReadonlyArray<{ v: readonly string[] }>): string[] => vs.flatMap((g) => g.v);
+    expect(texts(BANKS.lead.sd_grow!).filter((v) => /付いてくる|有料会員 \{pu\} 人も/.test(v))).toEqual([]);
+    // 昇格を狙う手の結果の意味: 昇格の方と据え置きの方のどの組み合わせでも、1 年後の機会を言うのは 1 回まで
+    for (const up of texts(BANKS.branch.fc_push!.up!)) for (const same of texts(BANKS.branch.fc_push!.same!)) expect(`${up}。${same}`.split("1 年後").length - 1).toBeLessThanOrEqual(1);
+    expect(texts(Object.values(BANKS.eventTitle).flat()).filter((v) => /回目のまとめ/.test(v))).toEqual([]);
+  });
+});

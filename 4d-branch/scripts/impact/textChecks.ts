@@ -4,9 +4,11 @@
 //   C1 数はどれもデータから・C1b 手引きの数字は引いた項目に・C2 状態と食い違わない・C3 長さと題とやること 3 つ・C4 地図の文の決まり・
 //   C4b 英数字の名前・C5 結果の名前と状態（本当の状態）・C5b 顧客と席は整数・C6 似かた（兄弟の骨組み・道の繰り返し）・C7 手引きの月額・
 //   C8 言葉の間とカードの年月の言い直し・C9 道で 1 回だけの文・C10 数の言い方・C11 手が結果について言う額と数が結果の状態と合う（reader-4）・
-//   C12 道の歩みと合う（reader-6）・T4 兄弟の題は違う（手も結果も。gaps-11）。題は年収で変わらない（年収ごとに新しい覚えで組み立てて比べる。code-1）
+//   C12 道の歩みと合う（reader-6。前の会社で選んだ手の続き・何も変えなかった結果を一番の動きと言う。F4・F5）・T4 兄弟の題は違う（手も結果も。gaps-11）。
+//   題は年収で変わらない（年収ごとに新しい覚えで組み立てて比べる。code-1）。道の繰り返しの行のまとめ方は、道の画面と同じ計算の芯の joinsRow
 //   D1・D2 は文では直せないデータ（警告。計算の側へ返す）
 // 使い方（CLI）: node scripts/impact/runTextChecks.mjs <木.json|木.json.gz> [--annual 360,540] [--examples 5] [--out 報告.md] [--golden 置き場]
+import { joinsRow, rowJoinOf, type RowJoin } from "../../src/deepmap/core/path";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, MapData, MapRole } from "../../src/deepmap/mapData";
 import { BANKS, composeMarkedCard, finishCard, type Banks, type Card } from "../../src/demo/compose";
@@ -30,7 +32,7 @@ export interface TextCheckDef {
 export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C1", name: "数はどれもデータから（差し込みの印の外に数字が無い）", block: true },
   { id: "C1b", name: "手引きの文の数字は、引いたやりたいことリストの項目にある", block: true },
-  { id: "C2", name: "状態と食い違わない（まとめた行き先は中身の幅と平均）", block: true },
+  { id: "C2", name: "状態と食い違わない（まとめた行き先は中身の幅と平均・社数の幅で 2 社目を決めて言わない）", block: true },
   { id: "C3", name: "長さ・題・やること 3 つ・数の行", block: true },
   { id: "C4", name: "地図の文の決まり（% と差・敬語・位置・気持ち）", block: true },
   { id: "C4b", name: "英数字の名前を書かない", block: true },
@@ -42,7 +44,7 @@ export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C9", name: "道で 1 回だけの文が、道で 2 回出ない", block: true },
   { id: "C10", name: "数の言い方（月にならして・手数料とサーバー代を引いて・月に遊んだ人・3 つの月）", block: true },
   { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う", block: true },
-  { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ）", block: true },
+  { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果）", block: true },
   { id: "T4", name: "兄弟の題が違う（手も結果も）", block: true },
   { id: "D1", name: "『どちらも不可』なのに Pro が続く（データ。計算の側へ返す）", block: false },
   { id: "D2", name: "本当の状態の顧客の数が整数でない（データ。計算の側へ返す）", block: false },
@@ -466,26 +468,21 @@ function skeletonIds(map: MapData, bodyOf: (i: number) => string): { perCard: In
   return { perCard, names };
 }
 
-/** 道の行（判断・手・結果）の、前の行とまとめるかを決める値（W-view の groupRows と同じ。src/deepmap/core/path.ts） */
-interface RowKey {
-  kind: string;
-  stub: boolean;
-  single: boolean;
-  label: string;
-}
-
 /**
- * 道の画面が前の行とまとめるか（W-view の groupRows と同じ決まり）: 同じ種類の手で、どちらもまとめた手でなく、
- * どちらも結果が 1 つか、結果の名前が同じ（code-2: 種類だけでまとめると、道の画面より多くまとめてしまう）
+ * 道の行（判断・手・結果 i）の番号: 道の画面が前の行（prev）とまとめるなら前の行の番号 run のまま、そうでなければ手の月を新しい行の番号にする
+ * （手の月は道で増える）。まとめるかは道の画面と同じ決まり（計算の芯の joinsRow。src/deepmap/core/path.ts の groupRows も使う。
+ * code-2: 種類だけでまとめると、道の画面より多くまとめてしまう）
  */
-export function joinsRow(prev: RowKey | null, cur: RowKey): boolean {
-  return !!prev && !cur.stub && !prev.stub && prev.kind === cur.kind && ((prev.single && cur.single) || prev.label === cur.label);
+export function rowOf(map: MapData, prev: RowJoin | null, run: number, i: number): { key: RowJoin; run: number } {
+  const a = map.parent(i);
+  const key = rowJoinOf(map, a, i);
+  return { key, run: joinsRow(prev, key) ? run : map.month(a) };
 }
 
 /**
  * 道（今日から行き先まで）ごとの、構造でない文の繰り返しの数。全部の道を深さ優先で 1 回。2 つ数える:
  * - そのまま: 同じ骨組みの文が道で n 回なら n − 1
- * - 門にかける数: 道の画面が 1 行にまとめる行（joinsRow: 同じ手が続き、結果が 1 つか同じ名前）を 1 つにまとめて数える。
+ * - 門にかける数: 道の画面が 1 行にまとめる行（rowOf: 同じ手が続き、結果が 1 つか同じ名前）を 1 つにまとめて数える。
  *   まとめた行の中で同じ文が出るのは、画面では 1 行に入る同じ状況。別の行どうしの繰り返しを門にかける（SPEC §4.6・§5.4、W-view の groupRows）
  * 手の文は、その結果の行に入れて数える（行は判断・手・結果の組）
  */
@@ -525,7 +522,7 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
     }
   };
   // [カード, 行の番号, 前の行の値, 戻るときの記録]
-  const stack: Array<[number, number, RowKey | null, Undo | null]> = [[0, -1, null, null]];
+  const stack: Array<[number, number, RowJoin | null, Undo | null]> = [[0, -1, null, null]];
   while (stack.length) {
     const [i, run, prev, undo] = stack.pop()!;
     if (undo) {
@@ -550,11 +547,11 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
     const u: Undo = [];
     if (role === "r") count(perCard[i]!, r, u);
     else if (role === "s" || role === "e") {
-      // 行（判断・手・結果）: 道の画面が前の行とまとめるなら同じ行の番号、そうでなければ新しい行（手の月は道で増えるので番号に使える）
+      // 行（判断・手・結果）: 道の画面が前の行とまとめるなら同じ行の番号、そうでなければ新しい行
       const a = map.parent(i);
-      const cur: RowKey = { kind: map.kind(a) ?? "", stub: map.stub(a), single: map.childCount(a) === 1, label: map.label(i) };
-      if (!joinsRow(prev, cur)) r = map.month(a);
-      next = cur;
+      const row = rowOf(map, prev, r, i);
+      r = row.run;
+      next = row.key;
       count(perCard[a]!, r, u);
       count(perCard[i]!, r, u);
     }

@@ -5,11 +5,12 @@
 //   C5b 顧客と席は整数・C7 モデルに無い月額（人が見る）・C10 数の言い方（給与は月にならして・有料は手数料とサーバー代を引いて・月に遊んだ人・
 //   3 か月は 3 つの月・数の行の数を今日・状態・行き先の本文に書かない）・D1 / D2 文では直せないデータ（計算の側へ返す。まとめた行き先は除く）
 //   C11 手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が、その結果の状態と合う（reader-4）・
-//   C12 道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間。reader-6）
+//   C12 道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間。reader-6。前の会社で選んだ手の続きと言わない・何も変えなかった結果を
+//   月の稼ぎを一番動かした物と言わない。F4・F5）
 // 道ごと: C9 道で 1 回だけの文（暦・静かな期の一言・出来事の助言・避けたい訳）が、今日から行き先までの道で 2 回出ない
 import type { MapData } from "../../deepmap/mapData";
 import type { WishData } from "../wishlist";
-import { clBand, mergedFact, newFeeOf } from "./path";
+import { calendarOf, clBand, mergedFact, newFeeOf, type Calendar } from "./path";
 import { clr, f2, man, ME, MS, n0, PE, PS, spaceJa, strip } from "./text";
 import type { Banks, Card, Consts } from "./types";
 
@@ -109,6 +110,11 @@ export function numberWording(text: string): string[] {
 /** 数の行の数を、今日・状態・行き先の本文に書いていないか（SPEC §4.2・user-9b） */
 const ROW_IN_PROSE: readonly RegExp[] = [/年収 (?:平均 )?[0-9,]+ ?万円/, /月にならして [0-9.]+ ?万円/, /月に遊んだ人 (?:平均 )?[0-9,]+ ?人/, /有料 (?:平均 )?[0-9,]+ 人（/, /週 [0-9]+ 時間/, /広告運用 (?:平均 )?[0-9〜]+ ?社（売上/];
 
+/** 顧客が確かに 1 社のときだけ言える「2 社目が決まれば（埋まれば）」（C2。F2） */
+export const TWO_IF = /2 社目が(?:埋ま|決ま)れば/;
+/** 顧客が確かに 2 社以上のときだけ言える「2 社目が長続きするか（契約が長く続くか）」（C2。F2） */
+export const TWO_LASTS = /2 社目(?:の契約)?が(?:長続き|長く続く)/;
+
 /**
  * 1 枚の点検。t は印つきの形（composeMarkedCard）。見つかった物を「点検の名前 説明」で返す。
  * annual を渡すと、年収で決まる額（年収・昇格の額）も結果の状態と比べる（C11）
@@ -192,6 +198,9 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
         [s.j !== "p", /週 4 日勤務で給与|週 4 日勤務が認められ/, "週 4 日でないのに週 4 日"],
         [!sw, /会社へ移った|転職した|で転職（/, "転職していないのに転職"],
         [s.seats < 0.5, /学校の席|席が有料の席/, "学校の席が無いのに席"],
+        // 2 社目の言い方（F2）。社数の違う場合をまとめた幅は mergedIssues で見る
+        [!map.band(i)?.cl && clr(s.cl) !== 1, TWO_IF, "顧客が 1 社でないのに 2 社目が決まれば"],
+        [!map.band(i)?.cl && clr(s.cl) < 2, TWO_LASTS, "顧客が 2 社に満たないのに 2 社目が続くか"],
       ];
       // 中身の幅の無いまとめた行き先（平均）は、一番多い仕事の道として書くので仕事の決まりだけを見る（有料・顧客・席・転職は平均で、道ごとに違う）
       for (const [c, re, why] of sum ? ban.slice(0, 2) : ban) if (c && re.test(own + title)) out.push(`C2 状態と合わない（${why}）`);
@@ -256,7 +265,10 @@ export function mergedIssues(map: MapData, i: number, text: string, C: Consts): 
     if (m) out.push(`社数の幅 ${b[0]}〜${b[1]} 社「${m[0]}」`);
     const j = map.st(i).j;
     const cap = j === "i" ? C.capInd : j === "p" ? C.capPart : C.capEmp;
-    if (b[0] < cap && /上限に届いた|上限まで顧客がいて|上限に届いている/.test(text)) out.push(`社数の幅 ${b[0]}〜${b[1]} 社で上限と言う`);
+    if (b[0] < cap && /上限に届いた|上限まで顧客が(?:いて|いる)|上限に届いている/.test(text)) out.push(`社数の幅 ${b[0]}〜${b[1]} 社で上限と言う`);
+    // 3 年後の見通し（F2）: 「2 社目が決まれば」は顧客が確かに 1 社、「2 社目が続くか」は確かに 2 社のときだけ言える
+    if (TWO_IF.test(text)) out.push(`社数の幅 ${b[0]}〜${b[1]} 社で、顧客 1 社と決めて 2 社目が決まればと言う`);
+    if (b[0] < 2 && TWO_LASTS.test(text)) out.push(`社数の幅 ${b[0]}〜${b[1]} 社で、2 社目が続くかと言う`);
   }
   return out;
 }
@@ -340,7 +352,54 @@ export function searchQuarters(map: MapData, a: number): number {
   return n;
 }
 
-/** 道の歩みと合わない文（C12・reader-6）: 前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ */
+/**
+ * 手 a までの道で、今の会社に入ってから（転職・会社員に戻るより後）その種類の手を選んだ回数（a は含まない。C12・F5）。
+ * 組み立ての countKindHere（./path.ts）と同じ決まりを、地図の形で数える
+ */
+export function kindHereBefore(map: MapData, a: number, kind: string): number {
+  const isSearch = (k: string | null): boolean => k === "fc_switch" || k === "fc_switch2";
+  let n = 0;
+  for (let d = map.parent(a); d > 0 && map.role(d) === "s"; ) {
+    const mv = map.parent(d);
+    const up = map.parent(mv);
+    if (isSearch(map.kind(mv)) && /^(high|mid|high_mid)$/.test(map.outId(d))) break;
+    if (map.st(up).j === "i" && map.st(d).j !== "i") break;
+    if (map.kind(mv) === kind) n++;
+    d = up;
+  }
+  return n;
+}
+
+/**
+ * 何も変えなかった結果か（据え置き・見送り・転職せず・断られた・独立のまま・どちらも不可・顧客が増えも減りもしなかった顧客探し。C12・F4）。
+ * 組み立ての NO_CHANGE の出来事（./compose.ts）を、地図の形で見る
+ */
+export function stillOutcome(map: MapData, o: number): boolean {
+  const k = map.kind(map.parent(o)) ?? "";
+  const id = map.outId(o);
+  if (k === "fc_push") return id === "same";
+  if (k === "sd_school" || k === "sd_pilot" || k === "ad_portfolio") return id === "no";
+  if (k === "fc_switch" || k === "fc_switch2") return id === "none";
+  if (k === "part") return id === "e";
+  if (k === "back_emp") return id === "i";
+  if (k === "ad_perm" || k === "ad_permside" || k === "sd_permpro") return id === "n";
+  if (k === "ad_side" || k === "ad_more") {
+    const [pl, ph] = clBand(map, map.parent(map.parent(o)));
+    const [bl, bh] = clBand(map, o);
+    return pl === ph && bl === bh && bl === pl;
+  }
+  return false;
+}
+
+/** 地図の暦（点検ごとに作り直さない） */
+const CALS = new WeakMap<MapData, Calendar>();
+const calOf = (map: MapData): Calendar => {
+  let c = CALS.get(map);
+  if (!c) CALS.set(map, (c = calendarOf(map.header)));
+  return c;
+};
+
+/** 道の歩みと合わない文（C12・reader-6）: 前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果 */
 export function pathContext(map: MapData, i: number, text: string, t: Card): string[] {
   const out: string[] = [];
   const role = map.role(i);
@@ -360,6 +419,20 @@ export function pathContext(map: MapData, i: number, text: string, t: Card): str
     if (/過去 6 か月の月次報告/.test(text) && (map.st(d).j === "i" || (dPrev >= 0 && map.st(dPrev).j === "i"))) out.push("独立していた期があるのに過去 6 か月の月次報告");
     if (kind === "ad_portfolio" && (clr(map.st(d).cl) >= 1 || map.st(d).j === "i") && /副業を始めるときに|副業の 1 社目探し/.test(text)) out.push("顧客がいるのに副業を始めるとき");
     if (t.todo.some((x) => /区切る顧客/.test(x.text)) && map.st(d).cl < 0.5) out.push("顧客がいないのに区切る顧客");
+    // 担当を広げ続ける・前の評価の続きと言うのは、今の会社で前にその手を選んだときだけ（移った会社・戻った会社では初めから。F5）
+    if (((kind === "fc_scope" && /担当を広げ続け|もう一段広げる/.test(text)) || (kind === "fc_push" && /前の評価で足りなかった|評価の資料にまとめ直す/.test(text))) && kindHereBefore(map, i, kind) === 0) out.push("今の会社ではまだ選んでいない手を、前の続きと言う");
+  }
+  if (role === "e" && !map.sum(i)) {
+    // 結びの文が結果の名前で言う 3 か月は、何かを変えた結果だけ（何も変えなかった結果は、その 3 か月の手で言う。F4）
+    const lv = /一番大きく動かしたのは、([0-9]{4}) 年 ([0-9]{1,2}) 月までの『[^』]*』で/.exec(text);
+    if (lv) {
+      const m = calOf(map).monthOf(Number(lv[1]), Number(lv[2]));
+      for (let x = i; x > 0; x = map.parent(map.parent(x)))
+        if (map.month(x) === m) {
+          if (stillOutcome(map, x)) out.push(`何も変えなかった結果『${map.label(x)}』を、月の稼ぎを一番動かした物と言う`);
+          break;
+        }
+    }
   }
   if (role === "s" && /副業と SpellDash の所得/.test(text)) {
     let any = false;

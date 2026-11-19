@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { bankSpacing, cli, fixtureGolden, goldenMarkdown, goldenPaths, joinsRow, likeliest, mask, ownDateAgain, recommended, reportMarkdown, runTextChecks, sentencesOf, skeleton, spacingIssues, TEXT_CHECKS, TEXT_GATES } from "../../scripts/impact/textChecks";
+import { bankSpacing, cli, defaultWish, fixtureGolden, goldenMarkdown, goldenPaths, likeliest, mask, ownDateAgain, recommended, reportMarkdown, rowOf, runTextChecks, sentencesOf, skeleton, spacingIssues, TEXT_CHECKS, TEXT_GATES } from "../../scripts/impact/textChecks";
+import { analyze, compileMap, groupRows, joinsRow, rowJoinOf, walkPath, type RowJoin } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, DevTreeNode } from "../../src/deepmap/mapData";
 import { BANKS, type Banks } from "../../src/demo/compose";
-import { mergedIssues, moveClaims, pathContext, searchQuarters, sumClientIssues } from "../../src/demo/compose/checks";
+import { checkCard, kindHereBefore, mergedIssues, moveClaims, pathContext, searchQuarters, stillOutcome, sumClientIssues } from "../../src/demo/compose/checks";
 import { calendarOf } from "../../src/demo/compose/path";
 import golden from "./composeGolden.json";
-import { header, move, out, RULES, st, TREE } from "./composeFixture";
+import { F_BACK, F_ENDS, F_PORTFOLIO, F_PROMO2, F_SCOPE, F_STILL, header, move, out, RULES, st, TREE } from "./composeFixture";
 
 // 文章の点検（SPEC v1 §4.6）と道の見本（§4.7）。8 万枚の木での測り方は scripts/impact/runTextChecks.mjs（ここでは手で作った小さな地図だけ）
 
@@ -150,8 +151,8 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     expect(now).toEqual(golden);
   });
 
-  it("道の画面と同じまとめ方（W-view の groupRows）: 同じ手で、どちらもまとめた手でなく、結果が 1 つか同じ名前なら 1 行（code-2）", () => {
-    const row = (kind: string, single: boolean, label: string, stub = false) => ({ kind, stub, single, label });
+  it("道の画面と同じまとめ方（計算の芯の joinsRow。groupRows と同じ 1 つの決まり）: 同じ手で、どちらもまとめた手でなく、結果が 1 つか同じ名前なら 1 行（code-2）", () => {
+    const row = (kind: string, single: boolean, label: string, stub = false): RowJoin => ({ kind, stub, single, label });
     // 学校への提案が「見送られる」→「導入が決まる」は 2 行、会社員に戻る仕事探しが「独立のまま」→「独立のまま」は 1 行
     expect(joinsRow(row("sd_school", false, "見送られる"), row("sd_school", false, "導入が決まる"))).toBe(false);
     expect(joinsRow(row("back_emp", false, "独立のまま"), row("back_emp", false, "独立のまま"))).toBe(true);
@@ -159,6 +160,116 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     expect(joinsRow(row("keep", true, "どの場合も"), row("keep", true, "どの場合も", true))).toBe(false);
     expect(joinsRow(row("keep", true, "どの場合も"), row("sd_grow", true, "どの場合も"))).toBe(false);
     expect(joinsRow(null, row("keep", true, "どの場合も"))).toBe(false);
+    const map = fromDevTree(TREE);
+    const o = map.indexOfKey("r.ad_permside.a0_a1.1ad.cl2");
+    expect(rowJoinOf(map, map.parent(o), o)).toEqual({ kind: "ad_side", stub: false, single: false, label: "顧客 2 社以上" });
+  });
+
+  it("道の繰り返しの門の行（rowOf）は、道の画面の行のまとめ（walkPath の groups）とどの行き先でも同じ（決まりは計算の芯の 1 つだけ）", () => {
+    let ends = 0;
+    let joined = 0;
+    for (const tree of [TREE, RULES, F_BACK, F_ENDS, F_PROMO2, F_STILL, F_SCOPE]) {
+      const map = fromDevTree(tree);
+      const a = analyze(compileMap(map), 360);
+      for (let i = 0; i < map.n; i++) {
+        if (map.role(i) !== "e" && !(map.role(i) === "s" && !map.childCount(i))) continue;
+        ends++;
+        // 点検の行: 今日からの結果ごとに rowOf で番号を付け、同じ番号が続く結果を 1 つの行にまとめる
+        const outs: number[] = [];
+        for (let x = i; x > 0; x = map.parent(map.parent(x))) outs.unshift(x);
+        const groups: Array<[number, number]> = [];
+        let prev: RowJoin | null = null;
+        let run = -1;
+        outs.forEach((x, k) => {
+          const r = rowOf(map, prev, run, x);
+          if (groups.length && r.run === run) groups[groups.length - 1]![1] = k;
+          else groups.push([k, k]);
+          prev = r.key;
+          run = r.run;
+        });
+        const pv = walkPath(a, i);
+        expect(pv.rows.map((r) => r.outcome), map.key(i)).toEqual(outs);
+        expect(pv.groups.map((g) => [g.from, g.to]), map.key(i)).toEqual(groups);
+        expect(groupRows(a, pv.rows)).toEqual(pv.groups);
+        joined += groups.filter(([f, t]) => t > f).length;
+      }
+    }
+    expect(ends).toBeGreaterThan(40);
+    expect(joined).toBeGreaterThan(10);
+  });
+
+  it("判断ごとの門（F1）: 選ばずに次の判断へ進んだ道で、続く 2 つの判断に並ぶ『会社員に戻る』が同じ書き出しを言わない（0.4 の束なら 2 文が重なって止まる）", () => {
+    const map = fromDevTree(F_BACK);
+    for (const r of runTextChecks(map).runs) {
+      expect(r.decisionRepeats.pairs).toBe(1);
+      expect(r.decisionRepeats.hist).toEqual({ 0: 1 });
+    }
+    // 0.4 の束（初めての書き出しの言い換えが 1 つ）: 同じ 2 文を言い、門（1 文まで）で止まる
+    const old = editBanks((b) => {
+      const g = b.lead.back_emp!;
+      b.lead.back_emp = [g[0]!, { if: "clr>=1", v: [g[1]!.v[0]!] }, { v: [g[2]!.v[0]!] }];
+    });
+    const rep = runTextChecks(map, { banks: old, annuals: [360] });
+    expect(rep.runs[0]!.decisionRepeats.overGate).toBe(1);
+    expect(rep.failures.some((x) => /判断ごとの繰り返し 2（門 1）/.test(x))).toBe(true);
+  });
+
+  it("判断ごとの門（F1）: 続く判断に並ぶ手の組（書き出し・お金と見込み・避けたい訳）は、どれも言い換えが 2 つ以上で、どの 2 つも同じ文を持たない（続く判断では種が 1 つずれるので、どの種類の手も同じ文を並べない）", () => {
+    const sk = (v: string): string[] => sentencesOf(v.replace(/\{\w+\}/g, "#"))
+      .map(skeleton)
+      .filter((x): x is string => x !== null);
+    const bad: string[] = [];
+    for (const sec of ["lead", "cost", "avoid"] as const)
+      for (const [kind, groups] of Object.entries(BANKS[sec]))
+        groups.forEach((g, gi) => {
+          // 今日の手だけの組（first=1）は、続く判断に並ばない
+          if ((g.if ?? "").includes("first=1")) return;
+          if (g.v.length < 2) bad.push(`${sec}.${kind}#${gi} 言い換えが 1 つ`);
+          const ss = g.v.map(sk);
+          for (let x = 0; x < ss.length; x++) for (let y = x + 1; y < ss.length; y++) for (const t of ss[x]!) if (ss[y]!.includes(t)) bad.push(`${sec}.${kind}#${gi} v${x}・v${y}「${t}」`);
+        });
+    expect(bad).toEqual([]);
+  });
+
+  it("C2（F2）: 「2 社目が決まれば」は顧客が確かに 1 社、「2 社目が続くか」は確かに 2 社のときだけ（社数の幅でも、幅の無い状態でも止める）", () => {
+    const rules = fromDevTree(RULES);
+    const s9 = rules.indexOfKey("r.merge.0keep.all.1fc_push.all.2ad_side.all");
+    expect(rules.band(s9)?.cl).toEqual([1, 2]);
+    expect(mergedIssues(rules, s9, "副業と Pro が並ぶ。2 社目が埋まれば、会社員で持てる上限に届く。", BANKS.C)).toHaveLength(1);
+    expect(mergedIssues(rules, s9, "2 社目が長続きするかで、この先の独立の判断が変わる。", BANKS.C)).toHaveLength(1);
+    expect(mergedIssues(rules, s9, "顧客の数は道によって違うが、どの道でも副業の顧客と Pro の両方から売上が入る。", BANKS.C)).toEqual([]);
+    const tree = fromDevTree(TREE);
+    const c2 = (key: string, body: string): string[] =>
+      checkCard(tree, tree.indexOfKey(key), { title: "顧客", short: "", body, numbers: [], todo: [], trace: [] }, BANKS, defaultWish()).filter((x) => x.startsWith("C2"));
+    // 顧客 1 社: 2 社目が決まればは言えるが、2 社目が続くかは言えない。顧客 2 社: その逆
+    expect(c2("r.ad_permside.a0_a1.1ad.cl1", "2 社目が決まれば、会社員で持てる上限に届く。")).toEqual([]);
+    expect(c2("r.ad_permside.a0_a1.1ad.cl1", "2 社目の契約が長く続くかで、この先の独立の判断が変わる。")).toHaveLength(1);
+    expect(c2("r.ad_permside.a0_a1.1ad.cl2", "2 社目の契約が長く続くかで、この先の独立の判断が変わる。")).toEqual([]);
+    expect(c2("r.ad_permside.a0_a1.1ad.cl2", "副業と Pro が並ぶ。2 社目が埋まれば、会社員で持てる上限に届く。")).toHaveLength(1);
+  });
+
+  it("C12（F4・F5）: 何も変えなかった結果を月の稼ぎを一番動かした物と言う・前の会社で選んだ手の続きと言う文を見つける", () => {
+    const still = fromDevTree(F_STILL);
+    const end = [...Array(still.n).keys()].find((i) => still.role(i) === "e")!;
+    const card = { title: "", short: "", body: "", numbers: [], todo: [], trace: [] };
+    expect(pathContext(still, end, "この道で月の稼ぎを一番大きく動かしたのは、2029 年 5 月までの『据え置き』で、月 +3.7 万円。", card)).toHaveLength(1);
+    expect(pathContext(still, end, "この道で月の稼ぎを一番大きく動かしたのは、2029 年 5 月までの『昇格を狙う』の 3 か月で、月 +3.7 万円。", card)).toEqual([]);
+    expect(stillOutcome(still, still.parent(still.parent(end)))).toBe(false);
+    const scope = fromDevTree(F_SCOPE);
+    const moved = scope.indexOfKey("r.0fc_scope.all.1fc_push.up.2fc_switch.high.3fc_scope");
+    const same = scope.indexOfKey("r.0keep.all.1fc_scope.all.2keep.all.3fc_scope");
+    const push = scope.indexOfKey("r.0fc_scope.all.1fc_push.up.2fc_switch.high.3fc_scope.all.4keep.all.5fc_push");
+    expect([kindHereBefore(scope, moved, "fc_scope"), kindHereBefore(scope, same, "fc_scope"), kindHereBefore(scope, push, "fc_push")]).toEqual([0, 1, 0]);
+    expect(pathContext(scope, moved, "2027 年 9 月〜11 月も担当を広げ続け、任された顧客・媒体を増やす。", card)).toHaveLength(1);
+    expect(pathContext(scope, same, "2027 年 9 月〜11 月も担当を広げ続け、任された顧客・媒体を増やす。", card)).toEqual([]);
+    expect(pathContext(scope, push, "2028 年 3 月〜5 月は、前の評価で足りなかった点を上司と確かめる。", card)).toHaveLength(1);
+  });
+
+  it("最後の点検の指摘を確かめる地図（F1〜F6）も、止める点検がどれも通る", () => {
+    for (const tree of [F_BACK, F_ENDS, F_PROMO2, F_STILL, F_SCOPE, F_PORTFOLIO]) {
+      const rep = runTextChecks(fromDevTree(tree));
+      expect(rep.failures, rep.failures.join("\n")).toEqual([]);
+    }
   });
 
   it("C2・C11・C12: まとめた結果を事実と言う・手が言う額と結果の数が違う・道の歩みと合わない文を見つける", () => {
