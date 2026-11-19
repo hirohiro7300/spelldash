@@ -27,9 +27,21 @@ export function closeMenus(): void {
   openMenu?.close();
 }
 
+/**
+ * このページより新しい版のデータで止めた（画面を止める画面に差し替えた）: 以後はメニュー・ダイアログ・お知らせを出さない
+ * （後から動いたタイマーなどが、止める画面の下に見えない物を作って読み上げさせたり、フォーカスを取ったりしないように）
+ */
+let halted = false;
+
+export function haltOverlays(): void {
+  halted = true;
+  closeMenus();
+}
+
 /** (x, y) にメニューを出す。画面からはみ出さないように寄せる */
 export function showMenu(x: number, y: number, entries: MenuEntry[], opts: { minWidth?: number; className?: string; onClose?: () => void } = {}): () => void {
   closeMenus();
+  if (halted) return () => undefined;
   const layer = document.getElementById("overlay-root") ?? document.body;
   let sub: HTMLElement | null = null;
   let subItems: MenuEntry[] = [];
@@ -206,6 +218,8 @@ export function openModal(opts: { title: string; subtitle?: string; width?: numb
   );
   if (opts.width) panel.style.width = `min(${opts.width}px, calc(100vw - 32px))`;
   panel.tabIndex = -1;
+  // 止めた後: 画面には出さない（中身を足されても見えないだけ。閉じた知らせも来ないので、確認の答えを待つ物は何もしないまま）
+  if (halted) return { el: panel, body, footer, close: () => undefined };
   const backdrop = h("div", { class: "modal-backdrop" }, panel);
   let closed = false;
   const close = () => {
@@ -299,6 +313,7 @@ const toastClosers = new WeakMap<Element, () => void>();
 
 /** お知らせを出す。返す関数で閉じられる（もう言うことが当たらなくなったとき。閉じた後に呼んでも何もしない） */
 export function toast(text: string, opts: ToastOpts = {}): () => void {
+  if (halted) return () => undefined;
   let stack = document.getElementById("toast-stack");
   if (!stack) {
     stack = h("div", { class: "toast-stack", attrs: { "aria-live": "polite" } });

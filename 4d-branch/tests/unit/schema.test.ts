@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addMonths, dayNumber, fromDayNumber, normalizeDateStr } from "../../src/model/dates";
 import { buildIndex } from "../../src/model/graph";
-import { DocFormatError, NewerDocError, SCHEMA_VERSION, createEmptyDoc, isNewerVersion, makeEdge, makeNode, makeProject, migrate, normalizeDoc, parseDocText, serializeDoc } from "../../src/model/schema";
+import { DocFormatError, NewerDocError, SCHEMA_VERSION, createEmptyDoc, isNewerDocRaw, isNewerVersion, makeEdge, makeNode, makeProject, migrate, normalizeDoc, parseDocText, serializeDoc } from "../../src/model/schema";
 
 describe("normalizeDoc", () => {
   it("書き出した JSON をそのまま読み戻せる（往復で変わらない）", () => {
@@ -105,6 +105,37 @@ describe("normalizeDoc", () => {
       expect(normalizeDoc({ schema: "4d-branch", version, nodes: {} }).doc.version).toBe(SCHEMA_VERSION);
     }
     expect([v, v + 0.5, SCHEMA_VERSION, SCHEMA_VERSION + 0.5, "2", undefined, null, Number.NaN, Number.POSITIVE_INFINITY].map(isNewerVersion)).toEqual([true, true, false, false, false, false, false, false, false]);
+  });
+
+  it("整えずに見る isNewerDocRaw は、normalizeDoc が NewerDocError を出す物とちょうど同じ物を新しい版と見る", () => {
+    const v = SCHEMA_VERSION + 1;
+    const inputs: unknown[] = [
+      { schema: "4d-branch", version: v, nodes: {} },
+      { schema: "4d-branch", version: v, thin: { v: 1 } },
+      { schema: "4d-branch", version: v + 0.5 },
+      { version: v, nodes: {} },
+      { version: v, title: "nodes の無い物" },
+      { schema: "other", version: v, nodes: {} },
+      { schema: "4d-branch", version: SCHEMA_VERSION, nodes: {} },
+      { schema: "4d-branch", version: "2", nodes: {} },
+      { schema: "4d-branch", nodes: {} },
+      { schema: "4d-branch", version: Number.POSITIVE_INFINITY, nodes: {} },
+      [1, 2],
+      "文字",
+      null,
+      undefined,
+      42,
+    ];
+    for (const input of inputs) {
+      let newer = false;
+      try {
+        normalizeDoc(input);
+      } catch (e) {
+        newer = e instanceof NewerDocError;
+      }
+      expect(isNewerDocRaw(input), JSON.stringify(input)).toBe(newer);
+    }
+    expect(inputs.filter(isNewerDocRaw)).toHaveLength(4);
   });
 
   it("__proto__ を含むファイルでプロトタイプを汚さない", () => {

@@ -13,7 +13,7 @@ import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbA
 import { isDisposableDoc } from "../demo/demo";
 import { CloudRepo, CloudSync, baseCovered, dbBackend, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
-import type { BackupKind, Persistence } from "../persist/persistence";
+import type { BackupKind, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
 import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
@@ -260,8 +260,8 @@ export class App implements AppContext {
     this.persistence.on("notice", (n) => toast(n.text, { tone: n.level === "error" ? "error" : n.level === "warn" ? "warn" : "info", ms: 7000 }));
 
     this.persistence.on("remote", () => this.scheduleRemoteReload());
-    // 開いている間に、別のタブの新しい版のページが保存した（保存の競合・引き継ぎ・読み直しで気づく）: 編集をやめる
-    this.persistence.on("blocked", () => this.showNewer());
+    // 開いている間に、別のタブの新しい版のページが保存した（保存の競合・引き継ぎ・読み直し・保存先の版が上がったことで気づく）: 編集をやめる
+    this.persistence.on("blocked", (e) => this.showNewer(e.kept));
     this.bindKeys();
     this.bindLifecycle();
     this.bindDrop();
@@ -437,10 +437,11 @@ export class App implements AppContext {
   }
 
   /**
-   * このページより新しい版で保存されたデータに気づいた（保存の競合・引き継ぎ・別のタブの保存の読み直し）。保存は
-   * Persistence が止めている。ここでは同期を止め、編集と設定の保存をやめ、画面を開き直すよう伝える物に差し替える
+   * このページより新しい版で保存されたデータに気づいた（保存の競合・引き継ぎ・別のタブの保存の読み直し・保存先の版が上がった）。
+   * 保存は Persistence が止めている。ここでは同期を止め、編集と設定の保存をやめ、画面を開き直すよう伝える物に差し替える
+   * （kept: このタブのまだどこにも無い変更を残した所。画面で伝える）。待っている自動の表示（未来の道筋を開くなど）も、以後は動かない
    */
-  private showNewer(): void {
+  private showNewer(kept: KeptAside): void {
     if (this.newerShown) return;
     this.newerShown = true;
     this.cloud?.stop();
@@ -450,7 +451,7 @@ export class App implements AppContext {
     if (this.cameraSaveTimer) clearTimeout(this.cameraSaveTimer);
     this.editor.cancel();
     closeMenus();
-    showNewerScreen(this.mount);
+    showNewerScreen(this.mount, { kept });
   }
 
   // ------------------------------------------------------------ メニュー
@@ -1000,8 +1001,8 @@ export class App implements AppContext {
     const me = (this.futureWait = ++this.futureWaitSeq);
     const started = Date.now();
     const retry = (): void => {
-      // 取り消された（利用者が自分で読み込みの確認を開いた など）・新しい頼みに替わった
-      if (this.futureWait !== me) return;
+      // 取り消された（利用者が自分で読み込みの確認を開いた など）・新しい頼みに替わった・新しい版のデータで止めた
+      if (this.futureWait !== me || this.newerShown) return;
       // 入力・メニュー・確認・操作ガイドの途中なら待つ（自動で開くときと同じ。書きかけを消さない・閉じた後に勝手に入れ替えない）
       const busy = this.futureBusy();
       // 待つ間に同期が止まった（利用者が直す・決めるまで進まない）: もう待たない（showFuture が訳を知らせて確認を出す）
@@ -1093,6 +1094,8 @@ export class App implements AppContext {
     const started = Date.now();
     let toldReadOnly = false;
     const tick = (): void => {
+      // 新しい版のデータで止めた: 閲覧のみの訳などを知らせ続けない（止める画面と食い違う）
+      if (this.newerShown) return;
       if (this.futureAutoDeclined || this.ui.prefs.futureAutoOpened || this.ui.storedPrefs().futureAutoOpened === true) return;
       if (this.store.doc.meta?.[NO_AUTO_FUTURE] === true) return;
       if (hasFutureRoot(this.store.doc)) return;

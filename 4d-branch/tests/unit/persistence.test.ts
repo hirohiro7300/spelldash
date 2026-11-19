@@ -829,7 +829,7 @@ describe("このページより新しい版のデータ（壊れたデータと�
     }
   });
 
-  it("このページより新しい版の緊急コピーは採らず、消さずに残す（知らせる）。壊れた写しは今までどおり消す", async () => {
+  it("このページより新しい版の緊急コピー（本体より後の変更ではない物）は採らず、消さずに残して始める。壊れた写しは今までどおり消す", async () => {
     const kv = memoryKV();
     const name = `test-${++dbSeq}`;
     const p = makeP(kv, name);
@@ -841,10 +841,11 @@ describe("このページより新しい版のデータ（壊れたデータと�
     p.markDirty();
     await p.flush();
     p.close();
-    // 新しい版のページのタブが、保存しきれずに閉じた（中身が新しい版・包みが新しい版）。壊れた写しも 2 つ
-    const at = new Date().toISOString();
-    const newerCopy = JSON.stringify({ v: 1, baseRev: 1, at, tabId: "t_newer", doc: newerDoc("新しい版の未保存の変更") });
-    const newerWrap = JSON.stringify({ v: EMERGENCY_NEXT, baseRev: 1, at, tabId: "t_newer2", thin: { v: 1 } });
+    // 新しい版のページのタブが残した写し（中身が新しい版・包みが新しい版）。どちらも本体より前の時刻で、本体の版からではない
+    // （本体より後の変更なら止める。別のテスト）。壊れた写しも 2 つ
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const newerCopy = JSON.stringify({ v: 1, baseRev: 0, at, tabId: "t_newer", doc: newerDoc("新しい版の未保存の変更", at) });
+    const newerWrap = JSON.stringify({ v: EMERGENCY_NEXT, baseRev: 0, at, tabId: "t_newer2", doc: { updatedAt: at }, thin: { v: 1 } });
     kv.set(`${name}:emergency:t_newer`, newerCopy);
     kv.set(`${name}:emergency:t_newer2`, newerWrap);
     kv.set(`${name}:emergency:t_broken`, "{壊れた");
@@ -856,7 +857,7 @@ describe("このページより新しい版のデータ（壊れたデータと�
     expect(loaded.blocked).toBe(false);
     expect(loaded.recovered).toBe(false);
     expect(loaded.doc).toEqual(doc);
-    expect(loaded.notices.join()).toContain("新しい版のページで保存しきれなかった変更");
+    expect(loaded.notices).toEqual([]);
     expect(kv.get(`${name}:emergency:t_newer`)).toBe(newerCopy);
     expect(kv.get(`${name}:emergency:t_newer2`)).toBe(newerWrap);
     expect(kv.get(`${name}:emergency:t_broken`)).toBeNull();
@@ -993,8 +994,8 @@ describe("このページより新しい版のデータ（壊れたデータと�
     p.attach(() => doc);
     p.markDirty();
     await p.flush();
-    const events: string[] = [];
-    p.on("blocked", () => events.push("blocked"));
+    const events: unknown[] = [];
+    p.on("blocked", (e) => events.push(e));
     // ロックの効かない環境の別のタブで、新しい版のページが保存した（版番号が進む）
     await rawPut(name, "kv", newerDoc(), "doc");
     await rawPut(name, "kv", { rev: 2, savedAt: new Date().toISOString(), writer: "t_newer" }, "meta");
@@ -1003,7 +1004,8 @@ describe("このページより新しい版のデータ（壊れたデータと�
     p.markDirty();
     await p.flush();
     expect(p.blocked).toBe(true);
-    expect(events).toEqual(["blocked"]);
+    // 退避に今の内容がそのまま入っているので、緊急コピーには書かない（画面で「退避」に残したと伝える）
+    expect(events).toEqual([{ kept: "backup" }]);
     expect(p.status).toBe("readonly");
     expect(p.hasUnsaved).toBe(false);
     expect(await rawDump(name, ["kv"])).toBe(before);
@@ -1093,6 +1095,361 @@ describe("このページより新しい版のデータ（壊れたデータと�
     const dump = JSON.parse(await rawDump(name, ["kv"])) as { kv: Array<[string, { docVersion?: number }]> };
     expect(dump.kv.find(([k]) => k === "meta")?.[1].docVersion).toBe(SCHEMA_VERSION);
     expect((await p.createBackup("manual", "", doc))!.docVersion).toBe(SCHEMA_VERSION);
+  });
+});
+
+// ------------------------------------------------------------ 見直しで見つかった穴（このページより新しい版のデータ）
+
+/** 緊急コピーの中身の題名（このタブの緊急コピーに残した物を確かめる） */
+function emergencyTitles(kv: SyncKV, key: string): string[] {
+  const text = kv.get(key);
+  if (!text) return [];
+  const copy = JSON.parse(text) as { v: number; doc: DocData };
+  expect(copy.v).toBe(1);
+  return Object.values(copy.doc.nodes).map((n) => n.title);
+}
+
+/** 保存先の版を上げる（新しい版のページが開いた。開いている古い版のタブには versionchange が届く）。upgrade で新しい版の本体を書く */
+async function upgradeDb(name: string): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const r = indexedDB.open(name, 2);
+    r.onupgradeneeded = () => {
+      const s = r.transaction!.objectStore("kv");
+      s.put(newerDoc(), "doc");
+      s.put({ rev: 9, savedAt: new Date().toISOString(), writer: "t_newer", docVersion: SCHEMA_VERSION + 1 }, "meta");
+    };
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+  db.close();
+}
+
+describe("このページより新しい版のデータ（見直しで見つかった穴）", () => {
+  it("開いている間に新しい版のページが保存先の版を上げたら（versionchange）、止めて書き手のロックを手放す。まだ保存していない変更はこのタブの緊急コピーに残し、以後は何も書かない", async () => {
+    const { locks } = fakeLocks();
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    // 保存の待ちを長くして、まだ保存していない変更を持ったまま気づく
+    const p = new Persistence({ dbName: name, kv, locks, channel: false, debounceMs: 60_000 });
+    await p.open();
+    expect(await p.acquireWriter()).toBe(true);
+    await p.loadInitial();
+    const doc = edit(createEmptyDoc("この版の内容"), "保存できた変更");
+    p.attach(() => doc);
+    p.markDirty();
+    await p.flush();
+    expect(p.status).toBe("saved");
+    edit(doc, "まだ保存していない変更");
+    p.markDirty();
+    const events: unknown[] = [];
+    p.on("blocked", (e) => events.push(e));
+    await upgradeDb(name);
+    expect(p.blocked).toBe(true);
+    expect(p.writer).toBe(false);
+    expect(events).toEqual([{ kept: "copy" }]);
+    expect(emergencyTitles(kv, `${name}:emergency:${p.tabId}`)).toContain("まだ保存していない変更");
+    // 新しい版のページのタブが、引き継がずに書き手のロックを取れる
+    await wait();
+    const got = await new Promise<boolean>((resolve) => void locks.request(`${name}:writer`, { ifAvailable: true }, (lock) => void resolve(!!lock)));
+    expect(got).toBe(true);
+    // 以後は何も書かない（引き継ぎ・保存・閉じるときの緊急コピー）
+    const kvBefore = kvDump(kv);
+    expect(await p.takeOver()).toBeNull();
+    edit(doc, "止めた後の変更");
+    p.markDirty();
+    await p.flush();
+    p.writeEmergency(true);
+    expect(kvDump(kv)).toBe(kvBefore);
+  });
+
+  it("保存先が消されたとき（版を上げたのではない）は今までどおり: 止めずに知らせだけ出す（このタブの内容は緊急コピーで守れる）", async () => {
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const p = makeP(kv, name);
+    await p.open();
+    await p.acquireWriter();
+    await p.loadInitial();
+    const notices: string[] = [];
+    p.on("notice", (n) => notices.push(n.text));
+    await new Promise<void>((resolve, reject) => {
+      const r = indexedDB.deleteDatabase(name);
+      r.onsuccess = () => resolve();
+      r.onerror = () => reject(r.error);
+    });
+    expect(p.blocked).toBe(false);
+    expect(notices.join()).toContain("このタブを再読み込みしてください");
+  });
+
+  it("新しい版のページの緊急コピーが本体より後の変更なら（本体が無いときも）、古い本体やデモで始めずに止める（その上に保存して追い越さない）。何も書かず、壊れた写しも消さない", async () => {
+    for (const stored of [true, false]) {
+      const kv = memoryKV();
+      const name = `test-${++dbSeq}`;
+      const p = makeP(kv, name);
+      await p.open();
+      await p.acquireWriter();
+      await p.loadInitial();
+      if (stored) {
+        const doc = edit(createEmptyDoc("この版で保存した本体"), "この版で保存した内容");
+        p.attach(() => doc);
+        p.markDirty();
+        await p.flush();
+      }
+      p.close();
+      // 新しい版のページがその本体を開いて編集し、保存しきれずに閉じた（本体より後の時刻）
+      const at = new Date(Date.now() + 5_000).toISOString();
+      kv.set(`${name}:emergency:t_newer`, JSON.stringify({ v: 1, baseRev: stored ? 1 : 0, at, tabId: "t_newer", doc: newerDoc("新しい版の未保存の変更", at) }));
+      kv.set(`${name}:emergency:t_broken`, "{壊れた");
+      const before = await rawDump(name);
+      const kvBefore = kvDump(kv);
+      const q = makeP(kv, name);
+      await q.open();
+      await q.acquireWriter();
+      expect(await q.loadInitial()).toEqual({ doc: null, notices: [], recovered: false, blocked: true });
+      expect(q.blocked).toBe(true);
+      // 起動の続き（デモで始めたときの保存・日次バックアップ）を頼まれても書かない
+      q.attach(() => createEmptyDoc());
+      q.markDirty();
+      await q.flush();
+      await q.ensureDailyBackup(createEmptyDoc());
+      expect(await rawDump(name)).toBe(before);
+      expect(kvDump(kv)).toBe(kvBefore);
+    }
+  });
+
+  it("閲覧のみのタブは、新しい版のページの緊急コピーが本体より後の変更なら引き継がない（ロックを奪わず・何も書かない）", async () => {
+    const { locks } = fakeLocks();
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const mk = () => new Persistence({ dbName: name, kv, locks, channel: false, debounceMs: 1 });
+    // 書き手のロックを持つタブ（新しい版のページのタブの代わり）がこの版の本体を保存した
+    const holder = mk();
+    await holder.open();
+    expect(await holder.acquireWriter()).toBe(true);
+    await holder.loadInitial();
+    const doc = edit(createEmptyDoc("この版で保存した本体"), "x");
+    holder.attach(() => doc);
+    holder.markDirty();
+    await holder.flush();
+    const old = mk();
+    await old.open();
+    expect(await old.acquireWriter()).toBe(false);
+    await old.loadInitial();
+    const at = new Date(Date.now() + 5_000).toISOString();
+    kv.set(`${name}:emergency:t_newer`, JSON.stringify({ v: EMERGENCY_NEXT, baseRev: 1, at, tabId: "t_newer", thin: { v: 1 } }));
+    const before = await rawDump(name);
+    const kvBefore = kvDump(kv);
+    expect(await old.takeOver()).toBeNull();
+    expect(old.blocked).toBe(true);
+    expect(old.writer).toBe(false);
+    await wait();
+    expect(holder.writer).toBe(true);
+    expect(await rawDump(name)).toBe(before);
+    expect(kvDump(kv)).toBe(kvBefore);
+  });
+
+  it("開いている間に気づいて止めるとき、「退避」に残せない変更（localStorage の保存先）は、このタブの緊急コピーに残す（新しい版の本体・版の記録には触れない）", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    try {
+      const kv = memoryKV();
+      const name = `test-${++dbSeq}`;
+      const p = makeP(kv, name);
+      await p.open();
+      expect(p.mode).toBe("local");
+      await p.acquireWriter();
+      await p.loadInitial();
+      const doc = edit(createEmptyDoc("この版の内容"), "保存できた変更");
+      p.attach(() => doc);
+      p.markDirty();
+      await p.flush();
+      const events: unknown[] = [];
+      p.on("blocked", (e) => events.push(e));
+      // ロックの効かない別のタブで、新しい版のページが保存した
+      const docText = JSON.stringify(newerDoc());
+      const metaText = JSON.stringify({ rev: 2, savedAt: new Date().toISOString(), writer: "t_newer", docVersion: SCHEMA_VERSION + 1 });
+      kv.set(`${name}:doc`, docText);
+      kv.set(`${name}:meta`, metaText);
+      edit(doc, "まだどこにも無い変更");
+      p.markDirty();
+      await p.flush();
+      expect(p.blocked).toBe(true);
+      expect(events).toEqual([{ kept: "copy" }]);
+      expect(kv.get(`${name}:doc`)).toBe(docText);
+      expect(kv.get(`${name}:meta`)).toBe(metaText);
+      expect(emergencyTitles(kv, `${name}:emergency:${p.tabId}`)).toContain("まだどこにも無い変更");
+      // 残した後は何も書かない
+      const after = kvDump(kv);
+      p.writeEmergency(true);
+      edit(doc, "止めた後の変更");
+      p.markDirty();
+      await p.flush();
+      expect(kvDump(kv)).toBe(after);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("開いている間に気づいて止めるとき、「退避」を作れなかった（容量不足など）・退避した後に入力があったなら、今の内容をこのタブの緊急コピーに残す", async () => {
+    for (const how of ["failed", "typed"] as const) {
+      const kv = memoryKV();
+      const name = `test-${++dbSeq}`;
+      const p = makeP(kv, name);
+      await p.open();
+      await p.acquireWriter();
+      await p.loadInitial();
+      const doc = edit(createEmptyDoc("この版の内容"), "保存できた変更");
+      p.attach(() => doc);
+      p.markDirty();
+      await p.flush();
+      const events: unknown[] = [];
+      p.on("blocked", (e) => events.push(e));
+      await rawPut(name, "kv", newerDoc(), "doc");
+      await rawPut(name, "kv", { rev: 2, savedAt: new Date().toISOString(), writer: "t_newer" }, "meta");
+      const before = await rawDump(name, ["kv"]);
+      const createBackup = p.createBackup.bind(p);
+      (p as unknown as { createBackup: Persistence["createBackup"] }).createBackup = async (kind, label, d) => {
+        if (how === "failed") throw new DOMException("quota", "QuotaExceededError");
+        const made = await createBackup(kind, label, d);
+        // 退避を書く間に打った（止めるまでの間の入力）
+        edit(doc, "退避した後の入力");
+        return made;
+      };
+      edit(doc, "気づく前の変更");
+      p.markDirty();
+      await p.flush();
+      expect(p.blocked).toBe(true);
+      expect(events).toEqual([{ kept: "copy" }]);
+      const titles = emergencyTitles(kv, `${name}:emergency:${p.tabId}`);
+      expect(titles).toContain("気づく前の変更");
+      if (how === "typed") expect(titles).toContain("退避した後の入力");
+      expect(await rawDump(name, ["kv"])).toBe(before);
+    }
+  });
+
+  it("localStorage の保存先でも、版の記録が新しい版を指していれば、本体を JSON として読めなくても止める（壊れた本体と取り違えない・緊急コピーにも小さな鍵と値にも触れない）", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    try {
+      const kv = memoryKV();
+      const name = `test-${++dbSeq}`;
+      kv.set(`${name}:doc`, "\u001f\u008b 新しい版の縮めた本体");
+      kv.set(`${name}:meta`, JSON.stringify({ rev: 4, savedAt: new Date().toISOString(), writer: "t_newer", docVersion: SCHEMA_VERSION + 1 }));
+      kv.set(`${name}:emergency:t_old`, JSON.stringify({ v: 1, baseRev: 3, at: new Date().toISOString(), tabId: "t_old", doc: edit(createEmptyDoc("前の版の緊急コピー"), "x") }));
+      const before = kvDump(kv);
+      const p = makeP(kv, name);
+      await p.open();
+      expect(p.mode).toBe("local");
+      await p.acquireWriter();
+      await expect(p.readStored()).rejects.toBeInstanceOf(NewerDocError);
+      expect(await p.loadInitial()).toEqual({ doc: null, notices: [], recovered: false, blocked: true });
+      await p.writeKv("cloud:bootDoc", { id: "x" });
+      p.attach(() => createEmptyDoc());
+      p.markDirty();
+      await p.flush();
+      p.writeEmergency(true);
+      expect(kvDump(kv)).toBe(before);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("localStorage の保存先でも、版の記録が新しい版を指していれば、版番号が合っていても上書きしない（最後の守り）", async () => {
+    vi.stubGlobal("indexedDB", undefined);
+    try {
+      const kv = memoryKV();
+      const name = `test-${++dbSeq}`;
+      const p = makeP(kv, name);
+      await p.open();
+      expect(p.mode).toBe("local");
+      await p.acquireWriter();
+      await p.loadInitial();
+      const doc = edit(createEmptyDoc("この版の内容"), "保存できた変更");
+      p.attach(() => doc);
+      p.markDirty();
+      await p.flush();
+      expect(p.rev).toBe(1);
+      // 版番号はそのまま、版の記録だけ新しい版を指す
+      const docText = kv.get(`${name}:doc`);
+      const metaText = JSON.stringify({ rev: 1, savedAt: new Date().toISOString(), writer: "t_newer", docVersion: SCHEMA_VERSION + 1 });
+      kv.set(`${name}:meta`, metaText);
+      edit(doc, "書いてはいけない変更");
+      p.markDirty();
+      await p.flush();
+      expect(p.blocked).toBe(true);
+      expect(kv.get(`${name}:doc`)).toBe(docText);
+      expect(kv.get(`${name}:meta`)).toBe(metaText);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("引き継ぎで保存してある本体を読んで整えるのは 1 回だけ。保存の競合で新しい版かを見るときは整えない（大きな地図で待たせない）", async () => {
+    const { locks } = fakeLocks();
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const mk = () => new Persistence({ dbName: name, kv, locks, channel: false, debounceMs: 1 });
+    const a = mk();
+    await a.open();
+    expect(await a.acquireWriter()).toBe(true);
+    await a.loadInitial();
+    const doc = edit(createEmptyDoc("この版の内容"), "保存できた変更");
+    a.attach(() => doc);
+    a.markDirty();
+    await a.flush();
+    const b = mk();
+    await b.open();
+    expect(await b.acquireWriter()).toBe(false);
+    await b.loadInitial();
+    const reads = vi.spyOn(b, "readStored");
+    const taken = await b.takeOver();
+    expect(taken!.title).toBe("この版の内容");
+    expect(b.writer).toBe(true);
+    expect(reads).toHaveBeenCalledTimes(1);
+    // ロックの効かない別のタブがこの版で保存した（ふつうの競合）: 新しい版かは整えずに見る
+    await rawPut(name, "kv", { ...doc, title: "別のタブ" }, "doc");
+    await rawPut(name, "kv", { rev: 9, savedAt: new Date().toISOString(), writer: "t_other", docVersion: SCHEMA_VERSION }, "meta");
+    reads.mockClear();
+    const mine = createEmptyDoc("このタブ");
+    b.attach(() => mine);
+    b.markDirty();
+    await b.flush();
+    expect(b.status).toBe("conflict");
+    expect(b.blocked).toBe(false);
+    expect(reads).not.toHaveBeenCalled();
+  });
+
+  it("引き継ぐ間に前のタブが保存していたら、引き継いだ後に読み直す（ロックを取る前に読んだ内容で始めない）", async () => {
+    const { locks } = fakeLocks();
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const mk = () => new Persistence({ dbName: name, kv, locks, channel: false, debounceMs: 1 });
+    const a = mk();
+    await a.open();
+    expect(await a.acquireWriter()).toBe(true);
+    await a.loadInitial();
+    const doc = edit(createEmptyDoc("前の内容"), "前の変更");
+    a.attach(() => doc);
+    a.markDirty();
+    await a.flush();
+    const b = mk();
+    await b.open();
+    expect(await b.acquireWriter()).toBe(false);
+    await b.loadInitial();
+    // ロックを取る直前に、前のタブが保存した
+    const readStored = b.readStored.bind(b);
+    let first = true;
+    (b as unknown as { readStored: Persistence["readStored"] }).readStored = async () => {
+      const s = await readStored();
+      if (first) {
+        first = false;
+        doc.title = "引き継ぐ間に保存した内容";
+        edit(doc, "引き継ぐ間の変更");
+        a.markDirty();
+        await a.flush();
+      }
+      return s;
+    };
+    const taken = await b.takeOver();
+    expect(taken!.title).toBe("引き継ぐ間に保存した内容");
+    expect(b.rev).toBe(2);
   });
 });
 

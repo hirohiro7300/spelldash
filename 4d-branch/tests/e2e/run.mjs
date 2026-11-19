@@ -2975,6 +2975,9 @@ async function main() {
     watch(reader);
     await reader.goto(BASE, { waitUntil: "networkidle" });
     await reader.waitForFunction(() => window.__fourD?.store.readOnly === true);
+    // 閲覧のみのタブでは操作ガイドを開いている（止めた後に、ガイドのキーの見張りが残って Enter を横取りしないか確かめる）
+    await reader.evaluate(() => window.__fourD.app.startTour());
+    await reader.locator(".tour").waitFor();
     // 新しい版のページ（別のタブ）が保存した: 本体と版の記録を書き、保存したと知らせる
     await putNewer(np, ["doc"]);
     const before = await dumpStorage(np, ["kv"]);
@@ -2984,12 +2987,23 @@ async function main() {
       bc.close();
     });
     await reader.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
-    assert((await reader.locator(".app-shell").count()) === 0, "閲覧のみのタブに編集の画面が残った");
-    // 編集中のタブ: 次の保存で気づく（手元の変更は「退避」に残す）
+    assert((await reader.locator(".app-shell, .tour").count()) === 0, "閲覧のみのタブに編集の画面かガイドが残った");
+    assert(!(await reader.locator(".newer-card").textContent()).includes("まだ保存されていなかった変更"), "閲覧のみのタブで、残した変更があると言った");
+    // 止めた後に動いた知らせ（ここでは閲覧のみで「未来の道筋」を押したときの訳）は出さない（止める画面の下に見えないお知らせを作らない）
+    await reader.evaluate(() => void window.__fourD.app.showFuture());
+    await reader.waitForTimeout(300);
+    assert((await reader.evaluate(() => document.querySelectorAll("#toast-stack, .toast, .modal-backdrop").length)) === 0, "止めた後にお知らせ・ダイアログを出した");
+    // 「ページを開き直す」は Enter でも押せる（ガイドのキーの見張りに横取りされない）
+    await reader.waitForFunction(() => document.activeElement?.textContent?.includes("ページを開き直す"));
+    await Promise.all([reader.waitForEvent("load", { timeout: 5000 }), reader.keyboard.press("Enter")]);
+    await reader.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    // 編集中のタブ: 次の保存で気づく（手元の変更は「退避」に残し、画面でそう伝える）
     await np.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1600 }, { title: "気づく前の変更", exact: true }));
     await np.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
     assert((await np.locator(".app-shell").count()) === 0, "編集中のタブに編集の画面が残った");
     assert((await np.evaluate(() => window.__fourD.persistence.blocked)) === true, "止まっていない");
+    const npText = await np.locator(".newer-card").textContent();
+    assert(npText.includes("まだ保存されていなかった変更は、「退避」のバックアップに残しました"), `退避に残したと伝えていない: ${npText}`);
     // 止めた後に隠れても・閉じかけても書かない
     await np.evaluate(() => {
       document.dispatchEvent(new Event("visibilitychange"));
@@ -3019,6 +3033,66 @@ async function main() {
     await reader.close();
   });
   await nctx.close();
+
+  await check("新しい版のデータ: 開いている間に新しい版のページが保存先の版を上げたら、編集中のタブも止める画面に替わり、書き手のロックを手放して以後は書かない（まだ保存していない変更は緊急コピーに残して伝える）", async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await c.addInitScript(() => {
+      try {
+        const k = "4d-branch:prefs";
+        if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, futureAutoOpened: true, wishlistOffered: true, futureOffered: true }));
+      } catch {
+        /* about:blank など */
+      }
+    });
+    await c.route(`${BASE}__seed.html`, (r) => r.fulfill({ contentType: "text/html; charset=utf-8", body: '<!doctype html><meta charset="utf-8"><title>seed</title><link rel="icon" href="data:,">' }));
+    const a = await c.newPage();
+    watch(a);
+    await a.goto(BASE, { waitUntil: "networkidle" });
+    await a.waitForFunction(() => window.__fourD?.persistence.writer === true);
+    await waitSaved(a);
+    const b = await c.newPage();
+    watch(b);
+    await b.goto(`${BASE}__seed.html`);
+    // 保存を待つ間（0.3 秒）に、新しい版のページ（b）が保存先の版を 2 に上げ、新しい版の本体を書く
+    await a.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1800 }, { title: "版が上がる直前の変更", exact: true }));
+    await b.evaluate(
+      (doc) =>
+        new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch", 2);
+          r.onupgradeneeded = () => {
+            const s = r.transaction.objectStore("kv");
+            s.put(doc, "doc");
+            s.put({ rev: 99, savedAt: doc.updatedAt, writer: "t_newer", docVersion: 2 }, "meta");
+          };
+          r.onsuccess = () => (r.result.close(), resolve());
+          r.onerror = () => reject(r.error);
+        }),
+      newerDocOf("新しい版で保存した内容"),
+    );
+    await a.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    assert((await a.locator(".app-shell").count()) === 0, "編集の画面が残った");
+    assert((await a.evaluate(() => [window.__fourD.persistence.blocked, window.__fourD.persistence.writer].join())) === "true,false", "止まっていない・書き手のまま");
+    // 新しい版のページのタブが、引き継がずに書き手のロックを取れる
+    assert((await b.evaluate(() => navigator.locks.request("4d-branch:writer", { ifAvailable: true }, (lock) => !!lock))) === true, "書き手のロックを手放していない");
+    // 保存の前に版が上がったなら、その変更はこのタブの緊急コピーにあり、画面でそう伝える（保存が先なら、その変更は本体に入っていた）
+    const s = await a.evaluate(() => ({
+      text: document.querySelector(".newer-card")?.textContent ?? "",
+      copies: Object.keys(localStorage)
+        .filter((k) => k.includes(":emergency:"))
+        .map((k) => localStorage.getItem(k)),
+    }));
+    const inCopy = s.copies.some((t) => t.includes("版が上がる直前の変更"));
+    assert(inCopy === s.text.includes("このブラウザの緊急コピーに残しました"), `緊急コピーと画面の知らせが合わない: ${JSON.stringify(s)}`);
+    // 以後は何も書かない（隠れても・閉じかけても）
+    const before = await dumpStorage(a);
+    await a.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    await a.waitForTimeout(800);
+    assert((await dumpStorage(a)) === before, "止めた後に保存先が書き換わった");
+    await c.close();
+  });
 
   await check("ページのエラーが無い", async () => {
     assert(errors.length === 0, errors.join("\n"));

@@ -34,6 +34,16 @@ export function isNewerVersion(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v) && Math.floor(v) > SCHEMA_VERSION;
 }
 
+/**
+ * 整える前の物が、このページより新しい版の 4D Branch のデータか（normalizeDoc が NewerDocError を出す物と同じ見分け方）。
+ * 中身は整えずに印だけ見るので、大きな地図でも軽い（保存してある本体が新しい版かを確かめるだけのとき）
+ */
+export function isNewerDocRaw(input: unknown): boolean {
+  if (!isObj(input)) return false;
+  if (input.schema === undefined ? !("nodes" in input) : input.schema !== SCHEMA) return false;
+  return isNewerVersion(input.version);
+}
+
 export interface NormalizeReport {
   warnings: string[];
   dropped: { nodes: number; edges: number; projects: number; scenarios: number };

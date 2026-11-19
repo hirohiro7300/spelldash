@@ -116,15 +116,22 @@ export function startTour(app: AppContext): void {
   (document.getElementById("overlay-root") ?? document.body).append(layer);
   let i = -1;
 
+  /** キーと画面の大きさの見張りを外す */
+  const unbind = () => {
+    document.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("resize", place);
+  };
   const close = () => {
     steps[i]?.after?.();
     layer.remove();
-    document.removeEventListener("keydown", onKey, true);
-    window.removeEventListener("resize", place);
+    unbind();
     ui.setPrefs({ onboardingDone: true });
     app.afterTour?.();
   };
   const onKey = (ev: KeyboardEvent) => {
+    // 画面ごと差し替えられた（このページより新しい版のデータで止めた）: ガイドはもう無い。キーを横取りせず、
+    // 終わったときのこと（設定・保存の保護の頼み）もしないで外れる
+    if (!layer.isConnected) return unbind();
     if (ev.key === "Escape") {
       ev.preventDefault();
       ev.stopPropagation();
@@ -157,6 +164,7 @@ export function startTour(app: AppContext): void {
   };
 
   const place = () => {
+    if (!layer.isConnected) return unbind();
     const s = steps[i]!;
     const r = rectOf(s);
     const pad = 6;
