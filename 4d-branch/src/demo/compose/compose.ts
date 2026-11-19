@@ -9,8 +9,8 @@
 // 行き先: 年月と仕事 → まとめた行き先の注 → 節目 → 月の稼ぎ → この先の見通し（まとめた行き先は、標準の続きの目安）
 import type { MapContStep, MapData, MapMix } from "../../deepmap/mapData";
 import type { ImpactSt, R3 } from "../impact";
-import { capOf, countEvent, countKind, endLink, eventsList, jobMonths, linkFor, linkOf, ripple, sideIn, stepsFor, usedSet, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
-import { clPhrase, clr, cond, f2, hash, man, n0, pbText, slot, strip, yenTxt, type Env } from "./text";
+import { capOf, countEvent, countKind, endLink, eventsList, jobMonths, linkFor, linkOf, recentSteps, ripple, sideIn, stepsFor, usedSet, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
+import { clPhrase, clr, cond, f2, hash, man, n0, pbText, slot, spaceJa, strip, yenTxt, type Env } from "./text";
 import type { Card, Variant } from "./types";
 
 type Slots = Record<string, string>;
@@ -56,6 +56,19 @@ function labelOf(c: Ctx, o: number): string {
 
 // ---- 差し込む値と、条件に使う値
 
+/**
+ * 社数の違う場合をまとめた結果（幅 band.cl がある。整数の 10%〜90%）の顧客の数の言い方。無ければ null（ほかは clPhrase）。
+ * 手はその判断の状態の幅。まとめた行き先は平均の言い方なので null（SPEC §2.2: 幅はまとめた結果だけ・整数の幅）
+ */
+function bandClients(c: Ctx, i: number): string | null {
+  const { map } = c;
+  const at = map.role(i) === "a" ? map.parent(i) : i;
+  if (at < 0 || map.sum(at)) return null;
+  const b = map.band(at)?.cl;
+  if (!b) return null;
+  return b[0] === b[1] ? `${slot(b[0])} 社` : `${slot(b[0])}〜${slot(b[1])} 社`;
+}
+
 function baseEnv(c: Ctx, n: number): { env: Env; slots: Slots } {
   const { map, C, B, cal } = c;
   const s = map.st(n);
@@ -75,7 +88,7 @@ function baseEnv(c: Ctx, n: number): { env: Env; slots: Slots } {
     salx: `${slot(f2(rr[0]))} 倍`,
     // 給与は賞与込みの年収で言う（月の手取りと読み違えないように。truth-15）
     salYen: `年収 ${slot(n0(c.annual * rr[0]))} 万円`,
-    clp: clPhrase(s.cl),
+    clp: bandClients(c, n) ?? clPhrase(s.cl),
     clrNext: slot(clr(s.cl) + 1),
     ads: slot(man(s.cl * s.fee)),
     fee: slot(man(s.fee || C.sideFee)),
@@ -172,10 +185,10 @@ function freeGroup(vs: Variant[] | undefined, env: Env, flags: readonly string[]
 
 const join = (parts: Array<string | null | undefined>): string => parts.filter((x): x is string => !!x && !!x.trim()).join("");
 
-/** 出来事の年月の差し込み（ref の月と同じ年なら月だけ） */
+/** 出来事の年月の差し込み（ref の月と同じ年なら月だけ。ref の月そのものは「この月」: カードの書き出しの年月を文の頭で言い直さない。点検 C8） */
 function evSlots(c: Ctx, e: Ev, ref: number): Slots {
   const out: Slots = { ...e.x };
-  for (const [k, m] of Object.entries(e.at ?? {})) out[k] = c.cal.ymRel(m, ref);
+  for (const [k, m] of Object.entries(e.at ?? {})) out[k] = m === ref ? "この月" : c.cal.ymRel(m, ref);
   return out;
 }
 
@@ -196,9 +209,11 @@ interface Plan {
   readonly tips: ReadonlyArray<readonly [string, number]>;
   /** 節目の鍵（節目からの月の文。親の状態と違うときだけ書く） */
   readonly sinceKey: string | null;
+  /** 同じ手の別の結果との違いで、届け出の答えの範囲を言うか（答えごとに道で 1 回だけ） */
+  readonly perm: boolean;
 }
 
-const NO_PLAN: Plan = { keys: [], cal: null, hint: null, tips: [], sinceKey: null };
+const NO_PLAN: Plan = { keys: [], cal: null, hint: null, tips: [], sinceKey: null, perm: false };
 const PLANS = new WeakMap<Link, Plan>();
 
 /** 道（link から今日まで）で、その鍵の文を使ったか */
@@ -234,7 +249,7 @@ function makePlan(c: Ctx, link: Link): Plan {
   const used = (k: string): boolean => keys.includes(k) || usedOn(c, up, k);
   // その状態へ来た手の、避けたい訳
   if (avoidAllowed(c, link.move, up)) keys.push(`avoid.${map.kind(link.move) ?? ""}`);
-  if (map.role(n) !== "s") return { keys, cal: null, hint: null, tips: [], sinceKey: null };
+  if (map.role(n) !== "s") return { keys, cal: null, hint: null, tips: [], sinceKey: null, perm: false };
   const { env, slots } = stateEnv(c, n, link);
   const fl = map.st(n).fl;
   // 出来事の助言（文に出す 2 つまでの出来事）
@@ -254,7 +269,11 @@ function makePlan(c: Ctx, link: Link): Plan {
   // 暦の文（1 つだけ）。確定申告は「同じ申告の 2 年目」を言い分けるので、申告の種類も覚える
   const cal = calPick(c, link, env, slots, used);
   if (cal) keys.push(cal.key, `calcode:${cal.code}`);
-  return { keys, cal, hint, tips, sinceKey: sinceKeyOf(c, link) };
+  // 届け出の答えの範囲の一言（「この場合は Pro は出せるが、広告運用はできない」）は、答えごとに道で 1 回だけ
+  const pk = permKey(c, n);
+  const perm = pk !== null && !used(pk);
+  if (perm) keys.push(pk!);
+  return { keys, cal, hint, tips, sinceKey: sinceKeyOf(c, link), perm };
 }
 
 // ---- 数の行（カードの上に決まった並びで出す。SPEC §4.2: 年収・広告運用・有料・遊ぶ人・週の時間）
@@ -269,7 +288,7 @@ function numbersRow(c: Ctx, i: number): string[] {
   const rr = map.rr(at);
   const out: string[] = [];
   out.push(salaryItem(c, s, rr[0], ""));
-  out.push(s.cl >= 0.05 ? `広告運用 ${clPhrase(s.cl, map.ln(at))}（売上 月 ${slot(man(s.cl * s.fee))} 万円）` : "広告運用の顧客なし");
+  out.push(s.cl >= 0.05 ? `広告運用 ${bandClients(c, at) ?? clPhrase(s.cl, map.ln(at))}（売上 月 ${slot(man(s.cl * s.fee))} 万円）` : "広告運用の顧客なし");
   out.push(proItem(c, s, rr[2], ""));
   let mau = `月に遊んだ人 ${slot(n0(s.mau))} 人`;
   // 3 か月前（その前の判断）との差
@@ -306,13 +325,20 @@ function sumNumbers(c: Ctx, i: number): string[] {
   const s = map.st(i);
   const rr = map.rr(i);
   const out: string[] = [salaryItem(c, s, rr[0], "平均 ")];
-  out.push(s.cl >= 0.05 ? `広告運用 平均 ${avgClients(s.cl)}（売上 月 ${slot(man(s.cl * s.fee))} 万円ほど）` : "広告運用の顧客なし");
+  out.push(s.cl >= 0.05 ? `広告運用 平均 ${avgClientsRow(s.cl)}（売上 月 ${slot(man(s.cl * s.fee))} 万円ほど）` : "広告運用の顧客なし");
   // Pro: 一番多い場合が「まだ」でも、平均の有料会員がいれば書く（平均と書く）
   if (s.pro || s.pu >= 0.5) out.push(`有料 平均 ${slot(n0(s.pu))} 人（手数料とサーバー代を引いて月 ${yenTxt(rr[2])}${rr[2] < 0 ? "の持ち出し" : ""}）`);
   else out.push("Pro はまだ出していない");
   if (s.seats >= 0.5) out.push(s.seats % c.C.schoolSeats === 0 ? `学校の席 ${slot(n0(s.seats))}` : "学校の導入がある道も含む");
   out.push(`月に遊んだ人 平均 ${slot(n0(s.mau))} 人`);
   return out;
+}
+
+/** 数の行の平均の顧客の数（整数に近ければその整数、ほかは整数の幅。「平均ほぼ」と重ねない） */
+function avgClientsRow(cl: number): string {
+  const r = Math.round(cl);
+  if (Math.abs(cl - r) < 0.15) return `${slot(r)} 社`;
+  return `${slot(Math.floor(cl))}〜${slot(Math.ceil(cl))} 社`;
 }
 
 /** 平均の顧客の数（整数か、整数の幅。端数は書かない） */
@@ -381,7 +407,7 @@ function metricFact(c: Ctx, o: number, metric: string): string {
   const s = map.st(o);
   switch (metric) {
     case "cl":
-      return s.j === "i" ? `独立・顧客 ${clPhrase(s.cl, map.ln(o))}` : `顧客 ${clPhrase(s.cl, map.ln(o))}`;
+      return s.j === "i" ? `独立・顧客 ${bandClients(c, o) ?? clPhrase(s.cl, map.ln(o))}` : `顧客 ${bandClients(c, o) ?? clPhrase(s.cl, map.ln(o))}`;
     case "pu":
       return `有料 ${slot(n0(s.pu))} 人`;
     case "mau":
@@ -402,8 +428,10 @@ function titlesOf(c: Ctx, p: number): readonly TitleEntry[] {
   const { map } = c;
   const ks = kidsOf(map, p);
   const bases = ks.map((x) => baseTitle(c, x));
-  const dup = (arr: readonly TitleEntry[]): boolean => arr.some((t, k) => arr.findIndex((u) => u[0] === t[0]) !== k);
-  const many = (arr: readonly TitleEntry[], t: string): boolean => arr.filter((u) => u[0] === t).length > 1;
+  // 重なりは仕上げた題で比べる（差し込みの印の位置が違うだけの同じ題を見逃さない）
+  const fin = (t: string): string => spaceJa(strip(t));
+  const dup = (arr: readonly TitleEntry[]): boolean => arr.some((t, k) => arr.findIndex((u) => fin(u[0]) === fin(t[0])) !== k);
+  const many = (arr: readonly TitleEntry[], t: string): boolean => arr.filter((u) => fin(u[0]) === fin(t)).length > 1;
   let out: readonly TitleEntry[] = bases;
   if (dup(out)) {
     // 同じ題の兄弟だけ、結果の名前（手は短い名前）で言い分ける。それでも重なれば、重なった物に並びの番号を足す
@@ -494,6 +522,16 @@ function endTitle(c: Ctx, n: number): string {
   const s = map.st(n);
   const facts: string[] = [];
   const metric = splitMetric(c, n);
+  if (metric && map.sum(n)) {
+    // まとめた行き先は、分かれた結果（その 3 か月の結果）の名前で言う。3 年後の数は平均なので、結果の幅に合わせた 1 本の道の数として題に書かない（truth-5）
+    const pre = endPrefix(c, n);
+    const lab = labelOf(c, n);
+    // 長い名前（まとめた結果「少し上げて転職・大きく上げて転職」など）は、結果の短い名前で
+    const short = OUT_NAMES[map.outId(n)];
+    const cands = [`${pre}『${lab}』の後`, `${pre}${lab}の後`, ...(short ? [`${pre}${slot(short)}の後`] : [])];
+    for (const t of cands) if (len(t) <= TITLE_MAX.e) return t;
+    return `${pre}${lab}`;
+  }
   if (metric) facts.push(metricFact(c, n, metric));
   const mix = map.mix(n);
   if (map.sum(n) && mix) {
@@ -503,13 +541,18 @@ function endTitle(c: Ctx, n: number): string {
     const clHi = Math.round(mix.cl[2]);
     if (clHi >= 1 && mix.j.i < SURE) facts.push(`副業 ${range(mix.cl[0], mix.cl[2], "社")}`);
     if (mix.pro > RARE) facts.push(`有料 ${range(mix.pu[0], mix.pu[2], "人")}`);
-    if (!facts.length) facts.push(`月に遊ぶ人 ${range(mix.mau[0], mix.mau[2], "人")}`);
+    if (!facts.length) {
+      // 大きな事実が無ければ遊ぶ人の幅。題に収まらなければ年収の幅か、遊ぶ人の真ん中の数
+      const pre = endPrefix(c, n);
+      const cands = [`月に遊ぶ人 ${range(mix.mau[0], mix.mau[2], "人")}`, ...(mix.j.i < SURE ? [`年収 ${range(c.annual * mix.sal[0], c.annual * mix.sal[2], "万円")}`] : []), `月に遊ぶ人 ${slot(n0(mix.mau[1]))} 人ほど`];
+      facts.push(cands.find((t) => len(`${pre}${t}`) <= TITLE_MAX.e) ?? cands[cands.length - 1]!);
+    }
   } else {
     const avg = map.sum(n);
-    if (s.j === "i") facts.push(`独立・顧客 ${avg ? avgClients(s.cl) : clPhrase(s.cl)}`);
+    if (s.j === "i") facts.push(`独立・顧客 ${avg ? avgClients(s.cl) : (bandClients(c, n) ?? clPhrase(s.cl))}`);
     else if (s.fl.includes("switched")) facts.push(`転職で給与 ${slot(f2(s.sal))} 倍`);
     else if (s.j === "p") facts.push("週 4 日勤務");
-    if (s.j !== "i" && s.cl >= 0.5) facts.push(`副業 ${avg ? avgClients(s.cl) : clPhrase(s.cl)}`);
+    if (s.j !== "i" && s.cl >= 0.5) facts.push(`副業 ${avg ? avgClients(s.cl) : (bandClients(c, n) ?? clPhrase(s.cl))}`);
     if ((s.pro || avg) && s.pu >= 1) facts.push(`有料 ${slot(n0(s.pu))} 人`);
     if (!facts.length) facts.push(s.pm === "n" && !avg ? "副業は不可のまま" : `給与 ${slot(f2(s.sal))} 倍`);
   }
@@ -559,7 +602,7 @@ function moveDates(c: Ctx, a: number): Slots {
 }
 
 /** 手を組み立てる値（題と本文で同じ物） */
-function moveCtx(c: Ctx, a: number): { env: Env; slots: Slots; seed: number; nth: number; link: Link; steps: ReturnType<typeof stepsFor> } {
+function moveCtx(c: Ctx, a: number): { env: Env; slots: Slots; seed: number; nth: number; link: Link; steps: ReturnType<typeof stepsFor>; fresh: ReturnType<typeof stepsFor> } {
   const { map, C } = c;
   const d = map.parent(a);
   const link = linkOf(c, d);
@@ -569,7 +612,9 @@ function moveCtx(c: Ctx, a: number): { env: Env; slots: Slots; seed: number; nth
   const h = map.hours(a);
   env.n = nth;
   env.h = h;
-  const steps = stepsFor(c, a, nth, usedSet(link));
+  const used = usedSet(link);
+  const steps = stepsFor(c, a, nth, used, recentSteps(link));
+  const fresh = steps.filter((st) => !used.has(st.id));
   // 種: 道の最初の手と種類（同じ種類が続く 3 か月ごとに、書き出しが回る）
   const firstKey = map.key(link.first >= 0 ? link.first : a);
   const seed = hash(`${firstKey}|${kind}`) + nth;
@@ -580,8 +625,8 @@ function moveCtx(c: Ctx, a: number): { env: Env; slots: Slots; seed: number; nth
     env.carry = moved.length && moved.every((s) => s.pm === s0.pm && (s0.pm === "a" || s0.pm === "s")) ? 1 : 0;
     env.refile = moved.some((s) => s.pm === "?" && s0.pm !== "?") ? 1 : 0;
   }
-  const s2: Slots = { ...slots, ...moveDates(c, a), nth: slot(nth + 1), act1: pbText(steps[0]?.act ?? ""), act2: pbText(steps[1]?.act ?? ""), stepTitle: pbText(steps[0]?.title ?? ""), hSigned: `${h >= 0 ? "+" : MINUS}${slot(Math.abs(h))}`, H: slot(C.baseHours + h) };
-  return { env, slots: s2, seed, nth, link, steps };
+  const s2: Slots = { ...slots, ...moveDates(c, a), nth: slot(nth + 1), act1: pbText(fresh[0]?.act ?? ""), act2: pbText(fresh[1]?.act ?? ""), stepTitle: pbText(fresh[0]?.title ?? ""), hSigned: `${h >= 0 ? "+" : MINUS}${slot(Math.abs(h))}`, H: slot(C.baseHours + h) };
+  return { env, slots: s2, seed, nth, link, steps, fresh };
 }
 
 /** まとめた行き先の見込みの言い方（中身の幅があれば幅、無ければ平均） */
@@ -623,7 +668,7 @@ function watchSentence(c: Ctx, a: number, slots: Slots, nth: number, trace: stri
     const parts: string[] = [];
     if (Math.abs(b.mau - s0.mau) >= 1) parts.push(`月に遊ぶ人は ${slot(n0(s0.mau))} 人から ${slot(n0(b.mau))} 人`);
     if (b.pro && Math.round(b.pu) !== Math.round(s0.pu)) parts.push(`有料会員は ${slot(n0(s0.pu))} 人から ${slot(n0(b.pu))} 人`);
-    if (clr(b.cl) !== clr(s0.cl)) parts.push(`顧客は ${clPhrase(b.cl)}`);
+    if (clr(b.cl) !== clr(s0.cl)) parts.push(`顧客は ${bandClients(c, o) ?? clPhrase(b.cl)}`);
     if (Math.abs(b.sal - s0.sal) >= 0.005 && b.j !== "i") parts.push(`給与は今日の ${slot(f2(b.sal))} 倍`);
     if (!parts.length) return `${at}まで、数字はほぼ今のまま。`;
     trace.push("watch:single");
@@ -657,7 +702,8 @@ function watchSentence(c: Ctx, a: number, slots: Slots, nth: number, trace: stri
   for (const o of ks) {
     const cls = outcomeClass(map, o, ks);
     const { env, slots: s2 } = baseEnv(c, o);
-    // 手を選ぶ時点の届け出の答えと顧客の数（移った・戻った後の言い方を分ける）
+    // 道でその種類の手が何回目か（2 回目からの言い方）と、手を選ぶ時点の届け出の答えと顧客の数（移った・戻った後の言い方を分ける）
+    env.n = nth;
     env.pm0 = s0.pm;
     env.clr0 = clr(s0.cl);
     const next = kidsOf(map, o).find((x) => map.kind(x) !== "keep");
@@ -710,13 +756,13 @@ function composeMove(c: Ctx, a: number): Card {
   const trace: string[] = [];
   const d = map.parent(a);
   const kind = map.kind(a) ?? "";
-  const { env, slots: s2, seed, nth, link, steps } = moveCtx(c, a);
+  const { env, slots: s2, seed, nth, link, steps, fresh } = moveCtx(c, a);
   const fl = map.st(a).fl;
   const title = titleOf(c, a, trace);
   const lead = choose(B.lead[kind], env, fl, s2, seed, trace, `lead.${kind}`) ?? "";
-  // 長い節がある手（今日の手の先の数・避けたい訳）は、手引きの文を 1 つだけにする
+  // 長い節がある手（今日の手の先の数・避けたい訳）は、手引きの文を 1 つだけにする。本文に入れるのは、道で初めて使う歩みの文だけ
   const oneAct = map.role(d) === "r" || map.why(a) === "avoid";
-  const acts = !oneAct && steps.length >= 2 ? pbText(steps[0]!.act) + pbText(steps[1]!.act) : pbText(steps[0]?.act ?? "");
+  const acts = !oneAct && fresh.length >= 2 ? pbText(fresh[0]!.act) + pbText(fresh[1]!.act) : pbText(fresh[0]?.act ?? "");
   // お金と仕事が変わる手だけ、その中身（週の時間は数の行。SPEC §4.2）
   const cost = B.cost[kind] ? (choose(B.cost[kind], env, fl, s2, seed, trace, `cost.${kind}`) ?? "") : "";
   const watch = watchSentence(c, a, s2, nth, trace);
@@ -789,32 +835,57 @@ function sinceKeyOf(c: Ctx, link: Link): string | null {
   return c.map.month(link.i) >= 9 ? "none" : null;
 }
 
-/** 節目からの月（user-9c: 節目が変わったときだけ書く） */
+/** 節目の仲間（届け出の答え・転職は答えや上げ幅が違っても同じ種類の節目） */
+const milestoneFamily = (code: string): string => (code.startsWith("PERM_") ? "PERM" : code.startsWith("SWITCH_") ? "SWITCH" : code);
+
+/** 節目からの月（user-9c: 節目が変わったときだけ書く。同じ種類の節目の 2 回目からは、その言い方で。点検 C6） */
 function sinceClause(c: Ctx, link: Link, plan: Plan): string {
   if (!plan.sinceKey || !link.up || plan.sinceKey === planOf(c, link.up).sinceKey) return "";
   const m = c.map.month(link.i);
   const e = sinceEvent(c, link);
   if (!e) return `今日から ${slot(m)} か月、大きな節目はまだ無い。`;
   const n = slot(m - e.m);
+  const fam = milestoneFamily(e.code);
+  const again = c.B.sinceAgain[fam];
+  if (again) {
+    const before = eventsList(link).filter((x) => x.m < e.m && SINCE_CODES.has(x.code) && milestoneFamily(x.code) === fam).length;
+    if (before >= 1) return `${fill(again[Math.min(before, again.length) - 1]!, { ...e.x, n, nth: slot(before + 1) }) ?? ""}。`;
+  }
   const own = c.B.since[e.code];
   if (own) return `${fill(own, { ...e.x, n }) ?? ""}。`;
   const name = fill(c.B.eventShort[e.code] ?? "", e.x);
   return name ? `${name}から ${n} か月。` : "";
 }
 
-/** 同じ手の別の結果（一番違う物）との違い。言い方は、道でその種類の手が何回目かで回す */
-function contrastSentence(c: Ctx, o: number, nth: number): string {
+/** 同じ手の別の結果のうち、比べる物（一番違う物。状態の数だけで決まり、年収では変わらない） */
+function contrastSib(c: Ctx, o: number): number | null {
   const { map } = c;
-  const move = map.parent(o);
-  const sibs = kidsOf(map, move).filter((x) => x !== o);
-  if (!sibs.length) return "";
+  const sibs = kidsOf(map, map.parent(o)).filter((x) => x !== o);
+  if (!sibs.length) return null;
   const so = map.st(o);
   const score = (x: number): number => {
     const sx = map.st(x);
     return Math.abs(sx.cl * sx.fee - so.cl * so.fee) + Math.abs(sx.pu - so.pu) * 0.1 + Math.abs(sx.sal - so.sal) * 30 + (sx.pm !== so.pm ? 5 : 0) + (sx.j !== so.j ? 10 : 0);
   };
   // 並べ替えは安定なので、同点なら並びの先の兄弟
-  const sib = sibs.slice().sort((x, y) => score(y) - score(x))[0]!;
+  return sibs.slice().sort((x, y) => score(y) - score(x))[0]!;
+}
+
+/** 別の結果と届け出の答えが違うとき、この結果の答えの範囲を言う一言の鍵（答えごとに道で 1 回だけ） */
+function permKey(c: Ctx, o: number): string | null {
+  const sib = contrastSib(c, o);
+  if (sib === null) return null;
+  const so = c.map.st(o);
+  const ss = c.map.st(sib);
+  return so.pm !== ss.pm && so.pm !== "?" && ss.pm !== "?" ? `perm.${so.pm}` : null;
+}
+
+/** 同じ手の別の結果（一番違う物）との違い。言い方は道の上の何期目かで回す。permOk: 答えの範囲の一言を書く（段取りで決めた） */
+function contrastSentence(c: Ctx, o: number, permOk: boolean): string {
+  const { map } = c;
+  const sib = contrastSib(c, o);
+  if (sib === null) return "";
+  const so = map.st(o);
   const ss = map.st(sib);
   const d: string[] = [];
   let perm = "";
@@ -826,30 +897,77 @@ function contrastSentence(c: Ctx, o: number, nth: number): string {
   const dSal = c.annual * (map.rr(o)[0] - map.rr(sib)[0]);
   if (Math.abs(dSal) >= 6) d.push(`年収が ${slot(n0(Math.abs(dSal)))} 万円${dSal > 0 ? "高い" : "低い"}`);
   // 届け出の答えの違いは、この結果のことなので別の文にする
-  if (so.pm !== ss.pm && so.pm !== "?" && ss.pm !== "?") perm = so.pm === "a" ? "この場合は広告運用の副業もできる。" : so.pm === "s" ? "この場合は Pro は出せるが、広告運用はできない。" : "この場合は Pro も副業も出せない。";
+  if (permOk && so.pm !== ss.pm && so.pm !== "?" && ss.pm !== "?") perm = so.pm === "a" ? "この場合は広告運用の副業もできる。" : so.pm === "s" ? "この場合は Pro は出せるが、広告運用はできない。" : "この場合は Pro も副業も出せない。";
   const lab = labelOf(c, sib);
-  const k = nth % 3;
+  // 言い方は、道でそれまでに別の結果と比べた状態の数で 7 通りを回す（同じ文は 7 回比べた後にしか戻らない。点検 C6）。始まりは今日の手で変える
+  const link = linkOf(c, o);
+  let before = 0;
+  for (let l = link.up; l && l.up; l = l.up) if (map.childCount(map.parent(l.i)) >= 2) before++;
+  const k = (before + (hash(map.key(link.first >= 0 ? link.first : o)) % 7)) % 7;
   if (!d.length && perm) return perm;
-  if (!d.length) return [`同じ手で『${lab}』だった場合と、数字はほとんど変わらない。`, `『${lab}』だった場合とも、数字はほぼ同じ。`, `別の結果の『${lab}』とも、数字はほとんど変わらない。`][k]!;
+  if (!d.length) return [`同じ手で『${lab}』だった場合と、数字はほとんど変わらない。`, `『${lab}』だった場合とも、数字はほぼ同じ。`, `別の結果の『${lab}』とも、数字はほとんど変わらない。`, `『${lab}』の場合とも、数字に大きな違いは無い。`, `数字は、同じ手で『${lab}』だった場合とほとんど同じ。`, `この結果と『${lab}』の場合で、数字はほとんど変わらない。`, `『${lab}』と比べても、この結果の数字はほぼ同じ。`][k]!;
   const ds = d.slice(0, 2).join("、");
-  return [`同じ手で『${lab}』だった場合より、${ds}。`, `『${lab}』だった場合と比べると、${ds}。`, `別の結果の『${lab}』と比べて、${ds}。`][k]! + perm;
+  return [`同じ手で『${lab}』だった場合より、${ds}。`, `『${lab}』だった場合と比べると、${ds}。`, `別の結果の『${lab}』と比べて、${ds}。`, `『${lab}』の場合に比べ、${ds}。`, `${ds}（同じ手で『${lab}』だった場合と比べて）。`, `『${lab}』と比べると、この結果は${ds}。`, `この結果は、『${lab}』の場合より${ds}。`][k]! + perm;
+}
+
+/** まとめた行き先が、名前の付いた結果（兄弟がある）の後か */
+const sumNamed = (c: Ctx, n: number): boolean => c.map.outId(n) !== "all" && c.map.childCount(c.map.parent(n)) >= 2;
+
+/** まとめた行き先の、この手から 3 年後までの稼ぎの合計（e は手の 3 か月から 36 か月目までの見込み。給与は月数 × 今の年収の月割り） */
+const sumTotal = (c: Ctx, x: number): number => {
+  const e = c.map.e(x);
+  return e[0] * (c.annual / 12) + e[1] + e[2];
+};
+const amount = (x: number): string => slot(Math.abs(x) >= 100 ? n0(x) : man(x));
+
+/**
+ * まとめた行き先の、この手から 3 年後までの稼ぎの合計と、兄弟との差。兄弟は合計の順に並べて隣の物と比べる
+ * （一番多い物は 2 番目より多い・一番少ない物は 1 つ上より少ない・間の物は上と下の間）。結果の名前が数だけ違う兄弟でも、
+ * 骨組みが同じ文にならない（点検 C6）。今の年収で決まる
+ */
+function sumSoFar(c: Ctx, n: number): string {
+  const { map } = c;
+  const t = sumTotal(c, n);
+  const head = `この手の 3 か月から 3 年後までの稼ぎは、合わせて ${amount(t)} 万円ほど`;
+  if (!sumNamed(c, n)) return `${head}。`;
+  const sibs = kidsOf(map, map.parent(n))
+    .map((x) => [x, sumTotal(c, x)] as const)
+    .sort((a, b) => b[1] - a[1]);
+  const k = sibs.findIndex(([x]) => x === n);
+  const up = sibs[k - 1];
+  const down = sibs[k + 1];
+  const diff = (o: readonly [number, number]): string => `『${labelOf(c, o[0])}』だった場合より ${amount(Math.abs(t - o[1]))} 万円`;
+  if (up && down && up[1] - t >= 1 && t - down[1] >= 1) return `${head}で、同じ手で${diff(up)}少なく、${diff(down)}多い。`;
+  const other = up ?? down;
+  if (!other) return `${head}。`;
+  const d = t - other[1];
+  if (Math.abs(d) < 1) return `${head}で、同じ手で『${labelOf(c, other[0])}』だった場合とほとんど変わらない。`;
+  return `${head}で、同じ手で${diff(other)}${d > 0 ? "多い" : "少ない"}。`;
 }
 
 /** 行き先の、同じ手の別の結果（月の稼ぎが一番違う物）との月の稼ぎの差（兄弟の行き先を言い分ける。今の年収で決まる） */
 function endContrast(c: Ctx, n: number): string {
   const { map } = c;
-  const sibs = kidsOf(map, map.parent(n)).filter((x) => x !== n);
-  if (!sibs.length) return "";
+  if (map.childCount(map.parent(n)) < 2) return "";
   const total = (x: number): number => {
     const rr = map.rr(x);
     return salMan(c, rr[0]) + rr[1] + rr[2];
   };
+  // 兄弟は月の稼ぎの順に並べて隣の物と比べる（一番多い物は 2 番目より多い・一番少ない物は 1 つ上より少ない・間の物は上と下の間）。
+  // 名前が数だけ違う兄弟（「顧客 3〜4 社」「顧客 5〜6 社」）でも、骨組みが同じ文にならない（点検 C6）
+  const sibs = kidsOf(map, map.parent(n))
+    .map((x) => [x, total(x)] as const)
+    .sort((a, b) => b[1] - a[1]);
+  const k = sibs.findIndex(([x]) => x === n);
   const t = total(n);
-  const sib = sibs.slice().sort((x, y) => Math.abs(total(y) - t) - Math.abs(total(x) - t))[0]!;
-  const dt = t - total(sib);
-  const avg = map.sum(n) || map.sum(sib) ? "平均で" : "";
-  if (Math.abs(dt) < 0.05) return `同じ手で『${labelOf(c, sib)}』だった場合と、この時の月の稼ぎはほとんど変わらない。`;
-  return `同じ手で『${labelOf(c, sib)}』だった場合より、この時の月の稼ぎが${avg} ${slot(man(Math.abs(dt)))} 万円${dt > 0 ? "多い" : "少ない"}。`;
+  const up = sibs[k - 1];
+  const down = sibs[k + 1];
+  const diff = (o: readonly [number, number]): string => `『${labelOf(c, o[0])}』だった場合より ${slot(man(Math.abs(t - o[1])))} 万円`;
+  if (up && down && up[1] - t >= 0.05 && t - down[1] >= 0.05) return `この時の月の稼ぎは、同じ手で${diff(up)}少なく、${diff(down)}多い。`;
+  const sib = (up ?? down)!;
+  const dt = t - sib[1];
+  if (Math.abs(dt) < 0.05) return `同じ手で『${labelOf(c, sib[0])}』だった場合と、この時の月の稼ぎはほとんど変わらない。`;
+  return `同じ手で『${labelOf(c, sib[0])}』だった場合より、この時の月の稼ぎが ${slot(man(Math.abs(dt)))} 万円${dt > 0 ? "多い" : "少ない"}。`;
 }
 
 /** 次の 3 か月の問い（言い方は 3 通りを回す） */
@@ -906,9 +1024,13 @@ function calPick(c: Ctx, link: Link, env: Env, slots: Slots, used: (k: string) =
   return null;
 }
 
-/** 暦の文の条件: again は、その道で同じ種類の申告の文を前に使った（2 年目からの言い方）。back は会社員に戻った年 */
+/** 申告の文の仲間（独立の申告と、辞めた年・戻った年の申告は同じ仲間。副業の申告と住民税だけの申告も同じ仲間） */
+const TAX_FAMILY: Record<string, readonly string[]> = { TAX_IND: ["TAX_IND", "TAX_MIX"], TAX_MIX: ["TAX_IND", "TAX_MIX"], TAX_SIDE: ["TAX_SIDE"], TAX_NEAR: ["TAX_NEAR"], JUMIN_DECL: ["JUMIN_DECL"] };
+
+/** 暦の文の条件: again は、その道で同じ仲間の申告の文を前に使った（2 年目からの言い方）。back は会社員に戻った年 */
 function calEnv(c: Ctx, link: Link, env: Env, cd: CalPick): Env {
-  return { ...env, again: cd.key.startsWith("TAX@") && usedOn(c, link.up, `calcode:${cd.code}`) ? 1 : 0, back: cd.back ? 1 : 0 };
+  const again = cd.key.startsWith("TAX@") && (TAX_FAMILY[cd.code] ?? [cd.code]).some((code) => usedOn(c, link.up, `calcode:${code}`));
+  return { ...env, again: again ? 1 : 0, back: cd.back ? 1 : 0 };
 }
 function calSlots(c: Ctx, slots: Slots, cd: CalPick): Slots {
   if (!cd.key.startsWith("TAX@")) return slots;
@@ -945,7 +1067,7 @@ function composeState(c: Ctx, n: number): Card {
     const cd = plan.cal;
     calText = choose(B.cal[cd.code], calEnv(c, link, env, cd), s.fl, calSlots(c, slots, cd), hash(map.key(n) + cd.code), trace, `cal.${cd.code}`) ?? "";
   }
-  const body = join([head, sinceClause(c, link, plan), hint, contrastSentence(c, n, link.kind ? countKind(link.up!, link.kind) : 0), nextSentence(c, n), calText]);
+  const body = join([head, sinceClause(c, link, plan), hint, contrastSentence(c, n, plan.perm), nextSentence(c, n), calText]);
   const top = link.evs[0];
   // 短い名前: 一番の出来事の短い名前（試作は {nth} などを埋めずに返していた）
   const short = top ? (fill(B.eventShort[top.code] ?? "", { ...slots, ...top.x }) ?? "") : "";
@@ -984,6 +1106,9 @@ function mixWords(mix: MapMix): string {
 /** 標準の続きの出来事の名前（短い名前に差し込む数が要る物） */
 const CONT_EV: Record<string, string> = { SWITCH_HIGH: "転職", SWITCH_MID: "転職", CLIENT_UP: "顧客が増える", CLIENT_REGAIN: "顧客を戻す", PU_MILE: "有料会員が増える", CLIENT_LOST: "顧客が離れる" };
 
+/** この後の目安に並べる期の数（それより多ければ残りを「ほか N 期」とまとめる。道の画面は標準の続きを 1 期ずつ見せる） */
+const CONT_MAX = 5;
+
 /** この後の目安（まとめた行き先の標準の続き。SPEC §4.2: 「この後の目安: 2027 年 11 月 転職活動 → … → 2029 年 11 月に月 X 万円」） */
 function contSentence(c: Ctx, cont: readonly MapContStep[], total: number): string {
   const { cal, B } = c;
@@ -993,6 +1118,7 @@ function contSentence(c: Ctx, cont: readonly MapContStep[], total: number): stri
     if (last && last.kind === st.kind && !last.ev && !st.ev) last.n++;
     else merged.push({ m: st.m, kind: st.kind, ...(st.ev ? { ev: st.ev } : {}), n: 1 });
   }
+  const rest = merged.length > CONT_MAX ? merged.splice(CONT_MAX - 1).reduce((a, st) => a + st.n, 0) : 0;
   let prev: number | null = null;
   const parts = merged.map((st) => {
     const ev = st.ev ? (CONT_EV[st.ev] ?? fill(B.eventShort[st.ev] ?? "", {})) : null;
@@ -1000,6 +1126,7 @@ function contSentence(c: Ctx, cont: readonly MapContStep[], total: number): stri
     prev = st.m;
     return t;
   });
+  if (rest) parts.push(`ほか ${slot(rest)} 期`);
   return `この後の目安: ${[...parts, `${cal.ymRel(cal.horizon, prev)}に月 ${slot(man(total))} 万円`].join(" → ")}。`;
 }
 
@@ -1044,14 +1171,16 @@ function composeEnd(c: Ctx, n: number): Card {
     const after = choose(B.after, env, s.fl, slots, hash(map.key(n)), trace, "after") ?? "";
     body = join([head, path, monthly, endContrast(c, n), after]);
   } else {
-    // まとめた行き先（truth-5・truth-2）: 中身の幅があれば 9 割がそろう事実だけを言い切り、無ければ平均だと書いて事実として言わない
+    // まとめた行き先（truth-5・truth-2）: 中身の幅があれば 9 割がそろう事実だけを言い切り、無ければ平均だと書いて事実として言わない。
+    // どの結果の後かを書き出しで言い、兄弟とはこの手からの稼ぎの合計で比べる（兄弟の行き先が同じ骨組みにならない。点検 C6）
     trace.push(mix ? "sum:mix" : "sum:avg");
+    const from = sumNamed(c, n) ? `『${labelOf(c, n)}』の後を、` : "この手の後を、";
     const head = mix
-      ? `${slots.ym}（3 年後）の見込み（標準の選び方で続けた見積もり）。${mixWords(mix)}`
-      : `${slots.ym}（3 年後）の平均（標準の選び方で続けた見積もり）。この手の後を標準の選び方で続けた多くの道を平均した物で、仕事は一番多い${JOB_WORD[s.j]}の道の場合、数は平均（1 本の道の数ではない）。`;
+      ? `${slots.ym}（3 年後）の見込み（${from}標準の選び方で続けた見積もり）。${mixWords(mix)}`
+      : `${slots.ym}（3 年後）の平均（${from}標準の選び方で続けた見積もり）。多くの道を平均した物で、仕事は一番多い${JOB_WORD[s.j]}の道の場合、数は平均（1 本の道の数ではない）。`;
     const monthly = `この時の月の稼ぎは平均で ${slot(man(total))} 万円。`;
     const tail = cont && cont.length ? (trace.push("cont"), contSentence(c, cont, total)) : "この先の道は、この先の分かれ道での選び方と運で分かれる。";
-    body = join([head, path, monthly, endContrast(c, n), tail]);
+    body = join([head, path, monthly, sumSoFar(c, n), tail]);
   }
   return { title: titleOf(c, n, trace), short: "", body, numbers: numbersRow(c, n), todo: [], trace };
 }

@@ -5,10 +5,12 @@ import { PLAYBOOK } from "./playbook";
 import { SENTENCES } from "./sentences";
 
 /** 今の文の型の束。言葉を直したら version を上げる（0.1 は試作 R2 の束をそのまま移した版。0.2 は SPEC §4.2 に合わせた版:
- * 数の言い方・道で 1 回だけの助言（tip）・節目からの月の言い方（since）・確定申告の年ごとの文・移った会社と戻った会社の出来事・学校の年度の文を除く）。
+ * 数の言い方・道で 1 回だけの助言（tip）・節目からの月の言い方（since）・確定申告の年ごとの文・移った会社と戻った会社の出来事・学校の年度の文を除く。
+ * 0.3 は道の繰り返しを減らした版: 2 回目からの手の書き出し・結果の意味・出来事の言い換えを足し、同じ種類の節目の 2 回目の言い方（sinceAgain）と、
+ * 週 4 日勤務で届け出が不可・まだのときの 3 年後の一言を足した。点検 C6・C8）。
  * 組み立ては束ごとに道の覚えを持つので、書き換えない（凍らせてある。別の束は写して作る） */
 export const BANKS: Banks = deepFreeze({
-  version: "0.2",
+  version: "0.3",
   // 文が言う計算の前提の数（scripts/impact/world.json の constants・kinds と同じ値。tests/unit/compose.test.ts で確かめる）
   C: { sideFee: 5, indFee: 7, overhead: 3, spend: 2, capEmp: 2, capPart: 4, capInd: 6, net: 0.094, infra: 0.3, step: 0.07, seatYen: 300, partFactor: 0.8, schoolSeats: 40, baseHours: 52 },
   ...SENTENCES,

@@ -75,6 +75,8 @@ export interface Banks {
   eventShort: Record<string, string>;
   /** 節目からの月の言い方（{n} は月の数）。無い出来事は短い名前に「から {n} か月」 */
   since: Record<string, string>;
+  /** 同じ種類の節目の 2 回目・3 回目からの言い方（節目の仲間ごと。{nth} は何回目か） */
+  sinceAgain: Record<string, string[]>;
   /** 状態の題 */
   eventTitle: Record<string, Variant[]>;
   /** 次の手を問う言い方 */

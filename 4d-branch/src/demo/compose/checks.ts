@@ -1,7 +1,7 @@
 // 組み立てた文の点検（差し込みの印つきの形 composeMarkedCard で見る）。設計: 作業メモ SPEC v1 §4.6。元: 試作（R2）の checks.ts
 // 生成の点検（scripts/impact/textChecks.ts）とテストが使う。アプリは使わない
 // 1 枚ごと: C1 数はどれもデータから（差し込みの印の外に数字が無い）・C1b 手引きの文の数字は引いた項目にある・C2 状態（まとめた行き先は中身の幅）と食い違わない・
-//   C3 長さ・C4 地図の文の決まり（% と差・敬語・位置・気持ち・埋まっていない差し込み）・C4b 英数字の名前を書かない・C5 結果の名前と顧客の数・
+//   C3 長さ・C4 地図の文の決まり（% と差・敬語・位置・気持ち・埋まっていない差し込み）・C4b 英数字の名前を書かない・C5 結果の名前と顧客の数（本当の状態）・
 //   C5b 顧客と席は整数・C7 モデルに無い月額（人が見る）・C10 数の言い方（給与は月にならして・有料は手数料とサーバー代を引いて・月に遊んだ人・
 //   3 か月は 3 つの月・数の行の数を今日・状態・行き先の本文に書かない）・D1 / D2 文では直せないデータ（計算の側へ返す。まとめた行き先は除く）
 // 道ごと: C9 道で 1 回だけの文（暦・静かな期の一言・出来事の助言・避けたい訳）が、今日から行き先までの道で 2 回出ない
@@ -158,7 +158,7 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
     // 同じ手の別の結果と比べる文は、その別の結果のことを言うので除く
     const own = plain
       .split("。")
-      .filter((x) => !/^同じ手で|だった場合|^別の結果の/.test(x))
+      .filter((x) => !/^同じ手で|だった場合|^別の結果の|『[^』]*』[^。]*(?:場合|比べ)|^数字は、同じ手で/.test(x))
       .join("。");
     if (mix) {
       const ban: Array<[boolean, RegExp, string]> = [
@@ -183,23 +183,26 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
         [!sw, /会社へ移った|転職した|で転職（/, "転職していないのに転職"],
         [s.seats < 0.5, /学校の席|席が有料の席/, "学校の席が無いのに席"],
       ];
-      for (const [c, re, why] of ban) if (c && re.test(own + title)) out.push(`C2 状態と合わない（${why}）`);
+      // 中身の幅の無いまとめた行き先（平均）は、一番多い仕事の道として書くので仕事の決まりだけを見る（有料・顧客・席・転職は平均で、道ごとに違う）
+      for (const [c, re, why] of sum ? ban.slice(0, 2) : ban) if (c && re.test(own + title)) out.push(`C2 状態と合わない（${why}）`);
     }
-    // D: 文では食い違いを無くせないデータ（計算の側へ返す）。まとめた行き先はならした値なので数えない（文は平均・幅と書く）
+    // まとめた行き先の顧客の数（題・数の行・本文）: 中身の幅か平均に合う整数だけ。結果の名前（『』の中と「…の後」）は、その 3 か月の結果なので除く（truth-5）
+    if (sum) for (const x of sumClientIssues(s.cl, mix, [title, ...nums, plain])) out.push(`C2 まとめた行き先の顧客の数${x}`);
+    // D: 文では食い違いを無くせないデータ（計算の側へ返す）。まとめた行き先はならした値なので数えない（文は平均・幅と書く）。
+    //   社数の違う場合をまとめた結果（幅 band.cl がある。SPEC §2.2）も、顧客の数は平均なので D2 に数えない
     if (!sum) {
       if (s.pm === "n" && s.pro === 1 && s.j !== "i") out.push("D1 『どちらも不可』なのに Pro が続いている（状態の食い違い）");
-      if (s.cl >= 0.05 && Math.abs(s.cl - Math.round(s.cl)) >= 0.15) out.push("D2 顧客の数が平均（整数でない）");
+      if (s.cl >= 0.05 && Math.abs(s.cl - Math.round(s.cl)) >= 0.15 && !map.band(i)?.cl) out.push("D2 顧客の数が平均（整数でない）");
     }
-    // C5: 結果の名前と顧客の数（中身の幅があれば、その上の端と比べる）
+    // C5: 結果の名前と状態の顧客の数（本当の状態と行き先だけ。まとめた行き先の名前はその 3 か月の結果で、状態は 3 年後の平均なので比べない）
     const lab = map.label(i);
     const m1 = /^顧客 (\d+) 社$/.exec(lab);
     const m2 = /^顧客 (\d+) 社以下$/.exec(lab);
     const m3 = /^顧客 (\d+) 社以上$/.exec(lab);
-    if (mix) {
-      if (m3 && mix.cl[2] < Number(m3[1])) out.push(`C5 結果の名前「${lab}」と中身の幅（顧客 ${mix.cl[0]}〜${mix.cl[2]}）が合わない`);
-    } else {
+    if (!sum) {
       if (m1 && Math.round(s.cl) !== Number(m1[1])) out.push(`C5 結果の名前「${lab}」と状態の顧客 ${s.cl.toFixed(2)} 社が合わない`);
       if (m2 && Math.round(s.cl) > Number(m2[1])) out.push(`C5 結果の名前「${lab}」と状態の顧客 ${s.cl.toFixed(2)} 社が合わない`);
+      if (m3 && Math.round(s.cl) < Number(m3[1])) out.push(`C5 結果の名前「${lab}」と状態の顧客 ${s.cl.toFixed(2)} 社が合わない`);
     }
   }
   // C3: 長さ
@@ -220,6 +223,24 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
     const st = book.find((x) => x.id === td.cite);
     if (!st) continue;
     for (const mm of `${st.act}${st.todo}`.matchAll(/月 ?([\d.]+) ?万円/g)) if (![C.sideFee, C.indFee, C.spend, C.overhead].includes(Number(mm[1]))) out.push(`C7 モデルに無い月額 ${mm[0]}: ${td.cite}`);
+  }
+  return out;
+}
+
+/**
+ * まとめた行き先の文の顧客の数が、中身の幅（mix）か平均（cl）に合うか（C2）。1 つの数は平均から 0.15 社以内（「ほぼ」の範囲）、
+ * 幅は平均を含む（中身の幅があれば 10%〜90% の整数の幅の中）。『』の中と題の「…の後」（結果の名前）は数えない
+ */
+export function sumClientIssues(cl: number, mix: { cl: readonly [number, number, number] } | null, texts: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const t of texts) {
+    const bare = t.replace(/『[^』]*』/g, "『』").replace(/: [^:]*の後$/, ": ");
+    for (const m of bare.matchAll(/(?:顧客|副業|広告運用)(?:は)? ?(?:平均 ?)?(?:ほぼ ?)?([0-9]+)(?:〜([0-9]+))? ?社(?!目|以上|以下|まで)/g)) {
+      const lo = Number(m[1]);
+      const hi = m[2] === undefined ? lo : Number(m[2]);
+      const ok = mix ? lo >= Math.floor(mix.cl[0]) && hi <= Math.ceil(mix.cl[2]) : m[2] === undefined ? Math.abs(cl - lo) < 0.15 : lo <= cl + 1e-9 && cl <= hi + 1e-9;
+      if (!ok) out.push(`「${m[0]}」が${mix ? `中身の幅 ${mix.cl[0]}〜${mix.cl[2]}` : `平均 ${cl.toFixed(2)} 社`}に合わない`);
+    }
   }
   return out;
 }

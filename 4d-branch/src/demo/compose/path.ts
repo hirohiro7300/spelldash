@@ -255,6 +255,14 @@ export function countEvent(link: Link | null, code: string): number {
   return c;
 }
 
+/** 直前の 3 つの手（判断の覚え 3 つぶん）が使った手引きの番号（使い切った長い道で、もう一度使ってよい歩みを決める） */
+export function recentSteps(link: Link): Set<string> {
+  const s = new Set<string>();
+  let k = 0;
+  for (let l: Link | null = link; l && k < 3; l = l.up, k++) for (const id of l.steps) s.add(id);
+  return s;
+}
+
 /** 道の上で使った手引きの番号 */
 export function usedSet(link: Link): Set<string> {
   const s = new Set<string>();
@@ -323,7 +331,7 @@ function makeLink(c: Ctx, up: Link, n: number): Link {
   const { map } = c;
   const move = map.parent(n);
   const kind = map.kind(move) ?? "";
-  const steps = stepsFor(c, move, countKind(up, kind), usedSet(up)).map((s) => s.id);
+  const steps = stepsFor(c, move, countKind(up, kind), usedSet(up), recentSteps(up)).map((s) => s.id);
   // まとめた行き先へは 3 か月ではなく 3 年後の平均へ飛ぶので、出来事を作らない（節目はまとめた所まで）
   const evs = map.sum(n) ? [] : eventsOf(c, n, up);
   const e = map.e(n);
@@ -449,7 +457,13 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
   const jobName = b.j === "i" ? "独立" : b.j === "p" ? "週 4 日勤務" : "会社員";
   // この 3 か月より前に道で一番多かった顧客の数（離れた分を取り戻したのか、新しい最多なのかで言い方が違う）
   const best = up.bestCl;
-  if (cb > ca) out.push({ code: ca === 0 && best === 0 ? "FIRST_CLIENT" : cb <= best ? "CLIENT_REGAIN" : "CLIENT_UP", m: m0 + 2, x: { nth: slot(cb), capNote: cb >= cap ? `${jobName}で持てる ${slot(cap)} 社の上限に届いた。` : "" } });
+  // 上限に届いた一言は、同じ働き方で道に 1 回だけ（離れて取り戻すたびに言わない。点検 C6）
+  const capSaid = (): boolean => {
+    for (let l: Link | null = up; l; l = l.up) for (const e of l.evs) if (e.x.capNote && e.x.capJob === jobName) return true;
+    return false;
+  };
+  const capNote = cb >= cap && !capSaid() ? `${jobName}で持てる ${slot(cap)} 社の上限に届いた。` : "";
+  if (cb > ca) out.push({ code: ca === 0 && best === 0 ? "FIRST_CLIENT" : cb <= best ? "CLIENT_REGAIN" : "CLIENT_UP", m: m0 + 2, x: { nth: slot(cb), capNote, capJob: jobName } });
   // 引き継ぎで手放した分は、離れた顧客として数えない
   else if (cb < ca - handover) out.push({ code: "CLIENT_LOST", m: m0 + 3, x: { lost: slot(ca - handover - cb) } });
   else if ((k === "ad_side" || k === "ad_more") && cb === ca) out.push({ code: "CLIENT_NOT_FOUND", m: m0 + 3, x: {} });
@@ -476,8 +490,12 @@ const FLAG_EVENTS: ReadonlyArray<readonly [string, string, string, string]> = [
 
 // ---- 手引き（3 か月ごとに 3 つ。同じ道では同じ歩みを繰り返さない）
 
-/** 手 a で使う手引きの歩み（その種類を選ぶのが nth 回目・道で使った歩み used） */
-export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<string>): Step[] {
+/**
+ * 手 a で使う手引きの歩み（その種類を選ぶのが nth 回目・道で使った歩み used・直前の 3 つの手が使った歩み recent）。
+ * 種類の手引きと _generic を使い切った長い道（同じ手が何期も続く）では、直前の 3 つの手より前に使った種類の歩みをもう一度やることにする
+ * （やることを空にしない。もう一度使う歩みの文は本文に入れない。点検 C3）
+ */
+export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<string>, recent: ReadonlySet<string> = used): Step[] {
   const { map, B, C } = c;
   const kind = map.kind(a) ?? "";
   const s = map.st(a);
@@ -492,5 +510,7 @@ export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<strin
   for (const st of book) take(st);
   // 道の上でその種類の手引きを使い切ったら、_generic の歩みで埋める
   if (out.length < 3) for (const st of B.playbook._generic ?? []) take(st);
+  // それでも足りなければ、直前の 3 つの手より前に使った種類の歩み（1 年近く前の歩みを、もう一度やる）
+  if (out.length < 3) for (const st of book) if (out.length < 3 && used.has(st.id) && !recent.has(st.id) && !out.some((x) => x.id === st.id) && cond(st.if, env, s.fl)) out.push(st);
   return out;
 }
