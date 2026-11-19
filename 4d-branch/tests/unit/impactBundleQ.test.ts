@@ -659,7 +659,7 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
     expect(checkReleaseAppend(withR7, { release: 8, hash: "0123456789abce", digest: DIG }).verdict).toBe("append");
     // 形の違う指紋・版 6 までの記録（v2-json）の指紋は通らない
     for (const bad of ["short", 12, "0123456789ABCD"]) expect(checkReleaseHistory({ ...h, releases: [...h.releases, rec(bad)] }), String(bad)).toHaveLength(1);
-    expect(checkReleaseHistory({ releases: [{ release: 1, hash: "bm4g-1hcxhva", scheme: "v2-json", digest: "1mz094e0w56p6q" }] })).toHaveLength(1);
+    expect(checkReleaseHistory({ releases: [{ release: 1, hash: "bm4g-1hcxhva", scheme: "v2-json", digest: DIG }] })).toHaveLength(1);
     // 小さい木の記録の指紋は、組み立てた文書の指紋（quarterDigest.test.ts で中身を確かめる）
     expect(impactBaselineDigest(buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: 0 }), impactNodeId64(map.key(0)))).toMatch(/^[0-9a-z]{14}$/);
   });
