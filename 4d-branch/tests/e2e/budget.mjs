@@ -47,14 +47,14 @@ const BUDGET = {
 };
 const LABEL = {
   boot: "起動して触れるまで（地図あり）",
-  firstPaint: "地図が最初に描かれるまで（見取り図はまだアプリに無い）",
+  firstPaint: "見取り図が最初に描かれるまで（文書の組み立ての前に先に描く 3 年の見取り図）",
   select: "カードを選ぶ",
   pick: "これにする",
   drop: "見送る",
   open: "1 つ開く（C）",
   close: "1 つ閉じる（C）",
   jump: "カードへ寄る（検索の候補から隠れたカードへ）",
-  yearOpen: "1 年先まで開く（ボタンはまだ無い: 見え方を直接）",
+  yearOpen: "1 年先まで開く（今日を選んだ詳細の「1 年先まで（N 枚）」を押す）",
   structural: "地図の中の形の編集（カードに子を足す: Tab）",
   structuralUndo: "形の編集を元に戻す",
   scenario: "シナリオを変える",
@@ -159,6 +159,24 @@ const median = (xs) => {
 async function boot(browser, profile) {
   const ctx = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: profile.dpr });
   await ctx.addInitScript(() => {
+    // 新しい地図の知らせ（版 7）はもう見せた形で測る（一度だけの物。出すと画面の操作を覆う）
+    try {
+      localStorage.setItem("4d-branch:prefs", JSON.stringify({ releaseSheet: 7 }));
+    } catch {
+      /* about:blank */
+    }
+    // 見取り図が描かれたフレーム（右のパネルの 10 の手をひと目で）を記録する
+    const deepTick = () => {
+      // 起動の途中に先に描いた見取り図（.deep-splash）か、右のパネルの見取り図
+      // 見つけたのは rAF の中（このフレームで描かれる）。そのフレームを描き終えた直後（rAF の中で置いたタスク）の時刻。
+      // 次の rAF を待つと、先に描いた後に続く文書の組み立て（長い 1 つの仕事）の後になってしまう
+      if (document.querySelector(".deep-splash .dm-glance-row, .sidebar-right .deep-ov .dm-glance-row")) {
+        setTimeout(() => (window.__deepPaint ??= performance.now()), 0);
+        return;
+      }
+      requestAnimationFrame(deepTick);
+    };
+    requestAnimationFrame(deepTick);
     // 地図が描かれた最初のフレーム（触れる）を記録する
     const tick = () => {
       const f = window.__fourD;
@@ -179,8 +197,8 @@ async function boot(browser, profile) {
   const cdp = await ctx.newCDPSession(page);
   if (profile.cpu > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
   await page.goto(`${BASE}#demo-q`, { waitUntil: "commit" });
-  await page.waitForFunction(() => typeof window.__interactive === "number", null, { timeout: 120_000, polling: 200 });
-  const t = await page.evaluate(() => ({ boot: window.__interactive, firstPaint: window.__firstMapFrame, nodes: window.__fourD.app.vm.nodeCount, demoQ: location.hash }));
+  await page.waitForFunction(() => typeof window.__interactive === "number" && typeof window.__deepPaint === "number", null, { timeout: 120_000, polling: 200 });
+  const t = await page.evaluate(() => ({ boot: window.__interactive, firstPaint: window.__deepPaint, mapPaint: window.__firstMapFrame, nodes: window.__fourD.app.vm.nodeCount, demoQ: location.hash }));
   if (t.nodes < 50_000) throw new Error(`地図のカードが少なすぎます（${t.nodes} 枚）。PAGE_Q のビルドではないかもしれません`);
   await page.evaluate(installTools);
   return { ctx, page, cdp, t, errors };
@@ -328,36 +346,24 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection()));
   }
 
-  // 1 年先まで開く（3,000 枚まで。ボタンはまだ無いので見え方を直接）
+  // 1 年先まで開く: 今日を選んで、詳細の「1 年先まで（N 枚）」を押す（開いた後に詳細の枚数も作り直す。3,000 枚まで）
   for (let k = 0; k < ROUNDS; k++) {
-    const res = await page.evaluate(async () => {
+    await page.evaluate(() => {
       const f = window.__fourD;
-      const vm = f.app.vm;
-      const doc = f.store.doc;
-      const root = vm.impactRoots()[0];
-      const ids = [];
-      const stack = [root];
-      while (stack.length) {
-        const id = stack.pop();
-        const m = doc.nodes[id].meta.m;
-        if (typeof m === "number" && m >= 12) continue;
-        let kids = 0;
-        for (const eid of vm.index.out.get(id) ?? []) {
-          const e = doc.edges[eid];
-          if (e.relation !== "leads" && e.relation !== "condition") continue;
-          kids++;
-          stack.push(e.target);
-        }
-        if (kids) ids.push(id);
-      }
-      const ms = await window.__budget.time(() => vm.setImpactOpen(ids));
-      const cards = vm.drawNodes.length;
-      vm.resetImpactOpen();
-      await window.__budget.frames();
-      return { ms, cards };
+      f.app.vm.resetImpactOpen();
+      f.ui.select([f.app.vm.impactRoots()[0]]);
     });
-    push("yearOpen", res.ms);
-    r.yearCards = res.cards;
+    if (narrow) await openRight();
+    const btn = page.locator(".sidebar-right .deep-open-sec button", { hasText: "1 年先まで" });
+    await btn.waitFor({ timeout: 10_000 });
+    await page.evaluate(() => window.__budget.frames());
+    await page.evaluate(() => window.__budget.arm("pointerdown", "click"));
+    await btn.click();
+    push("yearOpen", await page.evaluate(() => window.__budget.wait()));
+    r.yearCards = await page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length));
+    await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection()));
+    if (narrow) await closePanels();
+    await page.evaluate(() => window.__budget.frames());
   }
 
   // 地図の中の形の編集: 見えている状態のカードを選んで Tab（子を足す）→ 書き始めをやめて元に戻す。

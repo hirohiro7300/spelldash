@@ -24,6 +24,7 @@ import { offerImpactSalary } from "../ui/impactPanel";
 import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
+import { openReleaseSheet } from "../ui/releaseSheet";
 import { startTour } from "../ui/onboarding";
 import { closeMenus, closeToasts, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
@@ -264,6 +265,7 @@ export class App implements AppContext {
     this.store.on("change", (info) => {
       this.syncEmpty();
       this.syncFutureNew();
+      this.syncDeep();
       // 全部が入れ替わったら、検索の索引は空いた時間に作り直す（初めての検索の 1 文字を待たせない）
       if (info.full) this.warmSearchSoon();
     });
@@ -287,6 +289,12 @@ export class App implements AppContext {
     this.applyPrefs({});
     this.syncEmpty();
     this.syncFutureNew();
+    this.syncDeep();
+    // ページに入れた 3 か月ごとの地図を読み終えた（後から読んだとき）: パネルの幅と、最初の見取り図・新しい地図の知らせ
+    this.vm.deep.onReady(() => {
+      this.syncDeep();
+      this.offerDeep();
+    });
     this.renderBanner();
     this.ui.persistPrefs = !this.ephemeral;
 
@@ -307,6 +315,8 @@ export class App implements AppContext {
       this.autoOpenFuture();
       // 3 年の分かれ道を初めて見せた後、年収がまだ仮なら一度だけ知らせる
       offerImpactSalary(this);
+      // 3 か月ごとの地図（版 7）: 広い画面は見取り図を見せて始め、新しい地図の知らせを一度だけ
+      this.offerDeep();
       this.afterTour = () => void this.askPersistOnce();
       this.warmSearchSoon();
     });
@@ -351,6 +361,57 @@ export class App implements AppContext {
     const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
     if (ric) ric(() => this.vm.warmSearch(), { timeout: 4000 });
     else setTimeout(() => this.vm.warmSearch(), 1500);
+  }
+
+  /** 3 か月ごとの地図（版 7）があるか（右のパネルを少し広く・狭い画面の引き出しは幅いっぱいに。src/styles/deep.css） */
+  private syncDeep(): void {
+    const on = !!this.vm.deep.get();
+    if (this.shell.classList.contains("has-deep") === on) return;
+    this.shell.classList.toggle("has-deep", on);
+    setTimeout(() => this.view.resize(), 60);
+  }
+
+  /** 新しい地図の知らせを出した（この起動で。待っている間に重ねて出さない） */
+  private deepOffered = false;
+
+  /**
+   * 3 か月ごとの地図（版 7）があれば、右のパネルに見取り図を見せて始める（何も選ばない概要の先頭。広い画面はパネル、
+   * スマホは最初の 1 枚として引き出しに: 作業メモ SPEC v1 §5.1・§5.9・user-1・user-5）。
+   * 新しい地図の知らせは版ごとに一度だけ（表示の設定 releaseSheet。どの道で地図が入っても: 作業メモ SPEC §5.9・user-5）。
+   * 初めての人のようこそ画面・操作ガイド・確認の途中は、閉じるまで待つ
+   */
+  private offerDeep(): void {
+    if (this.deepOffered || this.newerShown) return;
+    const ctx = this.vm.deep.get();
+    if (!ctx) return;
+    this.deepOffered = true;
+    if (!this.ui.prefs.rightOpen && !this.ui.selection.nodes.size) this.ui.setPrefs({ rightOpen: true });
+    // 文章の組み立ての、地図ごとに 1 回の下ごしらえ（道の覚え・数え）を空いた時間に済ませる（初めてカードを選ぶ 1 回を待たせない）
+    const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    const warm = (): void => {
+      const c = this.vm.deep.get();
+      if (!c) return;
+      // ノードの ID → 地図の番号の表と、文章の組み立ての下ごしらえ
+      c.indexOf(c.idOf(0));
+      c.text().card(0);
+    };
+    if (ric) ric(warm, { timeout: 3000 });
+    else setTimeout(warm, 1500);
+    const rel = ctx.map.header.release;
+    const seen = Math.max(this.ui.prefs.releaseSheet, typeof this.ui.storedPrefs().releaseSheet === "number" ? this.ui.storedPrefs().releaseSheet! : 0);
+    if (rel < 7 || seen >= rel) return;
+    const show = (): void => {
+      if (this.newerShown) return;
+      if (modalOpen() || document.querySelector(".tour")) {
+        setTimeout(show, 800);
+        return;
+      }
+      const now = this.vm.deep.get();
+      if (!now) return;
+      this.ui.setPrefs({ releaseSheet: rel });
+      openReleaseSheet(this, now);
+    };
+    setTimeout(show, 300);
   }
 
   private syncEmpty(): void {

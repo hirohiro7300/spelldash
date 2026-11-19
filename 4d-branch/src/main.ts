@@ -13,6 +13,7 @@ import type { DocData } from "./model/types";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
 import { isNarrowScreen } from "./ui/breakpoints";
+import { paintDeepSplash } from "./ui/deepSplash";
 import { showNewerScreen } from "./ui/newerScreen";
 
 /**
@@ -54,7 +55,8 @@ async function boot(): Promise<void> {
   /** 保存してあった内容を読めず、代わりの内容（デモ・バックアップ）で始めた（アカウントの同期で、古い手元として扱う） */
   let bootFallback = false;
   if (mode.stress > 0) doc = buildStressDoc(mode.stress);
-  else if (mode.demoQ) doc = (await pageMapDoc()) ?? buildDemoDoc();
+  // 3 か月ごとの地図は、8 万枚の文書を組み立てる前に見取り図だけを先に描く
+  else if (mode.demoQ) doc = (await pageMapDoc((m) => paintDeepSplash(mount, m))) ?? buildDemoDoc();
   else if (ephemeral) doc = buildDemoDoc();
   else {
     await persistence.acquireWriter();

@@ -2,7 +2,8 @@
 //   選択肢: 塗りの札（3 年の影響「+65万」・基準・—）・★/≒/✓・見込みの帯（結果ごとの割合と色）・3 年後の月の稼ぎの差と週の時間。枠と上の色は影響の段の色
 //   結果・行き先: 縁取りの札（その結果になる見込み「35%」）。色はその結果の良し悪し。下の行に選択肢の幅・3 年の稼ぎ
 //   今日: 「最善 +65万」と選択肢の幅
-// 縮小（low）では段の色で塗り、真ん中に「+65」「35%」。一番小さく（dot）では段の色の四角
+// 縮小（low）では段の色で塗り、真ん中に「+65」「35%」。一番小さく（dot）では段の色の四角。
+// 3 か月ごとの地図の状態・行き先は、縮小すると 3 年の合計とずっと今のままの差の段で塗る（熱の地図: 作業メモ SPEC v1 §5.6・user-1 (3)）
 
 import { NODE_H, NODE_TYPES, NODE_W } from "../model/constants";
 import { IMPACT_FILL, IMPACT_INK, IMPACT_NEUTRAL_RING } from "../model/impactFormat";
@@ -116,9 +117,12 @@ export function drawImpactNode(ctx: CanvasRenderingContext2D, n: GNode, x: numbe
   const s = 1 / o.zoom;
   const isRoot = c.role === "root";
   const typeColor = NODE_TYPES[n.type].color;
-  const fill = IMPACT_FILL[c.bin]!;
+  // 縮小したとき（low・dot）は熱の段（あれば）
+  const small = o.lod === "low" || o.lod === "dot";
+  const bin = small && c.heat !== null ? c.heat : c.bin;
+  const fill = IMPACT_FILL[bin]!;
   // 枠の色: 段の色（ほぼ同じは灰色）。今日は目標の色のまま
-  const stroke = isRoot ? typeColor : binStroke(c.bin);
+  const stroke = isRoot ? typeColor : binStroke(bin);
   if (pill) pill.w = 0;
 
   if (o.lod === "dot") {
@@ -143,16 +147,17 @@ export function drawImpactNode(ctx: CanvasRenderingContext2D, n: GNode, x: numbe
     ctx.strokeStyle = o.selected ? rgba(INK_LIGHT, Math.max(a, 0.8)) : rgba(stroke, 0.9 * a);
     ctx.stroke();
     if (c.role === "alt" && !c.base) drawProjectStripe(ctx, n.type, left, top, o.projectColors, a, o.zoom);
-    if (o.zoom >= 0.19 && c.low) {
+    const low = c.heat !== null ? c.heatLow : c.low;
+    if (o.zoom >= 0.19 && low) {
       let size = 12 * s;
       const maxW = NODE_W - 14;
-      const w = textWidth(ctx, c.low, 700, size);
+      const w = textWidth(ctx, low, 700, size);
       if (w > maxW) size *= maxW / w;
       ctx.font = `700 ${size}px ${CANVAS_FONT}`;
-      ctx.fillStyle = rgba(IMPACT_INK[c.bin]!, (c.dropped ? 0.6 : 1) * a);
+      ctx.fillStyle = rgba(IMPACT_INK[bin]!, (c.dropped ? 0.6 : 1) * a);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(c.low, x, y + size * 0.04);
+      ctx.fillText(low, x, y + size * 0.04);
       ctx.textAlign = "left";
       ctx.textBaseline = "alphabetic";
     }

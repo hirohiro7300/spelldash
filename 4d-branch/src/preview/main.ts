@@ -163,8 +163,9 @@ async function boot(): Promise<void> {
     ),
     form,
   );
-  const main = h("main", { class: "pv-main", attrs: { id: "pv-main" } });
-  const notes = h("div", { class: "pv-notes" });
+  // 見取り図・道の画面の並べ方は入れ物の幅で決まる（views.css の .dm-host。コンテナークエリ）
+  const main = h("main", { class: "pv-main dm-host", attrs: { id: "pv-main" } });
+  const notes = h("div", { class: "pv-notes dm-host" });
   clear(app);
   app.append(head, main, notes);
 

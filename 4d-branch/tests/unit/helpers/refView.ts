@@ -1,7 +1,8 @@
 // 見え方の計算の「基準の作り」: 速くする前の view model（src/app/viewModel.ts の 89136c1 の版）の見え方の部分を、そのまま写した物。
 // 文書全部をなめて、索引（buildIndex）・範囲・computeCollapse・computeUnreached・検索（全部のノードの点数）から作る。
 // 速くした view model が、どの設定・どの文書でもこれと同じ答えになるかを確かめる（tests/unit/visibleSet*.test.ts）。
-// 検索だけは、P2 で探す所を足した（ひとこと・入ってくる線の結果の名前と判断の文: 作業メモ SPEC §4.4）ので、その所も入れて点数を出す
+// 検索だけは、P2 で探す所を足した（ひとこと・入ってくる線の結果の名前と判断の文: 作業メモ SPEC §4.4）ので、その所も入れて点数を出す。
+// 重ねる位置だけは、P2 で 3 か月ごとの地図の列を月から決めるようにした（まとめた行き先は 2029 年 11 月の列: SPEC §5.6）ので、その決まりも入れる
 
 import type { EdgeVis, NodeVis } from "../../../src/app/viewModel";
 import type { UiState } from "../../../src/app/uiState";
@@ -286,7 +287,15 @@ export function refView(doc: DocData, ui: UiState, narrow = false): RefView {
       const mine = visibleScope.filter((id) => owner.get(id) === r);
       if (!mine.length) return;
       const rootKids = shownSet.has(r) ? kids : () => [];
-      let pos = outlineLayout(r, rootKids);
+      // 3 か月ごとの地図（入口に地図の年月）: 列は月から（判断・行き先は 月 / 3 × 2、手はその次）。月の無いカードは深さ
+      const col =
+        typeof doc.nodes[r]?.meta?.anchor === "string"
+          ? (id: ID, d: number) => {
+              const m = doc.nodes[id]?.meta?.m;
+              return typeof m === "number" && Number.isFinite(m) && m >= 0 ? Math.round(m / 3) * 2 + (doc.nodes[id]?.meta?.fork === "chance" ? 1 : 0) : d;
+            }
+          : null;
+      let pos = outlineLayout(r, rootKids, [], col);
       const rest = mine.filter((id) => !pos.has(id));
       if (rest.length) {
         rest.sort((a, b) => depth.get(a)! - depth.get(b)! || compareImpactKids(doc.nodes[a]!, doc.nodes[b]!));
@@ -294,6 +303,7 @@ export function refView(doc: DocData, ui: UiState, narrow = false): RefView {
           r,
           rootKids,
           rest.map((id) => [id, depth.get(id)!] as const),
+          col,
         );
       }
       const rn = doc.nodes[r];

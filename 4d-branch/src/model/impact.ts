@@ -180,6 +180,11 @@ export interface ImpactResult {
   hasPicks: boolean;
   /** 手に q（比べ方をそろえた見積もり）がある地図（★ の決まりとおすすめの印がそれに従う） */
   likeBasis: boolean;
+  /**
+   * 方針（シナリオ）を選んでいるが、数は方針で絞っていない（q のある地図: 地図の先の選び方は方針を見ずに作ったので、絞ると
+   * 年 3 の判断で今のままだけが残るなど数が正しくない。作業メモ SPEC §5.11・gaps-12）。方針の外の手は AltInfo.allowed = false の印と薄さだけ
+   */
+  scenarioFree: boolean;
   /** 年収を変えると今日の一番が入れ替わる所（遅延計算） */
   salaryFlips(): SalaryFlips;
   /** salaryFlips がもう出ていればその答え、まだなら null（計算しない） */
@@ -298,6 +303,7 @@ const emptyResult = (): ImpactResult => ({
   counts: { nodes: 0, decisions: 0, options: 0, forks: 0, ends: 0 },
   hasPicks: false,
   likeBasis: false,
+  scenarioFree: false,
   onPiEdge: () => false,
   salaryFlips: () => ({ below: null, above: null }),
   salaryFlipsReady: () => NO_FLIPS,
@@ -773,6 +779,9 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   const H = cfg.horizon;
   const sid = scenarioId && doc.scenarios[scenarioId] ? scenarioId : null;
   const c = compile(doc, out, scope, sid, H, rootIds);
+  // q のある地図（版 7）: 数は方針で絞らない（方針の外の手は印だけ。作業メモ SPEC §5.11・gaps-12）
+  const shown = c.likeBasis && sid !== null ? c.allowed : null;
+  if (shown) c.allowed = new Uint8Array(shown.length).fill(1);
   const n = c.ids.length;
   const main = backward(c, S, tail, H, 0, null);
   const P = forward(c, main);
@@ -801,6 +810,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   res.tail = tail;
   res.horizon = H;
   res.likeBasis = c.likeBasis;
+  res.scenarioFree = shown !== null;
   res.kind = kindM;
   res.month = monthM;
   res.value = valueM;
@@ -1038,7 +1048,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
         decision: c.ids[d]!,
         edge: c.eid[s]!,
         isBase: c.isBase[j] === 1,
-        allowed: c.allowed[s] === 1,
+        allowed: (shown ?? c.allowed)[s] === 1,
         picked: c.stat[j] === 1,
         dropped: c.stat[j] === 2,
         delta,

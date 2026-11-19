@@ -120,7 +120,12 @@ describe("3 年の分かれ道の並べ方（目次の形）", () => {
       }
     }
     expect(IMPACT_X).toEqual([0, 300, 700, 1000, 1400, 1700, 2100]);
-    expect(impactColX(8)).toBe(2700);
+    // 版 6 の地図の 7 列（深さ 6 まで）は今までと同じ位置。それより深い列も 300/400 を交互に（作業メモ user-16）
+    for (let d = 0; d < IMPACT_X.length; d++) expect(impactColX(d)).toBe(IMPACT_X[d]);
+    expect(impactColX(8)).toBe(2800);
+    expect(impactColX(23)).toBe(8000);
+    expect(impactColX(24)).toBe(8400);
+    for (let d = 1; d <= 24; d++) expect(impactColX(d) - impactColX(d - 1)).toBe(d % 2 ? 300 : 400);
     // 今日の選択肢をすべて開くと、選択肢の間に少し空きができる（前の選択肢の結果の行のあと）
     const pos = layout(wideDefault);
     const alts = kidsOf.get(root)!;

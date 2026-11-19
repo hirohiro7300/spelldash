@@ -30,8 +30,13 @@ export function buildMapDoc(map: MapData, at = Date.now()): DocData {
   return doc;
 }
 
-/** ページに入れた 3 か月ごとの地図（PAGE_Q のビルドだけ）を組み立てた文書。入っていなければ null（一時表示 #demo-q） */
-export async function pageMapDoc(): Promise<DocData | null> {
+/**
+ * ページに入れた 3 か月ごとの地図（PAGE_Q のビルドだけ）を組み立てた文書。入っていなければ null（一時表示 #demo-q）。
+ * before: 文書を組み立てる前に呼ぶ（見取り図だけを先に描く: src/ui/deepSplash.ts。8 万枚の組み立てを待たせない: SPEC §7.2・user-18）
+ */
+export async function pageMapDoc(before?: (map: MapData) => Promise<void>): Promise<DocData | null> {
   const map = await loadPageMap();
-  return map ? buildMapDoc(map) : null;
+  if (!map) return null;
+  if (before) await before(map);
+  return buildMapDoc(map);
 }

@@ -20,6 +20,7 @@
     "e2e:artifact": "node tests/e2e/artifact.mjs",
     "build:preview": "node scripts/build-preview.mjs",
     "e2e:preview": "node tests/e2e/preview.mjs",
+    "e2e:deepmap": "node tests/e2e/deepmap.mjs",
     "impact:q": "node scripts/impact/q/run.mjs"
   },
   "devDependencies": {

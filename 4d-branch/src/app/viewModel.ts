@@ -38,6 +38,7 @@ import type { DocData, GEdge, GNode, ID } from "../model/types";
 import { computeCollapse, computePaths, computeUnreached, stronglyConnected, type CollapseResult } from "../model/visibility";
 import type { ChangeInfo, Store } from "../store/store";
 import { isNarrowScreen } from "../ui/breakpoints";
+import { DeepState } from "./deepState";
 import { mapDocOf } from "./futureCache";
 import type { UiState } from "./uiState";
 
@@ -185,6 +186,21 @@ interface LastVis {
 
 const EMPTY_SET: ReadonlySet<ID> = new Set();
 
+/**
+ * 3 か月ごとの地図（入口に地図の年月 anchor がある）の列を月から決める（作業メモ SPEC v1 §5.6・user-3・user-15）:
+ * 判断・状態・行き先は 月 / 3 × 2、手はその次の列。まとめた行き先（36 か月目）は 2029 年 11 月の列に並ぶ。
+ * 月の無いカード（自分で足したカード）は深さの列。3 か月ごとの地図でなければ null（今までどおり深さの列）
+ */
+function quarterCol(doc: DocData, root: ID): ((id: ID, depth: number) => number) | null {
+  if (typeof doc.nodes[root]?.meta?.anchor !== "string") return null;
+  return (id, depth) => {
+    const meta = doc.nodes[id]?.meta;
+    const m = meta?.m;
+    if (typeof m !== "number" || !Number.isFinite(m) || m < 0) return depth;
+    return Math.round(m / 3) * 2 + (meta?.fork === "chance" ? 1 : 0);
+  };
+}
+
 export class ViewModel {
   /** 文書の索引（変更のたびに変わった物だけ直す。GraphIndex と同じ中身に、数・期限の幅・入口などを足した物） */
   readonly index: DocIndex;
@@ -216,6 +232,8 @@ export class ViewModel {
   private forecastPlan: { inputs: number; doc: DocData; plan: ForecastPlan } | null = null;
   /** 3 年の影響のエンジン（文書の変更を受け、読まれたときに要る所だけやり直す） */
   readonly engine = new ImpactEngine();
+  /** 3 か月ごとの地図（版 7）の見取り図・道の画面・組み立てた本文に渡す物（src/app/deepState.ts） */
+  readonly deep: DeepState;
   /** 検索の索引（初めて探すときに作る。それまでは変更を受けても何もしない） */
   private search: SearchIndex | null = null;
   /** 索引が受けた最後の変更（ストアの revision。トランザクションの中の「ノードの線」を索引から答えてよいか） */
@@ -250,6 +268,7 @@ export class ViewModel {
     private readonly ui: UiState,
   ) {
     this.index = new DocIndex(store.doc);
+    this.deep = new DeepState(this, store, ui);
     this.appliedRev = store.revision;
     // トランザクションの中の「ノードの線」（ノードの削除・つなぐときの重なりの確かめ）は、この索引に変えた線だけを足し引きして答える（perf-15）
     store.incidence = (id) => {
@@ -1259,7 +1278,8 @@ export class ViewModel {
       if (!mine.length) return;
       // 入口が隠れている（絞り込みなど）ときは、入口の行だけ空けて、見えている物を下に並べる
       const rootKids = shown.has(r) ? kids : () => [];
-      let pos = outlineLayout(r, rootKids);
+      const col = quarterCol(doc, r);
+      let pos = outlineLayout(r, rootKids, [], col);
       // 入口からたどれないが見えているノード（別の線でだけ見えている物など）は、入口の木の下に、その深さの列で並べる
       const rest = mine.filter((id) => !pos.has(id));
       if (rest.length) {
@@ -1269,6 +1289,7 @@ export class ViewModel {
           r,
           rootKids,
           rest.map((id) => [id, depthOf(id)] as const),
+          col,
         );
       }
       for (const [id, p] of pos) if (shown.has(id)) rel.set(id, { root: r, x: p.x, y: p.y });

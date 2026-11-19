@@ -1,6 +1,7 @@
 // 操作（作成・接続・分岐・合流・削除…）。キャンバス・詳細・キーボード・右クリックはすべてここを呼ぶ
 
 import { NODE_TYPES, PROJECT_COLORS, RELATIONS, SCENARIO_COLORS, STATUSES } from "../model/constants";
+import { DEEP_OPEN_CAP, deepHorizons, horizonOpen } from "../model/deepOpen";
 import { flowOuts, isFlowEdge, isImpactRoot } from "../model/forks";
 import { newId } from "../model/ids";
 import { childSpot, findFreeSpot, mergeSpot } from "../model/layout";
@@ -273,7 +274,24 @@ export class Commands {
    * 閲覧のみのタブで 3 年の分かれ道があれば、見え方だけを開き、文書には触れない（閲覧のみのお知らせも出さない）
    */
   expandAll(): void {
-    const view = this.vm.impactBranches();
+    const deep = this.vm.deep.get();
+    let view: ID[];
+    if (deep) {
+      // 3 か月ごとの地図（約 7 万枚）は全部は開かない: キャンバスの上限（全体で 3,000 枚）に入る区切りまで、今日から時間で区切って開く
+      // （作業メモ SPEC v1 §5.8・user-12・gaps-17）。先は見取り図と道の画面で読む
+      this.vm.ensure();
+      const users = this.vm.userNodeIds().length;
+      const hs = deepHorizons(deep.cm, 0);
+      const fit = [...hs].reverse().find((x) => x.count + 1 + users <= DEEP_OPEN_CAP) ?? null;
+      view = fit ? horizonOpen(deep.cm, 0, fit).map((i) => deep.idOf(i)) : [];
+      const n = (v: number) => v.toLocaleString("ja-JP");
+      this.hooks.toast(
+        fit
+          ? `3 年の分かれ道は全部（${n(deep.cm.n)} 枚）は開けないので、今日から${fit.toEnd ? "最後" : `${fit.months / 12} 年先`}まで開いた（${n(fit.count)} 枚）。その先は右の「3 年の見取り図」と道の画面で読める`
+          : `3 年の分かれ道は全部（${n(deep.cm.n)} 枚）は開けない。右の「3 年の見取り図」と道の画面で読める`,
+        { tone: "info", ms: 7000 },
+      );
+    } else view = this.vm.impactBranches();
     this.vm.setImpactOpen(view);
     if (this.store.readOnly && view.length) return;
     // 文書で折りたたんだノード・線は索引が覚えている（文書をなめない。文書の順に開く）
@@ -389,7 +407,11 @@ export class Commands {
       map.set(n.id, id);
       // 写しは見えている位置の近くに（3 年の分かれ道のカードは重ねる位置。文書の位置は全部開いた形の所で遠い）
       const at = this.vm.hasOverlay(n.id) ? this.vm.posOf(n.id)! : n;
-      return makeNode({ ...n, id, x: at.x + 40, y: at.y + 40, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: without(n.meta, COPY_DROP_NODE) });
+      // 3 か月ごとの地図のカードの本文は見せるときに組み立てる物なので、写しには今の年収で組み立てた文章（数の行と本文）を入れ、
+      // 自分のメモはその後に残す（写しは地図の外のカードになり、組み立て直されない。作業メモ SPEC v1 §4.4）
+      const made = this.vm.deep.materialize(n.id);
+      const body = made === null ? n.body : n.body.trim() ? `${made}\n\n${n.body}` : made;
+      return makeNode({ ...n, id, x: at.x + 40, y: at.y + 40, body, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: without(n.meta, COPY_DROP_NODE) });
     });
     // 写すノードの間の線（写すノードの出る線だけを見る。文書の順）
     const idx = this.vm.index;

@@ -2,8 +2,9 @@
 // （題名などの文字だけが変わったカード・線は、計算し直さずにその 1 枚だけ作り直す）。設計: docs/DESIGN.md §4.7
 // 描くたびに文字を作り直さない（全部開いて動かしても、作る物が増えないように）
 
+import { ymText } from "../deepmap/core/time";
 import type { ImpactResult } from "../model/impact";
-import { IMPACT_FILL, IMPACT_NEUTRAL_RING, MINUS, formatMan, formatMonthly, formatMonthlyDelta, formatShare } from "../model/impactFormat";
+import { IMPACT_FILL, IMPACT_NEUTRAL_RING, MINUS, formatMan, formatMonthly, formatMonthlyDelta, formatShare, impactBin } from "../model/impactFormat";
 import { formatPercent } from "../model/forecast";
 import type { DocData, ID } from "../model/types";
 
@@ -41,6 +42,13 @@ export interface ImpactCard {
   label: string;
   /** 一番小さくしたときの目印の文（行き先「3年後 月 42万（18%）」・今日「今日」） */
   dotLabel: string;
+  /**
+   * 縮小したとき（low・dot）の塗りの段: 状態・行き先は 3 年の合計とずっと今のままの差（3 か月ごとの地図だけ。地図を引いて見ると
+   * 熱の地図になる: 作業メモ user-1 (3)）。null なら bin
+   */
+  heat: number | null;
+  /** 縮小したときに真ん中に書く物（heat のとき「+120」。無ければ low） */
+  heatLow: string;
 }
 
 export interface ImpactEdge {
@@ -55,6 +63,8 @@ export interface ImpactEdge {
   long: string;
   /** その結果の色（札の枠と点） */
   color: string;
+  /** まとめた行き先への線（標準の続き。3 か月ごとの地図では 2029 年 11 月の列までの破線: 作業メモ user-3） */
+  cont: boolean;
 }
 
 /** 段の色（ほぼ同じは灰色の枠の色） */
@@ -111,6 +121,8 @@ export class ImpactCards {
   private readonly edges = new Map<ID, { src: unknown; edge: ImpactEdge | null }>();
   private chanceStyles = new Map<string, { color: string; width: number }>();
   private ranks: Map<ID, number> | null = null;
+  /** 3 か月ごとの地図の年月（入口の meta.anchor。無ければ null: 版 6 の地図） */
+  private anchor: string | null = null;
 
   private sync(imp: ImpactResult, doc: DocData): void {
     if (imp === this.imp && doc === this.doc) return;
@@ -119,6 +131,23 @@ export class ImpactCards {
     this.cards.clear();
     this.edges.clear();
     this.ranks = null;
+    const a = imp.root ? doc.nodes[imp.root]?.meta?.anchor : null;
+    this.anchor = typeof a === "string" && /^\d{4}-\d{2}$/.test(a) ? a : null;
+  }
+
+  private emphStyles = new Map<{ color: string; width: number }, { color: string; width: number }>();
+
+  /** 選び方の道（π）の線の太い描き方（3 か月ごとの地図はどの拡大率でも道を強める: 作業メモ SPEC v1 §5.6・user-10）。同じ物を返す */
+  emph(style: { color: string; width: number }): { color: string; width: number } {
+    let e = this.emphStyles.get(style);
+    if (!e) this.emphStyles.set(style, (e = { color: style.color, width: Math.round((style.width + 1.4) * 10) / 10 }));
+    return e;
+  }
+
+  /** 3 か月ごとの地図か（入口に地図の年月がある） */
+  quarterly(imp: ImpactResult, doc: DocData): boolean {
+    this.sync(imp, doc);
+    return this.anchor !== null;
   }
 
   /** そのノードのカードに書く物（3 年の分かれ道の範囲の外は null） */
@@ -126,7 +155,7 @@ export class ImpactCards {
     this.sync(imp, doc);
     const src = doc.nodes[id];
     let c = this.cards.get(id);
-    if (c === undefined || c.src !== src) this.cards.set(id, (c = { src, card: buildCard(imp, doc, id) }));
+    if (c === undefined || c.src !== src) this.cards.set(id, (c = { src, card: buildCard(imp, doc, id, this.anchor) }));
     return c.card;
   }
 
@@ -165,7 +194,7 @@ export class ImpactCards {
     if (kind === "decision") {
       const a = imp.alt.get(e.target);
       const star = a?.mark === "star";
-      return { kind: "decision", style: star ? DECISION_STAR : DECISION, alpha: star ? 1 : a?.isBase ? 0.35 : 0.55, pct: "", long: "", color: DECISION.color };
+      return { kind: "decision", style: star ? DECISION_STAR : DECISION, alpha: star ? 1 : a?.isBase ? 0.35 : 0.55, pct: "", long: "", color: DECISION.color, cont: false };
     }
     if (kind !== "chance" && kind !== "pass") return null;
     const o = imp.alt.get(e.source)?.outcomes.find((x) => x.edge === eid);
@@ -179,16 +208,29 @@ export class ImpactCards {
     if (!style) this.chanceStyles.set(key, (style = { color, width }));
     const pct = o ? formatShare(w) : "";
     const line = e.condition.trim() || e.label.trim();
-    return { kind: "chance", style, alpha: 0.85, pct, long: pct && line ? `${pct}｜${line}` : pct || line, color };
+    // まとめた行き先への線: 3 か月ごとの地図では 2029 年 11 月の列までの「標準の続き」の破線（札にもそう書く）
+    const cont = this.anchor !== null && doc.nodes[e.target]?.meta?.sum === true;
+    if (cont) return { kind: "chance", style, alpha: 0.7, pct, long: pct ? `${pct}｜標準の続き` : "標準の続き", color, cont };
+    return { kind: "chance", style, alpha: 0.85, pct, long: pct && line ? `${pct}｜${line}` : pct || line, color, cont };
   }
 }
 
-function buildCard(imp: ImpactResult, doc: DocData, id: ID): ImpactCard | null {
+/** 時期の名前: 3 か月ごとの地図は年月（「2027 年 2 月」: 作業メモ SPEC v1 §5.6・user-15）、ほかは「3 か月後」 */
+function headOf(m: number | undefined, anchor: string | null): string {
+  if (anchor === null || m === undefined || !Number.isFinite(m)) return stageLabel(m);
+  try {
+    return ymText(anchor, Math.round(m));
+  } catch {
+    return stageLabel(m);
+  }
+}
+
+function buildCard(imp: ImpactResult, doc: DocData, id: ID, anchor: string | null): ImpactCard | null {
   if (!imp.active || !imp.scope.has(id)) return null;
   const n = doc.nodes[id];
   if (!n) return null;
   const short = typeof n.meta?.short === "string" && n.meta.short.trim() ? (n.meta.short as string).trim() : n.title.trim() || "（無題）";
-  const card: ImpactCard = { role: "out", bin: 0, pill: null, chip: null, marks: "", head: "", headColor: null, bottom: "", bottomShort: "", risk: [], short, low: "", base: false, dropped: n.status === "dropped", label: "", dotLabel: "" };
+  const card: ImpactCard = { role: "out", bin: 0, pill: null, chip: null, marks: "", head: "", headColor: null, bottom: "", bottomShort: "", risk: [], short, low: "", base: false, dropped: n.status === "dropped", label: "", dotLabel: "", heat: null, heatLow: "" };
   const horizonLabel = `${Math.round((imp.horizon / 12) * 10) / 10}年後`;
 
   if (id === imp.root) {
@@ -216,7 +258,8 @@ function buildCard(imp: ImpactResult, doc: DocData, id: ID): ImpactCard | null {
     card.low = a.delta === null ? "—" : a.isBase ? "基準" : lowOf(card.pill);
     card.marks = (a.mark === "star" ? "★" : a.rec ? "◎" : "") + (a.mark === "tie" ? "≒" : "") + (a.picked ? "✓" : "");
     if (a.isBase) {
-      card.head = "今のまま";
+      // 3 か月ごとの地図の比べる元は「この 3 か月は今のまま」（作業メモ SPEC v1 §5.10・user-11）: 1 行目「この 3 か月」と題名「今のまま」で読む
+      card.head = anchor !== null ? "この 3 か月" : "今のまま";
       card.headColor = "#A3ADBF";
     } else {
       const p = n.projectIds.map((pid) => doc.projects[pid]).find((x) => x !== undefined);
@@ -246,7 +289,17 @@ function buildCard(imp: ImpactResult, doc: DocData, id: ID): ImpactCard | null {
   card.bin = o?.bin ?? 0;
   card.chip = o ? formatShare(o.w) : null;
   card.low = card.chip ?? "";
-  card.head = stageLabel(imp.month.get(id));
+  card.head = headOf(imp.month.get(id), anchor);
+  // 3 か月ごとの地図: 縮小したときは 3 年の合計（今日からそこまで + その後のおすすめの選び方）とずっと今のままの差で塗る（熱の地図）
+  if (anchor !== null && imp.vSQ !== null) {
+    const acc = imp.acc.get(id);
+    const v = imp.value.get(id);
+    if (acc !== undefined && v !== undefined) {
+      const g = acc + v - imp.vSQ;
+      card.heat = impactBin(g);
+      card.heatLow = lowOf(formatMan(g));
+    }
+  }
   if (card.role === "end") {
     const acc = imp.acc.get(id);
     const v = imp.value.get(id);

@@ -41,6 +41,7 @@ import {
 } from "../model/impactText";
 import type { DocData, GEdge, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
+import { deepOpenActions, openKey } from "./deepPanel";
 import { clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { modalOpen, toast } from "./overlays";
@@ -63,9 +64,32 @@ function scenarioName(app: AppContext): string | null {
   return (sid && app.store.doc.scenarios[sid]?.name) || null;
 }
 
+/**
+ * 数を絞った方針の名前（3 か月ごとの地図は数を方針で絞らない: その方針の名前の付いた数は出さない。作業メモ SPEC v1 §5.11・gaps-12）。
+ * 選んでいない・絞っていなければ null
+ */
+function scenarioOfValues(app: AppContext, imp: ImpactResult): string | null {
+  return imp.scenarioFree ? null : scenarioName(app);
+}
+
+/** 方針を選んでいるが数は絞っていないことの注記（3 か月ごとの地図で方針を選んでいるときだけ） */
+function scenarioFreeNote(app: AppContext, imp: ImpactResult): string | null {
+  const scen = scenarioName(app);
+  if (!imp.scenarioFree || !scen) return null;
+  return `「${scen}」の方針で絞った 3 年の稼ぎと差は出さない（この地図の先の選び方は方針を見ずに作ったので、絞ると数が正しくない）。方針の外の手は薄くしている`;
+}
+
+/** 3 か月ごとの地図で、自分で選んだまとめた手（この先は標準の続きの見積もり）が道の上にある（作業メモ SPEC v1 §5.12・user-20） */
+function summaryPicked(app: AppContext, imp: ImpactResult): boolean {
+  return imp.hasPicks && !!app.vm.deep.get()?.pickedSummary();
+}
+
+/** 「この先は標準の続きの平均」 */
+const SUMMARY_PICK_TEXT = "この先は標準の続きの平均（選んだ手の先は、標準の選び方で続けた多くの道の平均。1 本の道の数ではない）";
+
 /** 今の選び方の名前（「おすすめの選び方」「あなたの選び方」「早期独立の方針」） */
 function whoText(app: AppContext, imp: ImpactResult): string {
-  const scen = scenarioName(app);
+  const scen = scenarioOfValues(app, imp);
   return scen ? `${scen}の方針` : imp.hasPicks ? "あなたの選び方" : "おすすめの選び方";
 }
 
@@ -344,7 +368,9 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, seen: See
     if (i > 0) meta.append(metaSep(parts[i - 1]!.text));
     meta.append(h("span", { class: p.keep ? "imp-meta-part" : "" }, p.text));
   });
-  const title = seen.title(doc, id) || "（無題）";
+  const written = seen.title(doc, id) || "（無題）";
+  // 3 か月ごとの地図の比べる元は「この 3 か月は今のまま」（地図の題名のままのときだけ。作業メモ SPEC v1 §5.10・user-11）
+  const title = info.isBase && imp.likeBasis && written === "今のまま" ? "この 3 か月は今のまま" : written;
   const short = typeof n.meta?.short === "string" ? (n.meta.short as string).trim() : "";
   const value = info.isBase ? "基準" : info.delta === null ? "数字なし" : formatMan(info.delta);
   return h(
@@ -615,7 +641,8 @@ function impactHeader(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
   const main = h("p", { class: "imp-hl-main" });
   const sub = h("p", { class: "imp-hl-sub" });
   const counts = h("p", { class: "imp-counts" });
-  const el = h("section", { class: "imp-sec imp-head" }, title, salary.el, main, sub, counts);
+  const note = h("p", { class: "imp-note imp-head-note" });
+  const el = h("section", { class: "imp-sec imp-head" }, title, salary.el, main, sub, note, counts);
   return {
     el,
     update(imp) {
@@ -625,8 +652,11 @@ function impactHeader(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
       const span = horizonText(imp.horizon);
       title.textContent = `${span}の影響（${from && to ? `${from} → ${to}・` : ""}税引き前）`;
       salary.update(imp);
-      const scen = scenarioName(app);
+      const scen = scenarioOfValues(app, imp);
       const hl = headlineOf({ horizon: imp.horizon, value: imp.vRoot, statusQuo: imp.vSQ, best: recommendedValue(imp, !!scen), picks: imp.hasPicks, scenario: scen });
+      const notes = [scenarioFreeNote(app, imp), summaryPicked(app, imp) ? SUMMARY_PICK_TEXT : null].filter((x): x is string => !!x);
+      note.textContent = notes.join("。");
+      note.hidden = !notes.length;
       clear(main);
       if (hl) main.append(`${hl.lead} `, h("b", null, hl.value), hl.vsBest);
       else main.append(`${span}の稼ぎを計算できません（今日から先に数字の無い所があります）`);
@@ -672,6 +702,7 @@ function premisesSection(): HTMLElement {
 function legendSection(): { el: HTMLElement; update(imp: ImpactResult): void } {
   const sample = (bin: number, text: string, chip = false) => h("span", { class: `imp-pill imp-pill-sm${chip ? " is-chip" : ""}`, attrs: { "aria-hidden": "true" }, style: chip ? { "--b": fill(bin) } : { background: fill(bin), color: IMPACT_INK[bin] ?? "#F0EFEC" } }, text);
   const star = h("span");
+  const pillText = h("span", null, "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）");
   const el = h(
     "section",
     { class: "imp-sec imp-legend" },
@@ -679,7 +710,7 @@ function legendSection(): { el: HTMLElement; update(imp: ImpactResult): void } {
     h(
       "ul",
       { class: "imp-legend-list" },
-      li(sample(2, "+65万"), h("span", null, "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）")),
+      li(sample(2, "+65万"), pillText),
       li(sample(1, "35%", true), h("span", null, "% の札: その結果になる見込み。色はその結果の良し悪し（今のままと比べて）")),
       li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "★"), star),
       li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "月"), h("span", null, "月+2.1万: 3 年後の月の稼ぎの差")),
@@ -689,6 +720,10 @@ function legendSection(): { el: HTMLElement; update(imp: ImpactResult): void } {
   return {
     el,
     update(imp) {
+      // 3 か月ごとの地図の差は「今やる vs 3 か月待つ」（作業メモ SPEC v1 §5.10・user-11・truth-4）
+      pillText.textContent = imp.likeBasis
+        ? "塗りの数字: 今やる場合と、3 か月待ってから選ぶ場合の、3 年の稼ぎの差（比べる元は「この 3 か月は今のまま」。どの手も、その後は標準の選び方で続けた見積もりどうし）"
+        : "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）";
       star.textContent = imp.likeBasis
         ? `★ はっきりおすすめ（同じ見積もり方で、ほかの手より ${IMPACT_STAR_LEAD} 万円以上、かつその判断の差の幅の ${share} 割以上良い）・◎ おすすめ（その判断の一番良い手）・≒ 一番からその差の内・✓ 選んだ手`
         : `★ おすすめ（2 位より ${IMPACT_STAR_LEAD} 万円以上良い）・≒ 一番から ${IMPACT_STAR_LEAD} 万円以内・✓ 選んだ手`;
@@ -901,7 +936,7 @@ function fillDist(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
     sec.append(h("p", { class: "imp-note" }, "分布を出せません（今日から先に数字の無い所があります）"));
     return;
   }
-  const scen = scenarioName(app);
+  const scen = scenarioOfValues(app, imp);
   const label = scen ? `${scen}の方針` : imp.hasPicks ? "あなたの選び方" : "おすすめ";
   const lo = formatMan(d.p10, false);
   const hi = formatMan(d.p90, false);
@@ -912,6 +947,7 @@ function fillDist(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
     scaleLegend(),
     h("p", { class: "imp-dist-text" }, `平均 ${formatMan(d.mean, false)}（${formatMan(d.mean - imp.vSQ)}）· 10〜90%: ${range} · 今のままより悪くなる ${formatShare(d.pWorse)}`),
   );
+  if (summaryPicked(app, imp)) sec.append(h("p", { class: "imp-note" }, SUMMARY_PICK_TEXT));
 }
 
 function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
@@ -958,8 +994,11 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
   // 3 年の分かれ道だけを見え方で開く（文書・履歴・保存・同期は変えない。自分で折りたたんだ所はそのまま）
   const expandBtn = h("button", { class: "btn btn-sm", type: "button", title: "3 年の分かれ道を全部ひらく", dataset: { fk: "expand" }, onClick: () => app.vm.setImpactOpen(app.vm.impactBranches()) }, icon("expand", 14), "全部ひらく");
   const resetBtn = h("button", { class: "btn btn-sm", type: "button", title: "開いている所を最初の形に戻す", dataset: { fk: "reset-open" }, onClick: () => resetCommand(app)?.(app.vm.impact.root) }, icon("collapse", 14), "最初の形に戻す");
+  // 3 か月ごとの地図（版 7）は「全部ひらく」の代わりに、今日から時間で区切って開く（枚数つき。作業メモ SPEC v1 §5.8）
+  const deepOpen = h("div", { class: "imp-deep-open" });
+  let deepOpenKey = "";
   const legend = legendSection();
-  const el = h("div", { class: "imp-overview" }, head.el, decide, worth, avoid, keys, dist, ends, premisesSection(), legend.el, h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
+  const el = h("div", { class: "imp-overview" }, head.el, decide, worth, avoid, keys, dist, ends, premisesSection(), legend.el, deepOpen, h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
   el.hidden = true;
   let last: ImpactResult | null = null;
   let seen = new Seen();
@@ -975,6 +1014,17 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
       head.update(imp);
       legend.update(imp);
       resetBtn.hidden = !resetCommand(app);
+      const deep = app.vm.deep.get();
+      expandBtn.hidden = !!deep;
+      deepOpen.hidden = !deep;
+      // 開いた後の枚数は見えているカードで変わる（開閉・選択で作り直す。見え方の版）
+      const dk = deep ? openKey(app, deep) : "";
+      if (dk !== deepOpenKey) {
+        deepOpenKey = dk;
+        clear(deepOpen);
+        const row = deep ? deepOpenActions(app, deep, 0) : null;
+        if (row) deepOpen.append(row);
+      }
       // 数が変わった・書いた題名が変わった（題名の入力）ときだけ作り直す
       if (imp !== last || seen.changed(app.store.doc)) {
         last = imp;
@@ -1049,7 +1099,10 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
   const ro = app.store.readOnly;
   // 3 年の影響
   if (info.isBase) {
-    wrap.append(h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ:`), deltaPill(0, { base: true, size: "lg" })), h("p", { class: "imp-note" }, "同じ判断のほかの手の数は、この手（この期間は何も足さない）と比べた差"));
+    wrap.append(
+      h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ:`), deltaPill(0, { base: true, size: "lg" })),
+      h("p", { class: "imp-note" }, imp.likeBasis ? "この 3 か月は今のまま（3 か月待ってから選ぶ）。同じ判断のほかの手の数は、これと比べた差" : "同じ判断のほかの手の数は、この手（この期間は何も足さない）と比べた差"),
+    );
   } else if (dec && dec.base === null) {
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "基準（今のまま）が無いので差を出せません")));
     if (!ro) wrap.append(h("div", { class: "imp-picks" }, h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `base:${id}` }, onClick: () => pressed(() => app.cmd.updateNode(id, { meta: { ...n.meta, base: true } }, { label: "基準にする" })) }, "これを基準にする")));
@@ -1057,8 +1110,12 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "数字なし（結果と見込みを足すと計算します）")));
   } else {
     wrap.append(
-      h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ: 今のままより`), deltaPill(info.delta, { size: "lg", text: `${info.partial ? "≈" : ""}${yen(info.delta)}` })),
-      h("p", { class: "imp-note" }, "（この期間に何もせず、その後は一番良い選び方をした場合と比べて）"),
+      h("p", { class: "imp-hl" }, h("span", null, imp.likeBasis ? `${span}の稼ぎ: 3 か月待つより` : `${span}の稼ぎ: 今のままより`), deltaPill(info.delta, { size: "lg", text: `${info.partial ? "≈" : ""}${yen(info.delta)}` })),
+      h(
+        "p",
+        { class: "imp-note" },
+        imp.likeBasis ? "（今やる場合と、この 3 か月は今のままにして 3 か月待ってから選ぶ場合の、3 年の稼ぎの差）" : "（この期間に何もせず、その後は一番良い選び方をした場合と比べて）",
+      ),
     );
   }
   const mark = markOf(info);

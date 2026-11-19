@@ -65,7 +65,7 @@ export interface SameOpts {
 export function sameImpact(eng: ImpactResult, ref: ImpactResult, opts: SameOpts = {}, doc?: DocData): void {
   expect(eng.active).toBe(ref.active);
   if (!ref.active) return;
-  expect([eng.root, eng.annual, eng.annualSet, eng.S, eng.tail, eng.horizon, eng.likeBasis, eng.hasPicks]).toEqual([ref.root, ref.annual, ref.annualSet, ref.S, ref.tail, ref.horizon, ref.likeBasis, ref.hasPicks]);
+  expect([eng.root, eng.annual, eng.annualSet, eng.S, eng.tail, eng.horizon, eng.likeBasis, eng.scenarioFree, eng.hasPicks]).toEqual([ref.root, ref.annual, ref.annualSet, ref.S, ref.tail, ref.horizon, ref.likeBasis, ref.scenarioFree, ref.hasPicks]);
   expect(eng.counts).toEqual(ref.counts);
   num(eng.vRoot, ref.vRoot, "vRoot");
   num(eng.vSQ, ref.vSQ, "vSQ");

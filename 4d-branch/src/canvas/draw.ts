@@ -3,7 +3,7 @@
 import { NODE_H, NODE_TYPES, NODE_W, RELATIONS, STATUSES } from "../model/constants";
 import { dayNumber, formatShort } from "../model/dates";
 import type { GNode, NodeType, Relation } from "../model/types";
-import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, bezierPoint, type EdgeGeom } from "./geometry";
+import { BADGE_H, BADGE_W, HALF_H, HALF_W, LABEL_PAD, badgeCenter, edgeLabelBox, labelScale, type EdgeGeom } from "./geometry";
 import { CANVAS_FONT, ellipsize, wrapText } from "./text";
 import { formatPercent } from "../model/forecast";
 
@@ -426,6 +426,8 @@ export interface EdgeDrawOpts {
   style?: { color: string; width: number } | null;
   /** style のときの濃さ（拡大率ごとの選び方の道の濃さを含む） */
   styleAlpha?: number;
+  /** 破線（3 か月ごとの地図の「標準の続き」。どの拡大率でも、画面で同じ長さの破線） */
+  dash?: boolean;
 }
 
 function strokeCurve(ctx: CanvasRenderingContext2D, g: EdgeGeom, lod: Lod): void {
@@ -459,7 +461,7 @@ export function drawEdge(ctx: CanvasRenderingContext2D, g: EdgeGeom, o: EdgeDraw
   ctx.strokeStyle = rgba(color, st ? a : (o.path || o.selected ? 0.98 : 0.78) * a);
   ctx.lineWidth = lw;
   const dashOk = o.lod === "full" || o.lod === "compact";
-  ctx.setLineDash(dashOk ? (o.offScenario ? [3, 7] : st ? [] : rel.dash) : []);
+  ctx.setLineDash(o.dash ? [7 * px, 6 * px] : dashOk ? (o.offScenario ? [3, 7] : st ? [] : rel.dash) : []);
   strokeCurve(ctx, g, o.lod);
   ctx.setLineDash([]);
 
@@ -507,18 +509,17 @@ export function drawEdge(ctx: CanvasRenderingContext2D, g: EdgeGeom, o: EdgeDraw
  * 線の中ほどのラベル（条件・説明）。描いた枠を返す（当たり判定用）。
  * opt.color: 枠と点の色（3 年の分かれ道の結果の線は、その結果の色）・opt.maxW: 省略する幅（画面の px）・opt.bold: 太字（「35%」だけの短い札）
  */
-export function drawEdgeLabel(ctx: CanvasRenderingContext2D, g: EdgeGeom, text: string, relation: Relation, alpha: number, emphasized: boolean, zoom: number, opt: { color?: string; maxW?: number; bold?: boolean } = {}): { x: number; y: number; w: number; h: number } {
+export function drawEdgeLabel(ctx: CanvasRenderingContext2D, g: EdgeGeom, text: string, relation: Relation, alpha: number, emphasized: boolean, zoom: number, opt: { color?: string; maxW?: number; bold?: boolean; start?: boolean } = {}): { x: number; y: number; w: number; h: number } {
   const rel = RELATIONS[relation];
   const tone = opt.color ?? rel.color;
-  const p = bezierPoint(g, 0.5);
-  const k = Math.max(1, Math.min(2, 0.9 / zoom));
+  const k = labelScale(zoom);
   const fs = Math.round(11.5 * k * 2) / 2;
   ctx.font = `${opt.bold ? 700 : 500} ${fs}px ${CANVAS_FONT}`;
   const t = ellipsize(ctx, text, (opt.maxW ?? 190) * k);
-  const w = ctx.measureText(t).width + 26 * k;
+  const w = ctx.measureText(t).width + LABEL_PAD * k;
   const h = 22 * k;
-  const x = p.x - w / 2;
-  const y = p.y - h / 2;
+  const box = edgeLabelBox(g, w, h, opt.start);
+  const { x, y } = box;
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, h / 2);
   ctx.fillStyle = `rgba(13,17,25,${(0.94 * Math.max(alpha, 0.4)).toFixed(3)})`;
@@ -527,12 +528,12 @@ export function drawEdgeLabel(ctx: CanvasRenderingContext2D, g: EdgeGeom, text: 
   ctx.strokeStyle = rgba(tone, (emphasized ? 0.85 : 0.42) * alpha);
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(x + 11 * k, p.y, 3.2 * k, 0, Math.PI * 2);
+  ctx.arc(x + 11 * k, box.cy, 3.2 * k, 0, Math.PI * 2);
   ctx.fillStyle = rgba(tone, alpha);
   ctx.fill();
   ctx.fillStyle = `rgba(214,220,231,${alpha.toFixed(3)})`;
   ctx.textBaseline = "middle";
-  ctx.fillText(t, x + 19 * k, p.y + 0.5);
+  ctx.fillText(t, x + 19 * k, box.cy + 0.5);
   ctx.textBaseline = "alphabetic";
   return { x, y, w, h };
 }

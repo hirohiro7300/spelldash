@@ -5,14 +5,15 @@ import type { ViewModel } from "../app/viewModel";
 import type { UiState } from "../app/uiState";
 import { NODE_TYPES } from "../model/constants";
 import { edgeProb, formatPercent } from "../model/forecast";
-import { IMPACT_FIRST_ZOOM, IMPACT_ROW } from "../model/impactLayout";
+import { quarterSpanText, ymText } from "../deepmap/core/time";
+import { IMPACT_FIRST_ZOOM, IMPACT_ROW, impactColX } from "../model/impactLayout";
 import { todayStr } from "../model/dates";
-import type { GNode, ID, Relation } from "../model/types";
+import type { DocData, GNode, ID, Relation } from "../model/types";
 import type { Store } from "../store/store";
 import { h } from "../ui/dom";
 import { Camera } from "./camera";
 import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, gridPattern, lodFor, rgba, type Lod } from "./draw";
-import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, rectsIntersect, type EdgeGeom } from "./geometry";
+import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, labelMaxW, rectsIntersect, type EdgeGeom } from "./geometry";
 import { ImpactCards, binStroke } from "./impactCards";
 import { drawImpactNode, type PillRect } from "./impactDraw";
 import { onPixelRatioChange } from "./pixelRatio";
@@ -76,6 +77,8 @@ export interface PillDebug {
 }
 
 const PORT_SCREEN_R = 7;
+/** 年月の目盛りの帯の高さ（画面の px） */
+const RULER_H = 26;
 /** 折りたたみの印を押せる大きさ（3 年の分かれ道。画面の px。指でも押せる大きさ） */
 const BADGE_TOUCH_PX = 44;
 const ORIGIN = { x: 0, y: 0 };
@@ -430,6 +433,8 @@ export class CanvasView {
 
   hitTest(sx: number, sy: number): Hit {
     this.vm.ensure();
+    // 上に固定した年月の目盛りの帯（3 か月ごとの地図）は、下のカードを押さない
+    if (this.rulerShown && sy < RULER_H) return { kind: "empty" };
     const z = this.camera.zoom;
     const w = this.camera.toWorld(sx, sy);
     const lod = lodFor(z);
@@ -579,7 +584,9 @@ export class CanvasView {
     let animating = false;
 
     // 接続
-    const labels: Array<{ id: ID; g: EdgeGeom; text: string; rel: Relation; alpha: number; emph: boolean; color?: string; maxW?: number; bold?: boolean }> = [];
+    const labels: Array<{ id: ID; g: EdgeGeom; text: string; rel: Relation; alpha: number; emph: boolean; color?: string; maxW?: number; bold?: boolean; start?: boolean }> = [];
+    // 3 か月ごとの地図（版 7）: 選び方の道をどの拡大率でも強め、札は列の間に収め、まとめた行き先への線は破線（作業メモ SPEC v1 §5.6）
+    const quarter = imp.active && cards.quarterly(imp, doc);
     for (const eid of vm.drawEdges) {
       const e = doc.edges[eid]!;
       const g = this.geomBetween(e.source, e.target);
@@ -592,15 +599,18 @@ export class CanvasView {
         // 3 年の分かれ道: 判断の線は控えめ（★ の線を強く・基準の線は薄く）、結果の線はその結果の色で、見込みの太さ。
         // 縮小すると、選び方の道（π）だけを濃く
         const pi = imp.onPiEdge(e);
-        const k = lod === "low" ? (pi ? 1 : 0.25) : lod === "dot" ? (pi ? 0.8 : 0.1) : ie.alpha;
-        drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: false, offScenario: ev.offScenario, flowT, style: ie.style, styleAlpha: k });
+        const near = lod === "full" || lod === "compact";
+        const k = lod === "low" ? (pi ? 1 : 0.25) : lod === "dot" ? (pi ? 0.8 : 0.1) : quarter ? (pi ? 1 : ie.alpha * 0.6) : ie.alpha;
+        const style = quarter && pi && near ? cards.emph(ie.style) : ie.style;
+        drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: false, offScenario: ev.offScenario, flowT, style, styleAlpha: k, dash: ie.cont });
         if (flowT !== null && (ev.path || selected) && lod !== "low" && lod !== "dot") animating = true;
         if (lod === "full" || lod === "compact") {
           if (ie.kind === "chance") {
             // 「35%」（大きく見ているとき・選んだ・ホバーは「35%｜判断の線」）
             const long = lod === "full" || selected || hovered;
             const text = long ? ie.long : ie.pct;
-            if (text && ((prefs.showLabels && ev.alpha > 0.25) || selected || hovered)) labels.push({ id: eid, g, text, rel: e.relation, alpha: Math.max(ev.alpha, selected || hovered ? 1 : 0), emph: selected || hovered || ev.path, color: ie.color, maxW: 170, bold: !long });
+            const maxW = quarter ? labelMaxW(g, z, ie.cont ? 150 : 170) : 170;
+            if (text && ((prefs.showLabels && ev.alpha > 0.25) || selected || hovered)) labels.push({ id: eid, g, text, rel: e.relation, alpha: Math.max(ev.alpha, selected || hovered ? 1 : 0), emph: selected || hovered || ev.path, color: ie.color, maxW, bold: !long, start: ie.cont });
           } else if (selected || hovered) {
             // 判断の線にはふだん札を付けない（自分で書いた説明は、選んだ・ホバーしたときだけ）
             const text = e.condition.trim() || e.label.trim();
@@ -634,7 +644,7 @@ export class CanvasView {
       }
     }
     this.labelBoxes = [];
-    for (const l of labels) this.labelBoxes.push({ id: l.id, ...drawEdgeLabel(ctx, l.g, l.text, l.rel, l.alpha, l.emph, z, l.color ? { color: l.color, maxW: l.maxW, bold: l.bold } : {}) });
+    for (const l of labels) this.labelBoxes.push({ id: l.id, ...drawEdgeLabel(ctx, l.g, l.text, l.rel, l.alpha, l.emph, z, l.color ? { color: l.color, maxW: l.maxW, bold: l.bold, start: l.start } : {}) });
 
     // 接続をつくっている途中の線
     const cp = this.connect;
@@ -726,6 +736,8 @@ export class CanvasView {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80);
     if (screenLabels.length) this.drawScreenLabels(screenLabels, 80);
+    // 年月の目盛り（3 か月ごとの地図。どの拡大率でも画面の上に固定: 作業メモ SPEC v1 §5.6・user-7・user-15）
+    this.setRuler(quarter && imp.root ? this.drawRuler(imp.root, doc) : false);
 
     // 範囲選択
     const m = this.marquee;
@@ -744,6 +756,71 @@ export class CanvasView {
     this.frames++;
     for (const fn of this.renderListeners) fn();
     if (this.camAnim || animating) this.requestRender();
+  }
+
+  /** 目盛りを描いている（キャンバスの上のお知らせの帯を目盛りの下へ: src/styles/deep.css）。確かめ用に描いた目盛りの文字 */
+  rulerShown = false;
+  rulerTexts: string[] = [];
+
+  private setRuler(on: boolean): void {
+    if (on === this.rulerShown) return;
+    this.rulerShown = on;
+    this.root.parentElement?.classList.toggle("has-ruler", on);
+  }
+
+  /**
+   * 年月の目盛り: 画面の上に固定した帯に、地図の列ごとの年月（判断・結果の列は「2027 年 2 月」、手の列は「12 月〜2 月の手」）。
+   * 列は入口（今日）の位置から（impactColX。月から決めた列と同じ）。重なる文字は出さない（判断の列を先に置く）。描いたら true
+   */
+  private drawRuler(root: ID, doc: DocData): boolean {
+    const r = doc.nodes[root];
+    const anchor = r?.meta?.anchor;
+    if (!r || typeof anchor !== "string" || !this.vm.hasOverlay(root)) return false;
+    const rp = this.vm.posOf(root)!;
+    const ctx = this.ctx;
+    const cam = this.camera;
+    const z = cam.zoom;
+    const W = this.width;
+    const H = RULER_H;
+    ctx.fillStyle = "rgba(9,12,18,0.92)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(0, H - 1, W, 1);
+    const texts: string[] = [];
+    const placed: Array<[number, number]> = [];
+    const free = (a: number, b: number) => !placed.some(([x0, x1]) => a < x1 + 10 && b > x0 - 10);
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    // 判断・結果の列（年月）を先に、間が空いていれば手の列（その 3 か月）
+    for (const pass of [0, 1]) {
+      ctx.font = pass === 0 ? `650 11px ${CANVAS_FONT}` : `500 10.5px ${CANVAS_FONT}`;
+      for (let d = pass; d <= 24; d += 2) {
+        const sx = (rp.x + impactColX(d)) * z + cam.x;
+        if (sx < -160 || sx > W + 160) continue;
+        let text: string;
+        try {
+          text = pass === 0 ? ymText(anchor, (d / 2) * 3) : `${quarterSpanText(anchor, ((d - 1) / 2) * 3)}の手`;
+        } catch {
+          return false;
+        }
+        if (d === 0) text = `今日 ${text}`;
+        if (d === 24) text = `${text}（3 年後）`;
+        const w = ctx.measureText(text).width;
+        // 端の列は画面の中へ寄せる（入口の列が左の端にあっても「今日」が切れない）
+        const x0 = Math.max(6, Math.min(W - w - 6, sx - w / 2));
+        if (!free(x0, x0 + w)) continue;
+        placed.push([x0, x0 + w]);
+        texts.push(text);
+        ctx.fillStyle = pass === 0 ? "rgba(221,227,238,0.95)" : "rgba(150,160,178,0.9)";
+        ctx.fillText(text, x0, H / 2 + 0.5);
+        // 列の真ん中の小さな目印
+        ctx.fillStyle = pass === 0 ? "rgba(165,151,255,0.85)" : "rgba(150,160,178,0.5)";
+        ctx.fillRect(Math.round(sx) - 0.5, H - 5, 1, 4);
+      }
+    }
+    ctx.textBaseline = "alphabetic";
+    this.rulerTexts = texts;
+    return true;
   }
 
   /** ふつうの地図の目印の文（題名。未来の道筋の行き先などは見込みを添える）。ctx.font は呼ぶ側で 12px にしておく */

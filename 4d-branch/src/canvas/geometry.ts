@@ -83,6 +83,47 @@ export function bezierPoint(g: EdgeGeom, t: number): Pt {
   return { x: a * g.x0 + b * g.c1x + c * g.c2x + d * g.x3, y: a * g.y0 + b * g.c1y + c * g.c2y + d * g.y3 };
 }
 
+/** 曲線の上で、横の位置が x になる所の t（0〜1。左から右へ進む線だけ。二分法） */
+export function tAtX(g: EdgeGeom, x: number): number {
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (bezierPoint(g, mid).x < x) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** 線の札の大きさの倍率（引いて見ると文字を大きく。最大 2 倍） */
+export function labelScale(zoom: number): number {
+  return Math.max(1, Math.min(2, 0.9 / zoom));
+}
+
+/** 札の左右の余白・点の分（倍率 1 のとき。drawEdgeLabel と同じ） */
+export const LABEL_PAD = 26;
+/** 札とカードの間に空ける幅（ワールドの px） */
+export const LABEL_GAP = 6;
+
+/**
+ * 3 年の分かれ道の結果の線の札に書ける文字の幅（倍率 1 の px。drawEdgeLabel の maxW）。札が線の両端のカードの間に収まる幅にする
+ * （作業メモ user-16: 列の間が狭いと「35%｜判断の線」の札がカードに重なる）。それでも cap より広くはしない
+ */
+export function labelMaxW(g: EdgeGeom, zoom: number, cap = 170): number {
+  const k = labelScale(zoom);
+  const room = g.x3 - g.x0 - 2 * LABEL_GAP;
+  return Math.max(12, Math.min(cap, room / k - LABEL_PAD));
+}
+
+/**
+ * 線の札の枠（ワールド座標）。w は札の幅（文字の幅 + 余白）。start: 線の始まり（元のカードの右）に寄せる（長い線の札）。
+ * それ以外は線の真ん中
+ */
+export function edgeLabelBox(g: EdgeGeom, w: number, h: number, start = false): { x: number; y: number; w: number; h: number; cy: number } {
+  const p = start && !g.backward ? bezierPoint(g, tAtX(g, g.x0 + LABEL_GAP + w / 2)) : bezierPoint(g, 0.5);
+  return { x: p.x - w / 2, y: p.y - h / 2, w, h, cy: p.y };
+}
+
 /** 曲線上の点で、いちばん近い所までの距離 */
 export function distToEdge(g: EdgeGeom, px: number, py: number, steps = 24): number {
   let best = Infinity;

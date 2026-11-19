@@ -171,6 +171,8 @@ interface Run {
   readonly tail: number;
   readonly H: number;
   readonly sid: ID | null;
+  /** q のある地図で方針を選んでいるとき、方針の印（判断の線ごと。数は全部の手で数える: computeImpact と同じ）。それ以外は null */
+  readonly shown: Uint8Array | null;
   readonly main: Pass;
   readonly P: Float64Array;
   readonly sq: Pass;
@@ -382,6 +384,7 @@ class EngineResult implements ImpactResult {
   readonly tail: number;
   readonly horizon: number;
   readonly likeBasis: boolean;
+  readonly scenarioFree: boolean;
   readonly kind: ReadonlyMap<ID, ForkKind>;
   readonly month: ReadonlyMap<ID, number>;
   readonly value: ReadonlyMap<ID, number>;
@@ -425,6 +428,7 @@ class EngineResult implements ImpactResult {
     this.tail = r.tail;
     this.horizon = r.H;
     this.likeBasis = nums.likeBasis;
+    this.scenarioFree = r.shown !== null;
     this.kind = new IndexMap(topo, (i) => KIND_NAMES[nums.kind[i]!]);
     this.month = new IndexMap(topo, (i) => t[i]);
     this.value = new IndexMap(topo, (i) => (main.def[i] ? sumV(main.V, i) : undefined));
@@ -683,7 +687,7 @@ class EngineResult implements ImpactResult {
       decision: c.ids[d]!,
       edge: c.eid[s]!,
       isBase: c.isBase[j] === 1,
-      allowed: c.allowed[s] === 1,
+      allowed: (this.r.shown ?? c.allowed)[s] === 1,
       picked: c.stat[j] === 1,
       dropped: c.stat[j] === 2,
       delta,
@@ -1021,6 +1025,7 @@ export class ImpactEngine {
   private nums: Nums | null = null;
   private stat: Uint8Array | null = null;
   private allowed: Uint8Array | null = null;
+  private shown: Uint8Array | null = null;
   private allowedSid: ID | null = null;
   private dirty = C_TOPO;
   private readonly statusIdx = new Set<number>();
@@ -1143,7 +1148,10 @@ export class ImpactEngine {
     }
     const sid = inp.sid;
     if (this.dirty & C_SCEN || !this.allowed || sid !== this.allowedSid) {
-      this.allowed = fillAllowed(topo, nums, seen, sid);
+      // q のある地図（版 7）: 数は方針で絞らず、方針は印だけ（computeImpact と同じ。作業メモ SPEC §5.11・gaps-12）
+      const free = nums.likeBasis && sid !== null;
+      this.allowed = fillAllowed(topo, nums, seen, free ? null : sid);
+      this.shown = free ? fillAllowed(topo, nums, seen, sid) : null;
       this.allowedSid = sid;
       this.version.scenario++;
     }
@@ -1160,7 +1168,7 @@ export class ImpactEngine {
     if (key === this.resKey) return this.res;
     if (!this.run || this.run.key !== runKey) {
       const t0 = performance.now();
-      this.run = this.compute(topo, nums, this.stat, this.allowed, { annual, annualSet, tail, sid, reach, key: runKey });
+      this.run = this.compute(topo, nums, this.stat, this.allowed, this.shown, { annual, annualSet, tail, sid, reach, key: runKey });
       this.timings.passes = performance.now() - t0;
     }
     this.res = new EngineResult(this.run, (r) => this.flipsTask(r));
@@ -1174,6 +1182,7 @@ export class ImpactEngine {
     this.run = null;
     this.stat = null;
     this.allowed = null;
+    this.shown = null;
     this.nums = null;
     this.statusIdx.clear();
     this.flipTasks.clear();
@@ -1204,7 +1213,7 @@ export class ImpactEngine {
   }
 
   /** 計算（逆にたどる・前へ流す・そこまでの稼ぎ） */
-  private compute(topo: Topo, nums: Nums, stat: Uint8Array, allowed: Uint8Array, o: { annual: number; annualSet: boolean; tail: number; sid: ID | null; reach: { version: number; of: (id: ID) => number } | null; key: string }): Run {
+  private compute(topo: Topo, nums: Nums, stat: Uint8Array, allowed: Uint8Array, shown: Uint8Array | null, o: { annual: number; annualSet: boolean; tail: number; sid: ID | null; reach: { version: number; of: (id: ID) => number } | null; key: string }): Run {
     const c = assemble(topo, nums, stat, allowed);
     const S = o.annual / 12;
     const H = nums.H;
@@ -1214,7 +1223,7 @@ export class ImpactEngine {
     const Psq = forward(c, sq);
     const { A, Adef } = this.accOf(topo, nums, S, o.reach);
     const flipsKey = `${this.version.topology}|${this.version.numbers}|${this.version.statuses}|${this.version.scenario}|${o.annual}|${o.tail}`;
-    return { key: o.key, topo, nums, c, annual: o.annual, annualSet: o.annualSet, S, tail: o.tail, H, sid: o.sid, main, P, sq, Psq, A, Adef, flipsKey };
+    return { key: o.key, topo, nums, c, annual: o.annual, annualSet: o.annualSet, S, tail: o.tail, H, sid: o.sid, shown, main, P, sq, Psq, A, Adef, flipsKey };
   }
 
   /**
@@ -1273,6 +1282,14 @@ export class ImpactEngine {
   mapTopo(doc: DocData): Topo | null {
     const t = this.topo;
     return this.pristine && this.pristine.doc === doc && !(this.dirty & C_TOPO) && t && t.map && t.cm ? t : null;
+  }
+
+  /**
+   * 同梱の地図の列から作った形のときの、地図の番号ごとの選んだ・見送った（0 まだ・1 選んだ・2 見送った。番号は地図と同じ）。
+   * それ以外は null（見取り図・道の画面は文書から読む: src/app/deepState.ts）。result を呼んだ後に読む（前の変更が入っている）
+   */
+  mapStatus(doc: DocData): Uint8Array | null {
+    return this.mapTopo(doc) && this.stat ? this.stat : null;
   }
 
   /** 今の形（確かめ用） */
