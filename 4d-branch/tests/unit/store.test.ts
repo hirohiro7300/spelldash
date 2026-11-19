@@ -185,6 +185,23 @@ describe("Store と履歴", () => {
     expect(store.doc.nodes[a.id]!.title).toBe("A");
   });
 
+  it("閲覧専用が変わったときだけ readOnly で知らせる（画面の部品が描き直す。同じ値を入れ直しても知らせない）", () => {
+    const { store, a } = setup();
+    const got: boolean[] = [];
+    store.on("readOnly", (ro) => void got.push(ro));
+    store.readOnly = true;
+    store.readOnly = true;
+    expect(store.readOnly).toBe(true);
+    // 閲覧専用の間は、元に戻す・入れ替えも受けない
+    expect(store.undo()).toBe(false);
+    expect(store.replaceDoc(createEmptyDoc(), "入れ替え")).toBe(false);
+    expect(store.doc.nodes[a.id]).toBeDefined();
+    store.readOnly = false;
+    store.readOnly = false;
+    expect(got).toEqual([true, false]);
+    expect(store.transact("編集", (tx) => tx.updateNode(a.id, { title: "Z" }))).toBe(true);
+  });
+
   it("位置だけの変更は positionsOnly として知らせる", () => {
     const { store, a } = setup();
     const infos: boolean[] = [];

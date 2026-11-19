@@ -198,6 +198,8 @@ await check("初めての端末: アカウントへ写しを送る（gzip・分�
   await A.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   const m = JSON.parse(dbStore.get("data/users/u_test/fourd"));
   assert(m.format === 1 && m.enc === "gzip-b64" && m.parts >= 1, JSON.stringify(m).slice(0, 200));
+  // マニフェストに中身の版も書く（次の版の写しを、入れ物を確かめる前に見分けるため。この版は 1）
+  assert(m.docVersion === 1, `マニフェストに中身の版が無い: ${JSON.stringify(m).slice(0, 200)}`);
   assert(dbStore.has(`data/users/u_test/fourd/parts/${m.gen}-0`), "分割が無い");
   const footer = await A.page.locator(".side-footer").innerText();
   assert(footer.includes("アカウント: 同期済み"), footer);
@@ -888,9 +890,10 @@ await check("押した「未来の道筋」が突き合わせを待つ間に、�
 });
 
 await check("同期が止まっている・機能の返事が遅れて使えないと分かったときは、「未来の道筋」を押しても 30 秒待たせない", async () => {
-  // 1) 新しい版のアプリが書いた写し（読めない）: 同期を止めている。押すと、すぐに読み込み方を選ぶ確認を出す
+  // 1) 形の違う写し（読めない）: 同期を止めている。押すと、すぐに読み込み方を選ぶ確認を出す
+  //    （新しい版の写し（形 2 など）は編集ごと止めるので、ここでは新しい版ではない形の違う写しで同期だけを止める）
   {
-    dbStore.set("data/users/u_paused/fourd", JSON.stringify({ format: 2, gen: "g_new", parts: 1, hash: "h" }));
+    dbStore.set("data/users/u_paused/fourd", JSON.stringify({ format: 0, gen: "g_new", parts: 1, hash: "h" }));
     const P = await newDevice({ uid: "u_paused" });
     await P.page.getByRole("button", { name: "すぐに使う" }).click();
     await P.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "paused", null, { timeout: 15000 });
@@ -903,7 +906,7 @@ await check("同期が止まっている・機能の返事が遅れて使えな�
   }
   // 1b) 背の低い画面（横向きのスマホ）でも、止まっている訳のお知らせが確認の下の端のボタンを隠さない（押したとおりに閉じる）
   {
-    dbStore.set("data/users/u_paused_low/fourd", JSON.stringify({ format: 2, gen: "g_new_low", parts: 1, hash: "h" }));
+    dbStore.set("data/users/u_paused_low/fourd", JSON.stringify({ format: 0, gen: "g_new_low", parts: 1, hash: "h" }));
     const P = await newDevice({ uid: "u_paused_low" }, { width: 568, height: 320 });
     await P.page.getByRole("button", { name: "すぐに使う" }).click();
     await P.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "paused", null, { timeout: 15000 });
@@ -929,9 +932,9 @@ await check("同期が止まっている・機能の返事が遅れて使えな�
     assert(Date.now() - t0 < 8000, `開くまで ${Date.now() - t0}ms`);
     await L.ctx.close();
   }
-  // 3) 押した後で同期が止まった（新しい版の写しを、遅い db で読む）: 30 秒待たせずに、止まった訳を知らせて確認を出す
+  // 3) 押した後で同期が止まった（形の違う写しを、遅い db で読む）: 30 秒待たせずに、止まった訳を知らせて確認を出す
   {
-    dbStore.set("data/users/u_paused2/fourd", JSON.stringify({ format: 2, gen: "g_new2", parts: 1, hash: "h" }));
+    dbStore.set("data/users/u_paused2/fourd", JSON.stringify({ format: 0, gen: "g_new2", parts: 1, hash: "h" }));
     const P = await newDevice({ uid: "u_paused2", dbDelayMs: 2500 });
     await P.page.getByRole("button", { name: "すぐに使う" }).click();
     assert((await cloudState(P.page)) !== "paused", "押す前に止まった（確かめの前提）");
@@ -941,6 +944,72 @@ await check("同期が止まっている・機能の返事が遅れて使えな�
     await P.page.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor({ timeout: 12000 });
     assert(Date.now() - t0 < 12000, `確認が出るまで ${Date.now() - t0}ms`);
     assert((await P.page.locator(".toast", { hasText: "同期が止まっている" }).count()) === 1, "止まった訳を知らせない");
+    await P.ctx.close();
+  }
+});
+
+await check("アカウントの写しが新しい版（マニフェストの形 2）: 開き直すまでの帯を出して編集を止め、「未来の道筋」を押しても読み込みの確認を出さずに開き直すよう知らせる（アカウントには書かない）", async () => {
+  const key = "data/users/u_newer/fourd";
+  dbStore.set(key, JSON.stringify({ format: 2, gen: "g_newer", parts: 1, hash: "h" }));
+  const before = [...dbStore.keys()].filter((k) => k.startsWith("data/users/u_newer/")).map((k) => `${k}=${dbStore.get(k)}`).join("\n");
+  const P = await newDevice({ uid: "u_newer" });
+  await P.page.getByRole("button", { name: "すぐに使う" }).click();
+  await P.page.locator(".banner-newer").waitFor({ timeout: 15000 });
+  const s = await P.page.evaluate(() => ({ readOnly: window.__fourD.store.readOnly, held: window.__fourD.app.accountNewer, state: window.__fourD.app.cloudInfo?.state }));
+  assert(s.readOnly && s.held && s.state === "paused", JSON.stringify(s));
+  await P.page.locator(".zoom-ctl .future-btn").click();
+  await P.page.locator(".toast", { hasText: "アカウントに新しい版の内容があるため" }).waitFor({ timeout: 5000 });
+  assert((await P.page.getByRole("dialog", { name: "未来の道筋を読み込む" }).count()) === 0, "編集を止めたのに読み込みの確認を出した");
+  await P.page.waitForTimeout(500);
+  const after = [...dbStore.keys()].filter((k) => k.startsWith("data/users/u_newer/")).map((k) => `${k}=${dbStore.get(k)}`).join("\n");
+  assert(after === before, "新しい版の写しのアカウントに書いた");
+  await P.ctx.close();
+});
+
+await check("公開の骨組み（<html> に言語が無い）でもページは日本語: アカウントの写しが新しい版のときの帯は、スマホの幅（390px・360px）で文節の切れ目で折り返し、はみ出さない", async () => {
+  // 帯の文の文節（この切れ目でだけ折り返す。言語が無いと「このページ｜は」「開き直｜して」のように語の途中で折れていた）
+  const PHRASES = ["アカウントに", "新しい", "版の", "内容が", "あります。", "この", "ページは", "古い", "版なので、", "編集を", "止めました。", "ページを", "開き直して", "ください"];
+  const breaks = new Set(PHRASES.map((_, i) => PHRASES.slice(0, i + 1).join("").length));
+  for (const width of [390, 360]) {
+    const uid = `u_newer_${width}`;
+    dbStore.set(`data/users/${uid}/fourd`, JSON.stringify({ format: 2, gen: "g_newer", parts: 1, hash: "h" }));
+    const P = await newDevice({ uid }, { width, height: 844 });
+    await P.page.getByRole("button", { name: "すぐに使う" }).click();
+    await P.page.locator(".banner-newer").waitFor({ timeout: 15000 });
+    await P.page.getByRole("dialog", { name: "4D Branch へようこそ" }).waitFor({ state: "hidden" });
+    const r = await P.page.evaluate(() => {
+      const t = document.querySelector(".banner-newer .banner-text");
+      const node = t.firstChild;
+      // 行の頭の文字の位置（文字ごとの矩形の上端が下がった所）
+      const starts = [];
+      let top = null;
+      for (let i = 0; i < node.length; i++) {
+        const range = document.createRange();
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        const rect = range.getClientRects()[0];
+        if (!rect) continue;
+        if (top !== null && rect.top - top > 8) starts.push(i);
+        if (top === null || rect.top - top > 8) top = rect.top;
+      }
+      return {
+        text: node.data,
+        starts,
+        page: document.documentElement.lang,
+        app: document.getElementById("app").getAttribute("lang"),
+        banner: t.closest("[lang]")?.getAttribute("lang") ?? "",
+        wordBreak: getComputedStyle(t).wordBreak,
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    SHOTS && (await P.page.screenshot({ path: path.join(SHOTS, `artifact-account-newer-${width}.png`) }));
+    assert(r.text === PHRASES.join(""), `帯の文が変わった（文節の表も直す）: ${r.text}`);
+    assert(r.page === "ja" && r.app === "ja" && r.banner === "ja", `言語: ${JSON.stringify(r)}`);
+    assert(r.wordBreak === "auto-phrase", `折り返し方: ${r.wordBreak}`);
+    assert(r.starts.length >= 1, `${width}px で折り返していない（確かめにならない）: ${JSON.stringify(r)}`);
+    const bad = r.starts.filter((i) => !breaks.has(i)).map((i) => `${r.text.slice(Math.max(0, i - 4), i)}｜${r.text.slice(i, i + 4)}`);
+    assert(bad.length === 0, `${width}px で語の途中で折り返した: ${bad.join(" / ")}`);
+    assert(r.overflow <= 0, `${width}px で横にはみ出す: ${r.overflow}px`);
     await P.ctx.close();
   }
 });

@@ -299,6 +299,11 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
     if (!onlyTimeCursor(p)) render();
   });
   ui.on("search", render);
+  // 閲覧のみになった・編集できるようになった: 追加のボタンを合わせる（閲覧のみなら名前の書き換えの欄も閉じる。確定しても入らない）
+  store.on("readOnly", (ro) => {
+    if (ro) renaming = null;
+    render();
+  });
   app.persistence.on("status", renderFooter);
   app.onBackupsChanged = renderFooter;
   app.onCloudChanged = renderFooter;

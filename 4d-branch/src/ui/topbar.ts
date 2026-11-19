@@ -124,7 +124,11 @@ export function buildTopbar(app: AppContext): HTMLElement {
   };
   ui.on("prefs", sync);
   store.on("change", sync);
-  app.persistence.on("writer", sync);
+  // 閲覧のみになった・編集できるようになった: 追加と元に戻す・やり直すのボタンも合わせる
+  store.on("readOnly", () => {
+    sync();
+    updateHistory();
+  });
   sync();
   return bar;
 }

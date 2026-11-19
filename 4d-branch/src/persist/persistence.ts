@@ -6,10 +6,12 @@
 // - 離脱時: 未保存があれば localStorage に緊急コピーを同期で書き、次の起動で新しい方を採る
 // - バックアップ: 自動・日次・手動・安全用（取り込み・復元の直前）・競合の退避。種類ごとに件数で間引く
 // - IndexedDB が使えないブラウザは localStorage に、?stress などの一時表示はメモリだけに置く
+// - このページより新しい版で保存されたデータ: 壊れたデータと分ける。本体なら読まずに止め（blocked）、以後は何も書かない。
+//   緊急コピー・バックアップは読まずに残す（消さない・採らない・復元しない）。新しい版の緊急コピーが本体より後の変更なら、それでも止める
 
 import { toDateStr } from "../model/dates";
 import { newId, nowISO } from "../model/ids";
-import { docCounts, normalizeDoc } from "../model/schema";
+import { NewerDocError, docCounts, isNewerDocRaw, isNewerVersion, normalizeDoc } from "../model/schema";
 import type { DocData, ID } from "../model/types";
 import { Emitter } from "../store/emitter";
 import { done, openDb, req } from "./idb";
@@ -28,12 +30,55 @@ export interface BackupMeta {
   createdAt: string;
   docTitle: string;
   counts: { nodes: number; edges: number; projects: number; scenarios: number };
+  /**
+   * 中身のドキュメントの版（DocData.version）。このページより新しければ、中身を読まずに「新しい版」と分かる
+   * （一覧の印・復元しない・間引かない）。前の版が作ったバックアップには無い（版 1）
+   */
+  docVersion?: number;
+}
+
+/** このページより新しい版で作られたバックアップか（見出しの版で分かる物。中身でしか分からない物は readBackupChecked で） */
+export function isNewerBackup(b: Pick<BackupMeta, "docVersion">): boolean {
+  return isNewerVersion(b.docVersion);
 }
 
 interface StoredMeta {
   rev: number;
   savedAt: string;
   writer: string;
+  /**
+   * 保存してある本体の版（DocData.version）。このページより新しければ、版番号が合っていても上書きしない
+   * （本体を読まなくても分かる守り）。前の版が書いた記録には無い（版 1）
+   */
+  docVersion?: number;
+}
+
+/** 版の記録が、このページより新しい版の本体を指していれば NewerDocError（本体を読む前に分かる。本体の形が変わっていても、無いと見なさない） */
+function checkMetaVersion(meta: StoredMeta | null): void {
+  const v = meta?.docVersion;
+  if (isNewerVersion(v)) throw new NewerDocError(Math.floor(v));
+}
+
+/** 緊急コピーの包みの形の版。これより新しい包みは、中身を読まずに残す（新しい版のページの写し） */
+const EMERGENCY_FORMAT = 1;
+
+/**
+ * 開いている間に新しい版のデータに気づいて止めたとき、このタブのまだどこにも無い変更を残した所
+ * （backup: 「退避」のバックアップ・copy: このタブの緊急コピー・null: 残す物が無い・残せなかった）
+ */
+export type KeptAside = "backup" | "copy" | null;
+
+/** 緊急コピー（閉じたタブが保存しきれなかった変更）を読んだ物 */
+interface EmergencyCopy {
+  key: string;
+  baseRev: number;
+  tabId: string;
+  /** 読めた中身（読めない・新しい版なら null） */
+  doc: DocData | null;
+  /** このページより新しい版の写し（読めないが壊れてもいない。消さずに残す） */
+  newer: boolean;
+  /** 中身の更新時刻（読まずに分かる範囲で。新しい版の写しが本体より後かを見るだけに使う） */
+  rawUpdatedAt: string;
 }
 
 /** 同期で読み書きする小さな保存先（localStorage）。テストではメモリに差し替える */
@@ -113,6 +158,11 @@ export interface PersistenceEvents {
   /** 別のタブが保存した（閲覧のみのタブが読み直す合図） */
   remote: void;
   notice: { level: "info" | "warn" | "error"; text: string };
+  /**
+   * このページより新しい版で保存されたデータに気づいて止めた（以後は何も書かない。画面は開き直すよう伝える）。
+   * kept: このタブのまだどこにも無い変更を残した所（画面で伝える。起動で止めたときは null）
+   */
+  blocked: { kept: KeptAside };
 }
 
 function errorMessage(e: unknown): string {
@@ -137,6 +187,12 @@ export class Persistence {
    * これを超えないときだけ書く（基準だけが先に残ると、次に開いたときに新しい写しを古い手元で潰しかねない）
    */
   lastStored: { id: string; updatedAt: string } | null = null;
+  /**
+   * このページより新しい版で保存されたデータに気づいて止めた（起動したときの本体・保存先の形、または開いている間に
+   * 別のタブの新しい版のページが保存した）。以後は何も書かない: 本体・版の記録・緊急コピー・バックアップ・小さな鍵と値。
+   * 書き手のロックも手放す（新しい版のページのタブが、引き継がずに編集を始められるように）
+   */
+  blocked = false;
 
   private readonly dbName: string;
   private readonly keys: { emergencyPrefix: string; emergency: string; doc: string; meta: string };
@@ -155,6 +211,10 @@ export class Persistence {
   private changesSinceBackup = false;
   /** 競合を見つけてから解決するまで自動保存を止める */
   private stopped = false;
+  /** 持っている書き手のロックを手放す（持っていなければ null） */
+  private releaseLock: (() => void) | null = null;
+  /** 別のタブに引き継がれたときに、このタブのまだどこにも無い変更を「退避」に残した（後で止めたときに画面で伝える） */
+  private keptAside: KeptAside = null;
   private readonly debounceMs: number;
   private readonly autoBackupMs: number;
   private readonly lockTimeoutMs: number;
@@ -207,13 +267,23 @@ export class Persistence {
         if (!db.objectStoreNames.contains("backupMeta")) db.createObjectStore("backupMeta", { keyPath: "id" });
         if (!db.objectStoreNames.contains("backupData")) db.createObjectStore("backupData", { keyPath: "id" });
       });
-      this.db.onversionchange = () => {
+      this.db.onversionchange = (ev) => {
+        // このページは開いている間に保存先の版を上げない。上げたのはこのページより新しい版のページ: 開いている間でも止める
+        // （接続は止めるときに閉じ、書き手のロックも手放す。まだ保存していない変更は、このタブの緊急コピーに残してから）
+        if (ev.newVersion !== null && ev.newVersion > DB_VERSION) return this.blockNewer(this.writer && this.dirty ? this.keepUnsaved(null) : null);
+        // 消された（版を上げたのではない）: 今までどおり知らせるだけ（止めると、ここにしか無くなった内容を緊急コピーにも残せなくなる）
         this.db?.close();
         this.db = null;
         this.notice("warn", "別のタブで新しい版のアプリが開かれました。このタブを再読み込みしてください。");
       };
       this.mode = "idb";
-    } catch {
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "VersionError") {
+        // 保存先がこのページより新しい版の形に作り直されている（新しい版のページが開いた）: 小さな保存先に切り替えて
+        // 別の内容で始めたりせず、何も書かずに止める
+        this.blockNewer();
+        return;
+      }
       this.mode = "local";
       this.notice("warn", "このブラウザでは IndexedDB が使えないため、小さな保存先（localStorage）に保存します。バックアップは作れないので、こまめにエクスポートしてください。");
     }
@@ -234,6 +304,68 @@ export class Persistence {
     if (this.retryTimer) clearTimeout(this.retryTimer);
   }
 
+  /**
+   * このページより新しい版で保存されたデータに気づいた（読めた物を壊れた物と取り違えない）。以後は何も書かない:
+   * 本体・版の記録・緊急コピー・バックアップ・小さな鍵と値のどれも。未保存の印は捨て（閉じるときに緊急コピーを書かない）、
+   * 書き手のロックは手放し、保存先への接続も閉じる（新しい版のページのタブが、そのまま編集を始められるように）。
+   * 開いている間に気づいたときは、先に keepUnsaved でこのタブのまだどこにも無い変更を残し、残した所を kept で渡す（画面で伝える）
+   */
+  blockNewer(kept: KeptAside = null): void {
+    if (this.blocked) return;
+    this.blocked = true;
+    this.stopped = true;
+    this.dirty = false;
+    if (this.timer) clearTimeout(this.timer);
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.timer = null;
+    this.retryTimer = null;
+    this.releaseLock?.();
+    this.releaseLock = null;
+    this.bc?.close();
+    this.bc = null;
+    this.db?.close();
+    this.db = null;
+    this.setWriter(false);
+    this.setStatus("readonly", "このページより新しい版で保存されたデータがあるため、止めています。ページを開き直してください。");
+    this.emitter.emit("blocked", { kept: kept ?? this.keptAside });
+  }
+
+  /**
+   * 開いている間に気づいて止める直前に、このタブのまだどこにも無い変更を残す。「退避」のバックアップ（backedUp: 退避した中身と、
+   * そのときの更新時刻）に今の内容がそのまま入っていれば、それでよい（backup）。入っていなければ（localStorage の保存先・
+   * 容量不足・退避した後の入力・保存先が閉じた）、このタブの緊急コピーに同期で書く（copy。このタブだけの鍵・この版の包みなので、
+   * 新しい版の本体・版の記録・ほかのタブの写しには触れない。止めるまでの入力も漏らさない）。止める前に呼ぶ
+   */
+  private keepUnsaved(backedUp: { doc: DocData; updatedAt: string } | null): KeptAside {
+    const doc = this.getDoc?.();
+    if (!doc || this.mode === "memory") return null;
+    if (backedUp && backedUp.doc === doc && backedUp.updatedAt === doc.updatedAt) return "backup";
+    try {
+      this.putEmergency(doc);
+      return "copy";
+    } catch {
+      return backedUp ? "backup" : null;
+    }
+  }
+
+  /** 開いている間に気づいて止める（このタブのまだどこにも無い変更を残してから。もう止めていれば何もしない） */
+  private blockNewerKeeping(backedUp: { doc: DocData; updatedAt: string } | null): void {
+    if (this.blocked) return;
+    this.blockNewer(this.keepUnsaved(backedUp));
+  }
+
+  /**
+   * 保存してある本体が、このページより新しい版か（無い・壊れているなら false）。整えずに版の印だけ見る
+   * （保存の競合のたびに大きな本体を整え直さない）
+   */
+  private async storedIsNewer(): Promise<boolean> {
+    try {
+      return isNewerDocRaw((await this.readRaw()).raw);
+    } catch (e) {
+      return e instanceof NewerDocError;
+    }
+  }
+
   private async readMeta(): Promise<StoredMeta | null> {
     if (this.mode === "idb" && this.db) {
       const t = this.db.transaction("kv", "readonly");
@@ -247,38 +379,83 @@ export class Persistence {
     return null;
   }
 
-  /** 保存してある本体（正規化してから返す）。無ければ null、読めなければ例外 */
-  async readStored(): Promise<{ doc: DocData; meta: StoredMeta } | null> {
+  /**
+   * 保存してある本体と版の記録を、整えずにそのまま読む（本体が無ければ raw は null）。
+   * 版の記録が新しい版を指していれば、本体を読む前に NewerDocError（新しい版の本体は、localStorage でも JSON とは限らない）
+   */
+  private async readRaw(): Promise<{ raw: unknown; meta: StoredMeta | null }> {
     let raw: unknown = null;
     let meta: StoredMeta | null = null;
     if (this.mode === "idb" && this.db) {
       const t = this.db.transaction("kv", "readonly");
       const s = t.objectStore("kv");
       const [d, m] = await Promise.all([req(s.get("doc")), req(s.get("meta"))]);
-      raw = d ?? null;
       meta = (m as StoredMeta | undefined) ?? null;
+      checkMetaVersion(meta);
+      raw = d ?? null;
     } else if (this.mode === "local") {
-      const text = this.kv.get(this.keys.doc);
-      raw = text ? JSON.parse(text) : null;
       const m = this.kv.get(this.keys.meta);
       meta = m ? (JSON.parse(m) as StoredMeta) : null;
+      checkMetaVersion(meta);
+      const text = this.kv.get(this.keys.doc);
+      raw = text ? JSON.parse(text) : null;
     }
+    return { raw, meta };
+  }
+
+  /**
+   * 保存してある本体（正規化してから返す）。無ければ null、読めなければ例外。
+   * このページより新しい版（本体の版か版の記録の docVersion が新しい）なら NewerDocError（壊れているのとは分けて扱う）
+   */
+  async readStored(): Promise<{ doc: DocData; meta: StoredMeta } | null> {
+    const { raw, meta } = await this.readRaw();
     if (raw == null) return null;
     const { doc } = normalizeDoc(raw);
     return { doc, meta: meta ?? { rev: 0, savedAt: doc.updatedAt, writer: "" } };
   }
 
-  private readEmergencies(): Array<{ key: string; baseRev: number; tabId: string; doc: DocData | null }> {
-    const out: Array<{ key: string; baseRev: number; tabId: string; doc: DocData | null }> = [];
+  /** 保存してある本体を読む。このページより新しい版なら止めて undefined（壊れているなど、ほかの読めない訳はそのまま投げる） */
+  private async readStoredOrBlock(): Promise<{ doc: DocData; meta: StoredMeta } | null | undefined> {
+    try {
+      return await this.readStored();
+    } catch (e) {
+      if (!(e instanceof NewerDocError)) throw e;
+      this.blockNewer();
+      return undefined;
+    }
+  }
+
+  /**
+   * 緊急コピーを読む。壊れた写しは doc: null、このページより新しい版の写し（包みか中身の版が新しい）は newer: true
+   * （どちらも読めないが、新しい版の写しは壊れていないので消さない）
+   */
+  private readEmergencies(): EmergencyCopy[] {
+    const out: EmergencyCopy[] = [];
     for (const key of this.kv.keys()) {
       if (!key.startsWith(this.keys.emergencyPrefix)) continue;
       const text = this.kv.get(key);
       if (!text) continue;
       try {
-        const raw = JSON.parse(text) as { baseRev?: unknown; tabId?: unknown; doc?: unknown };
-        out.push({ key, baseRev: typeof raw.baseRev === "number" ? raw.baseRev : -1, tabId: typeof raw.tabId === "string" ? raw.tabId : "", doc: normalizeDoc(raw.doc).doc });
+        const raw = JSON.parse(text) as { v?: unknown; baseRev?: unknown; tabId?: unknown; doc?: unknown };
+        const rawDoc = raw.doc as { updatedAt?: unknown } | null | undefined;
+        const head = {
+          key,
+          baseRev: typeof raw.baseRev === "number" ? raw.baseRev : -1,
+          tabId: typeof raw.tabId === "string" ? raw.tabId : "",
+          rawUpdatedAt: rawDoc && typeof rawDoc === "object" && typeof rawDoc.updatedAt === "string" ? rawDoc.updatedAt : "",
+        };
+        if (typeof raw.v === "number" && raw.v > EMERGENCY_FORMAT) {
+          out.push({ ...head, doc: null, newer: true });
+          continue;
+        }
+        try {
+          out.push({ ...head, doc: normalizeDoc(raw.doc).doc, newer: false });
+        } catch (e) {
+          if (!(e instanceof NewerDocError)) throw e;
+          out.push({ ...head, doc: null, newer: true });
+        }
       } catch {
-        out.push({ key, baseRev: -1, tabId: "", doc: null });
+        out.push({ key, baseRev: -1, tabId: "", doc: null, newer: false, rawUpdatedAt: "" });
       }
     }
     // 新しい順
@@ -286,14 +463,34 @@ export class Persistence {
   }
 
   /**
+   * このページより新しい版のページの緊急コピーのうち、本体より後の変更（本体が無い・時刻が分からない・本体より後・
+   * 同じ版からの別の時刻）の物があるか。あればそれがこのブラウザの最新なので、この版では始めない（引き継がない）
+   */
+  private newerCopyAhead(stored: { doc: DocData; meta: StoredMeta } | null, copies = this.readEmergencies()): boolean {
+    return copies.some((em) => {
+      if (!em.newer) return false;
+      const at = em.rawUpdatedAt;
+      return !stored || !at || at > stored.doc.updatedAt || (em.baseRev === stored.meta.rev && at !== stored.doc.updatedAt);
+    });
+  }
+
+  /**
    * 緊急コピー（閉じたタブが保存しきれなかった変更）を片付ける。編集できるタブだけが行う。
    * 本体より新しく、本体がその続き（同じ版から・同じタブが書いた）なら採る。別の保存と重なっていたらバックアップへ退避。
-   * 本体と同じか古ければ、もう保存されているので黙って消す
+   * 本体と同じか古ければ、もう保存されているので黙って消す。
+   * このページより新しい版の写しは読めないので採らず、消さずに残す（新しい版のページが開いたときに、そのページが決める）。
+   * その写しが本体より後の変更なら、何も片付けずに止める（この版で続けると、その上に古い内容を保存して追い越してしまう）
    */
   private async consumeEmergencies(stored: { doc: DocData; meta: StoredMeta } | null, notices: string[], how?: { sameBase: boolean }): Promise<DocData | null> {
-    if (!this.writer) return null;
+    if (!this.writer || this.blocked) return null;
+    const copies = this.readEmergencies();
+    if (this.newerCopyAhead(stored, copies)) {
+      this.blockNewer();
+      return null;
+    }
     let adopted: DocData | null = null;
-    for (const em of this.readEmergencies()) {
+    for (const em of copies) {
+      if (em.newer) continue;
       if (em.doc) {
         // 本体がこの写しの元の版のまま（その後に保存が無い）なら、時刻が違えば写しの方が先の内容
         const sameBase = !!stored && em.baseRev === stored.meta.rev;
@@ -325,18 +522,26 @@ export class Persistence {
    * 起動時の読み込み。緊急コピーがあれば、保存してある本体と比べて新しい方を採る
    * （本体の版が緊急コピーの元の版より進んでいたら＝別のタブが保存していたら、緊急コピーはバックアップへ退避）。
    * recovered: 保存してあった本体を読めず、バックアップ（か何も無し）で始めた。ただし、読めなかった本体の版の続きの
-   * 緊急コピー（このブラウザの最新）を採ったときは、代わりの内容で始めたのではない
+   * 緊急コピー（このブラウザの最新）を採ったときは、代わりの内容で始めたのではない。
+   * blocked: 保存してある本体（か保存先の形）がこのページより新しい版、または新しい版のページの緊急コピーが本体より後の変更。
+   * 壊れたのではないので、バックアップでも緊急コピーでもデモでも始めず、何も書かずに止める（doc は null。以後このインスタンスは何も書かない）
    */
-  async loadInitial(): Promise<{ doc: DocData | null; notices: string[]; recovered: boolean }> {
+  async loadInitial(): Promise<{ doc: DocData | null; notices: string[]; recovered: boolean; blocked: boolean }> {
     const notices: string[] = [];
-    if (this.mode === "memory") return { doc: null, notices, recovered: false };
+    if (this.mode === "memory") return { doc: null, notices, recovered: false, blocked: false };
+    if (this.blocked) return { doc: null, notices, recovered: false, blocked: true };
     let stored: { doc: DocData; meta: StoredMeta } | null = null;
     let recovered = false;
     /** 読めなかった本体の版（meta）は読めた */
     let metaKnown = true;
     try {
       stored = await this.readStored();
-    } catch {
+    } catch (e) {
+      if (e instanceof NewerDocError) {
+        // 前はここで「壊れた」と見なして古いバックアップで始め、最初の保存で新しい版の本体を上書きしていた
+        this.blockNewer();
+        return { doc: null, notices, recovered: false, blocked: true };
+      }
       recovered = true;
       const fallback = await this.latestBackupDoc();
       if (fallback) {
@@ -357,22 +562,24 @@ export class Persistence {
     }
     const how = { sameBase: false };
     const adopted = await this.consumeEmergencies(stored, notices, how);
+    if (this.blocked) return { doc: null, notices: [], recovered: false, blocked: true };
     const doc = adopted ?? stored?.doc ?? null;
     // 採った緊急コピーが、読めなかった本体の版の続き（このブラウザの最新）なら、代わりの内容で始めたのではない
-    return { doc, notices, recovered: recovered && !(adopted && how.sameBase && metaKnown) };
+    return { doc, notices, recovered: recovered && !(adopted && how.sameBase && metaKnown), blocked: false };
   }
 
   /**
    * 起動で使う、いちばん新しいバックアップ。「退避」（別の端末・別のタブの内容）と「選ばなかった内容」は、
-   * このブラウザで続けてきた内容ではないので使わない（それを手元として送ると、新しい内容を古い内容で潰しかねない）
+   * このブラウザで続けてきた内容ではないので使わない（それを手元として送ると、新しい内容を古い内容で潰しかねない）。
+   * このページより新しい版のバックアップも使わない（読めない。飛ばして、その前のこの版のバックアップを探す）
    */
   private async latestBackupDoc(): Promise<DocData | null> {
     try {
       const list = await this.listBackups();
       for (const b of list) {
-        if (b.kind === "conflict" || b.kind === "kept") continue;
-        const d = await this.readBackup(b.id);
-        if (d) return d;
+        if (b.kind === "conflict" || b.kind === "kept" || isNewerBackup(b)) continue;
+        const { doc } = await this.readBackupChecked(b.id);
+        if (doc) return doc;
       }
     } catch {
       /* バックアップも読めない */
@@ -385,14 +592,14 @@ export class Persistence {
   /** ストアにつなぐ。以後 markDirty() のたびに自動保存する */
   attach(getDoc: () => DocData): void {
     this.getDoc = getDoc;
-    if (this.mode === "memory") return;
+    if (this.mode === "memory" || this.blocked) return;
     if (this.dirty && this.writer) this.schedule();
     else if (this.writer) this.setStatus(this.savedAt ? "saved" : "idle");
     else this.setStatus("readonly");
   }
 
   markDirty(): void {
-    if (this.mode === "memory") return;
+    if (this.mode === "memory" || this.blocked) return;
     this.changesSinceBackup = true;
     if (!this.dirty) {
       this.dirty = true;
@@ -422,11 +629,11 @@ export class Persistence {
       this.timer = null;
     }
     if (this.saving) await this.saving;
-    if (this.dirty) await this.save();
+    if (this.dirty && !this.blocked) await this.save();
   }
 
   private async save(): Promise<void> {
-    if (!this.getDoc || !this.writer || this.stopped || this.mode === "memory") return;
+    if (!this.getDoc || !this.writer || this.stopped || this.blocked || this.mode === "memory") return;
     if (this.saving) {
       await this.saving;
       if (this.dirty) return this.save();
@@ -444,6 +651,8 @@ export class Persistence {
       const ident = { id: doc.id, updatedAt: doc.updatedAt };
       try {
         const newRev = await this.writeStored(doc, this.rev);
+        // 書いている間に、新しい版のデータに気づいて止めた: 以後のことはしない（状態も止めたまま）
+        if (this.blocked) return;
         this.rev = newRev;
         this.lastStored = ident;
         this.savedAt = nowISO();
@@ -452,12 +661,19 @@ export class Persistence {
         this.setStatus(this.dirty ? "pending" : "saved");
         await this.maybeAutoBackup(doc).catch(() => undefined);
       } catch (e) {
+        if (this.blocked) return;
         this.dirty = true;
         // 失敗の後は、入力のたびにすぐ保存し直さない（やり直しは 5 秒後の再試行に任せる）
         this.firstDirtyAt = Date.now();
         if (e instanceof ConflictError) {
           this.stopped = true;
-          await this.createBackup("conflict", "保存の競合で退避した内容", doc).catch(() => undefined);
+          // 退避に入る中身はこの時点の物（書き始めに写す）。その後の入力は、止めるときに確かめる
+          const at = doc.updatedAt;
+          const saved = await this.createBackup("conflict", "保存の競合で退避した内容", doc).catch(() => null);
+          if (this.blocked) return;
+          // 書いたのが新しい版のページ（別のタブ）: 「上書き」「最新を開く」を選ばせず、手元を残して止める
+          // （退避に今の内容が無ければ・退避を作れなければ、このタブの緊急コピーに）
+          if (await this.storedIsNewer()) return this.blockNewerKeeping(saved ? { doc, updatedAt: at } : null);
           this.setStatus("conflict", "別のタブで保存された内容があるため、上書きせずに止めました。手元の内容はバックアップに退避してあります。");
         } else {
           if (Date.now() - this.lastFailEmergencyAt > 5000) {
@@ -481,9 +697,13 @@ export class Persistence {
     if (this.dirty && !this.stopped && this.writer && this.status !== "error") this.schedule();
   }
 
-  /** 版番号を確かめてから書く（1 つのトランザクションの中で読む→比べる→書く） */
+  /**
+   * 版番号を確かめてから書く（1 つのトランザクションの中で読む→比べる→書く）。
+   * 版の記録がこのページより新しい版を指していれば、版番号が合っていても書かない（競合として止める）
+   */
   private async writeStored(doc: DocData, expectedRev: number): Promise<number> {
-    const meta: StoredMeta = { rev: expectedRev + 1, savedAt: nowISO(), writer: this.tabId };
+    if (this.blocked) throw new ConflictError("newer");
+    const meta: StoredMeta = { rev: expectedRev + 1, savedAt: nowISO(), writer: this.tabId, docVersion: doc.version };
     if (this.mode === "idb") {
       if (!this.db) throw new Error("IndexedDB が閉じています");
       const t = this.db.transaction("kv", "readwrite");
@@ -491,8 +711,8 @@ export class Persistence {
       let conflict = false;
       const r = s.get("meta");
       r.onsuccess = () => {
-        const cur = (r.result as StoredMeta | undefined)?.rev ?? 0;
-        if (cur !== expectedRev) {
+        const m = r.result as StoredMeta | undefined;
+        if ((m?.rev ?? 0) !== expectedRev || isNewerVersion(m?.docVersion)) {
           conflict = true;
           t.abort();
           return;
@@ -510,8 +730,8 @@ export class Persistence {
     }
     // localStorage
     const curRaw = this.kv.get(this.keys.meta);
-    const cur = curRaw ? (JSON.parse(curRaw) as StoredMeta).rev : 0;
-    if (cur !== expectedRev) throw new ConflictError("rev");
+    const cur = curRaw ? (JSON.parse(curRaw) as StoredMeta) : null;
+    if ((cur?.rev ?? 0) !== expectedRev || isNewerVersion(cur?.docVersion)) throw new ConflictError("rev");
     this.kv.set(this.keys.doc, JSON.stringify(doc));
     this.kv.set(this.keys.meta, JSON.stringify(meta));
     return meta.rev;
@@ -519,20 +739,29 @@ export class Persistence {
 
   /** 閉じる・隠れる瞬間に、未保存の内容を同期で残す（次の起動で採るか比べる） */
   writeEmergency(force = false): void {
-    if (this.mode === "memory" || !this.getDoc) return;
+    if (this.mode === "memory" || this.blocked || !this.getDoc) return;
     if (!force && !this.hasUnsaved) return;
     try {
-      const doc = this.getDoc();
-      this.kv.set(this.keys.emergency, JSON.stringify({ v: 1, baseRev: this.rev, at: nowISO(), tabId: this.tabId, doc }));
+      this.putEmergency(this.getDoc());
     } catch {
       /* 容量不足など。IndexedDB の保存に任せる */
     }
   }
 
-  /** 競合の解決: reload = 保存されている最新を採る / overwrite = 手元の内容で上書きする（どちらも手元はバックアップ済み） */
+  /** このタブの緊急コピーを書く（このタブだけの鍵・この版の包み）。書けなければ例外 */
+  private putEmergency(doc: DocData): void {
+    this.kv.set(this.keys.emergency, JSON.stringify({ v: EMERGENCY_FORMAT, baseRev: this.rev, at: nowISO(), tabId: this.tabId, doc }));
+  }
+
+  /**
+   * 競合の解決: reload = 保存されている最新を採る / overwrite = 手元の内容で上書きする（どちらも手元はバックアップ済み）。
+   * 保存されているのがこのページより新しい版なら、どちらも選ばずに止める（blocked。上書きはしない）
+   */
   async resolveConflict(choice: "reload" | "overwrite"): Promise<DocData | null> {
+    if (this.blocked) return null;
     if (choice === "reload") {
-      const s = await this.readStored();
+      const s = await this.readStoredOrBlock();
+      if (s === undefined) return null;
       if (s) {
         this.rev = s.meta.rev;
         this.savedAt = s.meta.savedAt;
@@ -542,6 +771,15 @@ export class Persistence {
       this.dirty = false;
       this.setStatus("saved");
       return s?.doc ?? null;
+    }
+    if (await this.storedIsNewer()) {
+      // 新しい版の内容は上書きしない。競合に気づいた後の変更はまだどこにも無いので、このタブの内容を残してから止める
+      // （退避に今の内容が無ければ・退避を作れなければ、このタブの緊急コピーに）
+      const doc = this.getDoc?.();
+      const at = doc?.updatedAt ?? "";
+      const saved = doc ? await this.createBackup("conflict", "新しい版で保存された内容に気づいたときのこのタブの内容", doc).catch(() => null) : null;
+      this.blockNewerKeeping(saved && doc ? { doc, updatedAt: at } : null);
+      return null;
     }
     const meta = await this.readMeta();
     this.rev = meta?.rev ?? this.rev;
@@ -572,6 +810,7 @@ export class Persistence {
   }
 
   async writeKv(key: string, value: unknown): Promise<void> {
+    if (this.blocked) return;
     if (this.mode === "idb" && this.db) {
       const t = this.db.transaction("kv", "readwrite");
       t.objectStore("kv").put(value, `x:${key}`);
@@ -604,8 +843,8 @@ export class Persistence {
 
   async createBackup(kind: BackupKind, label: string, doc?: DocData): Promise<BackupMeta | null> {
     const d = doc ?? this.getDoc?.();
-    if (!d || !this.canBackup) return null;
-    const meta: BackupMeta = { id: newId("b"), kind, label, createdAt: nowISO(), docTitle: d.title, counts: docCounts(d) };
+    if (!d || !this.canBackup || this.blocked) return null;
+    const meta: BackupMeta = { id: newId("b"), kind, label, createdAt: nowISO(), docTitle: d.title, counts: docCounts(d), docVersion: d.version };
     const t = this.db!.transaction(["backupMeta", "backupData"], "readwrite");
     try {
       // 中身を先に（写せない中身なら、見出しだけの行を残さない）
@@ -631,28 +870,40 @@ export class Persistence {
     return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  /** バックアップの中身（無い・壊れている・このページより新しい版なら null。どれかを分けるなら readBackupChecked） */
   async readBackup(id: ID): Promise<DocData | null> {
-    if (!this.canBackup) return null;
-    const t = this.db!.transaction("backupData", "readonly");
-    const rec = (await req(t.objectStore("backupData").get(id))) as { doc?: unknown } | undefined;
-    if (!rec?.doc) return null;
+    return (await this.readBackupChecked(id)).doc;
+  }
+
+  /**
+   * バックアップの中身を、読めない訳と一緒に読む。newer: このページより新しい版で作られた（見出しの版か中身の版で分かる。
+   * 読まない・復元しない）。doc が null で newer でもなければ、無いか壊れている
+   */
+  async readBackupChecked(id: ID): Promise<{ doc: DocData | null; newer: boolean }> {
+    if (!this.canBackup) return { doc: null, newer: false };
+    const t = this.db!.transaction(["backupMeta", "backupData"], "readonly");
+    const [meta, rec] = await Promise.all([req(t.objectStore("backupMeta").get(id)), req(t.objectStore("backupData").get(id))]);
+    if (meta && isNewerBackup(meta as BackupMeta)) return { doc: null, newer: true };
+    const data = rec as { doc?: unknown } | undefined;
+    if (!data?.doc) return { doc: null, newer: false };
     try {
-      return normalizeDoc(rec.doc).doc;
-    } catch {
-      return null;
+      return { doc: normalizeDoc(data.doc).doc, newer: false };
+    } catch (e) {
+      return { doc: null, newer: e instanceof NewerDocError };
     }
   }
 
   async deleteBackup(id: ID): Promise<void> {
-    if (!this.canBackup) return;
+    if (!this.canBackup || this.blocked) return;
     const t = this.db!.transaction(["backupMeta", "backupData"], "readwrite");
     t.objectStore("backupMeta").delete(id);
     t.objectStore("backupData").delete(id);
     await done(t);
   }
 
+  /** 種類ごとに件数で間引く。このページより新しい版のバックアップは数えず、消さない（新しい版のページが間引く） */
   private async prune(kind: BackupKind): Promise<void> {
-    const list = (await this.listBackups()).filter((b) => b.kind === kind);
+    const list = (await this.listBackups()).filter((b) => b.kind === kind && !isNewerBackup(b));
     const extra = list.slice(KEEP[kind]);
     if (extra.length === 0) return;
     const t = this.db!.transaction(["backupMeta", "backupData"], "readwrite");
@@ -665,7 +916,7 @@ export class Persistence {
 
   /** その日の最初の起動で、読み込んだ状態を日次バックアップに残す */
   async ensureDailyBackup(doc: DocData): Promise<void> {
-    if (!this.canBackup) return;
+    if (!this.canBackup || this.blocked) return;
     const today = toDateStr(new Date());
     const list = await this.listBackups();
     if (list.some((b) => b.kind === "daily" && toDateStr(new Date(b.createdAt)) === today)) return;
@@ -690,15 +941,35 @@ export class Persistence {
       this.writer = true;
       return true;
     }
+    if (this.blocked) return false;
     const ok = !this.locks || (await this.requestLock({ ifAvailable: true }));
-    if (ok) this.setWriter(true);
-    return ok;
+    if (ok && !this.blocked) this.setWriter(true);
+    return ok && !this.blocked;
   }
 
-  /** このタブで編集する（別のタブから引き継ぐ）。最新の保存内容を返す */
+  /**
+   * このタブで編集する（別のタブから引き継ぐ）。最新の保存内容を返す。
+   * 保存されているのがこのページより新しい版、または新しい版のページの緊急コピーが本体より後の変更なら、引き継がずに止めて null
+   * （blocked。新しい版のタブのロックも奪わない）。本体はロックを取る前に 1 回だけ読んで整え、取る間に前のタブが保存していたら
+   * （版の記録の版番号か版が変わった）読み直す
+   */
   async takeOver(): Promise<DocData | null> {
-    if (this.locks) await this.requestLock({ steal: true });
-    const stored = await this.readStored();
+    if (this.blocked) return null;
+    let stored = await this.readStoredOrBlock();
+    if (stored === undefined) return null;
+    if (this.newerCopyAhead(stored)) {
+      this.blockNewer();
+      return null;
+    }
+    if (this.locks) {
+      await this.requestLock({ steal: true });
+      const meta = await this.readMeta().catch(() => null);
+      if ((meta?.rev ?? 0) !== (stored?.meta.rev ?? 0) || meta?.docVersion !== stored?.meta.docVersion) {
+        // 引き継ぐ間に前のタブ（か新しい版のページ）が保存した
+        stored = await this.readStoredOrBlock();
+        if (stored === undefined) return null;
+      }
+    }
     if (stored) {
       this.rev = stored.meta.rev;
       this.savedAt = stored.meta.savedAt;
@@ -709,6 +980,7 @@ export class Persistence {
     this.setWriter(true);
     const notices: string[] = [];
     const adopted = await this.consumeEmergencies(stored, notices);
+    if (this.blocked) return null;
     for (const n of notices) this.notice("info", n);
     if (adopted) this.schedule();
     else this.setStatus(this.savedAt ? "saved" : "idle");
@@ -742,9 +1014,15 @@ export class Persistence {
             return;
           }
           held = true;
+          // 止めた後に遅れて取れたロックは持たない（新しい版のページのタブが取れるように）
+          if (this.blocked) {
+            answer(false);
+            return;
+          }
           answer(true);
-          return new Promise<void>(() => {
-            /* タブを閉じるまで持ち続ける */
+          // タブを閉じるまで持ち続ける（新しい版のデータで止めたときだけ手放す）
+          return new Promise<void>((release) => {
+            this.releaseLock = release;
           });
         }).catch(() => {
           if (held) this.lockLost(); // 別のタブに引き継がれた
@@ -759,7 +1037,15 @@ export class Persistence {
   private lockLost(): void {
     if (!this.writer) return;
     const doc = this.getDoc?.();
-    if (this.dirty && doc) void this.createBackup("conflict", "別のタブに編集を引き継いだときの未保存の変更", doc).catch(() => undefined);
+    if (this.dirty && doc) {
+      // 残せたら覚えておく（後で新しい版のデータに気づいて止めたときに、画面で伝える）
+      void this.createBackup("conflict", "別のタブに編集を引き継いだときの未保存の変更", doc).then(
+        (m) => {
+          if (m) this.keptAside = "backup";
+        },
+        () => undefined,
+      );
+    }
     this.dirty = false;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;

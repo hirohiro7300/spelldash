@@ -45,6 +45,8 @@ export interface AppContext {
   /** アカウントへの同期の状態（claude.ai の Artifact の外では null） */
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null;
   onCloudChanged: () => void;
+  /** アカウントの写しがこのページより新しい版と分かって、同期と編集を止めている（開き直すまで。「同期をやり直す」でも再開しない） */
+  readonly accountNewer: boolean;
   /** アカウントとの突き合わせをやり直す（止めていた同期の再開） */
   resyncCloud(): void;
   focusSearch: () => void;

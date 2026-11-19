@@ -2,6 +2,7 @@
 //   BASE_URL を渡せばそのサーバーを使う。無ければ vite preview を立ち上げる
 //   PW_CHROMIUM でブラウザの場所を指定できる（無ければ playwright-core の既定）
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -2810,6 +2811,654 @@ async function main() {
     }
   });
   await actx.close();
+
+  // ---- このページより新しい版で保存されたデータ（読まずに止める。壊れたデータとは分ける）
+  const NEWER_TITLE = "新しい版のページで保存されたデータです";
+  /** 新しい版のページが保存した本体（版 2 の薄い形）。このページでは読めない */
+  const newerDocOf = (title) => {
+    const at = new Date().toISOString();
+    return { schema: "4d-branch", version: 2, id: "d_newer", title, createdAt: at, updatedAt: at, meta: {}, thin: { v: 1, patches: { k1: { title: "書き換えたカード" } } } };
+  };
+  /** 新しい版のページが書いた物を、保存先にそのまま置く（what: 本体・版の記録・バックアップ・緊急コピーのどれを置くか） */
+  const putNewer = (p, what) =>
+    p.evaluate(
+      async ({ what, doc }) => {
+        const db = await new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch", 1);
+          r.onupgradeneeded = () => {
+            const d = r.result;
+            if (!d.objectStoreNames.contains("kv")) d.createObjectStore("kv");
+            if (!d.objectStoreNames.contains("backupMeta")) d.createObjectStore("backupMeta", { keyPath: "id" });
+            if (!d.objectStoreNames.contains("backupData")) d.createObjectStore("backupData", { keyPath: "id" });
+          };
+          r.onsuccess = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+        });
+        await new Promise((resolve, reject) => {
+          const t = db.transaction(["kv", "backupMeta", "backupData"], "readwrite");
+          const kv = t.objectStore("kv");
+          if (what.includes("doc")) {
+            kv.put(doc, "doc");
+            const g = kv.get("meta");
+            g.onsuccess = () => kv.put({ rev: (g.result?.rev ?? 0) + 1, savedAt: doc.updatedAt, writer: "t_newer", docVersion: 2 }, "meta");
+          }
+          if (what.includes("backup")) {
+            const counts = { nodes: 0, edges: 0, projects: 0, scenarios: 0 };
+            t.objectStore("backupMeta").put({ id: "b_newer", kind: "auto", label: "新しい版のバックアップ", createdAt: new Date(Date.now() + 60_000).toISOString(), docTitle: doc.title, counts, docVersion: 2 });
+            t.objectStore("backupData").put({ id: "b_newer", doc });
+          }
+          t.oncomplete = () => resolve();
+          t.onerror = () => reject(t.error);
+        });
+        db.close();
+        if (what.includes("emergency")) localStorage.setItem("4d-branch:emergency:t_newer", JSON.stringify({ v: 1, baseRev: 1, at: doc.updatedAt, tabId: "t_newer", doc: { ...doc, title: "閉じる直前" } }));
+      },
+      { what, doc: newerDocOf("新しい版で保存した内容") },
+    );
+  /** 保存先（IndexedDB の全部・localStorage の全部）をそのまま文字にする（何も書き換えていないことを確かめる）。stores: 見る所 */
+  const dumpStorage = (p, stores = null) =>
+    p.evaluate(async (stores) => {
+      const db = await new Promise((resolve, reject) => {
+        const r = indexedDB.open("4d-branch");
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      const out = { version: db.version };
+      for (const name of stores ?? [...db.objectStoreNames]) {
+        out[name] = await new Promise((resolve, reject) => {
+          const t = db.transaction(name, "readonly");
+          const keys = t.objectStore(name).getAllKeys();
+          const vals = t.objectStore(name).getAll();
+          t.oncomplete = () => resolve(keys.result.map((k, i) => [k, vals.result[i]]));
+          t.onerror = () => reject(t.error);
+        });
+      }
+      db.close();
+      if (!stores) out.ls = Object.keys(localStorage).sort().map((k) => [k, localStorage.getItem(k)]);
+      return JSON.stringify(out);
+    }, stores);
+
+  for (const [label, viewport, mobile] of [
+    ["スマホ 390×844", { width: 390, height: 844 }, true],
+    ["パソコン 1440×900", { width: 1440, height: 900 }, false],
+  ]) {
+    await check(`新しい版のデータ（${label}）: 保存してある本体が新しい版なら、編集の画面を作らずに止める画面を出し、本体・版の記録・緊急コピー・バックアップ・設定のどれにも書かない。「ページを開き直す」で開き直す`, async () => {
+      const c = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
+      // アプリを動かさずに置く: 同じ場所（origin）のアプリの無いページを開いて、保存先に直接書く
+      // （アイコンは要らないと書く。書かないとブラウザが /favicon.ico を読みに行き、404 がページのエラーに出る）
+      await c.route(`${BASE}__seed.html`, (r) => r.fulfill({ contentType: "text/html; charset=utf-8", body: '<!doctype html><meta charset="utf-8"><title>seed</title><link rel="icon" href="data:,">' }));
+      const p = await c.newPage();
+      watch(p);
+      await p.goto(`${BASE}__seed.html`);
+      await putNewer(p, ["doc", "backup", "emergency"]);
+      const before = await dumpStorage(p);
+      await p.goto(BASE, { waitUntil: "networkidle" });
+      await p.getByRole("heading", { name: NEWER_TITLE }).waitFor();
+      const s = await p.evaluate(() => ({
+        shell: !!document.querySelector(".app-shell"),
+        fourD: window.__fourD ? { blocked: window.__fourD.blocked, app: !!window.__fourD.app, writer: window.__fourD.persistence.writer } : null,
+        text: document.querySelector(".newer-card")?.textContent ?? "",
+        overflowX: document.documentElement.scrollWidth - window.innerWidth,
+        focus: document.activeElement?.textContent ?? "",
+      }));
+      assert(!s.shell, "編集の画面を作った");
+      assert(s.fourD && s.fourD.blocked === true && !s.fourD.app && s.fourD.writer === false, JSON.stringify(s.fourD));
+      for (const t of ["このページより新しい版で保存されています", "新しい版のデータには触れていません", "ページを開き直すと、新しい版で開きます", "最新の版のページを開いてください"]) assert(s.text.includes(t), `「${t}」が無い: ${s.text}`);
+      assert(s.overflowX <= 0, `横にはみ出す: ${s.overflowX}px`);
+      assert(s.focus.includes("ページを開き直す"), `フォーカスが開き直すボタンに無い: ${s.focus}`);
+      const btn = p.getByRole("button", { name: "ページを開き直す" });
+      const box = await btn.boundingBox();
+      assert(box && box.x >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height && box.height >= 44, `ボタンが画面に収まらない・小さい: ${JSON.stringify(box)}`);
+      await shot(`e2e-newer-${viewport.width}`, p);
+      // 日次バックアップ・同期・自動保存が動く時間を待っても、何も書いていない
+      await p.waitForTimeout(1500);
+      assert((await dumpStorage(p)) === before, "保存先が書き換わった");
+      // 開き直す（同じ版のページなら、また止まる。書かない）
+      await Promise.all([p.waitForEvent("load"), btn.click()]);
+      await p.getByRole("heading", { name: NEWER_TITLE }).waitFor();
+      await p.waitForTimeout(800);
+      assert((await dumpStorage(p)) === before, "開き直した後に保存先が書き換わった");
+      await c.close();
+    });
+  }
+
+  const nctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await nctx.addInitScript(() => {
+    try {
+      const k = "4d-branch:prefs";
+      if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, futureAutoOpened: true, wishlistOffered: true, futureOffered: true }));
+    } catch {
+      /* about:blank など */
+    }
+  });
+  const np = await nctx.newPage();
+  watch(np);
+  await np.goto(BASE, { waitUntil: "networkidle" });
+  await np.waitForFunction(() => !!window.__fourD?.app);
+
+  await check("新しい版のデータ: 新しい版のファイルの取り込みは、今までと同じ文で断る", async () => {
+    const file = path.join(os.tmpdir(), `4d-e2e-newer-${Date.now()}.json`);
+    fs.writeFileSync(file, JSON.stringify({ ...newerDocOf("新しい版の書き出し"), exportedAt: new Date().toISOString(), app: { name: "4D Branch", version: "9.9.9" } }, null, 2));
+    const before = await np.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
+    const chooser = np.waitForEvent("filechooser");
+    await np.evaluate(() => window.__fourD.app.pickImport());
+    await (await chooser).setFiles(file);
+    const dlg = np.getByRole("dialog", { name: "読み込めませんでした" });
+    await dlg.waitFor();
+    const text = await dlg.textContent();
+    assert(text.includes("このファイルは新しい版（スキーマ 2）の 4D Branch で作られています。アプリを新しくしてから読み込んでください。"), text);
+    await dlg.getByRole("button", { name: "閉じる" }).first().click();
+    assert((await np.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length)) === before, "取り込んでしまった");
+    fs.rmSync(file, { force: true });
+  });
+
+  await check("新しい版のデータ: 新しい版のバックアップは一覧に印付きで出し、復元を押すと訳を出して断る（今の内容はそのまま）", async () => {
+    await waitSaved(np);
+    await putNewer(np, ["backup"]);
+    const before = await np.evaluate(() => JSON.stringify(window.__fourD.store.doc));
+    await np.evaluate(() => window.__fourD.app.openBackups());
+    const dlg = np.getByRole("dialog", { name: "バックアップと復元" });
+    await dlg.waitFor();
+    const row = dlg.locator(".backup-row", { hasText: "新しい版のバックアップ" });
+    await row.locator(".backup-newer", { hasText: "このページより新しい版" }).waitFor();
+    assert(await row.getByRole("button", { name: "ダウンロード" }).isDisabled(), "新しい版のバックアップを書き出せる");
+    assert(await row.getByRole("button", { name: "削除" }).isDisabled(), "新しい版のバックアップを消せる");
+    await row.getByRole("button", { name: "復元" }).click();
+    await np.locator(".toast-text", { hasText: "この版では復元できません" }).waitFor();
+    assert((await np.getByRole("dialog", { name: "このバックアップに戻しますか？" }).count()) === 0, "復元の確認を出した");
+    await np.keyboard.press("Escape");
+    assert((await np.evaluate(() => JSON.stringify(window.__fourD.store.doc))) === before, "今の内容が変わった");
+  });
+
+  await check("新しい版のデータ: 開いている間に別のタブの新しい版のページが保存したら、閲覧のみのタブは知らせで、編集中のタブは次の保存で気づき、どちらも止める画面に替わり新しい版を上書きしない", async () => {
+    await waitSaved(np);
+    const reader = await nctx.newPage();
+    watch(reader);
+    await reader.goto(BASE, { waitUntil: "networkidle" });
+    await reader.waitForFunction(() => window.__fourD?.store.readOnly === true);
+    // 閲覧のみのタブでは操作ガイドを開いている（止めた後に、ガイドのキーの見張りが残って Enter を横取りしないか確かめる）
+    await reader.evaluate(() => window.__fourD.app.startTour());
+    await reader.locator(".tour").waitFor();
+    // 新しい版のページ（別のタブ）が保存した: 本体と版の記録を書き、保存したと知らせる
+    await putNewer(np, ["doc"]);
+    const before = await dumpStorage(np, ["kv"]);
+    await np.evaluate(() => {
+      const bc = new BroadcastChannel("4d-branch");
+      bc.postMessage({ type: "saved", rev: 99, tabId: "t_newer" });
+      bc.close();
+    });
+    await reader.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    assert((await reader.locator(".app-shell, .tour").count()) === 0, "閲覧のみのタブに編集の画面かガイドが残った");
+    assert(!(await reader.locator(".newer-card").textContent()).includes("まだ保存されていなかった変更"), "閲覧のみのタブで、残した変更があると言った");
+    // 止めた後に動いた知らせ（ここでは閲覧のみで「未来の道筋」を押したときの訳）は出さない（止める画面の下に見えないお知らせを作らない）
+    await reader.evaluate(() => void window.__fourD.app.showFuture());
+    await reader.waitForTimeout(300);
+    assert((await reader.evaluate(() => document.querySelectorAll("#toast-stack, .toast, .modal-backdrop").length)) === 0, "止めた後にお知らせ・ダイアログを出した");
+    // 「ページを開き直す」は Enter でも押せる（ガイドのキーの見張りに横取りされない）
+    await reader.waitForFunction(() => document.activeElement?.textContent?.includes("ページを開き直す"));
+    await Promise.all([reader.waitForEvent("load", { timeout: 5000 }), reader.keyboard.press("Enter")]);
+    await reader.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    // 編集中のタブ: 次の保存で気づく（手元の変更は「退避」に残し、画面でそう伝える）
+    await np.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1600 }, { title: "気づく前の変更", exact: true }));
+    await np.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    assert((await np.locator(".app-shell").count()) === 0, "編集中のタブに編集の画面が残った");
+    assert((await np.evaluate(() => window.__fourD.persistence.blocked)) === true, "止まっていない");
+    const npText = await np.locator(".newer-card").textContent();
+    assert(npText.includes("まだ保存されていなかった変更は、「退避」のバックアップに残しました"), `退避に残したと伝えていない: ${npText}`);
+    // 止めた後に隠れても・閉じかけても書かない
+    await np.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    await np.waitForTimeout(600);
+    assert((await dumpStorage(np, ["kv"])) === before, "新しい版の本体・版の記録が書き換わった");
+    const kept = await np.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch");
+          r.onerror = () => reject(r.error);
+          r.onsuccess = () => {
+            const t = r.result.transaction(["backupMeta", "backupData"], "readonly");
+            const metas = t.objectStore("backupMeta").getAll();
+            const datas = t.objectStore("backupData").getAll();
+            t.oncomplete = () => {
+              r.result.close();
+              const conflict = metas.result.filter((m) => m.kind === "conflict").map((m) => datas.result.find((d) => d.id === m.id)?.doc);
+              resolve(conflict.some((d) => Object.values(d?.nodes ?? {}).some((n) => n.title === "気づく前の変更")));
+            };
+          };
+        }),
+    );
+    assert(kept === true, "手元の変更が退避に残っていない");
+    assert((await np.evaluate(() => Object.keys(localStorage).filter((k) => k.includes(":emergency:")).length)) === 0, "止めた後に緊急コピーを書いた");
+    await reader.close();
+  });
+  await nctx.close();
+
+  await check("新しい版のデータ: 開いている間に新しい版のページが保存先の版を上げたら、編集中のタブも止める画面に替わり、書き手のロックを手放して以後は書かない（まだ保存していない変更は緊急コピーに残して伝える）", async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await c.addInitScript(() => {
+      try {
+        const k = "4d-branch:prefs";
+        if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, futureAutoOpened: true, wishlistOffered: true, futureOffered: true }));
+      } catch {
+        /* about:blank など */
+      }
+    });
+    await c.route(`${BASE}__seed.html`, (r) => r.fulfill({ contentType: "text/html; charset=utf-8", body: '<!doctype html><meta charset="utf-8"><title>seed</title><link rel="icon" href="data:,">' }));
+    const a = await c.newPage();
+    watch(a);
+    await a.goto(BASE, { waitUntil: "networkidle" });
+    await a.waitForFunction(() => window.__fourD?.persistence.writer === true);
+    await waitSaved(a);
+    const b = await c.newPage();
+    watch(b);
+    await b.goto(`${BASE}__seed.html`);
+    // 保存を待つ間（0.3 秒）に、新しい版のページ（b）が保存先の版を 2 に上げ、新しい版の本体を書く
+    await a.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1800 }, { title: "版が上がる直前の変更", exact: true }));
+    await b.evaluate(
+      (doc) =>
+        new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch", 2);
+          r.onupgradeneeded = () => {
+            const s = r.transaction.objectStore("kv");
+            s.put(doc, "doc");
+            s.put({ rev: 99, savedAt: doc.updatedAt, writer: "t_newer", docVersion: 2 }, "meta");
+          };
+          r.onsuccess = () => (r.result.close(), resolve());
+          r.onerror = () => reject(r.error);
+        }),
+      newerDocOf("新しい版で保存した内容"),
+    );
+    await a.getByRole("heading", { name: NEWER_TITLE }).waitFor({ timeout: 5000 });
+    assert((await a.locator(".app-shell").count()) === 0, "編集の画面が残った");
+    assert((await a.evaluate(() => [window.__fourD.persistence.blocked, window.__fourD.persistence.writer].join())) === "true,false", "止まっていない・書き手のまま");
+    // 新しい版のページのタブが、引き継がずに書き手のロックを取れる
+    assert((await b.evaluate(() => navigator.locks.request("4d-branch:writer", { ifAvailable: true }, (lock) => !!lock))) === true, "書き手のロックを手放していない");
+    // 保存の前に版が上がったなら、その変更はこのタブの緊急コピーにあり、画面でそう伝える（保存が先なら、その変更は本体に入っていた）
+    const s = await a.evaluate(() => ({
+      text: document.querySelector(".newer-card")?.textContent ?? "",
+      copies: Object.keys(localStorage)
+        .filter((k) => k.includes(":emergency:"))
+        .map((k) => localStorage.getItem(k)),
+    }));
+    const inCopy = s.copies.some((t) => t.includes("版が上がる直前の変更"));
+    assert(inCopy === s.text.includes("このブラウザの緊急コピーに残しました"), `緊急コピーと画面の知らせが合わない: ${JSON.stringify(s)}`);
+    // 以後は何も書かない（隠れても・閉じかけても）
+    const before = await dumpStorage(a);
+    await a.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    await a.waitForTimeout(800);
+    assert((await dumpStorage(a)) === before, "止めた後に保存先が書き換わった");
+    await c.close();
+  });
+
+  // ---- アカウントの写しがこのページより新しい版（claude.ai の Artifact の db を真似る）: 開き直すまで編集を止める
+  const ACCOUNT_UID = "u_e2e";
+  const ACCOUNT_MANIFEST = `data/users/${ACCOUNT_UID}/fourd`;
+  const ACCOUNT_NEWER_BANNER = "アカウントに新しい版の内容があります。このページは古い版なので、編集を止めました。ページを開き直してください";
+  const ACCOUNT_NEWER_BLOCKED = "アカウントに新しい版の内容があるため、このページでは編集を止めています";
+  /**
+   * アカウント（Artifact の db・user）を真似る: ページに偽の window.claude を入れ、db は Node 側に 1 つ持つ（同じコンテキストのタブで共有）。
+   * 書き込みは記録する（新しい版の写しに書かないことを確かめる）
+   */
+  const fakeAccount = async (context) => {
+    const db = new Map();
+    const writes = [];
+    /** アカウントの返事の遅さ（読むたびに待つ ms。突き合わせが済む前の操作を確かめる） */
+    const net = { delayMs: 0 };
+    await context.exposeBinding("__acctGet", async (_s, p) => {
+      if (net.delayMs) await new Promise((r) => setTimeout(r, net.delayMs));
+      return db.has(p) ? JSON.parse(db.get(p)) : null;
+    });
+    await context.exposeBinding("__acctSet", (_s, p, json) => {
+      writes.push(p);
+      db.set(p, json);
+    });
+    await context.exposeBinding("__acctDel", (_s, p) => {
+      writes.push(`delete ${p}`);
+      db.delete(p);
+    });
+    await context.exposeBinding("__acctList", (_s, p) =>
+      [...db.keys()].filter((k) => k.startsWith(`${p}/`) && !k.slice(p.length + 1).includes("/")).map((k) => ({ id: k.slice(p.length + 1), data: JSON.parse(db.get(k)) })),
+    );
+    await context.addInitScript((uid) => {
+      const mkDoc = (path) => ({
+        async get() {
+          const d = await window.__acctGet(path);
+          return { exists: d !== null, data: () => (d === null ? undefined : d) };
+        },
+        async set(data) {
+          await window.__acctSet(path, JSON.stringify(data));
+        },
+        async delete() {
+          await window.__acctDel(path);
+        },
+        onSnapshot(next) {
+          let last;
+          let stop = false;
+          const poll = async () => {
+            if (stop) return;
+            let d;
+            try {
+              d = await window.__acctGet(path);
+            } catch {
+              return; // ページを閉じた・開き直した
+            }
+            const key = JSON.stringify(d);
+            if (key !== last && !stop) {
+              last = key;
+              next({ exists: d !== null, data: () => (d === null ? undefined : d) });
+            }
+            setTimeout(poll, 200);
+          };
+          void poll();
+          return () => {
+            stop = true;
+          };
+        },
+        async acquire() {
+          return { acquired: true };
+        },
+      });
+      const list = async (p) => ({ docs: (await window.__acctList(p)).map((d) => ({ id: d.id, exists: true, data: () => d.data })) });
+      const api = {
+        user: Object.freeze({ id: async () => uid }),
+        db: Object.freeze({ doc: mkDoc, collection: (p) => ({ doc: (id) => mkDoc(`${p}/${id}`), get: () => list(p), limit: () => ({ get: () => list(p) }) }) }),
+      };
+      window.claude = { use: async (name) => api[name] ?? null };
+    }, ACCOUNT_UID);
+    return {
+      writes,
+      net,
+      put: (p, v) => db.set(p, JSON.stringify(v)),
+      get: (p) => (db.has(p) ? JSON.parse(db.get(p)) : null),
+      /** 新しい版のページ（別の端末）が確定した写し: 中身のドキュメントの版が 2（マニフェストはこの版の形 1・符号化は json） */
+      putNewer(title = "新しい版で保存した内容") {
+        const doc = newerDocOf(title);
+        const payload = JSON.stringify(doc);
+        const gen = `g_newer_${Date.now()}`;
+        const at = new Date().toISOString();
+        db.set(`${ACCOUNT_MANIFEST}/parts/${gen}-0`, JSON.stringify({ gen, i: 0, savedAt: at, data: payload }));
+        const m = { format: 1, enc: "json", gen, parts: 1, hash: createHash("sha256").update(payload).digest("hex"), bytes: payload.length, docId: doc.id, docUpdatedAt: doc.updatedAt, title: doc.title, nodes: 0, edges: 0, savedAt: at, writer: "t_newer", stale: [], lineage: [] };
+        db.set(ACCOUNT_MANIFEST, JSON.stringify(m));
+        return JSON.stringify(m);
+      },
+    };
+  };
+  /** 設定を済ませた（ようこそ・お知らせ・未来の道筋の自動表示を出さない）コンテキスト */
+  const settledContext = async (opts) => {
+    const c = await browser.newContext(opts);
+    await c.addInitScript(() => {
+      try {
+        const k = "4d-branch:prefs";
+        if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, futureAutoOpened: true, wishlistOffered: true, futureOffered: true }));
+      } catch {
+        /* about:blank など */
+      }
+    });
+    return c;
+  };
+  const cloudOf = (p) => p.evaluate(() => ({ state: window.__fourD.app.cloudInfo?.state ?? null, message: window.__fourD.app.cloudInfo?.message ?? "", held: window.__fourD.app.accountNewer, readOnly: window.__fourD.store.readOnly, writer: window.__fourD.persistence.writer }));
+  /** このブラウザの本体（IndexedDB）に、その題のノードが保存されているか */
+  const storedHas = (p, title) =>
+    p.evaluate(
+      (t) =>
+        new Promise((resolve, reject) => {
+          const r = indexedDB.open("4d-branch");
+          r.onerror = () => reject(r.error);
+          r.onsuccess = () => {
+            const tx = r.result.transaction("kv", "readonly");
+            const g = tx.objectStore("kv").get("doc");
+            tx.oncomplete = () => {
+              r.result.close();
+              resolve(Object.values(g.result?.nodes ?? {}).some((n) => n.title === t));
+            };
+          };
+        }),
+      title,
+    );
+  /** 閲覧のみかが見える所: 詳細のパネル（見出しの「閲覧のみ」・欄）・上部の追加と元に戻す・左のプロジェクトとシナリオの追加 */
+  const panelState = (p) =>
+    p.evaluate(() => {
+      const insp = document.querySelector(".sidebar-right");
+      const fields = [...insp.querySelectorAll("input, textarea, select")].filter((e) => e.offsetParent !== null);
+      return {
+        inspReadOnly: insp.querySelector(".insp-head")?.textContent.includes("閲覧のみ") ?? false,
+        inspFields: fields.length,
+        inspEnabled: fields.filter((e) => !e.disabled && !e.readOnly).length,
+        addGroupDisabled: document.querySelector(".topbar .add-group").classList.contains("disabled"),
+        undoDisabled: document.querySelector('.topbar button[aria-label="元に戻す"]').disabled,
+        leftAdds: [...document.querySelectorAll('.sidebar-left button[aria-label="プロジェクトを追加"], .sidebar-left button[aria-label="シナリオを追加"]')].map((b) => b.disabled),
+      };
+    });
+  /** 出ているお知らせの文（閉じかけの物は除く） */
+  const shownToasts = (p) => p.evaluate(() => [...document.querySelectorAll(".toast:not(.closing) .toast-text")].map((t) => t.textContent));
+
+  for (const [label, viewport, mobile] of [
+    ["スマホ 390×844", { width: 390, height: 844 }, true],
+    ["パソコン 1440×900", { width: 1440, height: 900 }, false],
+  ]) {
+    await check(`アカウントに新しい版の内容（${label}）: 開いている間に新しい版の写しが届いたら、開き直すまで出したままの帯を出して編集を断り、それまでの変更は手元に残して送らない。${mobile ? "開いていたメニューは閉じる" : "書きかけの題名は確定してから止め、パネルも閲覧のみに描き直す"}。「ページを開き直す」で開き直す`, async () => {
+      const c = await settledContext({ viewport, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
+      const acct = await fakeAccount(c);
+      const p = await c.newPage();
+      watch(p);
+      await p.goto(BASE, { waitUntil: "networkidle" });
+      await p.waitForFunction(() => window.__fourD?.app?.cloudInfo?.state === "synced", null, { timeout: 15000 });
+      // この版で編集した（アカウントへ送るのは 5 秒まとめてから）。その間に新しい版のページ（別の端末）が確定した
+      await p.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1600 }, { title: "止める前の変更", exact: true }));
+      let typedId = null;
+      if (mobile) {
+        // スマホ: キャンバスのメニュー（長押し・右クリック。開いたときの状態で項目を作ってある）を開いたまま
+        await p.evaluate(() => {
+          const cv = window.__fourD.app.view.canvas;
+          const r = cv.getBoundingClientRect();
+          cv.dispatchEvent(new MouseEvent("contextmenu", { clientX: r.left + 40, clientY: r.top + r.height - 140, bubbles: true, cancelable: true }));
+        });
+        await p.locator(".menu").first().waitFor({ timeout: 3000 });
+      } else {
+        // パソコン: 左右のパネルを開き、ノードの題名をその場で書きかけている
+        typedId = await p.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 400, y: 1600 }, { title: "書きかける前の題名", exact: true }));
+        await p.evaluate(() => window.__fourD.ui.setPrefs({ leftOpen: true, rightOpen: true }));
+        await startInlineEdit(p, typedId);
+        await p.keyboard.press("Control+a");
+        await p.keyboard.type("打ちかけの題名");
+        const ps = await panelState(p);
+        assert(!ps.inspReadOnly && ps.inspEnabled > 0 && !ps.addGroupDisabled && !ps.undoDisabled && ps.leftAdds.length === 2 && ps.leftAdds.every((d) => !d), `止める前から編集できない: ${JSON.stringify(ps)}`);
+      }
+      const editedAt = Date.now();
+      const newer = acct.putNewer();
+      const sent = acct.writes.length;
+      const banner = p.locator(".banner-newer");
+      await banner.waitFor({ timeout: 8000 });
+      const s = await cloudOf(p);
+      assert(s.held === true && s.readOnly === true && s.state === "paused", JSON.stringify(s));
+      assert((await banner.textContent()).includes(ACCOUNT_NEWER_BANNER), await banner.textContent());
+      assert((await p.getByRole("button", { name: "このタブで編集する" }).count()) === 0, "引き継ぎのボタンを出した");
+      // 帯は画面に収まり、横にはみ出さない。「ページを開き直す」は 44px 以上で画面の中
+      const g = await p.evaluate(() => {
+        const b = document.querySelector(".banner-newer").getBoundingClientRect();
+        const t = document.querySelector(".banner-newer .banner-text");
+        return { b: { x: b.x, right: b.right, top: b.top, bottom: b.bottom }, vw: window.innerWidth, vh: window.innerHeight, doc: document.documentElement.scrollWidth, textClip: t.scrollWidth - t.clientWidth };
+      });
+      assert(g.b.x >= 0 && g.b.right <= g.vw && g.b.top >= 0 && g.b.bottom <= g.vh && g.doc <= g.vw && g.textClip <= 0, `帯がはみ出す: ${JSON.stringify(g)}`);
+      const reload = banner.getByRole("button", { name: "ページを開き直す" });
+      const box = await reload.boundingBox();
+      assert(box && box.x >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height && box.height >= 44, `ボタンが画面に収まらない・小さい: ${JSON.stringify(box)}`);
+      await shot(`e2e-account-newer-${viewport.width}`, p);
+      if (mobile) {
+        // 開いていたメニュー（編集の項目を、止める前の状態で作ってある）は閉じた
+        assert((await p.locator(".menu").count()) === 0, "止めた後もメニューを開いたまま");
+      } else {
+        // 書きかけの題名は確定してから止めた（打った文字は手元に残る）・題名の欄は閉じた
+        assert((await p.locator(".inline-editor").count()) === 0, "止めた後も題名の欄を開いたまま");
+        const typed = await p.evaluate((id) => window.__fourD.store.doc.nodes[id]?.title, typedId);
+        assert(typed === "打ちかけの題名", `書きかけの題名が入っていない: ${typed}`);
+        // パネルも閲覧のみに描き直す（詳細の欄・上部の追加と元に戻す・左の追加）
+        const ps = await panelState(p);
+        assert(ps.inspReadOnly && ps.inspFields > 0 && ps.inspEnabled === 0 && ps.addGroupDisabled && ps.undoDisabled && ps.leftAdds.length === 2 && ps.leftAdds.every((d) => d), `閲覧のみに描き直していない: ${JSON.stringify(ps)}`);
+      }
+      // 保存の状態が変わって帯を描き直しても、同じ帯のまま（「ページを開き直す」のフォーカスを外さない）
+      await reload.focus();
+      await p.evaluate(() => (document.querySelector(".banner-newer").dataset.e2eMark = "same"));
+      await p.evaluate(() => window.__fourD.persistence.markDirty());
+      await waitSaved(p);
+      const kept = await p.evaluate(() => ({ count: document.querySelectorAll(".banner-newer").length, same: document.querySelector(".banner-newer")?.dataset.e2eMark === "same", focused: document.activeElement?.classList.contains("banner-reload") ?? false }));
+      assert(kept.count === 1 && kept.same && kept.focused, `描き直しで帯を作り直した・フォーカスを外した: ${JSON.stringify(kept)}`);
+      // 新しい編集は断る（キーでも・コマンドでも）。訳は「このタブで編集する」ではなく、開き直すこと
+      const before = await p.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
+      await p.locator(".graph-canvas").focus();
+      await p.keyboard.press("n");
+      assert((await p.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 400, y: 1600 }, { title: "止めた後の変更", exact: true }))) === null, "止めた後に作れた");
+      assert((await p.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length)) === before, "止めた後にノードが増えた");
+      await p.locator(".toast", { hasText: ACCOUNT_NEWER_BLOCKED }).first().waitFor({ timeout: 3000 });
+      assert((await p.locator(".toast", { hasText: "このタブで編集する" }).count()) === 0, "閲覧のみの訳を「このタブで編集する」と言った");
+      // それまでの変更は手元に残り（このブラウザに保存される）、すぐ送る（⌘S）でもアカウントへは送らない
+      await waitSaved(p);
+      assert(await storedHas(p, "止める前の変更"), "止める前の変更が手元に保存されていない");
+      if (!mobile) assert(await storedHas(p, "打ちかけの題名"), "書きかけの題名が手元に保存されていない");
+      await p.keyboard.press("Control+s");
+      // 編集からまとめる時間（5 秒）を過ぎても送っていない
+      await p.waitForTimeout(Math.max(600, editedAt + 5600 - Date.now()));
+      assert(acct.writes.length === sent && JSON.stringify(acct.get(ACCOUNT_MANIFEST)) === newer, `アカウントに書いた: ${acct.writes.slice(sent).join(", ")}`);
+      // 開き直す: 起動の突き合わせでまた気づき、帯を出す（手元の変更は残ったまま・アカウントには書かない）
+      await Promise.all([p.waitForEvent("load"), reload.click()]);
+      await p.locator(".banner-newer").waitFor({ timeout: 8000 });
+      const r = await cloudOf(p);
+      assert(r.held === true && r.readOnly === true, JSON.stringify(r));
+      assert(await p.evaluate(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "止める前の変更")), "開き直したら止める前の変更が無い");
+      await p.waitForTimeout(600);
+      assert(acct.writes.length === sent && JSON.stringify(acct.get(ACCOUNT_MANIFEST)) === newer, `開き直した後にアカウントに書いた: ${acct.writes.slice(sent).join(", ")}`);
+      await c.close();
+    });
+  }
+
+  await check("アカウントに新しい版の内容: 「このタブで編集する」でも編集できる状態に戻らず、止めたタブは別のタブのロックを奪わない。「同期をやり直す」も出さない", async () => {
+    const c = await settledContext({ viewport: { width: 1440, height: 900 } });
+    const acct = await fakeAccount(c);
+    acct.putNewer();
+    const a = await c.newPage();
+    watch(a);
+    await a.goto(BASE, { waitUntil: "networkidle" });
+    await a.locator(".banner-newer").waitFor({ timeout: 8000 });
+    assert((await cloudOf(a)).readOnly === true, "起動の突き合わせで気づいたのに編集できる");
+    // 2 つ目のタブは閲覧のみ（書き手でないので、まだアカウントを読んでいない）。編集しようとすると「このタブで編集する」を勧める
+    const b = await c.newPage();
+    watch(b);
+    await b.goto(BASE, { waitUntil: "networkidle" });
+    await b.waitForFunction(() => window.__fourD?.store.readOnly === true);
+    assert((await b.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 0, y: 1700 }, { title: "閲覧のみのタブの変更", exact: true }))) === null, "閲覧のみのタブで作れた");
+    await b.locator(".toast", { hasText: "編集するには上の「このタブで編集する」を押してください" }).waitFor({ timeout: 3000 });
+    // 出たお知らせを覚えておく（引き継いだ直後に「編集できるようになりました」が出て、止めたときに下がるのを確かめる）
+    await b.evaluate(() => {
+      window.__e2eToasts = [];
+      new MutationObserver((ms) => {
+        for (const m of ms) for (const n of m.addedNodes) if (n instanceof HTMLElement && n.classList.contains("toast")) window.__e2eToasts.push(n.textContent);
+      }).observe(document.getElementById("toast-stack") ?? document.body, { childList: true, subtree: true });
+    });
+    await b.getByRole("button", { name: "このタブで編集する" }).click();
+    // 引き継いだタブも、突き合わせで気づいて止まる
+    await b.locator(".banner-newer").waitFor({ timeout: 8000 });
+    await b.waitForFunction(() => window.__fourD.store.readOnly === true && window.__fourD.app.accountNewer === true);
+    // 止めた帯の横に「このタブで編集できるようになりました」・「このタブで編集する」を押すよう勧めるお知らせを残さない
+    // （閲覧のみのタブはアカウントを読んでいないので、新しい版と分かるのは引き継いだ後の突き合わせ）
+    const bToasts = await shownToasts(b);
+    const bShown = await b.evaluate(() => window.__e2eToasts);
+    assert(!bToasts.some((t) => t.includes("このタブで編集")), `引き継いだタブのお知らせ: ${bToasts.join(" / ")}（出た物: ${bShown.join(" / ")}）`);
+    // 引き継がれたタブ: 帯は開き直すよう伝える物だけ（「このタブで編集する」は出さない）
+    await a.waitForFunction(() => window.__fourD.persistence.writer === false);
+    assert((await a.getByRole("button", { name: "このタブで編集する" }).count()) === 0, "止めたタブに引き継ぎのボタンを出した");
+    assert((await a.locator(".banner").count()) === 1, `帯の数: ${await a.locator(".banner").count()}`);
+    // 引き継ぎを呼ばれても、編集できる状態に戻らず、別のタブのロックも奪わない
+    await a.evaluate(() => window.__fourD.app.takeOver());
+    await a.waitForTimeout(300);
+    const sa = await cloudOf(a);
+    const sb = await cloudOf(b);
+    assert(sa.readOnly === true && sa.writer === false && sa.state === "paused", `止めたタブ: ${JSON.stringify(sa)}`);
+    assert(sb.readOnly === true && sb.writer === true && sb.held === true, `引き継いだタブ: ${JSON.stringify(sb)}`);
+    assert((await a.locator(".toast", { hasText: "このタブで編集できるようになりました" }).count()) === 0, "編集できるようになったと言った");
+    // 「バックアップと復元」: アカウントの行に「同期をやり直す」を出さない（開き直すまで再開しないため）
+    await b.evaluate(() => window.__fourD.app.openBackups());
+    const dlg = b.getByRole("dialog", { name: "バックアップと復元" });
+    await dlg.waitFor();
+    await dlg.locator(".storage-row", { hasText: "アカウント" }).waitFor();
+    assert((await dlg.getByRole("button", { name: "同期をやり直す" }).count()) === 0, "止めたのに「同期をやり直す」を出した");
+    assert((await dlg.locator(".storage-row", { hasText: "アカウント" }).textContent()).includes("開き直して"), "アカウントの行に開き直すことが無い");
+    await b.keyboard.press("Escape");
+    assert(acct.writes.length === 0, `アカウントに書いた: ${acct.writes.join(", ")}`);
+    await c.close();
+  });
+
+  await check("アカウントに新しい版の内容（開いたときから）: 何もしていないデモでも未来の道筋を自動で開かず、閲覧のみの訳（「このタブで編集する」）も知らせない", async () => {
+    const c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    // 未来の道筋の自動表示はまだ（ほかの案内は済ませた）
+    await c.addInitScript(() => {
+      try {
+        const k = "4d-branch:prefs";
+        if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, wishlistOffered: true, futureOffered: true }));
+      } catch {
+        /* about:blank など */
+      }
+    });
+    const acct = await fakeAccount(c);
+    const newer = acct.putNewer();
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(BASE, { waitUntil: "networkidle" });
+    await p.locator(".banner-newer").waitFor({ timeout: 8000 });
+    // 自動で開く見張りは、閲覧のみのタブなら 3 秒たってから「このタブで編集する」を押すよう知らせる。その時間を過ぎても出さず、開きもしない
+    await p.waitForTimeout(5000);
+    const s = await p.evaluate(() => ({ readOnly: window.__fourD.store.readOnly, future: Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true) }));
+    const toasts = await shownToasts(p);
+    assert(s.readOnly && !s.future, JSON.stringify(s));
+    assert(!toasts.some((t) => t.includes("このタブで編集") || OPENED_FUTURE.test(t)), `止めた後に知らせた: ${toasts.join(" / ")}`);
+    assert(acct.writes.length === 0 && JSON.stringify(acct.get(ACCOUNT_MANIFEST)) === newer, `アカウントに書いた: ${acct.writes.join(", ")}`);
+    await c.close();
+  });
+
+  await check("アカウントに新しい版の内容: 「未来の道筋」を押して突き合わせを待つ間に止めたら、その頼みはやめる（待ちのお知らせを下げ、読み込みの確認も訳のお知らせも出さない）", async () => {
+    const c = await settledContext({ viewport: { width: 1440, height: 900 } });
+    const acct = await fakeAccount(c);
+    const newer = acct.putNewer();
+    // アカウントの返事が遅い（突き合わせが済む前に「未来の道筋」を押せる）
+    acct.net.delayMs = 1500;
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(BASE, { waitUntil: "load" });
+    await p.waitForFunction(() => ["connecting", "syncing"].includes(window.__fourD?.app?.cloudInfo?.state), null, { timeout: 10000 });
+    // 何もしていないデモで押した: 突き合わせが済むのを待つ
+    await p.locator(".zoom-ctl .future-btn").click();
+    await p.locator(".toast:not(.closing)", { hasText: "アカウントの内容を確かめています" }).waitFor({ timeout: 3000 });
+    await p.locator(".banner-newer").waitFor({ timeout: 10000 });
+    // 待ちを確かめ直す間（0.4 秒ごと）を過ぎても、頼みを果たそうとしない
+    await p.waitForTimeout(1200);
+    const s = await p.evaluate(() => ({ future: Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), dialog: !!document.querySelector('[role="dialog"]') }));
+    const toasts = await shownToasts(p);
+    assert(!s.future && !s.dialog, JSON.stringify(s));
+    assert(!toasts.some((t) => t.includes("確かめています") || t.includes("編集を止めています")), `待ちの頼みを続けた: ${toasts.join(" / ")}`);
+    acct.net.delayMs = 0;
+    assert(acct.writes.length === 0 && JSON.stringify(acct.get(ACCOUNT_MANIFEST)) === newer, `アカウントに書いた: ${acct.writes.join(", ")}`);
+    await c.close();
+  });
+
+  await check("アカウントの写しの形が違う（新しい版ではない）: 同期は止めるが、帯は出さず編集もそのまま", async () => {
+    const c = await settledContext({ viewport: { width: 1440, height: 900 } });
+    const acct = await fakeAccount(c);
+    acct.put(ACCOUNT_MANIFEST, { format: 0, gen: "g_odd", parts: 1, hash: "x" });
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(BASE, { waitUntil: "networkidle" });
+    await p.waitForFunction(() => window.__fourD?.app?.cloudInfo?.state === "paused", null, { timeout: 15000 });
+    const s = await cloudOf(p);
+    assert(s.held === false && s.readOnly === false && s.message.includes("形が違います"), JSON.stringify(s));
+    assert((await p.locator(".banner-newer").count()) === 0, "形が違うだけで新しい版の帯を出した");
+    assert((await p.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 0, y: 1700 }, { title: "形が違う写しの後の変更", exact: true }))) !== null, "編集できない");
+    assert(acct.writes.length === 0, `アカウントに書いた: ${acct.writes.join(", ")}`);
+    await c.close();
+  });
 
   await check("ページのエラーが無い", async () => {
     assert(errors.length === 0, errors.join("\n"));

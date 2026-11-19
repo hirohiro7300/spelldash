@@ -12,11 +12,15 @@
 // - この端末で初めて同期するとき（基準が無い）: どちらかが捨ててよい中身（何もしていないデモ・空）なら、もう一方を採る。
 //   両方に中身があれば、どちらを使うか聞く（聞くまで送らない）
 // - 連続した入力は 1 回の送信にまとめる（送る内容を固めたら窓を区切る）。失敗したら決めた時刻までは送らない
+// - アカウントの写しがこのページより新しい版（CloudNewerError）なら、開き直すまで同期しない。App は新しい編集を受けなくなる
+//   （それまでの手元の変更は送らず・捨てずに残す）。形が違う・壊れた写しは新しい版と分け、今までどおり
+// - マニフェストには中身のドキュメントの版（docVersion）も書く。それが新しければ、ほかの項目を見る前に新しい版と見分ける
+//   （次の版が写しの入れ物を変えても、空のアカウント・壊れた写しと取り違えて書き直さない。docs/DESIGN.md §3.10）
 
 import type { DbApi } from "../host/claude";
 import { errorCode } from "../host/claude";
 import { newId, nowISO } from "../model/ids";
-import { DocFormatError, docCounts, normalizeDoc } from "../model/schema";
+import { DocFormatError, NewerDocError, docCounts, isNewerVersion, normalizeDoc } from "../model/schema";
 import type { DocData } from "../model/types";
 import { Emitter } from "../store/emitter";
 
@@ -96,6 +100,11 @@ export interface Manifest {
   bytes: number;
   docId: string;
   docUpdatedAt: string;
+  /**
+   * 中身のドキュメントの版（この版から書く。前の版の写しには無い）。このページより新しければ、ほかの項目を見る前に新しい版と見分ける
+   * （分割・ハッシュ・符号化を確かめる前に。入れ物を変えた次の版の写しを、空のアカウント・壊れた写しと取り違えて書き直さない）
+   */
+  docVersion?: number;
   title: string;
   nodes: number;
   edges: number;
@@ -176,19 +185,28 @@ export async function decodeDoc(enc: Manifest["enc"], payload: string): Promise<
   try {
     return normalizeDoc(raw).doc;
   } catch (e) {
-    // 新しい版のアプリで保存された（このページが古い）など: 上書きせずに止める
+    // 新しい版のアプリで保存された（このページが古い）・形が違う: 上書きせずに止める。
+    // 壊れた写し（corrupt）とは分ける: corrupt は手元の内容で書き直すが、format は「同期をやり直す」でも書き直さない。
+    // 新しい版（NewerDocError も DocFormatError の一種）は、さらに形の違う写しと分ける（開き直すまで編集も止める）
+    if (e instanceof NewerDocError) throw new CloudNewerError(e.message);
     if (e instanceof DocFormatError) throw new CloudError("format", e.message);
     throw e;
   }
 }
 
 /**
- * マニフェストを読む。新しい版の形・知らない符号化なら投げる（空と見なして上書きしない）。
+ * マニフェストを読む。中身の版（docVersion）が新しければ、ほかの項目を見る前に CloudNewerError（次の版が入れ物を変えていても:
+ * 下の決まりでは空・壊れた写しに見えて、手元の内容で書き直してしまう）。新しい版の形（format が 1 より大きい）・知らない符号化も
+ * CloudNewerError、ほかの違う形なら format を投げる（どれも空と見なして上書きしない）。
  * この版の形で中身が壊れているときは null（読めない写しは手元で書き直す）
  */
 function parseManifest(d: Record<string, unknown> | undefined): Manifest | null {
-  if (d && typeof d.format === "number" && d.format !== 1) throw new CloudError("format", d.format > 1 ? "アカウントの写しは新しい版のアプリで保存されています" : "アカウントの写しの形が違います");
-  if (d && d.enc !== undefined && !ENCODINGS.has(String(d.enc))) throw new CloudError("format", "アカウントの写しは新しい版のアプリで保存されています（知らない符号化）");
+  if (d && isNewerVersion(d.docVersion)) throw new CloudNewerError(`アカウントの写しは新しい版のアプリで保存されています（中身の版 ${d.docVersion}）`);
+  if (d && typeof d.format === "number" && d.format !== 1) {
+    if (d.format > 1) throw new CloudNewerError("アカウントの写しは新しい版のアプリで保存されています");
+    throw new CloudError("format", "アカウントの写しの形が違います");
+  }
+  if (d && d.enc !== undefined && !ENCODINGS.has(String(d.enc))) throw new CloudNewerError("アカウントの写しは新しい版のアプリで保存されています（知らない符号化）");
   if (!d || d.format !== 1 || typeof d.gen !== "string" || typeof d.parts !== "number" || typeof d.hash !== "string") return null;
   const stale = Array.isArray(d.stale)
     ? d.stale.filter((s): s is Manifest["stale"][number] => !!s && typeof s === "object" && typeof (s as { gen?: unknown }).gen === "string" && typeof (s as { parts?: unknown }).parts === "number")
@@ -202,6 +220,7 @@ function parseManifest(d: Record<string, unknown> | undefined): Manifest | null 
     bytes: typeof d.bytes === "number" ? d.bytes : 0,
     docId: typeof d.docId === "string" ? d.docId : "",
     docUpdatedAt: typeof d.docUpdatedAt === "string" ? d.docUpdatedAt : "",
+    docVersion: typeof d.docVersion === "number" && Number.isFinite(d.docVersion) ? d.docVersion : undefined,
     title: typeof d.title === "string" ? d.title : "",
     nodes: typeof d.nodes === "number" ? d.nodes : 0,
     edges: typeof d.edges === "number" ? d.edges : 0,
@@ -268,6 +287,19 @@ export class CloudError extends Error {
   override name = "CloudError";
 }
 
+/**
+ * アカウントの写しが、このページより新しい版のアプリで保存されている（マニフェストの形 format が 1 より大きい・知らない符号化・
+ * 中身のドキュメントの版が新しい NewerDocError）。このページが古いのであって、写しは壊れていない。
+ * code は format のまま（上書きも書き直しもしない）。形の違う写し（1 より前の形・別の形式）・壊れた写し（corrupt）とは分け、
+ * 開き直すまで同期を止め、App は新しい編集を受けなくなる。設計: docs/DESIGN.md §3.10・§5.1
+ */
+export class CloudNewerError extends CloudError {
+  constructor(message: string) {
+    super("format", message);
+  }
+  override name = "CloudNewerError";
+}
+
 /** 送る内容（固めた時点の写し） */
 export interface Prepared {
   gen: string;
@@ -277,6 +309,8 @@ export interface Prepared {
   bytes: number;
   docId: string;
   docUpdatedAt: string;
+  /** 中身のドキュメントの版（マニフェストの docVersion に書く） */
+  docVersion: number;
   title: string;
   nodes: number;
   edges: number;
@@ -360,13 +394,14 @@ export class CloudRepo {
     const counts = docCounts(doc);
     const docId = doc.id;
     const docUpdatedAt = doc.updatedAt;
+    const docVersion = doc.version;
     // 題名はマニフェストでは表示に使うだけ。長すぎて 256 KiB を超えないよう切る（中身は分割の方に全部ある）
     const title = [...doc.title].slice(0, MANIFEST_TITLE_MAX).join("");
     const { enc, payload, bytes } = await encodeDoc(doc);
     const parts: string[] = [];
     for (let i = 0; i < payload.length; i += PART_CHARS) parts.push(payload.slice(i, i + PART_CHARS));
     if (parts.length === 0) parts.push("");
-    return { gen: `g${newId("b").slice(2)}`, enc, parts, hash: await sha256Hex(payload), bytes, docId, docUpdatedAt, title, nodes: counts.nodes, edges: counts.edges, savedAt: nowISO() };
+    return { gen: `g${newId("b").slice(2)}`, enc, parts, hash: await sha256Hex(payload), bytes, docId, docUpdatedAt, docVersion, title, nodes: counts.nodes, edges: counts.edges, savedAt: nowISO() };
   }
 
   /** 分割を書く（まだ確定ではない。失敗したら書けた分を消す） */
@@ -403,6 +438,8 @@ export class CloudRepo {
       bytes: p.bytes,
       docId: p.docId,
       docUpdatedAt: p.docUpdatedAt,
+      // 中身の版（次の版がこの確定を受け継げば、入れ物を変えても、この版は中身を読む前に新しい版と見分ける）
+      docVersion: p.docVersion,
       title: p.title,
       nodes: p.nodes,
       edges: p.edges,
@@ -621,6 +658,8 @@ const KEPT_NOTICE = "このブラウザの内容で同期しました。アカ�
 /** はっきり断られた（書かれていない）ときの答え。これ以外（つながらない等）は、書けているかもしれない */
 const REJECTED = new Set(["invalid_argument", "resource_exhausted", "quota_exceeded", "revoked", "not_granted", "capability_disabled", "capability_removed", "transform_error"]);
 const PRIORITY: Record<Reason, number> = { push: 1, remote: 2, start: 3, resync: 3 };
+/** アカウントの写しがこのページより新しい版のときの同期の状態の文（「アカウント: 」に続けて出る） */
+const NEWER_MESSAGE = "新しい版のアプリで保存されているため、同期と編集を止めています。ページを開き直してください";
 
 export class CloudSync {
   state: CloudState = "off";
@@ -641,6 +680,11 @@ export class CloudSync {
   private stopped = false;
   /** 利用者の決定待ち・自分では解けない状態: 自動では同期しない（resync で再開） */
   private paused = false;
+  /**
+   * アカウントの写しがこのページより新しい版と分かった: 開き直すまで同期しない（resync でも再開しない・見張りも外す。
+   * 後で読める写しに戻っても、このページを開いている間は同じ）
+   */
+  private newer = false;
   /** 壊れていた世代（その世代だけは読まずに手元で書き直す） */
   private corruptGen: string | null = null;
   /** 退避済みの相手の世代（貸し出し待ちのやり直しで、同じ物を何度も退避しない） */
@@ -677,7 +721,7 @@ export class CloudSync {
   /** 利用者が「同期をやり直す」を押したときの読めない世代: その世代は、この端末の内容で書き直してよい */
   private repairOkFor: string | null = null;
   private orphanTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly emitter = new Emitter<{ state: CloudState }>();
+  private readonly emitter = new Emitter<{ state: CloudState; newer: void }>();
   private readonly debounceMs: number;
   private readonly leaseMs: number;
   private readonly retryMs: number;
@@ -698,6 +742,19 @@ export class CloudSync {
     return this.emitter.on("state", fn);
   }
 
+  /**
+   * アカウントの写しがこのページより新しい版と分かったとき（1 回だけ。同期はもう止めてある）。
+   * App はこれで新しい編集を受けなくなり、開き直すよう伝える帯を出す
+   */
+  onNewer(fn: () => void): () => void {
+    return this.emitter.on("newer", fn);
+  }
+
+  /** アカウントの写しがこのページより新しい版と分かった（開き直すまで同期しない） */
+  get accountNewer(): boolean {
+    return this.newer;
+  }
+
   private setState(state: CloudState, message = ""): void {
     // 止めた後（共有の取り消しなど）は、走り終えた同期が「同期済み」などで上書きしない
     if (this.stopped) return;
@@ -716,6 +773,23 @@ export class CloudSync {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.setState("paused", message);
+  }
+
+  /**
+   * アカウントの写しが、このページより新しい版のアプリで保存されていると分かった（このページが古い）。開き直すまで同期しない:
+   * 「同期をやり直す」・画面に戻ったとき・別のタブからの引き継ぎ・見張りの知らせのどれでも再開せず、見張りも外す
+   * （後で読める写しに戻っても、このページを開いている間は同じ。黙って編集できる状態に戻さない）。
+   * それまでの手元の変更は送らず・捨てずにそのまま（次の版が扱う）。App は "newer" で新しい編集を受けなくなる
+   */
+  private holdNewer(): void {
+    if (this.newer) return;
+    this.newer = true;
+    this.unwatch?.();
+    this.unwatch = null;
+    if (this.remoteTimer) clearTimeout(this.remoteTimer);
+    this.remoteTimer = null;
+    this.pause(NEWER_MESSAGE);
+    this.emitter.emit("newer", undefined);
   }
 
   /**
@@ -772,7 +846,8 @@ export class CloudSync {
    * userAsked: 利用者が「同期をやり直す」を押した（読めない写しを、この端末の内容で書き直してよい）
    */
   resync(opts: { userAsked?: boolean } = {}): void {
-    if (this.stopped || this.state === "off" || this.state === "denied") return;
+    // アカウントの写しが新しい版: 「同期をやり直す」・別のタブからの引き継ぎでも再開しない（開き直すまで）
+    if (this.stopped || this.newer || this.state === "off" || this.state === "denied") return;
     this.paused = false;
     this.notBefore = 0;
     if (opts.userAsked) {
@@ -793,7 +868,8 @@ export class CloudSync {
 
   /** このタブが書き手でなくなった（別のタブに引き継がれた） */
   writerLost(): void {
-    if (this.stopped || this.state === "off" || this.state === "denied") return;
+    // アカウントの写しが新しい版で止めている: 止めた訳（開き直す）を出したまま
+    if (this.stopped || this.newer || this.state === "off" || this.state === "denied") return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.setState("pending", "別のタブが編集中");
@@ -811,7 +887,8 @@ export class CloudSync {
   }
 
   private subscribe(): void {
-    if (this.stopped || this.unwatch) return;
+    // アカウントの写しが新しい版で止めた後は張らない（起動の突き合わせで止めた後の start・張り直しの待ちからも）
+    if (this.stopped || this.newer || this.unwatch) return;
     this.unwatch = this.repo.watch(
       (m) => {
         this.watchFailures = 0;
@@ -1450,6 +1527,12 @@ export class CloudSync {
 
   private fail(e: unknown): void {
     if (this.stopped) return;
+    // アカウントの写しが、このページより新しい版のアプリで保存されている: 上書きも書き直しもせず、開き直すまで同期しない。
+    // 書き手でなくなっていても同じ（分かったことは変わらない。引き継いでも編集できないと先に伝える）
+    if (e instanceof CloudNewerError) {
+      this.holdNewer();
+      return;
+    }
     // 書き手でなくなっていた（入れ替えの途中で引き継がれた など）: 失敗として待たない。そのタブが同期する
     if (!this.deps.isWriter()) {
       this.setState("pending", "別のタブが編集中");
@@ -1468,7 +1551,7 @@ export class CloudSync {
       return;
     }
     if (code === "format" || code === "unsupported") {
-      // 新しい版のアプリで保存された写し・このブラウザで読めない写し: 上書きしない
+      // 形の違う写し（新しい版ではない）・このブラウザで読めない写し: 上書きしない（編集は止めない）
       this.pause(code === "format" ? `アカウントの写しを読めません（${e instanceof Error ? e.message : ""}）。ページを開き直してください` : e instanceof Error ? e.message : "アカウントの写しを読めません");
       return;
     }

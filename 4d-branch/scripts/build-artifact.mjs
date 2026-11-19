@@ -2,6 +2,8 @@
 // 公開のときに <!doctype html>…<head>…<body> の骨組みで包まれるので、ここでは中身だけを書く:
 //   <title> と <meta> を先頭（題名は最初の 8KB で探される）→ <style>（CSS を埋め込む）→ 本体 → <script type="module">（JS を埋め込む）
 // 外部のファイルは読まない（CSP で止められるため、すべて内包する）
+// 骨組みの <html> には言語が無いので、本体（#app）に lang="ja" を付ける（読み上げの言語・文節の切れ目で折り返す word-break: auto-phrase は
+// 日本語と分かる所でしか効かない）。#app の外に足す物（ファイルを落とす所など）のために、起動でもページの言語を決める（main.ts）
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,7 +37,7 @@ html,body{margin:0;height:100%;background:#07090d;color:#e7eaf1}
 .boot{position:fixed;inset:0;display:grid;place-items:center;font:13px system-ui,sans-serif;color:#6f7889;letter-spacing:.04em}
 ${cssText}
 </style>
-<div id="app"><div class="boot">4D Branch を読み込んでいます…</div></div>
+<div id="app" lang="ja"><div class="boot">4D Branch を読み込んでいます…</div></div>
 <script type="module">
 ${jsText}
 </script>
@@ -46,4 +48,5 @@ fs.writeFileSync(OUT, page);
 const head = page.slice(0, 8192);
 if (!/<title>4D Branch<\/title>/.test(head)) throw new Error("題名が先頭 8KB に無い");
 if (/<!doctype|<html|<head|<body/i.test(page.replace(jsText, "").replace(cssText, ""))) throw new Error("骨組みのタグが入っている");
+if (!/<div id="app" lang="ja">/.test(page.replace(jsText, ""))) throw new Error("本体（#app）に言語（lang=\"ja\"）が無い");
 console.log(`artifact/4d-branch.html を作りました（${(page.length / 1024).toFixed(1)} KB）`);

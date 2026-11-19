@@ -7,13 +7,13 @@ import { Interaction } from "../canvas/interaction";
 import { Minimap } from "../canvas/minimap";
 import { buildDemoDoc } from "../demo/demo";
 import { APP_VERSION, NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
-import { createEmptyDoc } from "../model/schema";
+import { NewerDocError, createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
 import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
 import { isDisposableDoc } from "../demo/demo";
 import { CloudRepo, CloudSync, baseCovered, dbBackend, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
-import type { BackupKind, Persistence } from "../persist/persistence";
+import type { BackupKind, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
 import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
@@ -24,10 +24,12 @@ import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
-import { closeMenus, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
+import { closeMenus, closeToasts, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
+import { ACCOUNT_NEWER_BLOCKED, accountNewerBanner, showNewerScreen } from "../ui/newerScreen";
 import { Commands } from "./commands";
 import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
+import { editLocked } from "./editLock";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
 import { buildFuture, futureRelease, futureVersion } from "../demo/futureBundle";
@@ -71,12 +73,21 @@ const WAIT_FUTURE = "アカウントの内容を確かめています。済ん�
 
 /** 待つのをやめた・待ち終えた: 「済んだら開きます」のお知らせを下げる（もう果たさない約束を出したままにしない） */
 function closeWaitToast(): void {
-  for (const t of document.querySelectorAll(".toast:not(.closing)")) {
-    if (t.querySelector(".toast-text")?.textContent === WAIT_FUTURE) t.querySelector<HTMLButtonElement>(".toast-close")?.click();
-  }
+  closeToasts((t) => t === WAIT_FUTURE);
 }
+/** 閲覧のみのタブで編集しようとしたときのお知らせ */
+const READ_ONLY_BLOCKED = "このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。";
 /** 閲覧のみのタブで「未来の道筋」を押したときのお知らせ */
 const READ_ONLY_FUTURE = "このタブは閲覧のみです。未来の道筋を開くには、上の「このタブで編集する」を押してください。";
+/** 閲覧のみのタブで、何もしていないデモに未来の道筋を自動で開けないときのお知らせ */
+const READ_ONLY_AUTO_FUTURE = "このタブは閲覧のみです（別のタブかウィンドウでも開いています）。上の「このタブで編集する」を押すと、未来の道筋を開きます";
+/** 「このタブで編集する」で引き継いだときのお知らせ */
+const TAKEN_OVER = "このタブで編集できるようになりました";
+/**
+ * アカウントに新しい版の内容があって編集を止めたら下げるお知らせ（止めた帯と食い違う）: 「このタブで編集する」を押すよう勧める物
+ * （そのボタンは出さず、押しても編集できない）と、引き継いだ直後の突き合わせで分かったときの「このタブで編集できるようになりました」
+ */
+const TAKE_OVER_TOASTS = new Set([READ_ONLY_BLOCKED, READ_ONLY_FUTURE, READ_ONLY_AUTO_FUTURE, TAKEN_OVER]);
 /** 未来の道筋を一度に開く入れ替えの名前（履歴・安全用バックアップ） */
 const FUTURE_OPEN_LABEL = "未来の道筋を開く";
 /** 地図の未来の道筋が、このページより新しい版で作られているとき（古い版に戻さない） */
@@ -135,6 +146,16 @@ export class App implements AppContext {
   /** 起動したときの手元を記録し終えた（同期を始める前に待つ） */
   private readonly bootRecorded: Promise<void>;
 
+  private readonly mount: HTMLElement;
+  /** このページより新しい版で保存されたデータに気づいて、編集をやめた（画面は開き直すよう伝える物に差し替えた） */
+  private newerShown = false;
+  /**
+   * アカウントの写しがこのページより新しい版と分かって、新しい編集を受けなくなった（開き直すまで。書き手に戻っても・
+   * 「このタブで編集する」でも・後の同期でも戻さない）。それまでの編集は手元に保存したまま（送らない・捨てない）
+   */
+  private heldByAccount = false;
+  /** そのときの帯（開き直すまで同じ物を出し続ける。描き直しで「ページを開き直す」のフォーカスを外さない） */
+  private newerBanner: HTMLElement | null = null;
   private readonly shell: HTMLElement;
   private readonly banner: HTMLElement;
   private readonly listEl: HTMLElement;
@@ -148,6 +169,7 @@ export class App implements AppContext {
     this.ui = opts.ui;
     this.persistence = opts.persistence;
     this.ephemeral = opts.ephemeral;
+    this.mount = opts.mount;
     const d0 = this.store.doc;
     this.bootDoc = { id: d0.id, updatedAt: d0.updatedAt, fallback: !!opts.bootFallback && !opts.ephemeral };
     this.bootRecorded = this.recordBootDoc();
@@ -232,9 +254,7 @@ export class App implements AppContext {
         this.cloud?.markDirty();
       }
     });
-    this.persistence.on("writer", (w) => {
-      this.store.readOnly = !w && !this.ephemeral;
-    });
+    this.persistence.on("writer", () => this.applyReadOnly());
 
     this.shell = h("div", { class: "app-shell" }, buildTopbar(this), buildLeftSidebar(this), center, buildInspector(this), buildBottomBar(this));
     opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
@@ -248,13 +268,15 @@ export class App implements AppContext {
       this.renderBanner();
       if (!w) this.cloud?.writerLost();
     });
-    this.store.on("blocked", () => toast("このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。", { tone: "warn" }));
+    this.store.on("blocked", () => toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : READ_ONLY_BLOCKED, { tone: "warn" }));
     this.ui.on("prefs", (p) => this.applyPrefs(p));
     this.view.onCamera(() => this.onCamera());
     this.persistence.on("status", () => this.renderBanner());
     this.persistence.on("notice", (n) => toast(n.text, { tone: n.level === "error" ? "error" : n.level === "warn" ? "warn" : "info", ms: 7000 }));
 
     this.persistence.on("remote", () => this.scheduleRemoteReload());
+    // 開いている間に、別のタブの新しい版のページが保存した（保存の競合・引き継ぎ・読み直し・保存先の版が上がったことで気づく）: 編集をやめる
+    this.persistence.on("blocked", (e) => this.showNewer(e.kept));
     this.bindKeys();
     this.bindLifecycle();
     this.bindDrop();
@@ -288,6 +310,19 @@ export class App implements AppContext {
   }
 
   // ------------------------------------------------------------ 表示
+
+  /** アカウントの写しがこのページより新しい版と分かって、編集を止めている（開き直すまで） */
+  get accountNewer(): boolean {
+    return this.heldByAccount;
+  }
+
+  /**
+   * 閲覧のみかを決め直す（書き手が変わった・引き継いだ・新しい版と分かった）。新しい版の訳は開き直すまで消えないので、
+   * 書き手に戻っても編集できる状態には戻らない
+   */
+  private applyReadOnly(): void {
+    this.store.readOnly = editLocked({ writer: this.persistence.writer, ephemeral: this.ephemeral, accountNewer: this.heldByAccount, localNewer: this.newerShown });
+  }
 
   private applyPrefs(p: Partial<UiState["prefs"]>): void {
     const prefs = this.ui.prefs;
@@ -350,7 +385,11 @@ export class App implements AppContext {
 
   private renderBanner(): void {
     const b = this.banner;
-    b.replaceChildren();
+    // アカウントに新しい版の内容があるときの帯は、開き直すまで同じ物を先頭に出したまま（保存の状態が変わるたびに描き直しても、
+    // 「ページを開き直す」のフォーカスを外さない）
+    const held = this.heldByAccount ? (this.newerBanner ??= accountNewerBanner()) : null;
+    for (const c of [...b.children]) if (c !== held) c.remove();
+    if (held && held.parentElement !== b) b.prepend(held);
     const per = this.persistence;
     const add = (tone: string, iconName: string, text: string, ...actions: HTMLElement[]) => b.append(h("div", { class: `banner tone-${tone}` }, icon(iconName, 15), h("span", { class: "banner-text" }, text), ...actions));
     if (this.ephemeral) {
@@ -363,12 +402,14 @@ export class App implements AppContext {
       return;
     }
     if (!per.writer) {
-      add(
-        "warn",
-        "lock",
-        "別のタブで編集中のため、このタブは閲覧のみです。",
-        h("button", { class: "btn btn-sm btn-primary", type: "button", onClick: () => void this.takeOver() }, "このタブで編集する"),
-      );
+      // アカウントに新しい版の内容があるときは、引き継いでも編集できないので「このタブで編集する」は出さない（上の帯だけ）
+      if (!held)
+        add(
+          "warn",
+          "lock",
+          "別のタブで編集中のため、このタブは閲覧のみです。",
+          h("button", { class: "btn btn-sm btn-primary", type: "button", onClick: () => void this.takeOver() }, "このタブで編集する"),
+        );
     } else if (per.status === "conflict") {
       add(
         "danger",
@@ -383,12 +424,18 @@ export class App implements AppContext {
   }
 
   private async takeOver(): Promise<void> {
+    // アカウントに新しい版の内容がある: 引き継いでも編集できない（開き直すまで）。別のタブのロックも奪わない
+    if (this.heldByAccount) return;
     const doc = await this.persistence.takeOver();
+    // 保存されているのがこのページより新しい版だった: 引き継がずに止めた（画面は "blocked" の知らせで差し替わる）
+    if (this.persistence.blocked) return;
     if (doc) this.store.load(doc, "load");
-    this.store.readOnly = false;
+    // 引き継ぐ間にアカウントの新しい版に気づいていたら、閲覧のみのまま（決まりは applyReadOnly の 1 か所）
+    this.applyReadOnly();
     this.cloud?.resync();
     this.renderBanner();
-    toast("このタブで編集できるようになりました", { tone: "ok" });
+    // 閲覧のみのタブはアカウントを読んでいないので、新しい版の内容があると分かるのは、この後の突き合わせ（そのときは下げる）
+    if (!this.store.readOnly) toast(TAKEN_OVER, { tone: "ok" });
   }
 
   private async resolveConflict(choice: "reload" | "overwrite"): Promise<void> {
@@ -404,6 +451,8 @@ export class App implements AppContext {
       if (saved) void this.refreshLastBackup();
     }
     const doc = await this.persistence.resolveConflict(choice);
+    // 保存されているのがこのページより新しい版だった: 開きも上書きもせずに止めた（画面は "blocked" の知らせで差し替わる）
+    if (this.persistence.blocked) return;
     if (doc) this.store.load(doc, "load");
     if (choice === "reload" && doc) toast("保存されている最新を開きました。このタブの内容はバックアップに残してあります（メニュー →「バックアップと復元」）。", { ms: 6000 });
     this.renderBanner();
@@ -412,9 +461,56 @@ export class App implements AppContext {
   private scheduleRemoteReload(): void {
     if (this.remoteTimer) clearTimeout(this.remoteTimer);
     this.remoteTimer = setTimeout(async () => {
-      const s = await this.persistence.readStored().catch(() => null);
+      if (this.persistence.blocked) return;
+      let s: Awaited<ReturnType<Persistence["readStored"]>> = null;
+      try {
+        s = await this.persistence.readStored();
+      } catch (e) {
+        // 別のタブの新しい版のページが保存した: 読めないのは壊れたからではない。このタブの編集をやめ、開き直してもらう
+        if (e instanceof NewerDocError) return this.persistence.blockNewer();
+        s = null;
+      }
       if (s && !this.persistence.writer) this.store.load(s.doc, "remote");
     }, 400);
+  }
+
+  /**
+   * このページより新しい版で保存されたデータに気づいた（保存の競合・引き継ぎ・別のタブの保存の読み直し・保存先の版が上がった）。
+   * 保存は Persistence が止めている。ここでは同期を止め、編集と設定の保存をやめ、画面を開き直すよう伝える物に差し替える
+   * （kept: このタブのまだどこにも無い変更を残した所。画面で伝える）。待っている自動の表示（未来の道筋を開くなど）も、以後は動かない
+   */
+  private showNewer(kept: KeptAside): void {
+    if (this.newerShown) return;
+    this.newerShown = true;
+    this.cloud?.stop();
+    this.applyReadOnly();
+    this.ui.persistPrefs = false;
+    if (this.remoteTimer) clearTimeout(this.remoteTimer);
+    if (this.cameraSaveTimer) clearTimeout(this.cameraSaveTimer);
+    this.editor.cancel();
+    closeMenus();
+    showNewerScreen(this.mount, { kept });
+  }
+
+  /**
+   * アカウントの写しが、このページより新しい版のアプリで保存されていると分かった（同期はもう止めてあり、開き直すまで再開しない）。
+   * 新しい編集を受けない: その場の入力は確定してから（打った文字も手元に残る）ストアを閲覧のみにし、開き直すよう伝える帯を出す。
+   * それまでの編集は手元に保存したまま（送らない・捨てない。次の版が扱う）。以後は書き手に戻っても・「このタブで編集する」でも・
+   * 後の同期でも編集できる状態に戻さない。開いていたメニュー（開いたときの状態で項目を作ってある）と、
+   * 突き合わせを待って未来の道筋を開く頼みもやめる。「このタブで編集できるようになりました」（引き継いだ直後の突き合わせで分かったとき）と、
+   * 「このタブで編集する」を押すよう勧めるお知らせも下げる（帯と食い違う）。形が違う・壊れた写しでは呼ばれない（今までどおり編集できる）。
+   * 設計: docs/DESIGN.md §5・§5.1
+   */
+  private holdForAccountNewer(): void {
+    if (this.heldByAccount || this.newerShown) return;
+    this.editor.commit();
+    this.heldByAccount = true;
+    this.applyReadOnly();
+    if (this.futureWait) closeWaitToast();
+    this.futureWait = 0;
+    closeToasts((t) => TAKE_OVER_TOASTS.has(t));
+    closeMenus();
+    this.renderBanner();
   }
 
   // ------------------------------------------------------------ メニュー
@@ -506,7 +602,7 @@ export class App implements AppContext {
 
   private bindKeys(): void {
     document.addEventListener("keydown", (ev) => {
-      if (document.querySelector(".modal-backdrop:not(.closing), .tour")) return;
+      if (this.newerShown || document.querySelector(".modal-backdrop:not(.closing), .tour")) return;
       const typing = isTypingTarget(ev.target);
       const mod = ev.metaKey || ev.ctrlKey;
       const key = ev.key;
@@ -927,7 +1023,7 @@ export class App implements AppContext {
       return;
     }
     if (this.store.readOnly) {
-      toast(READ_ONLY_FUTURE, { tone: "warn" });
+      toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : READ_ONLY_FUTURE, { tone: "warn" });
       return;
     }
     if (!isDisposableDoc(this.store.doc)) return this.loadFuture();
@@ -964,8 +1060,8 @@ export class App implements AppContext {
     const me = (this.futureWait = ++this.futureWaitSeq);
     const started = Date.now();
     const retry = (): void => {
-      // 取り消された（利用者が自分で読み込みの確認を開いた など）・新しい頼みに替わった
-      if (this.futureWait !== me) return;
+      // 取り消された（利用者が自分で読み込みの確認を開いた など）・新しい頼みに替わった・新しい版のデータで止めた
+      if (this.futureWait !== me || this.newerShown) return;
       // 入力・メニュー・確認・操作ガイドの途中なら待つ（自動で開くときと同じ。書きかけを消さない・閉じた後に勝手に入れ替えない）
       const busy = this.futureBusy();
       // 待つ間に同期が止まった（利用者が直す・決めるまで進まない）: もう待たない（showFuture が訳を知らせて確認を出す）
@@ -978,7 +1074,7 @@ export class App implements AppContext {
       this.futureWait = 0;
       closeWaitToast();
       if (ready) void this.showFuture();
-      else if (this.store.readOnly) toast(READ_ONLY_FUTURE, { tone: "warn" });
+      else if (this.store.readOnly) toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : READ_ONLY_FUTURE, { tone: "warn" });
       else if (!busy) this.loadFuture();
       else toast("未来の道筋は、入力や開いている画面を閉じてから、地図の右下の「未来の道筋」で開けます", { ms: 6000 });
     };
@@ -1057,6 +1153,9 @@ export class App implements AppContext {
     const started = Date.now();
     let toldReadOnly = false;
     const tick = (): void => {
+      // 新しい版のデータで止めた・アカウントに新しい版の内容があって編集を止めた: 閲覧のみの訳などを知らせ続けない
+      // （止める画面・帯と食い違う。開き直すまで編集できないので、待ち続けもしない）
+      if (this.newerShown || this.heldByAccount) return;
       if (this.futureAutoDeclined || this.ui.prefs.futureAutoOpened || this.ui.storedPrefs().futureAutoOpened === true) return;
       if (this.store.doc.meta?.[NO_AUTO_FUTURE] === true) return;
       if (hasFutureRoot(this.store.doc)) return;
@@ -1068,7 +1167,7 @@ export class App implements AppContext {
       if (this.store.readOnly) {
         if (!toldReadOnly && waited > 3000) {
           toldReadOnly = true;
-          toast("このタブは閲覧のみです（別のタブかウィンドウでも開いています）。上の「このタブで編集する」を押すと、未来の道筋を開きます", { tone: "warn", ms: 9000 });
+          toast(READ_ONLY_AUTO_FUTURE, { tone: "warn", ms: 9000 });
         }
         setTimeout(tick, 500);
         return;
@@ -1323,7 +1422,7 @@ export class App implements AppContext {
 
   /** claude.ai の Artifact の中で、サインインしていて自分の場所に書けるなら、アカウントにも写しを置く */
   async startCloud(late?: { db: DbApi; user: UserApi }): Promise<void> {
-    if (this.ephemeral || !inArtifactHost() || this.cloud || this.cloudStarting) return;
+    if (this.ephemeral || !inArtifactHost() || this.cloud || this.cloudStarting || this.persistence.blocked) return;
     this.cloudStarting = true;
     try {
       await this.startCloudInner(late);
@@ -1386,6 +1485,8 @@ export class App implements AppContext {
     }
     // 起動したときの手元の記録を書き終えてから始める（記録より先に読まない）
     await this.bootRecorded;
+    // 待つ間に、このページより新しい版のデータに気づいて止めた: 同期も始めない（アカウントへも書かない）
+    if (this.persistence.blocked) return;
     /** 手元にまだ保存できていない間の基準（保存できたら書く。基準が手元より先に残らないように） */
     let pendingBase: SyncBase | null = null;
     const writeBaseNow = async (b: SyncBase) => {
@@ -1523,6 +1624,8 @@ export class App implements AppContext {
     });
     this.cloud = sync;
     sync.on((st) => this.setCloudInfo(st, sync.message));
+    // アカウントの写しがこのページより新しい版: 開き直すまで新しい編集を受けない（形が違う・壊れた写しでは来ない）
+    sync.onNewer(() => this.holdForAccountNewer());
     await sync.start();
   }
 
