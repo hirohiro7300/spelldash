@@ -12,10 +12,12 @@ export interface CliOpts {
   only?: string[];
   anchor: string;
   hash: string;
+  /** 「3 年やらない」見積もり（never）を作る（off は試すとき用） */
+  never: boolean;
 }
 
 export const USAGE =
-  "使い方: node scripts/impact/q/run.mjs --out <木.json> [--budget 2000] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--stub split|fact|lean] [--fact-cl] [--only keep,ad_permside] [--anchor 2026-11] [--hash dev-port]";
+  "使い方: node scripts/impact/q/run.mjs --out <木.json> [--budget 2000] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--stub split|fact|lean] [--fact-cl] [--only keep,ad_permside] [--anchor 2026-11] [--hash dev-port] [--never on|off]";
 
 const MODES: readonly Mode[] = ["split", "fact", "lean"];
 
@@ -26,6 +28,7 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
   let only: string[] | undefined;
   let anchor = "2026-11";
   let hash = "dev-port";
+  let never = true;
   const int = (name: string, v: string | undefined, min: number): number => {
     const n = Number(v);
     if (v === undefined || !Number.isInteger(n) || n < min) throw new Error(`${name} は ${min} 以上の整数で指定してください（${v ?? "なし"}）`);
@@ -83,10 +86,16 @@ export function parseArgs(args: string[], rootMenu: readonly string[]): CliOpts 
       case "--hash":
         hash = value();
         break;
+      case "--never": {
+        const s = value();
+        if (s !== "on" && s !== "off") throw new Error(`--never は on か off です（${s}）`);
+        never = s === "on";
+        break;
+      }
       default:
         throw new Error(`知らない引数です: ${a}`);
     }
   }
   if (!out) throw new Error("--out（書き出す木の場所）が要ります");
-  return { out, params, ...(only ? { only } : {}), anchor, hash };
+  return { out, params, ...(only ? { only } : {}), anchor, hash, never };
 }

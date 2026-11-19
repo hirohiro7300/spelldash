@@ -1,7 +1,8 @@
 // 作った木を、開発用の入れ子の木（src/deepmap/mapData.ts の DevTree）にする。src/deepmap/dev/fromTree.ts が読むだけの地図にする。
 // 並べる順と、確かめるだけの事実（rv: 会社の答えは会社ごとに 1 つ）は R1 の試作（model-tree/bundleq.ts の toBundle）と同じ。
 // 結果の名前（lab）・線の文（line）・判断の線（ln）は計算の結果のまま（./group.ts の describe）。文章（title・short など）はまだ入れない。
-// 顧客の社数の違う場合をまとめた状態（まとめた結果・まとめた行き先）には、社数の幅 band.cl（整数）を付ける
+// 顧客の社数の違う場合をまとめた状態（まとめた結果・まとめた行き先）には、社数の幅 band.cl（整数）を付ける。
+// 新しい出力（SPEC v1 §2.4）: まとめた手でない手に q、まとめた行き先に mix・cont（./outputs.ts の summaryOutputs の後）、入口に never
 
 import { IMPACT_TITLE, type ImpactLine, type ImpactSt, type R3 } from "../../../src/demo/impact";
 import type { DevTree, DevTreeNode, MapHeader } from "../../../src/deepmap/mapData";
@@ -20,6 +21,8 @@ export interface DevTreeOpts {
   release: number;
   hash: string;
   textVersion: string;
+  /** まとまりごとの「3 年やらない」見積もりと _all（無ければ空） */
+  never?: Record<string, Vec3>;
 }
 
 const lnOut = (l: Line): ImpactLine => (l.cat !== undefined ? [l.metric, l.at, l.lo, l.hi, l.cat] : [l.metric, l.at, l.lo, l.hi]);
@@ -69,6 +72,7 @@ export function toDevTree(w: WorldQ, root: QNode, opts: DevTreeOpts): DevTree {
       // 今日の決まった 10 手（menu）には訳を付けない
       if (n.why && n.why !== "menu") d.why = n.why;
       if (n.stub) d.stub = true;
+      if (n.qv) d.q = r3(n.qv);
     } else {
       const o = n.out!;
       d.rr = r3(n.rr ?? runRateQ(w, n.st));
@@ -88,6 +92,8 @@ export function toDevTree(w: WorldQ, root: QNode, opts: DevTreeOpts): DevTree {
         if (n.sumEnd) {
           d.sum = true;
           counts.sumEnds++;
+          if (n.mix) d.mix = n.mix;
+          if (n.cont) d.cont = n.cont;
         }
       }
     }
@@ -110,7 +116,7 @@ export function toDevTree(w: WorldQ, root: QNode, opts: DevTreeOpts): DevTree {
     kinds,
     fams: { ...(w.familyLabels ?? {}) },
     premises: [...w.premises],
-    never: {},
+    never: Object.fromEntries(Object.entries(opts.never ?? {}).map(([k, v]) => [k, r3(v)])),
     counts,
   };
   return { header, root: top };

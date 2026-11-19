@@ -4,9 +4,10 @@ import worldJson from "../../scripts/impact/world.json";
 import { simulate, type St, type World } from "../../scripts/impact/sim";
 import { calendarCheck, calendarOf, DEFAULT_ANCHOR, ymOf } from "../../scripts/impact/q/calendar";
 import { parseArgs } from "../../scripts/impact/q/cli";
-import { coarseKey, collapsed, quarterOutcomes, repState } from "../../scripts/impact/q/core";
-import { CODE, DEFAULTS, Heap, R1_ALTS_BY } from "../../scripts/impact/q/gen";
-import { bandOf, groupOutcomesQ } from "../../scripts/impact/q/group";
+import { coarseKey, collapsed, OutcomeCache, quarterOutcomes, repState, type Roll } from "../../scripts/impact/q/core";
+import { calibrate, CODE, DEFAULTS, Heap, planBudget, qOf, R1_ALTS_BY, type PassStats, type SinkCfg } from "../../scripts/impact/q/gen";
+import { bandOf, clientDist, clientMode, distQuantiles, groupOutcomesQ } from "../../scripts/impact/q/group";
+import { CONT_EVENTS, contEvent, contOf, leavesOf, mixOf, paidSal } from "../../scripts/impact/q/outputs";
 import { feasibleQ, LIMITS, uses } from "../../scripts/impact/q/quarter";
 import { binomP, bookStats, offerScale, runRateQ, setBook, simQ, toQ, type Comp, type QSample, type QSt } from "../../scripts/impact/q/sim";
 import { CHANGES, NSTAGE, quarterWorld, type WorldQ } from "../../scripts/impact/q/world";
@@ -527,20 +528,279 @@ describe("生成の部品", () => {
 describe("入口の引数", () => {
   it("既定は R1 が選んだ形", () => {
     const o = parseArgs(["--out", "x.json"], w.rootMenu);
-    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", hash: "dev-port" });
-    expect(o.params).toMatchObject({ B: 2000, maxAlts: 4, stubMode: "split", factCl: false, altsBy: [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2] });
+    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", hash: "dev-port", never: true });
+    expect(o.params).toMatchObject({ B: 2000, maxAlts: 4, stubMode: "split", factCl: false, altsBy: [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2], tol: 0.02, fineDepth: 3, areaDiscount: 0.3 });
   });
 
   it("形を変える引数", () => {
-    const o = parseArgs(["--budget", "300", "--alts", "3", "--alts-by", "off", "--stub", "lean", "--fact-cl", "--only", "keep,part", "--anchor", "2027-02", "--hash", "h", "--out", "t.json"], w.rootMenu);
+    const o = parseArgs(["--budget", "300", "--alts", "3", "--alts-by", "off", "--stub", "lean", "--fact-cl", "--only", "keep,part", "--anchor", "2027-02", "--hash", "h", "--never", "off", "--out", "t.json"], w.rootMenu);
     expect(o.params).toMatchObject({ B: 300, maxAlts: 3, stubMode: "lean", factCl: true });
     expect(o.params.altsBy).toBeUndefined();
-    expect([o.only, o.anchor, o.hash, o.out]).toEqual([["keep", "part"], "2027-02", "h", "t.json"]);
+    expect([o.only, o.anchor, o.hash, o.out, o.never]).toEqual([["keep", "part"], "2027-02", "h", "t.json", false]);
+    expect(parseArgs(["--out", "t", "--never", "on"], w.rootMenu).never).toBe(true);
     expect(parseArgs(["--out", "t", "--alts-by", "0,3,3,3,3,3,3,3,3,2,2,2"], w.rootMenu).params.altsBy).toEqual([0, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2]);
   });
 
   it("読めない引数は投げる", () => {
-    const bad = [[], ["--out"], ["--out", "x", "--budget", "0"], ["--out", "x", "--only", "plan_ind"], ["--out", "x", "--anchor", "2026-13"], ["--out", "x", "--alts-by", "0,4,4"], ["--out", "x", "--stub", "all"], ["--out", "x", "--nope"]];
+    const bad = [[], ["--out"], ["--out", "x", "--budget", "0"], ["--out", "x", "--only", "plan_ind"], ["--out", "x", "--anchor", "2026-13"], ["--out", "x", "--alts-by", "0,4,4"], ["--out", "x", "--stub", "all"], ["--out", "x", "--never", "yes"], ["--out", "x", "--nope"]];
     for (const args of bad) expect(() => parseArgs(args, w.rootMenu), args.join(" ")).toThrow();
+  });
+});
+
+describe("予算の使い道 1: 事実の小さい組も分ける（fine。SPEC v1 D1・§2.2・truth-1）", () => {
+  it("『全部可』で 1 社目が決まる 8% を『全部可・まだ』にまとめない（社数は整数で、幅は無い）", () => {
+    const os = quarterOutcomes(w, st(), "ad_permside", 0, "split", S, true);
+    expect(os.map((o) => [o.id, o.p, o.lab])).toEqual([
+      ["a1", 8, "全部可・1 社目"],
+      ["a0", 12, "全部可・まだ"],
+      ["s", 45, "SpellDash だけ"],
+      ["n", 35, "どちらも不可"],
+    ]);
+    expect(os.map((o) => o.st.cl)).toEqual([1, 0, 0, 0]);
+    expect(os.every((o) => bandOf(w, o.st) === undefined)).toBe(true);
+    // 合わせると fine でない時の『全部可』と同じ見込み・同じ稼ぎ
+    const merged = quarterOutcomes(w, st(), "ad_permside", 0, "split", S)[0]!;
+    expect(merged.id).toBe("a0_a1");
+    expect(os[0]!.w + os[1]!.w).toBeCloseTo(merged.w, 12);
+  });
+
+  it("移れる見込みが小さい時（答えを引き継ぐ転職）は 1.18 倍と 1.08 倍を分ける。どのまとめ方でも", () => {
+    const sa = st({ pm: "a", pro: 1, pu: 5, mau: 120 });
+    const ss = st({ pm: "s", pro: 1, pu: 5, mau: 120 });
+    for (const mode of ["split", "fact", "lean"] as const) {
+      expect(quarterOutcomes(w, sa, "fc_switch", 0, mode, S, true).map((o) => [o.id, o.p])).toEqual([
+        ["none", 94],
+        ["mid", 4],
+        ["high", 2],
+      ]);
+      expect(quarterOutcomes(w, ss, "fc_switch", 0, mode, S, true).map((o) => [o.id, o.p])).toEqual([
+        ["none", 82],
+        ["mid", 12],
+        ["high", 6],
+      ]);
+    }
+    expect(quarterOutcomes(w, ss, "fc_switch", 0, "split", S).map((o) => [o.id, o.p])).toEqual([
+      ["none", 82],
+      ["high_mid", 18],
+    ]);
+  });
+
+  it("事実でない分け方（数・昇格）と、もともと分ける事実（会社の答え）は変わらない", () => {
+    const s3 = st({ mau: 2000, pro: 1, pm: "s", pu: 60 });
+    expect(quarterOutcomes(w, s3, "sd_grow", 3, "split", S, true)).toEqual(quarterOutcomes(w, s3, "sd_grow", 3, "split", S));
+    expect(quarterOutcomes(w, st(), "sd_permpro", 0, "split", S, true)).toEqual(quarterOutcomes(w, st(), "sd_permpro", 0, "split", S));
+    expect(quarterOutcomes(w, st(), "fc_push", 3, "fact", S, true)).toEqual(quarterOutcomes(w, st(), "fc_push", 3, "fact", S));
+  });
+
+  it("3 か月の結果の入れ物（「3 年やらない」の表どうしで分け合う）は、毎回数えた結果と同じ物を返す", () => {
+    const oc = new OutcomeCache();
+    const x = st({ pm: "a", pro: 1, pu: 5, mau: 120 }, [1, 0, 0]);
+    for (const [kind, mode] of [["keep", "lean"], ["ad_side", "fact"], ["fc_switch", "lean"]] as const) {
+      const a = oc.get(w, 1, x, kind, mode, S);
+      expect(a).toEqual(quarterOutcomes(w, x, kind, 3, mode, S));
+      expect(oc.get(w, 1, x, kind, mode, S)).toBe(a);
+    }
+    expect(oc.hits).toBe(3);
+    expect(oc.m.size).toBe(3);
+  });
+});
+
+describe("まとめた行き先の中身（mix）と標準の続き（cont）の部品", () => {
+  /** 続きの見積もりの形を手で作る（s 段・初めの状態 x・手 k・結果） */
+  const leaf = (x: QSt): Roll => ({ v: [0, 0, 0], rr: runRateQ(w, x), st: x, s: NSTAGE, x, k: "", kids: [] });
+  const node = (s: number, x: QSt, k: string, kids: Array<[number, string, Roll]>): Roll => ({ v: [0, 0, 0], rr: [0, 0, 0], st: x, s, x, k, kids: kids.map(([p, id, next]) => ({ p, id, next })) });
+
+  it("分布の幅は累積が 10%・50%・90% に届く一番小さい値（顧客の幅 band と同じ取り方）。一番ありそうな社数は重みの一番大きい社数", () => {
+    expect(distQuantiles([[0, 0.1], [1, 0.5], [2, 0.4]], [0.1, 0.5, 0.9])).toEqual([0, 1, 2]);
+    expect(distQuantiles([[0, 0.05], [3, 0.95]], [0.1, 0.5, 0.9])).toEqual([3, 3, 3]);
+    const x = setBook(w, { ...st(), cb: [] }, [
+      { n: [1, 0, 0], f5: 0, w: 0.3 },
+      { n: [2, 0, 0], f5: 0, w: 0.45 },
+      { n: [0, 0, 0], f5: 0, w: 0.25 },
+    ]);
+    expect(clientDist(x)).toEqual([
+      [0, 0.25],
+      [1, 0.3],
+      [2, 0.45],
+    ]);
+    expect(clientMode(x)).toBe(2);
+    expect(bandOf(w, x)).toEqual({ cl: distQuantiles(clientDist(x), [0.1, 0.9]) });
+    // 同じ重みなら少ない方
+    expect(clientMode(setBook(w, { ...st(), cb: [] }, [{ n: [1, 0, 0], f5: 0, w: 0.5 }, { n: [3, 0, 0], f5: 0, w: 0.5 }]))).toBe(1);
+  });
+
+  it("出来事の名前: 届け出の答え・独立・会社員に戻る・転職・昇格・Pro・顧客・導入・節目。無ければ null、名前はどれも決まった語彙", () => {
+    const a = st();
+    expect(contEvent("sd_permpro", a, { ...a, pm: "s", pro: 1 }, "s", 0)).toBe("PERM_S");
+    // 届け出る手でなければ答えの出来事ではない（会社員に戻った・移った会社の答え）。Pro の受付になる
+    expect(contEvent("keep", a, { ...a, pm: "s", pro: 1 }, "all", 0)).toBe("PRO_START");
+    expect(contEvent("ind_quit", a, { ...a, j: "i" }, "cl0", 0)).toBe("IND_START");
+    const ind = st({ j: "i", pm: "a" }, [0, 0, 2]);
+    expect(contEvent("back_emp", ind, st({ pm: "s" }), "e", 2)).toBe("BACK_EMP");
+    expect(contEvent("fc_switch", a, { ...a, sal: a.sal * 1.18, fl: ["switched"] }, "high", 0)).toBe("SWITCH_HIGH");
+    expect(contEvent("fc_switch2", a, { ...a, sal: a.sal * 1.08, fl: ["switched"] }, "mid", 0)).toBe("SWITCH_MID");
+    expect(contEvent("fc_switch", a, a, "none", 0)).toBeNull();
+    expect(contEvent("fc_push", a, { ...a, sal: a.sal + 0.06 }, "up", 0)).toBe("PROMO");
+    expect(contEvent("fc_push", a, a, "all", 0)).toBeNull();
+    // 顧客: 道で初めて・それまでの一番多い数まで・それを超える・減る（一番ありそうな社数で）
+    const e0 = st({ pm: "a" });
+    const e1 = st({ pm: "a" }, [1, 0, 0]);
+    const e2 = st({ pm: "a" }, [2, 0, 0]);
+    expect(contEvent("ad_side", e0, e1, "all", 0)).toBe("FIRST_CLIENT");
+    expect(contEvent("ad_side", e0, e1, "all", 2)).toBe("CLIENT_REGAIN");
+    expect(contEvent("ad_more", e1, e2, "all", 1)).toBe("CLIENT_UP");
+    expect(contEvent("keep", e2, e1, "all", 2)).toBe("CLIENT_LOST");
+    // 半分に届かない営業（一番ありそうな社数は変わらない）は出来事にならない
+    const half = setBook(w, { ...e0, cb: [] }, [{ n: [0, 0, 0], f5: 0, w: 0.6 }, { n: [1, 0, 0], f5: 0, w: 0.4 }]);
+    expect(contEvent("ad_side", e0, half, "all", 0)).toBeNull();
+    const pro = st({ pm: "s", pro: 1, pu: 25 });
+    expect(contEvent("sd_school", pro, { ...pro, pu: 65, seats: 40, fl: ["school"] }, "yes", 0)).toBe("SCHOOL_ON");
+    expect(contEvent("sd_pilot", pro, { ...pro, fl: ["pilot"] }, "yes", 0)).toBe("PILOT_ON");
+    expect(contEvent("ad_portfolio", a, { ...a, fl: ["portfolio"] }, "yes", 0)).toBe("PORTFOLIO_ON");
+    expect(contEvent("sd_grow", pro, { ...pro, pu: 31 }, "all", 0)).toBe("PU_MILE");
+    expect(contEvent("sd_grow", { ...pro, pro: 0 }, { ...pro, pro: 0, pu: 31 }, "all", 0)).toBeNull();
+    // 1 つの 3 か月に複数あれば大事な方（独立 > 顧客）
+    expect(contEvent("ind_quit", e0, st({ j: "i", pm: "a" }, [0, 0, 1]), "cl1", 0)).toBe("IND_START");
+    expect(new Set(CONT_EVENTS).size).toBe(CONT_EVENTS.length);
+  });
+
+  it("行き先の見込み: 合流した所は足し合わせ、途中で転職した見込みを数える。mix の割合と幅、cont は一番ありそうな結果をたどる", () => {
+    const x0 = st({ pm: "a" });
+    const moved = { ...x0, sal: x0.sal * 1.18, fl: ["switched"] };
+    const stay = st({ pm: "a" }, [1, 0, 0]);
+    const school = st({ pm: "s", pro: 1, pu: 60, seats: 40, mau: 500 });
+    const lMoved = leaf(moved);
+    const lStay = leaf(stay);
+    const lSchool = leaf(school);
+    // 33 か月目: 合流する 2 つの状態から同じ行き先へ
+    const m33a = node(11, stay, "keep", [[100, "all", lStay]]);
+    const m33b = node(11, school, "keep", [[100, "all", lSchool]]);
+    const m30 = node(10, x0, "fc_switch", [
+      [70, "none", node(11, x0, "ad_side", [[100, "all", lStay]])],
+      [30, "high", node(11, moved, "keep", [[100, "all", lMoved]])],
+    ]);
+    const leaves = leavesOf(m30, false);
+    expect(leaves.map((l) => [l.x.fl.includes("switched"), l.m, l.sw])).toEqual([
+      [false, 0.7, 0],
+      [true, 0.3, 0.3],
+    ]);
+    // すでに転職していれば、どの行き先も「転職した」
+    expect(leavesOf(m30, true).every((l) => l.sw === l.m)).toBe(true);
+    // 合流: 2 つの道が同じ続きを指すと、見込みは足される
+    const join = node(10, x0, "sd_pilot", [
+      [40, "yes", m33a],
+      [60, "no", m33a],
+    ]);
+    expect(leavesOf(join, false).map((l) => l.m)).toEqual([1]);
+    const mixLeaves = [...leavesOf(m30, false), ...leavesOf(m33b, false).map((l) => ({ ...l, m: 0 }))];
+    const mix = mixOf(w, stay, mixLeaves);
+    expect(mix.j).toEqual({ e: 1, p: 0, i: 0 });
+    expect(mix.pm).toEqual({ "?": 0, a: 1, s: 0, n: 0 });
+    expect([mix.pro, mix.switched, mix.school]).toEqual([0, 0.3, 0]);
+    expect(mix.sal).toEqual([paidSal(w, stay), paidSal(w, stay), paidSal(w, moved)]);
+    expect(mix.cl).toEqual([1, 1, 1]);
+    // 学校の席・Pro・独立の給与 0
+    const mix2 = mixOf(w, school, [
+      { x: school, m: 0.5, sw: 0 },
+      { x: st({ j: "i", pm: "a" }), m: 0.5, sw: 0 },
+    ]);
+    expect([mix2.pro, mix2.school, mix2.j.i, mix2.sal[0]]).toEqual([0.5, 0.5, 0.5, 0]);
+    // cont: 一番ありそうな結果（同じなら先）をたどり、月は 3 か月ごと
+    expect(contOf(m30, 0)).toEqual([
+      { m: 30, kind: "fc_switch" },
+      { m: 33, kind: "ad_side", ev: "FIRST_CLIENT" },
+    ]);
+    // 道でそれまでに顧客がいたなら、取り戻し
+    expect(contOf(m30, 1)[1]!.ev).toBe("CLIENT_REGAIN");
+    const tie = node(10, x0, "sd_pilot", [
+      [50, "yes", node(11, { ...x0, fl: ["pilot"] }, "keep", [[100, "all", lStay]])],
+      [50, "no", m33a],
+    ]);
+    expect(contOf(tie, 0).map((c) => c.kind)).toEqual(["sd_pilot", "keep"]);
+    expect(contOf(tie, 0)[0]!.ev).toBe("PILOT_ON");
+    // 見積もりの稼ぎ（R3）は Σ 見込み × (その 3 か月 + 続き)
+    const outs = quarterOutcomes(w, st(), "sd_permpro", 0, "split", S);
+    const conts = outs.map((o) => ({ ...leaf(o.st), v: [1, 2, 3] as [number, number, number] }));
+    const v = qOf(outs, conts);
+    const want = outs.reduce<[number, number, number]>((acc, o) => [acc[0] + (o.p / 100) * (o.r[0] + 1), acc[1] + (o.p / 100) * (o.r[1] + 2), acc[2] + (o.p / 100) * (o.r[2] + 3)], [0, 0, 0]);
+    v.forEach((x, i) => expect(x).toBeCloseTo(want[i]!, 9));
+  });
+});
+
+describe("予算の合わせ込み（D1・truth-1）", () => {
+  /** 作り物の木: 分かれ道の数は内側の予算の単調な関数（上限 cap）。予算が足りずに分けなかった判断は上限まで届かない間だけ */
+  const fake = (f: (B: number) => number, cap: number) => {
+    const calls: number[] = [];
+    const run = (B: number) => {
+      calls.push(B);
+      const forks = Math.min(cap, Math.round(f(B === Infinity ? 1e12 : B)));
+      return { forks, limited: forks < cap ? 1 : 0 };
+    };
+    return { run, calls };
+  };
+
+  it("目標 ±2% に入る内側の予算を探す（下からも上からも）", () => {
+    for (const [f, B0] of [
+      [(B: number) => 0.8 * B, 2000],
+      [(B: number) => 1.3 * B + 50, 2000],
+      [(B: number) => 400 + 0.5 * B, 600],
+    ] as const) {
+      const { run, calls } = fake(f, 1e9);
+      const r = calibrate(run, B0, 0.02, B0, 14);
+      expect(r.hit).toBe(true);
+      expect(r.saturated).toBe(false);
+      expect(Math.abs(r.forks - B0)).toBeLessThanOrEqual(B0 * 0.02);
+      expect(r.passes).toBe(calls.length);
+      expect(r.passes).toBeLessThanOrEqual(8);
+    }
+  });
+
+  it("飽和: 予算が足りずに分けなかった判断が 0 なら 1 回で、そうでなければ予算 ∞ を 1 回試して止まる", () => {
+    const sat = calibrate(() => ({ forks: 1545, limited: 0 }), 2000, 0.02, 2000, 14);
+    expect(sat).toEqual({ B: Infinity, forks: 1545, hit: false, saturated: true, passes: 1 });
+    const { run, calls } = fake((B) => 0.7 * B, 1700);
+    const r = calibrate(run, 2000, 0.02, 2000, 14);
+    expect([r.saturated, r.forks, r.B]).toEqual([true, 1700, Infinity]);
+    expect(calls).toEqual([2000, Infinity]);
+    // 予算 ∞ なら届く時は、∞ が上側になり、有限の予算に戻って詰める
+    const g = fake((B) => 0.7 * B, 5000);
+    const r2 = calibrate(g.run, 2000, 0.02, 2000, 14);
+    expect(r2.hit).toBe(true);
+    expect(g.calls[1]).toBe(Infinity);
+    expect(g.calls.slice(2).every((B) => Number.isFinite(B))).toBe(true);
+    // 上限を超えた予算が一度でもあれば、谷（予算が足りずに分けなかった判断が 0 でも）を飽和とはみない。届かなければ一番近い予算
+    const jump = (B: number) => ({ forks: B === Infinity || B >= 2500 ? 2500 : 1400, limited: B > 2100 && B < 2500 ? 0 : 1 });
+    const r3 = calibrate(jump, 2000, 0.02, 2000, 10);
+    expect([r3.saturated, r3.hit, r3.passes]).toEqual([false, false, 10]);
+    expect(r3.forks).toBe(2500);
+  });
+
+  it("手順: 飽和しなければ分ける予算だけ。飽和したら事実の小さい組を分け、まだ足りなければ別の領域の手を一番少ない数だけ広げる", () => {
+    /** 作り物: 分ける予算だけで base まで、fine で +fineAdd、別の領域の手 1 つごとに +per（広げられる判断は elig）。予算 B は上限まで比例 */
+    const world = (base: number, fineAdd: number, per: number, elig: number) => {
+      const calls: Array<[number, SinkCfg]> = [];
+      const run = (B: number, cfg: SinkCfg): PassStats => {
+        calls.push([B, cfg]);
+        const used = Math.min(cfg.areaN, elig);
+        const cap = base + (cfg.fine ? fineAdd : 0) + per * used;
+        const forks = Math.min(cap, Math.round(B === Infinity ? cap : 0.9 * B));
+        return { forks, limited: forks < cap ? 1 : 0, areaEligible: elig, areaUsed: used, areaReverted: 0 };
+      };
+      return { run, calls };
+    };
+    const a = world(3000, 0, 0, 10);
+    const pa = planBudget(a.run, 2000, 0.02);
+    expect([pa.calib.saturated, pa.calib.fine, pa.chosen.cfg]).toEqual([false, false, { fine: false, areaN: 0 }]);
+    const b = world(1700, 400, 100, 10);
+    const pb = planBudget(b.run, 2000, 0.02);
+    expect([pb.calib.saturated, pb.calib.splitMax, pb.calib.fine, pb.calib.fineMax, pb.chosen.cfg.areaN]).toEqual([true, 1700, true, 2100, 0]);
+    const c = world(1500, 100, 120, 20);
+    const pc = planBudget(c.run, 2000, 0.02);
+    // 1600 + 120 n ≥ 1960 → n = 3（1・2・4 と倍々の後に 3 に詰める）
+    expect([pc.calib.saturated, pc.calib.fineMax, pc.chosen.cfg]).toEqual([true, 1600, { fine: true, areaN: 3 }]);
+    expect(pc.calib.reachMax).toBeNull();
+    const d = world(1000, 50, 30, 5);
+    const pd = planBudget(d.run, 2000, 0.02);
+    expect([pd.calib.reachMax, pd.calib.target, pd.chosen.B, pd.chosen.cfg]).toEqual([1200, 1200, Infinity, { fine: true, areaN: 5 }]);
   });
 });

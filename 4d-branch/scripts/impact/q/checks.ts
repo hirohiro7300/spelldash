@@ -8,11 +8,21 @@
 //   J1  転職活動: この会社での期の数は searchMax まで、続けて決まらなかった期の数は searchRun まで（どの状態でも）
 //   J2  一番ありそうな道で、続けて決まらなかった転職活動は searchRun 期まで（最初の手ごと）
 // 数（おすすめの道。どの判断でも一番良い手を選び、出来事はすべて）: 転職活動を 1 期以上する見込み・転職した見込み・転職活動の期の数の平均
+// 新しい出力の点検（checkOutputs。作業メモ SPEC v1 §2.4・§2.6）:
+//   Q1  まとめた手でない手にはどれも q（有限の R3）があり、まとめた手には無い
+//   Q2  判断の一番良い手は、同じ見積もり方（q・まとめた手の値）でも一番（同じ見積もり方の ★ の元）
+//   M1  まとめた行き先にはどれも mix があり、割合は 0〜1（仕事・届け出の答えは合わせて 1）、幅は小さい順、顧客は整数で幅 band と同じ
+//   M2  まとめた行き先にはどれも cont があり、まとめた手の 3 か月の後から 33 か月目まで 3 か月ごとに 1 つずつ。手は世界の手、出来事は決まった語彙
+//   B1  分かれ道の数は、最初の手ごとに min(目標, 届く上限) の ±tol
+//   N1  ノードは maxNodes 枚まで
+//   K0  never に _all とまとまりすべてがあり、k(none) = _all − （何も除かない同じ計算）が年収 360・540 万円で ±0.5
 
 import { calendarCheck } from "./calendar";
+import { Wsum } from "./core";
 import { displayOrder } from "./devTree";
-import type { QNode } from "./gen";
+import type { MoveStats, QNode } from "./gen";
 import { bandOf } from "./group";
+import { CONT_EVENTS, likeValue, type NeverResult } from "./outputs";
 import { isSearch, uses } from "./quarter";
 import { bookStats } from "./sim";
 import { H, type WorldQ } from "./world";
@@ -165,4 +175,80 @@ export function searchStats(w: WorldQ, a0: QNode): SearchStats {
     opt = c.role === "e" ? null : bestOf(c);
   }
   return { kind: a0.kind!, pSearch: pSearch / total, pSwitched: pSwitched / total, pEverSwitched: pEver / total, meanSearch: mean / total, chainP, chainMaxFailRun: maxRun, chain };
+}
+
+export interface OutputCheckOpts {
+  /** 最初の手ごとの数（予算の合わせ込みの報告つき）。無ければ B1 は見ない */
+  stats?: readonly MoveStats[];
+  /** 分かれ道の数の目標の幅（±） */
+  tol: number;
+  /** 「3 年やらない」見積もり（無ければ K0 は見ない）と、そのまとまり */
+  never?: NeverResult;
+  fams?: readonly string[];
+  maxNodes: number;
+}
+
+/** 新しい出力の点検（rollbackApp(root, 生成の月給) と summaryOutputs の後に呼ぶ）。通らない物の文を返す */
+export function checkOutputs(w: WorldQ, root: QNode, o: OutputCheckOpts): string[] {
+  const S = w.annual / 12;
+  const fails: string[] = [];
+  const fail = (s: string) => {
+    if (fails.length < 40) fails.push(s);
+    else if (fails.length === 40) fails.push("（ほかにもある）");
+  };
+  const isR3 = (v: unknown) => Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x));
+  const kinds = new Set(Object.keys(w.kinds));
+  const events = new Set(CONT_EVENTS);
+  let nodes = 0;
+  const in01 = (x: number) => x >= -1e-9 && x <= 1 + 1e-9;
+  const sorted3 = (t: readonly number[]) => t.length === 3 && t.every((x) => Number.isFinite(x)) && t[0]! <= t[1]! && t[1]! <= t[2]!;
+  const walk = (n: QNode) => {
+    nodes++;
+    if (n.role === "a") {
+      if (n.stub && n.qv) fail(`Q1 まとめた手に q がある: ${n.key}`);
+      if (!n.stub && !isR3(n.qv)) fail(`Q1 まとめた手でない手に q が無い: ${n.key}`);
+    }
+    if (n.role === "s" || n.role === "r") {
+      const best = n.kids.find((a) => a.why === "best") ?? (n.role === "s" ? n.kids.find((a) => a.kind === "keep") : undefined);
+      if (best) {
+        const lb = likeValue(best, S);
+        for (const a of n.kids) if (likeValue(a, S) > lb + 1e-6) fail(`Q2 同じ見積もり方で一番良い手より良い手: ${a.key}（${likeValue(a, S).toFixed(3)} > ${lb.toFixed(3)}）`);
+      }
+    }
+    if (n.role === "e" && n.sumEnd) {
+      const mx = n.mix;
+      if (!mx) fail(`M1 まとめた行き先に mix が無い: ${n.key}`);
+      else {
+        const js = mx.j.e + mx.j.p + mx.j.i;
+        const pms = mx.pm["?"] + mx.pm.a + mx.pm.s + mx.pm.n;
+        const shares = [mx.j.e, mx.j.p, mx.j.i, mx.pm["?"], mx.pm.a, mx.pm.s, mx.pm.n, mx.pro, mx.switched, mx.school];
+        if (!shares.every(in01) || Math.abs(js - 1) > 1e-3 || Math.abs(pms - 1) > 1e-3) fail(`M1 mix の割合: ${n.key}`);
+        if (![mx.cl, mx.pu, mx.mau, mx.sal].every(sorted3) || !mx.cl.every((k) => Number.isInteger(k) && k >= 0)) fail(`M1 mix の幅: ${n.key}`);
+        const band = bandOf(w, n.st);
+        if (band && (band.cl[0] !== mx.cl[0] || band.cl[1] !== mx.cl[2])) fail(`M1 mix の顧客の幅が band と違う: ${n.key}（${band.cl.join("〜")} / ${mx.cl.join("・")}）`);
+        if (!band && mx.cl[0] !== mx.cl[2]) fail(`M1 1 つの社数なのに mix の顧客に幅: ${n.key}`);
+      }
+      const ct = n.cont;
+      const m1 = n.parent!.m + 3;
+      if (!ct) fail(`M2 まとめた行き先に cont が無い: ${n.key}`);
+      else if (ct.length !== (H - m1) / 3 || ct.some((c, i) => c.m !== m1 + 3 * i || !kinds.has(c.kind) || (c.ev !== undefined && !events.has(c.ev)))) fail(`M2 cont の並び: ${n.key}`);
+    }
+    for (const k of n.kids) walk(k);
+  };
+  walk(root);
+  if (nodes > o.maxNodes) fail(`N1 ノードが ${nodes} 枚（上限 ${o.maxNodes}）`);
+  for (const s of o.stats ?? []) {
+    const c = s.calib;
+    if (!c.hit) fail(`B1 分かれ道 ${s.forks} が目標 ${c.target} の ±${(100 * o.tol).toFixed(0)}% に入らない: ${s.kind}`);
+  }
+  if (o.never) {
+    const nv = o.never.never;
+    for (const k of ["_all", ...(o.fams ?? [])]) if (!isR3(nv[k])) fail(`K0 never に ${k} が無い`);
+    for (const annual of [360, 540]) {
+      const s = annual / 12;
+      const k = Wsum(nv._all!, s) - Wsum(o.never.none.v, s);
+      if (!(Math.abs(k) <= 0.5)) fail(`K0 k(none) = ${k.toFixed(3)}（年収 ${annual} 万円）`);
+    }
+  }
+  return fails;
 }

@@ -37,13 +37,33 @@ export const isNumeric = (kind: string, s0: QSt): boolean => {
 /** 3 か月の数え上げの回数（報告用） */
 export const simCount = { n: 0 };
 
-/** 手の 3 か月の結果（見込みは整数 %） */
-export function quarterOutcomes(w: WorldQ, s0: QSt, kind: string, m0: number, mode: Mode, S: number): OutcomeQ[] {
+/** 手の 3 か月の結果（見込みは整数 %）。fine なら事実の小さい組も分けたまま（./group.ts。予算の使い道 1） */
+export function quarterOutcomes(w: WorldQ, s0: QSt, kind: string, m0: number, mode: Mode, S: number, fine = false): OutcomeQ[] {
   simCount.n++;
   const samples = simQ(w, s0, kind, m0);
   if ((mode === "fact" || mode === "lean") && isNumeric(kind, s0)) return [collapsed(w, samples, m0 + 3)];
   if (mode === "lean" && kind === "fc_push") return [collapsed(w, samples, m0 + 3)];
-  return groupOutcomesQ(w, kind, driverQ(kind, s0), s0, m0, samples, 3, S);
+  return groupOutcomesQ(w, kind, driverQ(kind, s0), s0, m0, samples, 3, S, fine);
+}
+
+/**
+ * 同じ 3 か月の結果を何度も数えないための入れ物（「3 年やらない」見積もりの粗い表どうしで分け合う。生成の木では使わない）。
+ * 結果は正確な状態・段・手・まとめ方だけで決まる（状態は作った後に書き換えない）ので、分け合っても値は変わらない
+ */
+export class OutcomeCache {
+  m = new Map<string, OutcomeQ[]>();
+  hits = 0;
+  get(w: WorldQ, s: number, x: QSt, kind: string, mode: Mode, S: number): OutcomeQ[] {
+    const key = `${exactKey(s, x)}|${kind}|${mode}`;
+    const hit = this.m.get(key);
+    if (hit) {
+      this.hits++;
+      return hit;
+    }
+    const outs = quarterOutcomes(w, x, kind, 3 * s, mode, S);
+    this.m.set(key, outs);
+    return outs;
+  }
 }
 
 /** 稼ぎ [給与の月数, 広告運用 万円, SpellDash 万円] を月給 S で万円にする */
@@ -86,6 +106,9 @@ export interface DPEntry {
   rep: QSt;
 }
 
+/** 粗い表のマスの取り方（生成と「3 年やらない」見積もりで同じ） */
+export const GRID: Grid = { sal: 0.05, sd: false, corr: true };
+
 /** 粗い表（手の順位を決めるだけ。書き出す数には使わない）: 引かれたマスだけ作り、そのマスでできる手を全部 1 段先まで正確に計算する */
 export class CoarseDP {
   memo = new Map<string, DPEntry>();
@@ -95,6 +118,8 @@ export class CoarseDP {
     public S: number,
     public kinds: string[],
     public grid: Grid,
+    /** 3 か月の結果の入れ物（「3 年やらない」見積もりの表どうしで分け合う。無ければ毎回数える） */
+    public oc: OutcomeCache | null = null,
   ) {}
   entry(s: number, x: QSt): DPEntry | null {
     if (s >= NSTAGE) return null;
@@ -107,7 +132,8 @@ export class CoarseDP {
     for (const k of this.kinds) {
       if (!feasibleQ(this.w, x, k, m0)) continue;
       let q = 0;
-      for (const o of quarterOutcomes(this.w, x, k, m0, "fact", this.S)) q += o.w * (Wsum(o.r, this.S) + this.value(s + 1, o.st));
+      const outs = this.oc ? this.oc.get(this.w, s, x, k, "fact", this.S) : quarterOutcomes(this.w, x, k, m0, "fact", this.S);
+      for (const o of outs) q += o.w * (Wsum(o.r, this.S) + this.value(s + 1, o.st));
       rank.push([k, q]);
     }
     rank.sort((a, b) => b[1] - a[1] || Number(b[0] === "keep") - Number(a[0] === "keep"));
@@ -140,6 +166,17 @@ export class CoarseDP {
   }
 }
 
+/** 続きの見積もりの 1 つの結果: 見込み（整数 %）・結果の名前（OutcomeQ の id）・その先 */
+export interface RollKid {
+  p: number;
+  id: string;
+  next: Roll;
+}
+
+/**
+ * 続きの見積もり（3s か月目の正確な状態 x から、粗い表の手で 36 か月目まで）。正確な状態ごとに覚えるので、同じ状態から先は
+ * 同じ物を指す（入れ子ではなく、合流のある形）。まとめた行き先の中身（mix）と標準の続き（cont）は、この形を後からたどって出す
+ */
 export interface Roll {
   /** 3s か月目から 36 か月目までの稼ぎ [給与の月数, 広告運用 万円, SpellDash 万円] */
   v: Vec3;
@@ -147,9 +184,15 @@ export interface Roll {
   rr: Vec3;
   /** 36 か月目の代表の状態 */
   st: QSt;
+  /** 段（36 か月目は NSTAGE）と、その段の初めの正確な状態 */
+  s: number;
+  x: QSt;
+  /** 粗い表の手（36 か月目は ""）と、その 3 か月の結果（結果のまとめ方の順） */
+  k: string;
+  kids: RollKid[];
 }
 
-const exactKey = (s: number, x: QSt) => `${s}|${x.j}|${x.pm}|${x.pro}|${x.mau}|${x.pu}|${x.seats}|${bookKey(x.cb)}|${x.sal}|${x.cv}|${x.fl.join("+")}`;
+export const exactKey = (s: number, x: QSt) => `${s}|${x.j}|${x.pm}|${x.pro}|${x.mau}|${x.pu}|${x.seats}|${bookKey(x.cb)}|${x.sal}|${x.cv}|${x.fl.join("+")}`;
 
 /**
  * 粗い表の手で 36 か月目まで続けた正確な見積もり（正確な状態ごとに覚える）。見込みはアプリと同じ整数 % で重みを付けるので、
@@ -165,24 +208,27 @@ export class Rollouts {
     public mode: (kind: string, x: QSt) => Mode = () => "lean",
   ) {}
   roll(s: number, x: QSt): Roll {
-    if (s >= NSTAGE) return { v: [0, 0, 0], rr: runRateQ(this.w, x), st: x };
+    if (s >= NSTAGE) return { v: [0, 0, 0], rr: runRateQ(this.w, x), st: x, s: NSTAGE, x, k: "", kids: [] };
     const key = exactKey(s, x);
     const hit = this.memo.get(key);
     if (hit) return hit;
     this.steps++;
     const k = this.dp.move(s, x);
-    const outs = quarterOutcomes(this.w, x, k, 3 * s, this.mode(k, x), this.S);
+    const mode = this.mode(k, x);
+    const outs = this.dp.oc ? this.dp.oc.get(this.w, s, x, k, mode, this.S) : quarterOutcomes(this.w, x, k, 3 * s, mode, this.S);
     let v: Vec3 = [0, 0, 0];
     let rr: Vec3 = [0, 0, 0];
     const ends: Array<{ x: QSt; w: number }> = [];
+    const kids: RollKid[] = [];
     for (const o of outs) {
       const c = this.roll(s + 1, o.st);
       const q = o.p / 100;
       v = add3(v, scale3(add3(o.r, c.v), q));
       rr = add3(rr, scale3(c.rr, q));
       ends.push({ x: c.st, w: q });
+      kids.push({ p: o.p, id: o.id, next: c });
     }
-    const res: Roll = { v, rr, st: ends.length === 1 ? ends[0]!.x : repStateQ(this.w, ends) };
+    const res: Roll = { v, rr, st: ends.length === 1 ? ends[0]!.x : repStateQ(this.w, ends), s, x, k, kids };
     this.memo.set(key, res);
     return res;
   }

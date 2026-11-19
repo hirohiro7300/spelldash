@@ -96,6 +96,30 @@ export function clientDist(st: QSt): Array<[number, number]> {
   return [...m.entries()].sort((a, b) => a[0] - b[0]);
 }
 
+/** 一番ありそうな社数（顧客の場合の混ざりで重みが一番大きい社数。同じ重みなら少ない方）。1 つの社数だけの状態ならその社数 */
+export function clientMode(st: QSt): number {
+  let best = 0;
+  let bw = -1;
+  for (const [k, p] of clientDist(st))
+    if (p > bw + 1e-12) {
+      bw = p;
+      best = k;
+    }
+  return best;
+}
+
+/** 小さい順の重み付きの分布（重みの合計 1）で、累積が p に届く一番小さい値を ps ごとに（届かなければ一番大きい値）。幅 band・中身 mix で同じ取り方 */
+export function distQuantiles(d: ReadonlyArray<readonly [number, number]>, ps: readonly number[]): number[] {
+  return ps.map((p) => {
+    let acc = 0;
+    for (const [v, w] of d) {
+      acc += w;
+      if (acc >= p - 1e-12) return v;
+    }
+    return d.at(-1)![0];
+  });
+}
+
 /**
  * 社数の違う場合をまとめた状態の幅: まとめた分布の 10%〜90%（整数の社数。MapMix・扇の図と同じ取り方）。1 つの社数だけなら無し。
  * 下限と上限が同じこともある（例: 2 社が 9 割を超える → [2, 2]。まとめた状態であることは幅があることで分かる）
@@ -103,15 +127,8 @@ export function clientDist(st: QSt): Array<[number, number]> {
 export function bandOf(_w: WorldQ, st: QSt): { cl: [number, number] } | undefined {
   const d = clientDist(st);
   if (d.length < 2) return undefined;
-  let acc = 0;
-  let lo = -1;
-  let hi = -1;
-  for (const [k, p] of d) {
-    acc += p;
-    if (lo < 0 && acc >= 0.1 - 1e-12) lo = k;
-    if (hi < 0 && acc >= 0.9 - 1e-12) hi = k;
-  }
-  return { cl: [lo, hi < 0 ? d.at(-1)![0] : hi] };
+  const [lo, hi] = distQuantiles(d, [0.1, 0.9]);
+  return { cl: [lo!, hi!] };
 }
 
 function meanR(samples: QSample[]): Vec3 {
@@ -140,8 +157,12 @@ function bucketOf(v: number, edges: number[]): number {
   return b;
 }
 
-/** 数え上げを結果にまとめる。S は月給（まとめる判断の目安の値に使う）。kind は手（続ける転職活動 fc_switch2 もそのまま） */
-export function groupOutcomesQ(w: WorldQ, kind: string, driver: Driver, s0: QSt, m0: number, samples: QSample[], maxOuts: number, S: number): OutcomeQ[] {
+/**
+ * 数え上げを結果にまとめる。S は月給（まとめる判断の目安の値に使う）。kind は手（続ける転職活動 fc_switch2 もそのまま）。
+ * fine: 事実の小さい組（minOutcomeP 未満）を、同じ事実の組にまとめずに分けたままにする（予算の使い道 1。作業メモ SPEC v1 D1・§2.2）。
+ * 例: 『全部可』で 1 社目が決まる 8%（a1）を『全部可・まだ』（a0）にまとめない・移れる見込みが小さい時の 1.18 倍と 1.08 倍を分ける
+ */
+export function groupOutcomesQ(w: WorldQ, kind: string, driver: Driver, s0: QSt, m0: number, samples: QSample[], maxOuts: number, S: number, fine = false): OutcomeQ[] {
   const mEnd = m0 + 3;
   const localOf = (smp: QSample): number => {
     const rr = runRateQ(w, smp.x);
@@ -237,8 +258,10 @@ export function groupOutcomesQ(w: WorldQ, kind: string, driver: Driver, s0: QSt,
   const minP = w.minOutcomeP / 100;
   const nearest = (i: number, cand: number[]) =>
     cand.sort((a, b) => Number(groups[b]!.sig === groups[i]!.sig) - Number(groups[a]!.sig === groups[i]!.sig) || Math.abs(groups[a]!.local - groups[i]!.local) - Math.abs(groups[b]!.local - groups[i]!.local))[0]!;
-  // 2) 小さい組（10% 未満）を隣（分類なら似た組）にまとめる。同じ事実の組が無ければ、小さいまま残す（事実は平均しない）
+  // 2) 小さい組（10% 未満）を隣（分類なら似た組）にまとめる。同じ事実の組が無ければ、小さいまま残す（事実は平均しない）。
+  //    fine なら、事実の小さい組は同じ事実の組があっても分けたまま（fineKept。4) でもまとめない）
   const alone = new Set<Group>();
+  const fineKept = new Set<Group>();
   for (let guard = 0; guard < 50 && groups.length > 1; guard++) {
     let i = -1;
     let least = Infinity;
@@ -246,6 +269,11 @@ export function groupOutcomesQ(w: WorldQ, kind: string, driver: Driver, s0: QSt,
       if (!alone.has(g) && g.w < minP - 1e-12 && g.w < least) (least = g.w), (i = k);
     });
     if (i < 0) break;
+    if (fine && factOf(groups[i]!) !== null) {
+      alone.add(groups[i]!);
+      fineKept.add(groups[i]!);
+      continue;
+    }
     const cand = (ordered ? [i - 1, i + 1].filter((k) => k >= 0 && k < groups.length) : groups.map((_, k) => k).filter((k) => k !== i)).filter((k) => sameFact(groups[k]!, groups[i]!));
     if (!cand.length) {
       alone.add(groups[i]!);
@@ -282,7 +310,7 @@ export function groupOutcomesQ(w: WorldQ, kind: string, driver: Driver, s0: QSt,
     for (let i = 0; i < groups.length; i++) {
       for (let j = i + 1; j < groups.length; j++) {
         if (ordered && j !== i + 1) continue;
-        if (!sameFact(groups[i]!, groups[j]!)) continue;
+        if (!sameFact(groups[i]!, groups[j]!) || fineKept.has(groups[i]!) || fineKept.has(groups[j]!)) continue;
         const same = groups[i]!.sig === groups[j]!.sig;
         const d = Math.abs(groups[i]!.local - groups[j]!.local) + (same ? 0 : 1e6);
         if (d < score) (score = d), (best = i), (bestJ = j);
