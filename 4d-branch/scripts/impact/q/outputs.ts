@@ -1,15 +1,18 @@
 // 生成の新しい出力（作業メモ SPEC v1 §2.4・D2。見直し truth-2・truth-3・truth-5・user-3）:
 //   まとめた行き先の中身 mix と標準の続き cont: どちらも、その行き先の値を出した続きの見積もり（./core.ts の Roll。合流のある形）をたどって出す
-//   「3 年やらない」場合の見積もり never: 粗い表をその種類なしで作り直した、今日からの続きの見積もり（R3）。_all は何も除かない同じ見積もり
+//   「3 年やらない」場合の見積もり never: 粗い表をその種類なしで作り直した、今日からの続きの見積もり（R3）。_all は何も除かない同じ見積もりで、
+//   今日の手の q もこの表から出す（今日の手の q と k(fam) = _all − never[fam] が同じ表になる。見直し truth-2）
+//   表を引く順を変えた時の幅（truth-2）と、標準の続きを 1 段改善した時の今日の手ごとの伸び（truth-5）: どちらも報告用（書き出す値には使わない）
 //   ★ の数: 木の値で比べた場合と、同じ見積もり方（q・まとめた手の値）で比べた場合
 
 import type { MapContStep, MapMix } from "../../../src/deepmap/mapData";
 import type { Vec3 } from "../sim";
-import { CoarseDP, GRID, OutcomeCache, quarterOutcomes, Rollouts, Wsum, type Mode, type Roll } from "./core";
-import { qOf, type QNode } from "./gen";
+import { add3, CoarseDP, exactKey, OutcomeCache, quarterOutcomes, Rollouts, scale3, Wsum, type Roll } from "./core";
+import { qOf, warmTable, type QNode } from "./gen";
 import { clientDist, clientMode, distQuantiles } from "./group";
+import { feasibleQ } from "./quarter";
 import { toQ, type QSt } from "./sim";
-import type { WorldQ } from "./world";
+import { NSTAGE, type WorldQ } from "./world";
 
 // ---- 標準の続きの出来事（cont の ev）
 
@@ -235,68 +238,216 @@ export function releaseRolls(root: QNode): void {
   walk(root);
 }
 
-// ---- 「3 年やらない」場合の見積もり（never）
+// ---- 「3 年やらない」場合の見積もり（never）と、今日の手の q
 
 export interface NeverOne {
-  /** 今日から 36 か月目までの稼ぎ（R3） */
+  /** 今日から 36 か月目までの稼ぎ（R3）: 今日の手のうち生成の年収で一番大きい手の q */
   v: Vec3;
   /** 選んだ今日の手 */
   k: string;
+  /** 今日の手（除いた種類の手を除く）ごとの q（R3。この表で出した物） */
+  qs: Record<string, Vec3>;
   /** 作った粗い表のマスの数・続きの見積もりの状態の数・かかった時間 */
   cells: number;
   rolls: number;
   ms: number;
 }
 
+/** 今日の手の q を出した表（今日の手の q と never._all は同じ表から。見直し truth-2）。改善の大きさ（improvementGains）を測るのにも使う */
+export interface RootTable {
+  one: NeverOne;
+  dp: CoarseDP;
+  ro: Rollouts;
+}
+
 /**
- * 種類 exclude を使わない場合の、今日からの見積もり: 粗い表をその種類なしで作り直し（表を引く順は今日の手の順の続きの見積もり）、
- * 今日の手（その種類の手を除く）ごとに、その 3 か月（木の今日の手と同じまとめ方: fineAt）+ 続きの見積もり。生成の年収で一番大きい手の R3
+ * 種類 exclude を使わない場合の、今日からの見積もり: 粗い表をその種類なしで作り直し（引き始める順は、今日の手を order の順に続きの見積もりで。
+ * 既定は今日の手の並び rootMenu の順）、今日の手（その種類の手を除く）ごとに、その 3 か月（木の今日の手と同じまとめ方: fineAt）+ 続きの見積もり。
+ * 生成の年収で一番大きい手の R3。order・warm（生成の木と同じく、先に今日の状態の 3 か月後のマスから引く: warmTable）を変えるのは、
+ * 順を変えた時の幅を測る時だけ
  */
-export function neverOf(w: WorldQ, S: number, exclude: ReadonlySet<string>, mode: (kind: string, x: QSt) => Mode, fineAt: (k: string) => boolean, oc: OutcomeCache | null): NeverOne {
+export function neverTable(w: WorldQ, S: number, exclude: ReadonlySet<string>, fineAt: (k: string) => boolean, oc: OutcomeCache | null, order?: readonly string[], warm = false): RootTable {
   const t0 = performance.now();
   const kinds = Object.keys(w.kinds).filter((k) => !exclude.has(k));
-  const dp = new CoarseDP(w, S, kinds, GRID, oc);
-  const ro = new Rollouts(w, S, dp, mode);
+  const dp = new CoarseDP(w, S, kinds, oc);
+  if (warm) warmTable(w, dp);
+  const ro = new Rollouts(w, S, dp);
   const today = toQ(w, w.today);
-  let best: { v: Vec3; k: string; W: number } | null = null;
-  for (const k of w.rootMenu) {
+  const qs: Record<string, Vec3> = {};
+  for (const k of order ?? w.rootMenu) {
     if (exclude.has(k)) continue;
     const outs = quarterOutcomes(w, today, k, 0, "split", S, fineAt(k));
-    const v = qOf(outs, outs.map((o) => ro.roll(1, o.st)));
+    qs[k] = qOf(outs, outs.map((o) => ro.roll(1, o.st)));
+  }
+  // 一番大きい手は今日の手の並び（rootMenu）の順で探す（同じ値なら先の手）
+  let best: { v: Vec3; k: string; W: number } | null = null;
+  for (const k of w.rootMenu) {
+    const v = qs[k];
+    if (!v) continue;
     const W = Wsum(v, S);
     if (!best || W > best.W + 1e-9) best = { v, k, W };
   }
   if (!best) throw new Error("「3 年やらない」見積もり: 選べる今日の手がありません");
-  return { v: best.v, k: best.k, cells: dp.memo.size, rolls: ro.memo.size, ms: performance.now() - t0 };
+  return { one: { v: best.v, k: best.k, qs, cells: dp.memo.size, rolls: ro.memo.size, ms: performance.now() - t0 }, dp, ro };
+}
+
+/** neverTable の数だけ（表は放す） */
+export function neverOf(w: WorldQ, S: number, exclude: ReadonlySet<string>, fineAt: (k: string) => boolean, oc: OutcomeCache | null, order?: readonly string[], warm = false): NeverOne {
+  return neverTable(w, S, exclude, fineAt, oc, order, warm).one;
+}
+
+/** 今日の手の q を出す表（何も除かない never の表。never._all はこの表の一番大きい手の q）。3 か月の結果の入れ物は oc */
+export function rootTable(w: WorldQ, S: number, fineAt: (k: string) => boolean, oc: OutcomeCache): RootTable {
+  return neverTable(w, S, new Set(), fineAt, oc);
 }
 
 export interface NeverResult {
-  /** 見出しの never: まとまりごと + "_all" */
+  /** 見出しの never: まとまりごと + "_all"（_all は今日の手の q を出した表の一番大きい手） */
   never: Record<string, Vec3>;
   info: Record<string, NeverOne>;
-  /** 点検用: 何も除かない同じ計算を、3 か月の結果の入れ物を使わずに別に作った物 */
+  /** 点検用（K0）: まとまりの表をすべて作った後の、3 か月の結果の入れ物を使い回した何も除かない同じ計算（_all と同じになるはず） */
   none: NeverOne;
 }
 
+/** まとまり fam の種類 */
+export const famKinds = (w: WorldQ, fam: string): Set<string> => new Set(Object.keys(w.kinds).filter((k) => w.kinds[k]!.family === fam));
+
 /**
- * 「3 年やらない」見積もりをまとまり fams（今のままを除く）ごとと _all に。表どうしで 3 か月の結果の入れ物を分け合う（値は変わらず速くなる）。
- * 点検用に、何も除かない計算を入れ物なしでもう一度作る（k(none) = _all − none は 0 になるはず。truth-3）
+ * 「3 年やらない」見積もりをまとまり fams（今のままを除く）ごとに。_all は今日の手の q を出した表 root（同じ月給の入れ物 oc で作った物）の一番大きい手。
+ * 表どうしで 3 か月の結果の入れ物 oc を分け合う（値は変わらず速くなる）。最後に、使い回した入れ物で何も除かない計算をもう一度して
+ * _all と比べる（K0: 入れ物が値を変えないことの点検。k(none) = _all − none は 0 になるはず）
  */
-export function neverValues(w: WorldQ, S: number, mode: (kind: string, x: QSt) => Mode, fineAt: (k: string) => boolean, fams: readonly string[]): NeverResult {
-  const oc = new OutcomeCache();
-  const never: Record<string, Vec3> = {};
-  const info: Record<string, NeverOne> = {};
-  const all = neverOf(w, S, new Set(), mode, fineAt, oc);
-  never._all = all.v;
-  info._all = all;
+export function neverValues(w: WorldQ, S: number, fineAt: (k: string) => boolean, fams: readonly string[], root: RootTable, oc: OutcomeCache): NeverResult {
+  const never: Record<string, Vec3> = { _all: root.one.v };
+  const info: Record<string, NeverOne> = { _all: root.one };
   for (const fam of fams) {
-    const ex = new Set(Object.keys(w.kinds).filter((k) => w.kinds[k]!.family === fam));
-    const one = neverOf(w, S, ex, mode, fineAt, oc);
+    const one = neverOf(w, S, famKinds(w, fam), fineAt, oc);
     never[fam] = one.v;
     info[fam] = one;
   }
-  const none = neverOf(w, S, new Set(), mode, fineAt, null);
+  const none = neverOf(w, S, new Set(), fineAt, oc);
   return { never, info, none };
+}
+
+// ---- 表を引く順を変えた時の幅（見直し truth-2）
+
+/** 決まった種からの順（線形合同。順を変えた時の幅を測る順は、作り直しても同じ） */
+export function shuffled<T>(xs: readonly T[], seed: number): T[] {
+  let s = seed >>> 0;
+  const r = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 2 ** 32;
+  const o = [...xs];
+  for (let k = o.length - 1; k > 0; k--) {
+    const j = Math.floor(r() * (k + 1));
+    [o[k], o[j]] = [o[j]!, o[k]!];
+  }
+  return o;
+}
+
+/** 順を変えた時の今日の手の q と、まとまりの never（fams があれば） */
+export interface OrderRun {
+  /** 引き始める順の名前（既定は gen: 生成と同じ順） */
+  name: string;
+  order: string[] | null;
+  qs: Record<string, Vec3>;
+  never: Record<string, Vec3>;
+}
+
+/**
+ * 表を引き始める順を変えて、今日の手の q（と nev があれば、まとまり fams の never）を出し直す: 1 つ目は今日の手の q を出した表（今日の手の並びの順。
+ * root の値を使う）、2 つ目は生成の木と同じ引き始め（今日の状態の 3 か月後から: warmTable）、残りは今日の手の逆の順と、決まった種で並べ替えた順。
+ * 幅は順の間の一番大きい差
+ */
+export function orderRuns(w: WorldQ, S: number, fineAt: (k: string) => boolean, root: RootTable, nev: NeverResult | null, fams: readonly string[], K: number, oc: OutcomeCache): OrderRun[] {
+  const out: OrderRun[] = [{ name: "menu", order: null, qs: root.one.qs, never: nev ? { ...nev.never } : { _all: root.one.v } }];
+  for (let i = 1; i < K; i++) {
+    const order = i === 1 ? null : i === 2 ? [...w.rootMenu].reverse() : shuffled(w.rootMenu, 1000 + i);
+    const run = (ex: ReadonlySet<string>) => neverOf(w, S, ex, fineAt, oc, order ?? undefined, i === 1);
+    const all = run(new Set());
+    const never: Record<string, Vec3> = { _all: all.v };
+    if (nev) for (const fam of fams) never[fam] = run(famKinds(w, fam)).v;
+    out.push({ name: i === 1 ? "gen" : i === 2 ? "reverse" : `shuffle${i}`, order, qs: all.qs, never });
+  }
+  return out;
+}
+
+/** 幅（一番小さい・大きい）。年収 annual の万円で */
+export interface Spread {
+  lo: number;
+  hi: number;
+}
+
+/** 順ごとの値 f の幅 */
+export function spreadOf(runs: readonly OrderRun[], f: (r: OrderRun) => number): Spread {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const r of runs) {
+    const v = f(r);
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
+  }
+  return { lo, hi };
+}
+
+// ---- 標準の続きの 1 段の改善の大きさ（見直し truth-5）
+
+/** 今日の手ごとの、標準の続き（粗い表の手）の q と、1 段改善した続きの q（R3） */
+export interface Gain {
+  k: string;
+  q: Vec3;
+  qImproved: Vec3;
+}
+
+/**
+ * 標準の続きを 1 段改善した時の、今日の手ごとの q の伸び（方策の改善 1 回）: 続きのどの状態でも、その 3 か月を正確に（lean）+ その後は標準の続き、
+ * で一番良い手を選ぶ続き π' を、同じまとめ方で正確に見積もる。伸び = q(π') − q(π) ≥ 0。最初の手で伸びが違えば、q の差はその分だけ偏る
+ * （★ や順位の変化は、その差より大きい時だけ数える）。root は今日の手の q を出した表
+ */
+export function improvementGains(w: WorldQ, S: number, fineAt: (k: string) => boolean, root: RootTable): { gains: Gain[]; states: number; ms: number } {
+  const t0 = performance.now();
+  const { ro } = root;
+  const kinds = Object.keys(w.kinds);
+  const greedy = new Map<string, string>();
+  const piPrime = (s: number, x: QSt): string => {
+    const key = exactKey(s, x);
+    const hit = greedy.get(key);
+    if (hit) return hit;
+    const tk = ro.roll(s, x).k;
+    let bk = tk;
+    let bq = -Infinity;
+    let tq = NaN;
+    for (const k of kinds) {
+      if (!feasibleQ(w, x, k, 3 * s)) continue;
+      const outs = quarterOutcomes(w, x, k, 3 * s, "lean", S);
+      const q = Wsum(qOf(outs, outs.map((o) => ro.roll(s + 1, o.st))), S);
+      if (k === tk) tq = q;
+      if (q > bq + 1e-9) (bq = q), (bk = k);
+    }
+    if (!(bq > tq + 1e-9)) bk = tk;
+    greedy.set(key, bk);
+    return bk;
+  };
+  const memo = new Map<string, Vec3>();
+  const vPrime = (s: number, x: QSt): Vec3 => {
+    if (s >= NSTAGE) return [0, 0, 0];
+    const key = exactKey(s, x);
+    const hit = memo.get(key);
+    if (hit) return hit;
+    const outs = quarterOutcomes(w, x, piPrime(s, x), 3 * s, "lean", S);
+    let v: Vec3 = [0, 0, 0];
+    for (const o of outs) v = add3(v, scale3(add3(o.r, vPrime(s + 1, o.st)), o.p / 100));
+    memo.set(key, v);
+    return v;
+  };
+  const today = toQ(w, w.today);
+  const gains: Gain[] = [];
+  for (const k of w.rootMenu) {
+    const outs = quarterOutcomes(w, today, k, 0, "split", S, fineAt(k));
+    const q = qOf(outs, outs.map((o) => ro.roll(1, o.st)));
+    let qi: Vec3 = [0, 0, 0];
+    for (const o of outs) qi = add3(qi, scale3(add3(o.r, vPrime(1, o.st)), o.p / 100));
+    gains.push({ k, q, qImproved: qi });
+  }
+  return { gains, states: memo.size, ms: performance.now() - t0 };
 }
 
 // ---- ★ の数（見直し truth-2）

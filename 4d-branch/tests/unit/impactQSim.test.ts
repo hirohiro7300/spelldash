@@ -3,14 +3,15 @@ import { describe, expect, it } from "vitest";
 import worldJson from "../../scripts/impact/world.json";
 import { simulate, type St, type World } from "../../scripts/impact/sim";
 import { calendarCheck, calendarOf, DEFAULT_ANCHOR, ymOf } from "../../scripts/impact/q/calendar";
-import { parseArgs } from "../../scripts/impact/q/cli";
-import { coarseKey, collapsed, OutcomeCache, quarterOutcomes, repState, type Roll } from "../../scripts/impact/q/core";
+import { labelClients, premiseRuleChecks } from "../../scripts/impact/q/checks";
+import { parseArgs, productionProblems } from "../../scripts/impact/q/cli";
+import { CoarseDP, coarseKey, collapsed, OutcomeCache, quarterOutcomes, repState, type Roll } from "../../scripts/impact/q/core";
 import { calibrate, CODE, DEFAULTS, Heap, planBudget, qOf, R1_ALTS_BY, type PassStats, type SinkCfg } from "../../scripts/impact/q/gen";
 import { bandOf, clientDist, clientMode, distQuantiles, groupOutcomesQ } from "../../scripts/impact/q/group";
 import { CONT_EVENTS, contEvent, contOf, leavesOf, mixOf, paidSal } from "../../scripts/impact/q/outputs";
 import { feasibleQ, LIMITS, uses } from "../../scripts/impact/q/quarter";
 import { binomP, bookStats, offerScale, runRateQ, setBook, simQ, toQ, type Comp, type QSample, type QSt } from "../../scripts/impact/q/sim";
-import { CHANGES, NSTAGE, quarterWorld, type WorldQ } from "../../scripts/impact/q/world";
+import { CHANGES, menuOf, NSTAGE, PART_ONEWAY, quarterWorld, SWITCH_ONCE, type WorldQ } from "../../scripts/impact/q/world";
 
 const base = worldJson as unknown as World;
 const w: WorldQ = quarterWorld(base);
@@ -30,15 +31,17 @@ describe("3 か月ごとの世界", () => {
     expect(w.stages[0]!.maxAlts).toBe(10);
   });
 
-  it("2 年の進め方は無く、転職活動を続ける手が最後に足される。sd_pro は出さない", () => {
+  it("2 年の進め方と sd_pro は無く、転職活動を続ける手が最後に足される", () => {
     expect(Object.keys(w.kinds).filter((k) => k.startsWith("plan_"))).toEqual([]);
+    expect(Object.keys(w.kinds)).not.toContain("sd_pro");
+    expect(Object.keys(w.kinds).length).toBe(19);
     expect(Object.keys(w.kinds).at(-1)).toBe("fc_switch2");
     const sw = w.kinds.fc_switch!;
     const sw2 = w.kinds.fc_switch2!;
     expect(sw2.label).toBe("転職活動を続ける");
     expect([sw2.area, sw2.family, sw2.hours, sw2.scen, sw2.p]).toEqual([sw.area, sw.family, sw.hours, sw.scen, sw.p]);
-    for (const [k, d] of Object.entries(w.kinds)) expect(d.stages).toEqual(k === "sd_pro" ? [] : w.stages.map((s) => s.month));
-    expect(CHANGES.length).toBe(11);
+    for (const d of Object.values(w.kinds)) expect(d.stages).toEqual(w.stages.map((s) => s.month));
+    expect(CHANGES.length).toBe(13);
   });
 
   it("続けた 3 期で、前の 9 か月の手の見込み（移る 45%: 1.18 倍 20%・1.08 倍 25%）になる", () => {
@@ -89,6 +92,11 @@ describe("3 か月ごとの世界", () => {
       "2026 年 11 月時点",
       "2029 年 11 月",
       "2027 年 4 月から毎年",
+      // 決まりのうち、手の決まりと同じことを言う文（点検 J3・J4）と、範囲を引き継ぐ転職の代償（truth-4）・会社員の月額（truth-8）
+      SWITCH_ONCE,
+      PART_ONEWAY,
+      "『SpellDash だけ可』の方が『どちらも不可』より 3 年の稼ぎが少なく出ることがある",
+      "会社員の間（2 社まで）は新しい顧客も月 3 万円のままで、月 5 万円になるのは週 4 日勤務で顧客が 4 社に届いた後に増えた顧客だけ",
     ])
       expect(text).toContain(s);
     // 英数字の名前（手の id など）を書かない
@@ -137,6 +145,46 @@ describe("暦は地図の年月から（truth-12）", () => {
     expect(sal(d, 3)).toBeCloseTo(1.03, 12);
     expect(sal(d, 0)).toBe(1);
     expect(d.premises.join("")).toContain("2026 年 12 月時点");
+  });
+
+  it("1〜3 月の年月なら今日の 3 か月が昇格を狙える 3 か月なので、今日の手に昇格を狙う手を足す（truth-7）", () => {
+    for (const a of ["2027-01", "2027-02", "2027-03"]) {
+      const d = quarterWorld(base, a);
+      expect(calendarOf(a).promoStages).toEqual([0, 4, 8]);
+      expect(d.rootMenu).toEqual([...base.rootMenu, "fc_push"]);
+      expect(feasibleQ(d, toQ(d, d.today), "fc_push", 0)).toBe(true);
+      expect(premiseRuleChecks(d)).toEqual([]);
+    }
+    for (const a of ["2026-11", "2026-12", "2027-04", "2027-10"]) expect(quarterWorld(base, a).rootMenu).toEqual(base.rootMenu);
+    expect(menuOf(["keep", "fc_push"], "2027-01")).toEqual(["keep", "fc_push"]);
+    expect(parseArgs(["--out", "t", "--anchor", "2027-02", "--only", "keep,fc_push"], base.rootMenu).only).toEqual(["keep", "fc_push"]);
+    expect(() => parseArgs(["--out", "t", "--only", "keep,fc_push"], base.rootMenu)).toThrow();
+  });
+});
+
+describe("前提の文と手の決まりの点検（J3・J4・K2。truth-3・truth-6・truth-7）", () => {
+  it("今の世界は通る（文があり、決まりもその通り）", () => {
+    expect(premiseRuleChecks(w)).toEqual([]);
+  });
+
+  it("文を消すと、決まりと合わないので通らない", () => {
+    const drop = (t: string): WorldQ => ({ ...w, premises: w.premises.map((p) => p.replace(t, "")) });
+    expect(premiseRuleChecks(drop(SWITCH_ONCE)).map((x) => x.slice(0, 2))).toEqual(["J3"]);
+    expect(premiseRuleChecks(drop(PART_ONEWAY)).map((x) => x.slice(0, 2))).toEqual(["J4"]);
+  });
+
+  it("決まりを変えると（移った後も転職活動・週 4 日から転職活動・昇格はいつでも）、文と合わないので通らない", () => {
+    const unlock = (ww: WorldQ, x: QSt, k: string, m0: number) => (k === "fc_switch" && x.j === "e" && !x.fl.includes("jx") ? true : feasibleQ(ww, x, k, m0));
+    expect(premiseRuleChecks(w, unlock).map((x) => x.slice(0, 2))).toEqual(["J3"]);
+    const partSearch = (ww: WorldQ, x: QSt, k: string, m0: number) => (k === "fc_switch" && x.j === "p" ? true : feasibleQ(ww, x, k, m0));
+    expect(premiseRuleChecks(w, partSearch).map((x) => x.slice(0, 2))).toEqual(["J4"]);
+    const promoAlways = (ww: WorldQ, x: QSt, k: string, m0: number) => (k === "fc_push" ? x.j !== "i" : feasibleQ(ww, x, k, m0));
+    const k2 = premiseRuleChecks(w, promoAlways);
+    expect(k2.length).toBe(2 * 9);
+    expect(k2.every((x) => x.startsWith("K2"))).toBe(true);
+    // 今日が昇格を狙える 3 か月なのに今日の手に無い
+    const jan = quarterWorld(base, "2027-01");
+    expect(premiseRuleChecks({ ...jan, rootMenu: base.rootMenu })).toEqual(["K2 今日の 3 か月が昇格を狙える 3 か月なのに、今日の手に昇格を狙う手が無い"]);
   });
 });
 
@@ -301,7 +349,7 @@ describe("転職活動（truth-6・user-2）", () => {
     expect(feasibleQ(w, s, "fc_switch", 18)).toBe(false);
   });
 
-  it("移ると新しい会社: 週 4 日も聞き直せ、転職活動の数え方も初めから。転職は 1 回だけ。移る月に給与の半月分を引く", () => {
+  it("移ると新しい会社: 週 4 日も聞き直せ、転職活動の数え方も初めから。転職は 3 年で 1 回だけ（独立から会社員に戻るとまた選べる）。移る月に給与の半月分を引く", () => {
     const s0 = withFlags(st(), "jx", "pq", "js", "q3", "r1");
     // 4 月を含まない 3 か月（7〜9 か月目）
     const xs = simQ(w, s0, "fc_switch2", 6);
@@ -313,6 +361,17 @@ describe("転職活動（truth-6・user-2）", () => {
     // 移る月（3 か月目）の初めに、移る前の給与の半月分
     const hi = xs.find((x) => x.tag === "high")!;
     expect(hi.r[0]).toBeCloseTo(1 + 1 + 1.18 - 0.5, 9);
+    // 独立してから会社員に戻ると、印 switched が外れて転職活動の 1 期目をまた選べる
+    const back = simQ(w, withFlags(st({ j: "i" }), "switched"), "back_emp", 9).find((x) => x.x.j === "e")!.x;
+    expect(back.fl.includes("switched")).toBe(false);
+    expect(feasibleQ(w, back, "fc_switch", 12)).toBe(true);
+  });
+
+  it("週 4 日にした後は週 5 日に戻さず、転職活動もしない（独立してから会社員に戻る場合を除く。truth-6）", () => {
+    const p = st({ j: "p" });
+    for (const k of ["fc_switch", "fc_switch2", "part"]) expect(feasibleQ(w, withFlags(p, "jx", "q1"), k, 3)).toBe(false);
+    for (const k of Object.keys(w.kinds)) if (feasibleQ(w, p, k, 3)) for (const x of simQ(w, p, k, 3)) expect(x.x.j).not.toBe("e");
+    expect(simQ(w, p, "ind_quit", 3).every((x) => x.x.j === "i")).toBe(true);
   });
 
   it("週 4 日は 1 つの会社で 1 回だけ（断られたら pq）", () => {
@@ -326,7 +385,7 @@ describe("転職活動（truth-6・user-2）", () => {
     expect(feasibleQ(w, refused[0]!.x, "part", 3)).toBe(false);
   });
 
-  it("遊ぶ人を増やす・広告で集めるは 4 期まで、続ける人を増やすは 1 回だけ、sd_pro は選べない", () => {
+  it("遊ぶ人を増やす・広告で集めるは 4 期まで、続ける人を増やすは 1 回だけ", () => {
     let s = st();
     for (let k = 1; k <= LIMITS.sd_grow; k++) {
       expect(feasibleQ(w, s, "sd_grow", 3 * k)).toBe(true);
@@ -345,7 +404,6 @@ describe("転職活動（truth-6・user-2）", () => {
     expect(r.fl.includes("rt")).toBe(true);
     expect(feasibleQ(w, pro, "sd_retain", 3)).toBe(true);
     expect(feasibleQ(w, r, "sd_retain", 6)).toBe(false);
-    expect(feasibleQ(w, pro, "sd_pro", 3)).toBe(false);
   });
 });
 
@@ -449,6 +507,25 @@ describe("結果のまとめ方", () => {
     expect(os.at(-1)!.ln.hi).toBeNull();
   });
 
+  it("点検 C2 の名前の読み方（labelClients）は、本物の名前を読める（名前の書き方を変えると、C2 が黙って何も見なくなる前にここが落ちる。code-1）", () => {
+    for (const [x, kind, m0] of [
+      [st({ pm: "a", pro: 1, pu: 3, mau: 80 }), "ind_quit", 0],
+      [st({ pm: "a" }, [1, 0, 0]), "ad_more", 3],
+      [st({ j: "i", pm: "a" }, [2, 0, 1]), "keep", 3],
+    ] as const) {
+      const os = quarterOutcomes(w, x, kind, m0, "split", S);
+      expect(os.length, kind).toBeGreaterThan(1);
+      for (const o of os) {
+        const b = bookStats(w, o.st.cb);
+        expect(labelClients(o.lab), `${kind} ${o.lab}`).toEqual({ lo: b.lo, hi: b.hi });
+      }
+    }
+    const fine = quarterOutcomes(w, st(), "ad_permside", 0, "split", S, true);
+    expect(labelClients(fine.find((o) => o.id === "a1")!.lab)).toEqual({ lo: 1, hi: Infinity });
+    // 社数を書かない名前は読まない
+    for (const lab of ["全部可・まだ", "SpellDash だけ", "転職せず", "有料 10〜29 人", "—"]) expect(labelClients(lab)).toBeNull();
+  });
+
   it("数の結果は fact・lean で 1 つにまとめ、昇格の結果は lean だけでまとめる", () => {
     const s3 = st({ mau: 2000, pro: 1, pm: "s", pu: 60 });
     const split = quarterOutcomes(w, s3, "sd_grow", 3, "split", S);
@@ -491,15 +568,31 @@ describe("結果のまとめ方", () => {
     expect(c.st.fl).toEqual(["g1"]);
   });
 
-  it("粗い表のマス: SpellDash の数は見ず、給与は 0.05 刻み。転職活動の期の数は見る", () => {
-    const g = { sal: 0.05, sd: false, corr: true };
-    expect(coarseKey(1, st({ mau: 40 }), g)).toBe(coarseKey(1, st({ mau: 900, pu: 30 }), g));
-    expect(coarseKey(1, st({ sal: 1.02 }), g)).toBe(coarseKey(1, st(), g));
-    expect(coarseKey(1, st({ sal: 1.03 }), g)).not.toBe(coarseKey(1, st(), g));
-    expect(coarseKey(1, withFlags(st(), "jx"), g)).not.toBe(coarseKey(1, st(), g));
-    expect(coarseKey(1, withFlags(st(), "jx", "q1"), g)).not.toBe(coarseKey(1, withFlags(st(), "jx", "q2"), g));
-    expect(coarseKey(1, withFlags(st(), "jx", "q2", "r1"), g)).not.toBe(coarseKey(1, withFlags(st(), "jx", "q2", "r2"), g));
-    expect(coarseKey(2, st(), g)).not.toBe(coarseKey(1, st(), g));
+  it("粗い表のマス: SpellDash の数は見ず、給与は 0.05 刻み。転職活動の期の数と学校の席（1 校 40 席ごと）は見る", () => {
+    expect(coarseKey(1, st({ mau: 40 }))).toBe(coarseKey(1, st({ mau: 900, pu: 30 })));
+    expect(coarseKey(1, st({ sal: 1.02 }))).toBe(coarseKey(1, st()));
+    expect(coarseKey(1, st({ sal: 1.03 }))).not.toBe(coarseKey(1, st()));
+    expect(coarseKey(1, withFlags(st(), "jx"))).not.toBe(coarseKey(1, st()));
+    expect(coarseKey(1, withFlags(st(), "jx", "q1"))).not.toBe(coarseKey(1, withFlags(st(), "jx", "q2")));
+    expect(coarseKey(1, withFlags(st(), "jx", "q2", "r1"))).not.toBe(coarseKey(1, withFlags(st(), "jx", "q2", "r2")));
+    expect(coarseKey(2, st())).not.toBe(coarseKey(1, st()));
+    const pro = { pro: 1 as const, pm: "s" as const };
+    expect(coarseKey(1, st({ ...pro, pu: 45, seats: 40 }))).not.toBe(coarseKey(1, st({ ...pro, pu: 5 })));
+    expect(coarseKey(1, st({ ...pro, pu: 45, seats: 40 }))).toBe(coarseKey(1, st({ ...pro, pu: 52, seats: 40 })));
+  });
+
+  it("マスの代表からの補正: 学校の席は 1 席 seatNet、ほかの有料会員は 1 人 net（席を Pro の値段で数えない。truth-1）", () => {
+    const dp = new CoarseDP(w, S, Object.keys(w.kinds));
+    const c = w.constants;
+    const rep = st({ pro: 1, pm: "s", pu: 5.6 });
+    const n = 36 - 3 * 6;
+    // 同じ席の数なら、席でない有料会員の差だけ
+    expect(dp.corr(6, st({ pro: 1, pm: "s", pu: 8.6 }), rep)).toBeCloseTo(c.net * n * 3, 9);
+    // 学校の導入で 40 席（有料会員も 40 増える）: 40 席 × seatNet で、Pro の値段（net）ではない
+    expect(dp.corr(6, st({ pro: 1, pm: "s", pu: 45.6, seats: 40 }), rep)).toBeCloseTo(c.seatNet! * n * 40, 9);
+    expect(c.seatNet!).toBeLessThan(c.net);
+    // Pro を出していなければ、SpellDash の数の補正は無い
+    expect(dp.corr(6, st({ pu: 9 }), st())).toBe(0);
   });
 });
 
@@ -528,19 +621,45 @@ describe("生成の部品", () => {
 describe("入口の引数", () => {
   it("既定は R1 が選んだ形", () => {
     const o = parseArgs(["--out", "x.json"], w.rootMenu);
-    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", never: true, release: 0, appendHistory: false, runs: 2 });
-    expect(o.params).toMatchObject({ B: 2000, maxAlts: 4, stubMode: "split", factCl: false, altsBy: [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2], tol: 0.02, fineDepth: 3, areaDiscount: 0.3 });
+    expect(o).toEqual({ out: "x.json", params: { ...DEFAULTS, altsBy: [...R1_ALTS_BY] }, anchor: "2026-11", never: true, release: 0, appendHistory: false, runs: 2, spread: 5, spreadNever: false, force: false });
+    expect(o.params).toEqual({ B: 2000, maxAlts: 4, topN: 3, warn: -15, chainDiscount: 0.3, altsBy: [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2], tol: 0.02, fineDepth: 3, areaDiscount: 0.3 });
+    expect(productionProblems(o)).toEqual([]);
   });
 
   it("形を変える引数", () => {
-    const o = parseArgs(["--budget", "300", "--alts", "3", "--alts-by", "off", "--stub", "lean", "--fact-cl", "--only", "keep,part", "--anchor", "2027-02", "--never", "off", "--out", "t.json"], w.rootMenu);
-    expect(o.params).toMatchObject({ B: 300, maxAlts: 3, stubMode: "lean", factCl: true });
+    const o = parseArgs(["--budget", "300", "--alts", "3", "--alts-by", "off", "--only", "keep,part", "--anchor", "2027-02", "--never", "off", "--spread", "1", "--spread-never", "--force", "--out", "t.json"], w.rootMenu);
+    expect(o.params).toMatchObject({ B: 300, maxAlts: 3 });
     expect(o.params.altsBy).toBeUndefined();
-    expect([o.only, o.anchor, o.out, o.never]).toEqual([["keep", "part"], "2027-02", "t.json", false]);
-    const r = parseArgs(["--out", "t.json", "--bundle", "b.b64", "--release", "7", "--record", "rec.json", "--history", "h.json", "--append-history", "--runs", "1", "--tol", "2"], w.rootMenu);
-    expect([r.bundle, r.release, r.record, r.history, r.appendHistory, r.runs, r.params.tol]).toEqual(["b.b64", 7, "rec.json", "h.json", true, 1, 2]);
+    expect([o.only, o.anchor, o.out, o.never, o.spread, o.spreadNever, o.force]).toEqual([["keep", "part"], "2027-02", "t.json", false, 1, true, true]);
+    const r = parseArgs(["--out", "t.json", "--bundle", "b.b64", "--release", "7", "--record", "rec.json", "--history", "h.json", "--append-history"], w.rootMenu);
+    expect([r.bundle, r.release, r.record, r.history, r.appendHistory, r.runs, r.params.tol]).toEqual(["b.b64", 7, "rec.json", "h.json", true, 2, 0.02]);
     expect(parseArgs(["--out", "t", "--never", "on"], w.rootMenu).never).toBe(true);
     expect(parseArgs(["--out", "t", "--alts-by", "0,3,3,3,3,3,3,3,3,2,2,2"], w.rootMenu).params.altsBy).toEqual([0, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2]);
+    // 版 0（試し・テストの木）は形が自由
+    expect(parseArgs(["--out", "t", "--budget", "40", "--tol", "12", "--only", "keep", "--runs", "1", "--never", "off"], w.rootMenu).release).toBe(0);
+  });
+
+  it("版の順番（release 1 以上）は本番の形でだけ付けられる（format-1。記録は足すだけなので、試しの木で番号を使い切らない）", () => {
+    const prod = ["--out", "t", "--release", "7"];
+    expect(parseArgs(prod, w.rootMenu).release).toBe(7);
+    const bad: Array<[string[], string]> = [
+      [["--only", "keep"], "--only"],
+      [["--budget", "40"], "--budget"],
+      [["--tol", "12"], "--tol"],
+      [["--tol", "0.021"], "--tol"],
+      [["--never", "off"], "--never"],
+      [["--runs", "1"], "--runs"],
+      [["--alts", "3"], "--alts"],
+      [["--alts-by", "off"], "--alts-by"],
+      [["--alts-by", "0,3,3,3,3,3,3,3,3,2,2,2"], "--alts-by"],
+    ];
+    for (const [extra, word] of bad) {
+      expect(() => parseArgs([...prod, ...extra], w.rootMenu), extra.join(" ")).toThrow(/版の記録は本番の形/);
+      expect(() => parseArgs([...prod, ...extra], w.rootMenu), extra.join(" ")).toThrow(word);
+      // 版 0 なら同じ引数で作れる
+      expect(parseArgs(["--out", "t", ...extra], w.rootMenu).release).toBe(0);
+    }
+    expect(parseArgs([...prod, "--tol", "0.01", "--record", "r.json", "--append-history"], w.rootMenu).params.tol).toBe(0.01);
   });
 
   it("読めない引数は投げる", () => {
@@ -551,7 +670,9 @@ describe("入口の引数", () => {
       ["--out", "x", "--only", "plan_ind"],
       ["--out", "x", "--anchor", "2026-13"],
       ["--out", "x", "--alts-by", "0,4,4"],
-      ["--out", "x", "--stub", "all"],
+      ["--out", "x", "--stub", "split"],
+      ["--out", "x", "--fact-cl"],
+      ["--out", "x", "--spread", "0"],
       ["--out", "x", "--never", "yes"],
       ["--out", "x", "--nope"],
       ["--out", "x", "--hash", "dev-port"],
@@ -611,7 +732,7 @@ describe("予算の使い道 1: 事実の小さい組も分ける（fine。SPEC 
   });
 
   it("3 か月の結果の入れ物（「3 年やらない」の表どうしで分け合う）は、毎回数えた結果と同じ物を返す", () => {
-    const oc = new OutcomeCache();
+    const oc = new OutcomeCache(S);
     const x = st({ pm: "a", pro: 1, pu: 5, mau: 120 }, [1, 0, 0]);
     for (const [kind, mode] of [["keep", "lean"], ["ad_side", "fact"], ["fc_switch", "lean"]] as const) {
       const a = oc.get(w, 1, x, kind, mode, S);
@@ -620,6 +741,8 @@ describe("予算の使い道 1: 事実の小さい組も分ける（fine。SPEC 
     }
     expect(oc.hits).toBe(3);
     expect(oc.m.size).toBe(3);
+    // 月給はまとめ方の目安に使うので、違う月給では引けない（鍵に月給が無いので、混ぜると違う結果を返してしまう）
+    expect(() => oc.get(w, 1, x, "keep", "lean", 45)).toThrow(/月給/);
   });
 });
 

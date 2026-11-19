@@ -1,6 +1,6 @@
 // 3 か月ごとの地図の同梱データ（作業メモ SPEC v1 §3.1・§3.2・§2.5・§2.6）: 書き手 scripts/impact/q/bundle.ts・読み手 src/demo/impactBundle.ts・
 // 小さな伸長 src/demo/inflate.ts・点検 scripts/impact/q/check.ts・64 ビットの ID・版の記録 scripts/impact/releases.json。
-// 本物の生成で作った小さい木（tests/fixtures/q-small.*。4,478 枚）で、読み手がどのノードのどの問いにも fromDevTree() と同じ答えを返すことを確かめる。
+// 本物の生成で作った小さい木（tests/fixtures/q-small.*。4,333 枚）で、読み手がどのノードのどの問いにも fromDevTree() と同じ答えを返すことを確かめる。
 // 8 万枚の木は impactBundleQFull.test.ts（環境変数があるときだけ）
 import { beforeAll, describe, expect, it } from "vitest";
 import { bundleHash, bytesToBase64, canonicalizeDevTree, encodeMap, headerForStream } from "../../scripts/impact/q/bundle";
@@ -222,6 +222,50 @@ describe("§2.6 の点検（scripts/impact/q/check.ts）を小さい木で", () 
     }
     // 値は開発用の木から直接出した値と同じ（読み手の値 = 丸めた木の値）
     expect(mapValues(map, 360).V).toEqual(mapValues(ref, 360).V);
+  });
+
+  it("N10・C1・一貫性・読み手の点検は、1 か所壊した地図で通らない（見直し code-1）", () => {
+    /** 開発用の木を写して 1 か所変え、読むだけの地図にする（変えるノードは find で選ぶ） */
+    const broken = (find: (n: DevTreeNode, parent: DevTreeNode | null) => boolean, change: (n: DevTreeNode) => void): MapData => {
+      const t = structuredClone(dev);
+      const walk = (n: DevTreeNode, parent: DevTreeNode | null): boolean => {
+        if (find(n, parent)) {
+          change(n);
+          return true;
+        }
+        return (n.kids ?? []).some((c) => walk(c, n));
+      };
+      expect(walk(t.root, null)).toBe(true);
+      return fromDevTree(t);
+    };
+    // N10: Pro を出しているのに届け出の答えがまだ（まとめた行き先でない状態）
+    const n10 = broken((n) => n.r === "s" && n.st.pm === "?" && n.st.j === "e", (n) => (n.st = { ...n.st, pro: 1 }));
+    expect(checkN10(n10).fails.map((f) => f.slice(0, 3))).toEqual(["N10"]);
+    // まとめた行き先の代表の状態なら数えるだけ
+    const n10sum = broken((n) => !!n.sum && !(n.st.pro === 1 && n.st.pm === "?" && n.st.j === "e"), (n) => (n.st = { ...n.st, pro: 1, pm: "?", j: "e" }));
+    expect(checkN10(n10sum).fails).toEqual([]);
+    expect(checkN10(n10sum).sumCount).toBe(checkN10(map).sumCount + 1);
+    // C1: 幅の無い状態の社数が整数でない・幅が逆・mix の顧客の幅が band と違う
+    expect(checkClients(broken((n) => n.r === "s" && !n.band, (n) => (n.st = { ...n.st, cl: 1.5 }))).map((f) => f.slice(0, 2))).toEqual(["C1"]);
+    expect(checkClients(broken((n) => n.r === "s" && !!n.band, (n) => (n.band = { cl: [2, 1] }))).map((f) => f.slice(0, 2))).toEqual(["C1"]);
+    expect(checkClients(broken((n) => !!n.mix && !!n.band, (n) => (n.mix = { ...n.mix!, cl: [n.band!.cl![0], n.mix!.cl[1], n.band!.cl![1] + 1] }))).length).toBe(1);
+    // R1 一貫性: おすすめの道の一番良い手をまとめた手にすると、おすすめの道がまとめた手に入る
+    const v = mapValues(map, 360);
+    let target = "";
+    for (let i = 0; i < map.n && !target; i++) if (map.role(i) === "s" && v.best[i]! >= 0 && !map.stub(v.best[i]!)) target = map.key(v.best[i]!);
+    const con = consistencyOfMap(broken((n) => n.k === target, (n) => (n.stub = true)), 360);
+    expect(con.intoStub).toBeGreaterThan(0);
+    expect(con.fails[0]).toContain("R1");
+    // B2 読み手: 1 つの問いの答えが 1 か所だけ違う地図
+    const wrapped = Object.create(map) as MapData;
+    const k = 7;
+    Object.defineProperty(wrapped, "e", { value: (i: number) => (i === k ? [9, 9, 9] : map.e(i)) });
+    const diff = compareMaps(map, wrapped);
+    expect(diff).toHaveLength(1);
+    expect(diff[0]).toContain(`${map.key(k)} の e`);
+    const wrongKid = Object.create(map) as MapData;
+    Object.defineProperty(wrongKid, "child", { value: (i: number, j: number) => (i === 0 && j === 0 ? map.child(0, 1) : map.child(i, j)) });
+    expect(compareMaps(map, wrongKid).some((f) => f.includes("番目の子が違います"))).toBe(true);
   });
 
   it("決まり・大きさの点検は違いを見つける", () => {
@@ -549,6 +593,8 @@ describe("64 ビットの ID（作業メモ SPEC v1 §2.5・D9。版 6 の 32 �
 
 describe("版の記録（scripts/impact/releases.json。足すだけ）", () => {
   const h = releasesJson as unknown as ReleaseHistory;
+  /** 本番の形で作った記録の作った形（2,000・±2%・今日の 10 手・never・2 回） */
+  const prodBuild = { B: 2000, tol: 0.02, moves: 10, never: true, runs: 2, nodes: 71_619 };
   it("記録は点検に通り、決まった書き方のままで、最後はアプリが同梱している版 6 と同じ", () => {
     expect(checkReleaseHistory(h)).toEqual([]);
     expect(formatHistory(h)).toBe(releasesText);
@@ -564,7 +610,7 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
     expect(checkReleaseAppend(h, { release: 5, hash: "0123456789abcd" }).verdict).toBe("refuse");
     expect(checkReleaseAppend(h, { release: 8, hash: "bvpn-apwrrf" }).verdict).toBe("refuse");
     expect(checkReleaseAppend(h, { release: 8, hash: "bl06-12wmu46" }).verdict).toBe("refuse");
-    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1", anchor: "2026-11" }] };
+    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1", anchor: "2026-11", build: prodBuild }] };
     expect(checkReleaseHistory(withR7)).toEqual([]);
     expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abce" }).verdict).toBe("refuse");
     expect(formatHistory(withR7).split("\n").length).toBe(releasesText.split("\n").length + 1);
@@ -572,12 +618,28 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
 
   it("記録の点検は、戻る・同じ順番が 2 つ・同じ指紋が 2 つ・形の違う指紋を見つける", () => {
     const base = h.releases;
-    const q = (release: number, hash: string) => ({ release, hash, scheme: "q1" as const });
+    const q = (release: number, hash: string) => ({ release, hash, scheme: "q1" as const, build: prodBuild });
     expect(checkReleaseHistory({ releases: [...base, q(7, "0123456789abcd"), q(7, "0123456789abce")] })).toHaveLength(1);
     expect(checkReleaseHistory({ releases: [...base, q(5, "0123456789abcd")] })).toHaveLength(1);
     expect(checkReleaseHistory({ releases: [...base, q(7, "0123456789abcd"), q(8, "0123456789abcd")] })).toHaveLength(1);
     expect(checkReleaseHistory({ releases: [...base, q(7, "bvpn-apwrrf")] }).length).toBeGreaterThanOrEqual(1);
     expect(checkReleaseHistory({ releases: [...base, q(7, "short")] })).toHaveLength(1);
+  });
+
+  it("3 か月ごとの地図の記録（q1）は本番の形で作った物だけ（試しの木で版の番号を使い切らない。format-1）", () => {
+    const rec = (build: Partial<typeof prodBuild> | null) => ({ releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1" as const, ...(build ? { build: { ...prodBuild, ...build } } : {}) }] });
+    expect(checkReleaseHistory(rec({}))).toEqual([]);
+    expect(checkReleaseHistory(rec({ moves: 11 }))).toEqual([]);
+    for (const bad of [{ B: 40 }, { tol: 12 }, { moves: 1 }, { never: false }, { runs: 1 }, { nodes: 0 }, { nodes: 90_001 }]) {
+      const f = checkReleaseHistory(rec(bad));
+      expect(f, JSON.stringify(bad)).toHaveLength(1);
+      expect(f[0]).toContain("本番の形");
+    }
+    expect(checkReleaseHistory(rec(null))[0]).toContain("作った形 build がありません");
+    // 足せるかの判断も、本番の形でない記録の上には足さない
+    expect(checkReleaseAppend(rec({ B: 40 }), { release: 8, hash: "0123456789abce" }).verdict).toBe("refuse");
+    // 実際の記録（版 6 まで）の q1 はどれも本番の形
+    for (const r of h.releases) if (r.scheme === "q1") expect(r.build).toMatchObject({ B: 2000, never: true, runs: 2 });
   });
 
   it("基準の文書の指紋はまだ作っていない（W-store が作る。入口の形だけ決めてある）", () => {

@@ -12,9 +12,11 @@
 //   I1  ID: 鍵からの 64 ビットの ID（ノード n_i_・線 e_i_）が重ならない
 //   D1  決まり: 2 回作った決まった並びのバイト列と指紋が同じ（読んだ地図を書き直しても同じバイト列）
 //   Z1・Z2 大きさ: 決まった並び ≤ 4 MB・gzip ≤ 1.2 MB（base64 も報告）
-//   H1  版の記録（scripts/impact/releases.json）: 版の順番は増えるだけ、同じ版の順番に違う指紋・同じ指紋に違う版の順番は無い
+//   H1  版の記録（scripts/impact/releases.json）: 版の順番は増えるだけ、同じ版の順番に違う指紋・同じ指紋に違う版の順番は無い。
+//       3 か月ごとの地図の記録（q1）は本番の形で作った物だけ（作った形 build: 2,000・±2% 以内・never・2 回・今日の手すべて。見直し format-1）
 
 import { calendarCheck } from "./calendar";
+import { DEFAULTS } from "./gen";
 import { buildImpactDoc, impactEdgeId64, impactNodeId, impactNodeId64, type ImpactAltX, type ImpactBNode, type ImpactBundle, type ImpactOutX, type ImpactRootX } from "../../../src/demo/impact";
 import type { MapData } from "../../../src/deepmap/mapData";
 import { computeForecast } from "../../../src/model/forecast";
@@ -441,6 +443,21 @@ export interface ReleaseEntry {
   commit?: string;
   /** 同じ版の順番で先に記録され、後で置き換えられた指紋（もう使わない） */
   replaced?: Array<{ hash: string; commit?: string }>;
+  /** 3 か月ごとの地図（q1）を作った形: 分かれ道の目標・幅・最初の手の数・never・作った回数・ノードの数（本番の形でなければ記録に足さない） */
+  build?: { B: number; tol: number; moves: number; never: boolean; runs: number; nodes: number };
+}
+
+/** 版の記録の作った形が本番の形か（今日の手すべて = 10 手以上・2,000・±2% 以内・never・2 回・ノード 90,000 まで）。違う所の文を返す */
+export function buildProblems(b: ReleaseEntry["build"]): string[] {
+  if (!b) return ["作った形 build がありません"];
+  const out: string[] = [];
+  if (b.B !== DEFAULTS.B) out.push(`分かれ道の目標 ${b.B}（${DEFAULTS.B} であること）`);
+  if (!(b.tol <= DEFAULTS.tol + 1e-12)) out.push(`幅 ${b.tol}（${DEFAULTS.tol} 以下であること）`);
+  if (!(b.moves >= 10)) out.push(`最初の手 ${b.moves}（今日の手すべて）`);
+  if (!b.never) out.push("never なし");
+  if (b.runs !== 2) out.push(`作った回数 ${b.runs}（2 回であること）`);
+  if (!(b.nodes > 0 && b.nodes <= MAX_NODES)) out.push(`ノード ${b.nodes}`);
+  return out;
 }
 
 export interface ReleaseHistory {
@@ -462,6 +479,7 @@ export function checkReleaseHistory(h: ReleaseHistory): string[] {
     prev = Math.max(prev, r.release);
     if (!(r.scheme in HASH_FORM)) out.push(`H1 知らない指紋の作り: ${String(r.scheme)}（版 ${r.release}）`);
     else if (!HASH_FORM[r.scheme].test(r.hash)) out.push(`H1 指紋の形が違います: ${r.hash}（版 ${r.release}・${r.scheme}）`);
+    if (r.scheme === "q1") for (const p of buildProblems(r.build)) out.push(`H1 版 ${r.release} は本番の形で作っていません: ${p}`);
     for (const x of [r.hash, ...(r.replaced ?? []).map((y) => y.hash)]) {
       const was = hashes.get(x);
       if (was !== undefined) out.push(`H1 同じ指紋が 2 回あります: ${x}（版 ${was} と ${r.release}）`);

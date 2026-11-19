@@ -78,13 +78,6 @@ export class BookAcc {
   }
 }
 
-/** 重み付きの場合を同じ場合ごとに足し、重みの合計を 1 にした帳簿（並びは決まった順） */
-export function normBook(parts: Iterable<{ n: readonly number[]; f5: 0 | 1; w: number }>): Comp[] {
-  const acc = new BookAcc();
-  for (const c of parts) acc.add(c.n, c.f5, c.w);
-  return acc.book();
-}
-
 /** 帳簿から cl（社数の平均。1 つの場合なら整数）・fee（1 社あたりの月額の平均。丸めないので cl × fee が売上）を入れる */
 export function setBook(w: WorldQ, x: QSt, cb: Comp[]): QSt {
   const b = bookStats(w, cb);
@@ -162,8 +155,8 @@ interface Br {
 const proAllowed = (j: Job, pm: Perm) => pm === "a" || pm === "s" || j === "i";
 /** 期間の途中で届け出の答えが出る・独立する手（その翌月に Pro を出す） */
 const LATE_PRO_KINDS = new Set(["ad_perm", "ad_permside", "ind_quit"]);
-/** Pro を自分で出す手 */
-const SELF_PRO_KINDS = new Set(["sd_permpro", "sd_pro"]);
+/** Pro を自分で出す手（届け出て Pro を出す。Pro だけを出す手 sd_pro は 3 か月ごとの世界には無い） */
+const SELF_PRO_KINDS = new Set(["sd_permpro"]);
 
 /** 転職の見込みに掛ける数: 今の答えと同じ範囲を認める会社だけを受ける（全部可 → 全部可の割合・SpellDash だけ可 → SpellDash を認める割合・まだ／不可 → 1） */
 export function offerScale(w: WorldQ, pm: Perm): number {

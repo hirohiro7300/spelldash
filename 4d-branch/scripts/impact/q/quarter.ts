@@ -1,5 +1,7 @@
 // 3 か月の手の決まり: 選べるか（元の決まり ../sim.ts の feasible に、3 か月ごとの模型の決まりを足す）と、状態の印の付け外し。
 // 粗い表（core.ts）と木（gen.ts）は同じ feasibleQ を使うので、上限はどちらでも同じに効く。設計: 作業メモ SPEC v1 §2.3 #2〜#4
+// 転職は 3 年で 1 回まで（移った後の会社では転職活動をしない。前提の文 SWITCH_ONCE）、週 4 日は戻さず転職活動もしない（PART_ONEWAY）。
+// どちらも前提の文があることと、ここでの決まりがその通りに効くことを点検 J3・J4（checks.ts の premiseRuleChecks）が見る
 // 状態の印（fl）に足す物:
 //   js 転職活動を続けている（前の 3 か月が決まらなかった転職活動）・jx この会社で転職活動をした
 //   q1〜q4 この会社で転職活動をした期の数・r1〜r2 続けて決まらなかった期の数（上限に届いたら次の 3 か月はほかの手）
@@ -33,15 +35,13 @@ export const isSearch = (kind: string) => kind === "fc_switch" || kind === "fc_s
 export function feasibleQ(w: WorldQ, s: St, kind: string, m0: number): boolean {
   switch (kind) {
     case "fc_switch":
-      // 転職活動の 1 期目（1 期目の見込み）は 1 つの会社で 1 回だけ
-      return feasible(w, s, kind, m0, 3) && !has(s, "js") && !has(s, "jx");
+      // 転職活動の 1 期目（1 期目の見込み）は 1 つの会社で 1 回だけ。会社員（週 4 日は除く）で、まだ移っていない時だけ（転職は 3 年で 1 回まで）
+      return s.j === "e" && !has(s, "switched") && !has(s, "js") && !has(s, "jx");
     case "fc_switch2":
       // 続ける（休んでから再開する）: 2 期目以降の見込み。1 つの会社で searchMax 期まで、続けて決まらないのは searchRun 期まで
       return s.j === "e" && !has(s, "switched") && (has(s, "js") || has(s, "jx")) && uses(s, "q") < w.q.searchMax && uses(s, "r") < w.q.searchRun;
     case "part":
       return s.j === "e" && !has(s, "pq");
-    case "sd_pro":
-      return false;
     case "sd_grow":
       return uses(s, "g") < LIMITS.sd_grow;
     case "sd_ads":
@@ -58,7 +58,10 @@ export function driverQ(kind: string, s: St): Driver {
   return driverOf(kind === "fc_switch2" ? "fc_switch" : kind, s);
 }
 
-/** 新しい会社（移った・会社員に戻った）: 週 4 日も転職活動の 1 期目もまた聞け、転職活動の数え方も初めから */
+/**
+ * 新しい会社（移った・会社員に戻った）: 週 4 日はまた聞け、この会社での転職活動の数え方も初めから。ただし転職は 3 年で 1 回まで
+ * （印 switched がある間は転職活動をしない）なので、転職活動の 1 期目をまた選べるのは、独立してから会社員に戻った時だけ（会社員に戻る手が switched を外す）
+ */
 function newEmployer(x: { fl: string[] }): void {
   x.fl = x.fl.filter((f) => f !== "pq" && f !== "jx" && f !== "js" && !isUseFlag(f, "q") && !isUseFlag(f, "r"));
 }

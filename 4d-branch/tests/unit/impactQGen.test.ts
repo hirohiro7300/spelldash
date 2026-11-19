@@ -1,17 +1,20 @@
 // 3 か月ごとの地図の生成（scripts/impact/q）を小さい予算で: 決まった木（作り直しても同じ指紋）・木の形・アプリと同じ値・一貫性・前提の点検・開発用の木の形。
 // 本物の世界（P2 の前提）で、最初の手を 2 つ（今のまま・届け出て副業の 1 社目を探す）、分かれ道 600 に絞る（粗い表を 1 回作るので数秒かかる）。
 // 新しい出力（stage 3）: 手の q・まとめた行き先の mix と cont・「3 年やらない」見積もり・予算の使い道（同じ表を引き継いで ind_quit を分かれ道 2,000 で）。
-// 8 万枚の木（既定の形）はここでは作らない
+// 点検はどれも、通る木だけでなく、1 か所壊した木で通らないこと（その点検の名前の文を返すこと）も確かめる（見直し code-1）。
+// 決まった木の数（指紋・数・値）はインラインのスナップショット。前提や作り方を変えて数が変わったら、確かめてから
+//   npx vitest run tests/unit/impactQGen.test.ts -u
+// で書き直す（見直し code-5。作業メモの道具は要らない）。8 万枚の木（既定の形）はここでは作らない
 import { describe, expect, it } from "vitest";
 import worldJson from "../../scripts/impact/world.json";
 import type { World } from "../../scripts/impact/sim";
-import { checkOutputs, checkTree } from "../../scripts/impact/q/checks";
+import { checkOutputs, checkTree, filingDominance, searchStats } from "../../scripts/impact/q/checks";
 import { OutcomeCache, Wsum, type Roll } from "../../scripts/impact/q/core";
 import { toDevTree } from "../../scripts/impact/q/devTree";
-import { consistencyOf, DEFAULTS, generate, R1_ALTS_BY, rollbackApp, type Params, type QNode } from "../../scripts/impact/q/gen";
+import { consistencyOf, DEFAULTS, generate, R1_ALTS_BY, rollbackApp, type MoveStats, type Params, type QNode } from "../../scripts/impact/q/gen";
 import { bandOf } from "../../scripts/impact/q/group";
-import { CONT_EVENTS, likeValue, neverOf, starCounts, summaryOutputs } from "../../scripts/impact/q/outputs";
-import { runRateQ, type QSt } from "../../scripts/impact/q/sim";
+import { CONT_EVENTS, improvementGains, likeValue, neverOf, neverValues, orderRuns, rootTable, spreadOf, starCounts, summaryOutputs, type NeverResult } from "../../scripts/impact/q/outputs";
+import { runRateQ, setBook, simQ, toQ, type QSt } from "../../scripts/impact/q/sim";
 import { quarterWorld } from "../../scripts/impact/q/world";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTreeNode } from "../../src/deepmap/mapData";
@@ -51,27 +54,8 @@ function nodesOf(r: DevTreeNode): Array<{ n: DevTreeNode; parent: DevTreeNode | 
 }
 const all = nodesOf(tree.root);
 
-/** P2 の前提と stage 3 の出力でこの形（最初の手 2 つ・分かれ道 600）を作った時の値（作業メモ deepmap/gen/tools/golden3.ts で、生成そのものから出した） */
-const GOLDEN = {
-  stats: [
-    ["keep", 597, 2394, 5, 736.16680032077],
-    ["ad_permside", 595, 2498, 4, 517.0588235294117],
-  ] as Array<[string, number, number, number, number]>,
-  guards: 56,
-  vRoot: 1249.5321375408766,
-  vSQ: 1124.1749999999997,
-  counts: { nodes: 4893, decisions: 852, options: 2205, forks: 1193, ends: 1836, sumEnds: 1503 },
-  fingerprint: "08g0f5b1x03s22",
-  bands: 1223,
-  rv: 231,
-  /** ★ の数（木の値・同じ見積もり方） */
-  stars: [79, 22],
-  /** 今日の手の q（ad_permside・keep） */
-  rootQ: [
-    [39.92117028152647, 30.000360863512004, 14.205587886966006],
-    [40.22129079890847, 20.237136383512, 8.275590324219998],
-  ],
-};
+/** 小数を 9 桁に丸める（スナップショットの値が足す順の違いの端数で揺れないように） */
+const r9 = (x: number) => Math.round(x * 1e9) / 1e9;
 
 /** 並び（深さ優先）の 1 行（鍵・役割・月・状態・稼ぎ・手・q・結果・幅・mix・cont・子の数） */
 function fingerprint(r: DevTreeNode): string {
@@ -91,20 +75,74 @@ function fingerprint(r: DevTreeNode): string {
 }
 
 describe("3 か月ごとの地図の生成（小さい予算）", () => {
-  it("決まった木: 作り直しても同じ鍵・並び・見込み・稼ぎ・状態・結果の名前と線・幅・q・mix・cont（P2 の前提と stage 3 の出力で作った時の値）", () => {
-    // P2 の前提（作業メモ SPEC v1 §2.2・§2.3）と §2.4 の出力でこの形を作った時の値。前提や作り方を変えたら、ここも作り直す
-    expect(stats.map((s) => [s.kind, s.forks, s.nodes, s.passes, s.Bint])).toEqual(GOLDEN.stats);
+  it("決まった木: 作り直しても同じ鍵・並び・見込み・稼ぎ・状態・結果の名前と線・幅・q・mix・cont（数はスナップショット）", () => {
     // 分ける予算だけで目標の ±2% に入る（飽和しない）
     for (const s of stats) expect(s.calib).toMatchObject({ target: 600, saturated: false, fine: false, areaN: 0, reachMax: null, hit: true });
-    expect(gen.guards).toBe(GOLDEN.guards);
-    expect(vRoot).toBeCloseTo(GOLDEN.vRoot, 9);
-    expect(rollbackApp(root, S, true)).toBeCloseTo(GOLDEN.vSQ, 9);
+    const vSQ = rollbackApp(root, S, true);
     rollbackApp(root, S);
-    expect(tree.header.counts).toEqual(GOLDEN.counts);
-    expect(fingerprint(tree.root)).toBe(GOLDEN.fingerprint);
-    expect(tree.root.kids!.map((a) => a.q)).toEqual(GOLDEN.rootQ);
     const sc = starCounts(root, S, 10);
-    expect([sc.all.tree, sc.all.q]).toEqual(GOLDEN.stars);
+    // P2 の前提（作業メモ SPEC v1 §2.2・§2.3）と §2.4 の出力でこの形を作った時の値。前提や作り方を変えたら -u で書き直す（上の注意）
+    expect({
+      stats: stats.map((s) => [s.kind, s.forks, s.nodes, s.passes, r9(s.Bint)]),
+      guards: gen.guards,
+      vRoot: r9(vRoot),
+      vSQ: r9(vSQ),
+      counts: tree.header.counts,
+      fingerprint: fingerprint(tree.root),
+      bands: all.filter(({ n }) => n.band).length,
+      rv: all.filter(({ n }) => n.rv).length,
+      stars: [sc.all.tree, sc.all.q],
+      rootQ: tree.root.kids!.map((a) => a.q!.map(r9)),
+    }).toMatchInlineSnapshot(`
+      {
+        "bands": 1181,
+        "counts": {
+          "decisions": 878,
+          "ends": 1831,
+          "forks": 1187,
+          "nodes": 4967,
+          "options": 2258,
+          "sumEnds": 1457,
+        },
+        "fingerprint": "1fe4fix0kq4jv0",
+        "guards": 72,
+        "rootQ": [
+          [
+            39.948835139,
+            30.000360864,
+            15.149974913,
+          ],
+          [
+            40.244530496,
+            20.237136384,
+            9.67787199,
+          ],
+        ],
+        "rv": 231,
+        "stars": [
+          51,
+          23,
+        ],
+        "stats": [
+          [
+            "keep",
+            588,
+            2399,
+            3,
+            735.871743487,
+          ],
+          [
+            "ad_permside",
+            598,
+            2567,
+            2,
+            570,
+          ],
+        ],
+        "vRoot": 1249.697118643,
+        "vSQ": 1124.175,
+      }
+    `);
   });
 
   it("木の形: 今日 → 手 → 3 か月後の状態 → … → 36 か月目の行き先。鍵は親の鍵から作り、重ならない", () => {
@@ -178,7 +216,7 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
         expect(hi).toBeLessThanOrEqual(Math.max(...d));
       } else expect(Number.isInteger(n.st.cl)).toBe(true);
     }
-    expect(all.filter(({ n }) => n.band).length).toBe(GOLDEN.bands);
+    expect(all.filter(({ n }) => n.band).length).toBeGreaterThan(100);
   });
 
   it("手がある訳: 今日の決まった手には付けず、その後は 一番良い・今のまま・別の領域・避けたい のどれか", () => {
@@ -218,7 +256,7 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
       expect(["a", "s", "n"]).toContain(n.rv![1]);
       if (!n.sum) expect(n.rv![1]).toBe(n.st.pm);
     }
-    expect(seen).toBe(GOLDEN.rv);
+    expect(seen).toBeGreaterThan(50);
     expect(later).toBeGreaterThan(0);
   });
 
@@ -325,6 +363,192 @@ describe("3 か月ごとの地図の生成（小さい予算）", () => {
   });
 });
 
+/** 1 か所だけ変えて試し、終わったら必ず戻す（同じ木をほかのテストも使うので） */
+function mutate<T extends object, K extends keyof T>(o: T, key: K, v: T[K], fn: () => void): void {
+  const had = Object.prototype.hasOwnProperty.call(o, key);
+  const old = o[key];
+  o[key] = v;
+  try {
+    fn();
+  } finally {
+    if (had) o[key] = old;
+    else delete o[key];
+  }
+}
+const codes = (xs: readonly string[]) => [...new Set(xs.map((x) => x.split(" ")[0]!))];
+
+describe("点検は 1 か所壊すと通らない（見直し code-1: 書き出しを止める点検の、通らない場合）", () => {
+  const decisions = qAll.filter((n) => n.role === "s" && !n.sumEnd);
+  const tree0 = () => checkTree(w, root).fails;
+
+  it("壊す前は通る", () => {
+    rollbackApp(root, S);
+    expect(tree0()).toEqual([]);
+  });
+
+  it("N10: Pro を出しているのに届け出の答えがまだ", () => {
+    const n = decisions.find((x) => x.st.pm === "?" && x.st.j === "e" && x.st.pro === 0)!;
+    mutate(n, "st", { ...n.st, pro: 1 }, () => expect(codes(tree0())).toEqual(["N10"]));
+  });
+
+  it("N7: 『SpellDash だけ可』なのに広告運用の顧客", () => {
+    const n = decisions.find((x) => x.st.pm === "s" && x.st.j === "e" && x.st.cl === 0)!;
+    mutate(n, "st", setBook(w, { ...n.st, fl: [...n.st.fl], cb: [] }, [{ n: [1, 0, 0], f5: 0, w: 1 }]), () => expect(codes(tree0())).toEqual(["N7"]));
+  });
+
+  it("C1: 1 つの社数の状態なのに社数が整数でない・幅のある状態の平均が社数の外", () => {
+    const n = decisions.find((x) => x.st.cb.length === 1)!;
+    mutate(n, "st", { ...n.st, cl: 1.5 }, () => expect(codes(tree0())).toEqual(["C1"]));
+    const m = decisions.find((x) => x.st.cb.length > 1 && !x.out!.lab.includes("顧客"))!;
+    mutate(m, "st", { ...m.st, cl: 99 }, () => expect(codes(tree0())).toEqual(["C1"]));
+  });
+
+  it("C2: 結果の名前の社数が状態と合わない（本物の名前の書き方は impactQSim で）", () => {
+    const n = decisions.find((x) => x.out && x.out.st.cl < 5)!;
+    mutate(n, "out", { ...n.out!, lab: "顧客 5 社" }, () => expect(codes(tree0())).toEqual(["C2"]));
+  });
+
+  it("F1: 違う事実（会社の答え）をまとめた結果", () => {
+    const n = decisions.find((x) => x.out && (x.out.ln.metric === "perm" || x.out.ln.metric === "permside"))!;
+    mutate(n, "out", { ...n.out!, id: "a_n" }, () => expect(codes(tree0())).toEqual(["F1"]));
+  });
+
+  it("J1: 転職活動の期の数が上限を超える。J3・J4: 移った後の会社・週 4 日で転職活動の手", () => {
+    const n = decisions.find((x) => x.st.j === "e" && !x.st.fl.includes("q1"))!;
+    mutate(n, "st", { ...n.st, fl: [...n.st.fl, "q5"].sort() }, () => expect(codes(tree0())).toEqual(["J1"]));
+    const d = decisions.find((x) => x.st.j === "e" && x.kids.some((a) => a.kind === "fc_switch" || a.kind === "fc_switch2"))!;
+    mutate(d, "st", { ...d.st, fl: [...d.st.fl, "switched"].sort() }, () => expect(codes(tree0())).toEqual(["J3"]));
+    mutate(d, "st", { ...d.st, j: "p" }, () => expect(codes(tree0())).toContain("J4"));
+  });
+
+  it("K1: 4 月の月の番号が地図の年月と合わない", () => {
+    expect(codes(checkTree({ ...w, constants: { ...w.constants, aprilMonths: [4, 16, 28] } }, root).fails)).toEqual(["K1"]);
+  });
+
+  it("J2: 一番ありそうな道で、続けて決まらない転職活動が 3 期（手で作った道）", () => {
+    const x0 = toQ(w, w.today);
+    const x1 = simQ(w, x0, "fc_switch", 0).find((x) => !x.x.fl.includes("switched"))!.x;
+    const out = (st: QSt, m: number) => ({ id: "none", p: 100, w: 1, st, r: [3, 0, 0] as [number, number, number], lab: "転職せず", short: "", line: "", ln: { metric: "sal", at: m, lo: null, hi: null }, sig: "", local: 0 });
+    const r: QNode = { key: "r", role: "r", m: 0, st: x0, stage: 0, kids: [], parent: null, pPath: 1, V: 0 };
+    let opt: QNode = { key: "r.fc_switch", role: "a", m: 0, st: x0, stage: 0, kind: "fc_switch", kids: [], parent: r, pPath: 1, V: 0, why: "menu" };
+    r.kids.push(opt);
+    for (let s = 1; s <= 3; s++) {
+      const d: QNode = { key: `${opt.key}.none`, role: "s", m: 3 * s, st: x1, stage: s, out: out(x1, 3 * s), r: [3, 0, 0], kids: [], parent: opt, pPath: 1, V: 0 };
+      opt.kids.push(d);
+      opt = { key: `${d.key}.${s}fw2`, role: "a", m: 3 * s, st: x1, stage: s, kind: s < 3 ? "fc_switch2" : "keep", kids: [], parent: d, pPath: 1, V: 0, why: s < 3 ? "best" : "keep" };
+      d.kids.push(opt);
+    }
+    opt.kids.push({ key: `${opt.key}.all`, role: "e", m: 36, st: x1, stage: 12, out: out(x1, 12), r: [3, 0, 0], rr: [1, 0, 0], kids: [], parent: opt, pPath: 1, V: 0 });
+    rollbackApp(r, S);
+    expect(searchStats(w, r.kids[0]!).chainMaxFailRun).toBe(3);
+    expect(codes(checkTree(w, r).fails)).toEqual(["J2"]);
+  });
+
+  it("一貫性（consistencyOf）: まとめた手の値が一番良い手を超えると、勝った判断とまとめた手に入る道を数える", () => {
+    rollbackApp(root, S);
+    const d = decisions.find((x) => x.onPi && x.kids.some((a) => a.stub) && x.kids.some((a) => a.why === "best"))!;
+    const best = d.kids.find((a) => a.why === "best")!;
+    const stub = d.kids.find((a) => a.stub)!;
+    mutate(stub, "V", best.V + 5, () => {
+      const c = consistencyOf(root);
+      expect(c.violations).toBeGreaterThan(0);
+      expect(c.worst).toBeCloseTo(5, 6);
+      expect(c.piIntoStub).toBeGreaterThan(0);
+    });
+    rollbackApp(root, S);
+    const c = consistencyOf(root);
+    expect([c.violations, c.piIntoStub]).toEqual([0, 0]);
+  });
+
+  it("新しい出力の点検: Q1（q の有無）・Q2（同じ見積もり方で一番良い手が一番）・M2（cont）・B1（分かれ道）・K0（入れ物の点検）", () => {
+    rollbackApp(root, S);
+    const opts = { stats, tol: P.tol, maxNodes: 90_000 };
+    const out0 = () => checkOutputs(w, root, opts);
+    expect(out0()).toEqual([]);
+    // まとめた手（その判断の一番良い手は別にある）に q を付ける
+    // （ずっと今のままの道では一番良い手もまとめた手のことがあるので、比べる元でない手を選ぶ）
+    const stub = qAll.find((a) => a.role === "a" && a.stub && a.why !== "best" && a.parent!.kids.some((b) => b.why === "best"))!;
+    mutate(stub, "qv", [1, 0, 0], () => expect(codes(out0())).toEqual(["Q1"]));
+    const exp = qAll.find((a) => a.role === "a" && !a.stub && a.why === "best")!;
+    mutate(exp, "qv", undefined, () => expect(codes(out0())).toEqual(["Q1"]));
+    const d = qAll.find((x) => x.role === "s" && x.kids.some((a) => a.stub) && x.kids.some((a) => a.why === "best"))!;
+    const st = d.kids.find((a) => a.stub)!;
+    mutate(st, "V", likeValue(d.kids.find((a) => a.why === "best")!, S) + 1, () => expect(codes(out0())).toEqual(["Q2"]));
+    const end = qAll.find((n) => n.sumEnd)!;
+    mutate(end, "cont", undefined, () => expect(codes(out0())).toEqual(["M2"]));
+    mutate(end, "cont", end.cont!.slice(1), () => expect(codes(out0())).toEqual(["M2"]));
+    const bad: MoveStats[] = stats.map((x, i) => (i === 0 ? { ...x, calib: { ...x.calib, hit: false } } : x));
+    expect(codes(checkOutputs(w, root, { ...opts, stats: bad }))).toEqual(["B1"]);
+    // K0: 3 か月の結果の入れ物を使い回した計算が _all と違えば通らない。まとまりが無くても通らない
+    const fams = ["switch", "side"];
+    const one = { v: [40, 20, 10] as [number, number, number], k: "keep", qs: {}, cells: 0, rolls: 0, ms: 0 };
+    const nv = (none: [number, number, number], fam = fams): NeverResult => ({ never: Object.fromEntries([["_all", one.v], ...fam.map((f) => [f, [39, 20, 10]])]), info: {}, none: { ...one, v: none } });
+    expect(checkOutputs(w, root, { ...opts, never: nv([40, 20, 10]), fams })).toEqual([]);
+    expect(codes(checkOutputs(w, root, { ...opts, never: nv([40, 20, 10.001]), fams }))).toEqual(["K0"]);
+    expect(codes(checkOutputs(w, root, { ...opts, never: nv([40, 20, 10], ["switch"]), fams }))).toEqual(["K0"]);
+  });
+});
+
+describe("今日の手の q の表・「3 年やらない」・順の幅・1 段改善した伸び・届け出の答えの順（truth-2・truth-4・truth-5）", () => {
+  // 表を小さくするため、転職・昇格・担当拡大・今のままの手だけの世界で
+  const keepFams = new Set(["keep", "switch", "fcpush", "fcscope"]);
+  const w2: typeof w = { ...w, kinds: Object.fromEntries(Object.entries(w.kinds).filter(([, d]) => keepFams.has(d.family))), rootMenu: w.rootMenu.filter((k) => keepFams.has(w.kinds[k]!.family)) };
+  const oc = new OutcomeCache(S);
+  const root2 = rootTable(w2, S, () => false, oc);
+
+  it("今日の手の q はどれも同じ表から。never._all はその一番大きい手で、まとまりの never は同じ作り方。入れ物を使い回した作り直しも同じ（K0）", () => {
+    expect(Object.keys(root2.one.qs).sort()).toEqual([...w2.rootMenu].sort());
+    expect(root2.one.qs[root2.one.k]).toEqual(root2.one.v);
+    for (const k of w2.rootMenu) expect(Wsum(root2.one.qs[k]!, S)).toBeLessThanOrEqual(Wsum(root2.one.v, S) + 1e-9);
+    const nv = neverValues(w2, S, () => false, ["switch", "fcpush"], root2, oc);
+    expect(nv.never._all).toBe(root2.one.v);
+    expect(nv.none.v).toEqual(root2.one.v);
+    expect(Object.keys(nv.never).sort()).toEqual(["_all", "fcpush", "switch"]);
+    // 転職を除くと、今日の転職の手は選ばない
+    expect(nv.info.switch!.k).not.toBe("fc_switch");
+    expect(checkOutputs(w, root, { tol: P.tol, maxNodes: 90_000, never: nv, fams: ["switch", "fcpush"] }).filter((f) => f.startsWith("K0"))).toEqual([]);
+  });
+
+  it("順の幅: 1 つ目は今日の手の q を出した表（今日の手の並びの順）、2 つ目は生成の木と同じ引き始め、残りは逆の順と決まった並べ替え。幅は一番小さい〜大きい", () => {
+    const runs = orderRuns(w2, S, () => false, root2, null, [], 4, oc);
+    expect(runs.map((r) => r.name)).toEqual(["menu", "gen", "reverse", "shuffle3"]);
+    expect(runs[0]!.qs).toBe(root2.one.qs);
+    expect(runs[2]!.order).toEqual([...w2.rootMenu].reverse());
+    for (const r of runs) expect(Object.keys(r.qs).sort()).toEqual([...w2.rootMenu].sort());
+    const sp = spreadOf(runs, (r) => Wsum(r.qs.keep!, S));
+    expect(sp.lo).toBeLessThanOrEqual(sp.hi);
+    for (const r of runs) expect(Wsum(r.qs.keep!, S)).toBeGreaterThanOrEqual(sp.lo);
+    // 同じ順なら同じ値（作り直しても同じ）
+    expect(orderRuns(w2, S, () => false, root2, null, [], 2, oc)[1]!.qs).toEqual(runs[1]!.qs);
+  });
+
+  it("標準の続きを 1 段改善した続きは、どの今日の手でも q を下げない（方策の改善）", () => {
+    const g = improvementGains(w2, S, () => false, root2);
+    expect(g.gains.map((x) => x.k)).toEqual(w2.rootMenu);
+    for (const x of g.gains) {
+      expect(x.q).toEqual(root2.one.qs[x.k]);
+      for (const s2 of [S, 45]) expect(Wsum(x.qImproved, s2) - Wsum(x.q, s2)).toBeGreaterThanOrEqual(-1e-9);
+    }
+    expect(g.states).toBeGreaterThan(10);
+  });
+
+  it("届け出の答えの順: 答えで分かれた手ごとに V(全部可) ≥ V(SpellDash だけ可) ≥ V(どちらも不可) を数える。壊すと数える", () => {
+    rollbackApp(root, S);
+    const d = filingDominance(root, S);
+    expect(d.options).toBeGreaterThan(10);
+    const a = qAll.find((x) => x.role === "a" && x.kids.some((c) => c.out?.id === "s") && x.kids.some((c) => c.out?.id === "n"))!;
+    const sKid = a.kids.find((c) => c.out!.id === "s")!;
+    const nKid = a.kids.find((c) => c.out!.id === "n")!;
+    mutate(sKid, "V", nKid.V + Wsum(nKid.r!, S) - Wsum(sKid.r!, S) - 3, () => {
+      const e = filingDominance(root, S);
+      expect(e.sn).toBe(d.sn + 1);
+      expect(e.worstSn).toBeGreaterThanOrEqual(3 - 1e-9);
+      expect(e.examples.some((x) => x.startsWith(a.key))).toBe(true);
+    });
+    rollbackApp(root, S);
+  });
+});
+
 /** 続きの見積もりの 36 か月目の行き先を、道を 1 本ずつたどって数える（leavesOf の段ごとの足し合わせとは別のやり方） */
 function pathLeaves(c: Roll, ever: boolean): Array<{ x: QSt; m: number; sw: number }> {
   const out: Array<{ x: QSt; m: number; sw: number }> = [];
@@ -375,7 +599,7 @@ describe("新しい出力（stage 3。SPEC v1 §2.4・D2）", () => {
   it("まとめた行き先: mix は続きの見積もりの 36 か月目の行き先の割合と幅（道を 1 本ずつたどっても同じ）。顧客の幅は band と同じ、代表の状態は一番多い物", () => {
     const sums = qAll.filter((n) => n.sumEnd);
     expect(so.sums).toBe(sums.length);
-    expect(sums.length).toBe(GOLDEN.counts.sumEnds);
+    expect(sums.length).toBe(tree.header.counts.sumEnds);
     let checked = 0;
     for (const [i, n] of sums.entries()) {
       const mx = n.mix!;
@@ -438,15 +662,18 @@ describe("新しい出力（stage 3。SPEC v1 §2.4・D2）", () => {
     // 表を小さくするため、転職・昇格・担当拡大・今のまま以外のまとまりをすべて除く
     const keepFams = new Set(["keep", "switch", "fcpush", "fcscope"]);
     const ex = new Set(Object.keys(w.kinds).filter((k) => !keepFams.has(w.kinds[k]!.family)));
-    const mode = (k: string, x: QSt) => gen.modeFor(k, x, "lean");
-    const oc = new OutcomeCache();
-    const a = neverOf(w, S, ex, mode, () => false, oc);
-    const b = neverOf(w, S, ex, mode, () => false, null);
+    const oc = new OutcomeCache(S);
+    const a = neverOf(w, S, ex, () => false, oc);
+    const b = neverOf(w, S, ex, () => false, null);
     expect(a.v).toEqual(b.v);
     expect(a.k).toBe(b.k);
     expect(ex.has(a.k)).toBe(false);
     expect(a.v.every((x) => Number.isFinite(x))).toBe(true);
-    const c = neverOf(w, S, ex, mode, () => false, oc);
+    // 今日の手ごとの q も同じ表から（一番大きい手の q が never）
+    expect(Object.keys(a.qs).every((k) => !ex.has(k))).toBe(true);
+    expect(a.qs[a.k]).toEqual(a.v);
+    for (const k of Object.keys(a.qs)) expect(Wsum(a.qs[k]!, S)).toBeLessThanOrEqual(Wsum(a.v, S) + 1e-9);
+    const c = neverOf(w, S, ex, () => false, oc);
     expect(c.v).toEqual(a.v);
     expect(oc.hits).toBeGreaterThan(0);
     // 入口の never（まとまり + _all）として書き、読むだけの地図の入口からそのまま読める
@@ -467,16 +694,38 @@ describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_
   };
   visit(iq.root);
 
-  it("分ける予算だけでは飽和（1,545）し、事実の小さい組を分け、別の領域の手を 1 つ広げて目標の ±2% に入る", () => {
-    expect(s.calib).toMatchObject({ target: 2000, saturated: true, splitMax: 1545, fine: true, fineMax: 1656, areaN: 1, areaUsed: 1, areaReverted: 0, reachMax: null, hit: true });
+  it("分ける予算だけでは飽和し、事実の小さい組を分け、別の領域の手を広げて目標の ±2% に入る（数はスナップショット）", () => {
+    expect(s.calib).toMatchObject({ target: 2000, saturated: true, fine: true, reachMax: null, hit: true });
+    expect(s.calib.areaN).toBeGreaterThan(0);
     expect(s.calib.Bint).toBe(Infinity);
     expect(Math.abs(s.forks - 2000)).toBeLessThanOrEqual(40);
-    expect([s.forks, s.nodes, s.areaExp]).toEqual([1994, 6539, 1]);
+    expect({ calib: s.calib, forks: s.forks, nodes: s.nodes, areaExp: s.areaExp }).toMatchInlineSnapshot(`
+      {
+        "areaExp": 2,
+        "calib": {
+          "Bint": Infinity,
+          "areaEligible": 285,
+          "areaN": 2,
+          "areaReverted": 0,
+          "areaUsed": 2,
+          "fine": true,
+          "fineMax": 1469,
+          "hit": true,
+          "passes": 6,
+          "reachMax": null,
+          "saturated": true,
+          "splitMax": 1325,
+          "target": 2000,
+        },
+        "forks": 1981,
+        "nodes": 6541,
+      }
+    `);
   });
 
   it("事実の小さい組は段 3 までだけ分け、広げた別の領域の手は一番良い手を超えず（アプリの選ぶ手は変わらない）、その先はおすすめの道に入らない", () => {
     const area = nodes.filter((n) => n.areaExp);
-    expect(area.length).toBe(1);
+    expect(area.length).toBe(s.areaExp);
     for (const a of area) {
       const d = a.parent!;
       const best = d.kids.find((x) => x.why === "best") ?? d.kids.find((x) => x.kind === "keep")!;
@@ -494,5 +743,33 @@ describe("予算の使い道（D1・truth-1）: 同じ表を引き継いで ind_
     expect([c.violations, c.piIntoStub]).toEqual([0, 0]);
     expect(checkTree(w, iq.root).fails).toEqual([]);
     expect(checkOutputs(w, iq.root, { stats: iq.stats, tol: P.tol, maxNodes: 90_000 })).toEqual([]);
+  });
+
+  it("広げた別の領域の手の木の値が一番良い手を超えたら、まとめた手に戻す（revertAreas。木を書き換えるので最後に）", () => {
+    rollbackApp(iq.root, S);
+    const a = nodes.find((n) => n.areaExp)!;
+    const d = a.parent!;
+    const best = d.kids.find((x) => x.why === "best") ?? d.kids.find((x) => x.kind === "keep")!;
+    const ev = a.ev!;
+    // a の先の 1 つの結果の稼ぎを大きくして、木の値を一番良い手より大きくする
+    const c0 = a.kids[0]!;
+    c0.r = [c0.r![0], c0.r![1] + 5000, c0.r![2]];
+    rollbackApp(iq.root, S);
+    expect(a.V).toBeGreaterThan(best.V);
+    const a0 = iq.root.kids[0]!;
+    expect(iq.gen.revertAreas(a0)).toBe(1);
+    expect([a.stub, a.areaExp, a.qv]).toEqual([true, false, undefined]);
+    // 子は a の見積もり（その 3 か月 + 続きの見積もり）からのまとめた行き先
+    expect(a.kids.map((k) => [k.key, k.out!.p, k.sumEnd, k.role])).toEqual(ev.outs.map((o) => [`${a.key}.${o.id}`, o.p, true, "e"]));
+    a.kids.forEach((k, i) => expect(k.r).toEqual(ev.outs[i]!.r.map((x, j) => x + ev.conts[i]!.v[j]!)));
+    expect(a.V).toBeCloseTo(a.kids.reduce((v, k) => v + (k.out!.p / 100) * Wsum(k.r!, S), 0), 9);
+    expect(a.V).toBeCloseTo(ev.q, 6);
+    // 判断の値は一番良い手の値（戻した手はそれを超えない: 余裕に別の領域の手も入れてある）
+    expect(d.V).toBe(best.V);
+    rollbackApp(iq.root, S);
+    const con2 = consistencyOf(iq.root);
+    expect([con2.violations, con2.piIntoStub]).toEqual([0, 0]);
+    summaryOutputs(w, iq.root);
+    expect(checkOutputs(w, iq.root, { tol: P.tol, maxNodes: 90_000 }).filter((f) => /^(Q1|Q2|M1|M2)/.test(f))).toEqual([]);
   });
 });

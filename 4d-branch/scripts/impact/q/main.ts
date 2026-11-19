@@ -1,22 +1,30 @@
 // 3 か月ごと 12 段の「3 年の地図」の木と同梱データを作る入口（Vite の SSR で読み込む。R1 の試作の入口 model-tree/proto.ts を移した物）。
 // 使い方（4d-branch で）:
-//   node scripts/impact/q/run.mjs --out <木.json> [--bundle <同梱.b64>] [--release 0] [--record <版の記録.json>] [--history <releases.json>] [--append-history] [--runs 2]
-//                                 [--budget 2000] [--tol 0.02] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--stub split|fact|lean] [--fact-cl] [--only keep,ad_permside] [--anchor 2026-11] [--never on|off]
+//   node scripts/impact/q/run.mjs --out <木.json> [--force] [--bundle <同梱.b64>] [--release 0] [--record <版の記録.json>] [--history <releases.json>] [--append-history] [--runs 2] [--spread 5] [--spread-never]
+//                                 [--budget 2000] [--tol 0.02] [--alts 4] [--alts-by 0,4,4,4,4,3,3,3,3,2,2,2|off] [--only keep,ad_permside] [--anchor 2026-11] [--never on|off]
 //   （npm run impact:q -- --out <木.json> も同じ。npm からは 4d-branch で動くので、場所は絶対パスで書く）
-//   --budget 最初の手ごとの分かれ道の数・--tol その目標の幅（±。小さい予算のテストの木は分かれ道の数が飛ぶので広げる）・--alts 見せる手の数・--alts-by 段ごとの見せる手の数（off で --alts だけ）・--stub まとめた手の結果のまとめ方・
-//   --fact-cl 顧客の数を事実として必ず分ける・--only 作る最初の手・--anchor 0 か月目の年月・
+//   --budget 最初の手ごとの分かれ道の数・--tol その目標の幅（±。小さい予算のテストの木は分かれ道の数が飛ぶので広げる）・--alts 見せる手の数・--alts-by 段ごとの見せる手の数（off で --alts だけ）・
+//   --only 作る最初の手・--anchor 0 か月目の年月（1〜3 月なら今日の手に昇格を狙う手が足される）・
 //   --never 「3 年やらない」見積もりを作るか（off は試すとき用。粗い表を 16 回作り直すので 1 分ほどかかる）・
+//   --spread 粗い表を引き始める順を変えて今日の手の差の幅を測る順の数（報告だけ。1 で測らない）・--spread-never その順ごとに k の幅も測る（遅い）・
+//   --force 書き出す場所にファイルがあっても書き直す・
 //   --bundle 同梱データ（決まった並びの gzip の base64。src/demo/impactBundle.ts が読む）を書く場所・--release 入口の版の順番（開発用の木は 0）・
 //   --record 提案する版の記録 {release, hash, anchor} を書く場所・--history 版の記録（足すだけ。既定は scripts/impact/releases.json）・
 //   --append-history 版の記録に足す（既定は足せるかだけを点検する）・--runs 2 なら最初から作り直して、決まった並びと指紋が同じかを点検する（既定 2）
+// 版の順番を付ける（--release 1 以上）のは本番の形の時だけ（今日の手すべて・2,000・±2%・never・2 回。cli.ts の productionProblems）。
+// 版の木は版ごとの場所（例 作業メモ deepmap/gen/r7/）に書き、開発用の木（deepmap/dev/*.json）は --release 0 で作る（試し版の画面が版の番号を出すので）。
 // 既定は R1 が選んだ形（最初の手ごとに 2,000 の分かれ道・見せる手は 1 年目 4・2 年目 3・3 年目 2・まとめた手の結果も元の地図と同じまとめ方）。
 // 前提は P2 の物（作業メモ SPEC v1 §2.2・§2.3。world.ts の CHANGES）。4 月などの暦は --anchor の年月から出す。
 // 分かれ道の数は最初の手ごとに min(目標, 届く上限) の ±2%（D1）。分ける予算が飽和した手は、事実の小さい組を分け・別の領域の手を広げる。
+// 今日の手の q は「3 年やらない」見積もりの _all と同じ表（何も除かない作り直しの表）から出す（k(fam) と比べられるように。見直し truth-2）。
 // 書き出す物: <木.json>（開発用の入れ子の木。src/deepmap/mapData.ts の DevTree。同梱データの精度に丸めた木で、入口の hash は同梱データの中身の指紋）と、
 // その隣の <木.json>.gz、--bundle の同梱データ、--record の版の記録。
-// 生成の木の点検（./checks.ts: 一貫性・N10・N7・顧客は整数・幅・名前・事実・暦・転職活動の上限・q・mix・cont・分かれ道の数・ノードの数・k(none)）と、
-// 同梱データを読み手で読んだ地図の点検（./check.ts: 読み手・ノードの数・分かれ道・N10・顧客・暦・一貫性・アプリと同じ値・ID・決まり・大きさ・版の記録）に
-// どれか通らなければ、何も書き出さない。同じ引数なら同じ木と同じ同梱データ（バイトまで同じ）。木は大きい（30 MB 台）のでリポジトリの外に書き出す
+// 前提の文と手の決まりの点検（./checks.ts の premiseRuleChecks: J3・J4・K2）、生成の木の点検（./checks.ts: 一貫性・N10・N7・顧客は整数・幅・名前・事実・暦・
+// 転職活動の上限・q・mix・cont・分かれ道の数・ノードの数・3 か月の結果の入れ物）と、同梱データを読み手で読んだ地図の点検（./check.ts: 読み手・ノードの数・
+// 分かれ道・N10・顧客・暦・一貫性・アプリと同じ値・ID・決まり・大きさ・版の記録）にどれか通らなければ、何も書き出さない。
+// 報告だけの数（通らなくても書き出す）: 表を引く順を変えた時の今日の手の差と k の幅（truth-2）・標準の続きを 1 段改善した時の伸び（truth-5）・
+// 届け出の答えの順（truth-4）・k(fam) < −1 の注意・標準の続きと一番良い手の手の割合（truth-1）。
+// 同じ引数なら同じ木と同じ同梱データ（バイトまで同じ）。木は大きい（30 MB 台）のでリポジトリの外に書き出す
 
 import fs from "node:fs";
 import path from "node:path";
@@ -51,12 +59,12 @@ import {
   type ReleaseEntry,
   type ReleaseHistory,
 } from "./check";
-import { checkOutputs, checkTree } from "./checks";
+import { checkOutputs, checkTree, filingDominance, premiseRuleChecks } from "./checks";
 import { parseArgs, USAGE, type CliOpts } from "./cli";
-import { simCount, Wsum } from "./core";
+import { OutcomeCache, simCount, Wsum } from "./core";
 import { toDevTree } from "./devTree";
-import { consistencyOf, generate, rollbackApp, type MoveStats } from "./gen";
-import { neverValues, releaseRolls, starCounts, summaryOutputs } from "./outputs";
+import { consistencyOf, generate, rollbackApp, type MoveStats, type QNode } from "./gen";
+import { improvementGains, neverValues, orderRuns, releaseRolls, rootTable, spreadOf, starCounts, summaryOutputs, type NeverResult } from "./outputs";
 import { quarterWorld, type WorldQ } from "./world";
 
 const pct = (x: number) => `${(100 * x).toFixed(1)}%`;
@@ -77,23 +85,83 @@ interface Run {
   rounding: Record<string, number>;
 }
 
-/** 木を作り、生成の木を点検し、丸めて同梱データの並びにする。report が true なら報告を出す */
+/** 年収 360・540 万円の 2 つの数を「a・b」で */
+const two = (v: (s: number) => number, d = 2) => `${v(30).toFixed(d)}・${v(45).toFixed(d)}`;
+
+/** 報告: 標準の続き（cont）の手の割合と、判断の一番良い手の割合（見直し truth-1: 標準の続きがある手に偏っていないか） */
+function contShares(root: QNode): string {
+  const cont = new Map<string, number>();
+  const best = new Map<string, number>();
+  let nc = 0;
+  let nb = 0;
+  const walk = (n: QNode) => {
+    if (n.cont) for (const c of n.cont) (cont.set(c.kind, (cont.get(c.kind) ?? 0) + 1), nc++);
+    if (n.role === "s" && n.kids.length >= 2) {
+      // その判断の一番良い手（訳が best の手。無ければ今のままが一番）
+      const b = n.kids.find((x) => x.why === "best") ?? n.kids.find((x) => x.kind === "keep");
+      if (b) (best.set(b.kind!, (best.get(b.kind!) ?? 0) + 1), nb++);
+    }
+    for (const k of n.kids) walk(k);
+  };
+  walk(root);
+  const kinds = [...new Set([...cont.keys(), ...best.keys()])].sort((a, b) => (cont.get(b) ?? 0) - (cont.get(a) ?? 0) || a.localeCompare(b));
+  return kinds.map((k) => `${k} ${pct((cont.get(k) ?? 0) / Math.max(1, nc))}・${pct((best.get(k) ?? 0) / Math.max(1, nb))}`).join(" / ");
+}
+
+/** 木を作り、生成の木を点検し、丸めて同梱データの並びにする。report が true なら報告を出し、報告だけの数（順の幅・改善の伸び）も測る */
 function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   const w = quarterWorld(base, opts.anchor);
   const P = opts.params;
   const S = w.annual / 12;
+  const fails: string[] = [];
+  // 長い段の進み具合（報告する回だけ。標準エラーに、始めからの秒とヒープ）
+  const t00 = performance.now();
+  const progress = (what: string) => {
+    if (report) console.error(`[${((performance.now() - t00) / 1000).toFixed(0)} 秒・ヒープ ${(process.memoryUsage().heapUsed / 1e6).toFixed(0)} MB] ${what}`);
+  };
+  // 前提の文と手の決まり（木を作る前に。見直し truth-3・truth-6・truth-7）
+  const prem = premiseRuleChecks(w);
+  fails.push(...prem);
   simCount.n = 0;
+  progress("木を作る");
   const { root: tree, stats, gen, dp, msTable, msGen } = generate(w, P, opts.only);
+  progress("木ができた");
+  const genSizes = { cells: dp.memo.size, rolls: gen.ro.memo.size };
   const vRoot = rollbackApp(tree, S);
   const con = consistencyOf(tree);
   const keepA = tree.kids.find((a) => a.kind === "keep");
   const delta = new Map(tree.kids.map((a) => [a.kind!, keepA ? a.V - keepA.V : NaN]));
-  const deltaQ = new Map(tree.kids.map((a) => [a.kind!, keepA ? Wsum(a.qv!, S) - Wsum(keepA.qv!, S) : NaN]));
   const vSQ = rollbackApp(tree, S, true);
+  // 新しい出力: まとめた行き先の中身と標準の続き（続きの見積もりの形がある間に）
+  const tOut = performance.now();
+  const so = summaryOutputs(w, tree);
+  const msOut = performance.now() - tOut;
+  // 続きの見積もりの形と生成の粗い表はもう使わないので放す（「3 年やらない」見積もりの表を作り直す前に。node の既定のヒープ 2 GB に収める）
+  releaseRolls(tree);
+  gen.ro.memo.clear();
+  dp.memo.clear();
+  // 今日の手の q: 何も除かない作り直しの表（never._all と同じ表）から（見直し truth-2）。生成の表の q との差は報告する
+  const fineAt = (k: string) => !!stats.find((s) => s.kind === k)?.calib.fine;
+  const oc = new OutcomeCache(S);
+  progress("今日の手の q の表");
+  const root = rootTable(w, S, fineAt, oc);
+  let qMoved = 0;
+  for (const a0 of tree.kids) {
+    const v = root.one.qs[a0.kind!];
+    if (!v) throw new Error(`今日の手 ${a0.kind} の q が表にありません`);
+    qMoved = Math.max(qMoved, Math.abs(Wsum(v, S) - Wsum(a0.qv!, S)));
+    a0.qv = v;
+  }
+  const deltaQ = new Map(tree.kids.map((a) => [a.kind!, keepA ? Wsum(a.qv!, S) - Wsum(keepA.qv!, S) : NaN]));
+  // 標準の続きを 1 段改善した時の伸び（報告だけ。今日の手の q を出した表で測ってから、その表の形を放す）
+  if (report) progress("標準の続きを 1 段改善した時の伸び");
+  const gains = report ? improvementGains(w, S, fineAt, root) : null;
+  root.dp.memo.clear();
+  root.ro.memo.clear();
   const lines: string[] = [];
-  lines.push(`形: ${JSON.stringify(P)}・最初の手 ${opts.only?.join(",") ?? "今日の 10 手"}`);
+  lines.push(`形: ${JSON.stringify(P)}・最初の手 ${opts.only?.join(",") ?? `今日の ${w.rootMenu.length} 手`}`);
   lines.push(
-    `粗い表 ${dp.memo.size} マス（${msTable.toFixed(0)} ms）・生成 ${msGen.toFixed(0)} ms・3 か月の数え上げ ${simCount.n} 回・続きの見積もり ${gen.ro.memo.size} 状態・正確な見積もり ${gen.evals} 回・分け方を落とした判断 ${gen.guards}`,
+    `粗い表 ${genSizes.cells} マス（${msTable.toFixed(0)} ms）・生成 ${msGen.toFixed(0)} ms・3 か月の数え上げ ${simCount.n} 回・続きの見積もり ${genSizes.rolls} 状態・正確な見積もり ${gen.evals} 回・分け方を落とした判断 ${gen.guards}`,
   );
   {
     const sf = [...gen.shortfalls].sort((a, b) => a - b);
@@ -101,6 +169,7 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
     lines.push(`分け方を落とした時の不足（続きの見積もり − 細かく分けた一番良い手、万円）: 10% ${q(0.1)}・50% ${q(0.5)}・90% ${q(0.9)}・最大 ${q(1)}`);
   }
   lines.push(`今日の値 ${vRoot.toFixed(2)}・ずっと今のまま ${vSQ.toFixed(2)}（年収 ${w.annual} 万円・地図の年月 ${w.anchor}・4 月 ${w.constants.aprilMonths.join(",")} か月目）`);
+  lines.push(`今日の手の q は作り直しの表（never._all と同じ表: ${root.one.cells} マス・${root.one.ms.toFixed(0)} ms）から。生成の表の q との差は最大 ${qMoved.toFixed(2)} 万円`);
   lines.push("最初の手 | 分かれ道（判断/広げた手/まとめた手） | ノード | 判断 | 手（まとめた手） | 行き先（まとめた行き先） | 数も分けた判断 | 深さ | ms（作り直し） | 今のままとの差（木の値・q） | 3〜33 か月目の状態の数");
   const tot = { forks: 0, nodes: 1, decisions: 0, options: 0, stubs: 0, ends: 0, sumEnds: 0 };
   for (const s of stats) {
@@ -130,37 +199,74 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
   {
     const im = con.improv;
     const q = (p: number) => (im[Math.min(im.length - 1, Math.floor(p * im.length))] ?? 0).toFixed(2);
-    lines.push(`広げた一番良い手の木の値 − その手の見積もり（万円）: 10% ${q(0.1)}・50% ${q(0.5)}・90% ${q(0.9)}・最大 ${q(0.999)}`);
+    lines.push(`広げた一番良い手の木の値 − その手の見積もり（万円）: 10% ${q(0.1)}・50% ${q(0.5)}・90% ${q(0.9)}・99.9% ${q(0.999)}・最大 ${(im.at(-1) ?? 0).toFixed(2)}`);
   }
-  // 新しい出力: まとめた行き先の中身と標準の続き
-  const tOut = performance.now();
-  const so = summaryOutputs(w, tree);
-  lines.push(`まとめた行き先の中身と標準の続き: ${so.sums} 枚（続きの見積もりの 36 か月目の行き先 ${so.leaves}・${(performance.now() - tOut).toFixed(0)} ms）`);
-  // 続きの見積もりの形と生成の粗い表はもう使わないので放す（「3 年やらない」見積もりの表を作り直す前に。node の既定のヒープ 2 GB に収める）
-  releaseRolls(tree);
-  gen.ro.memo.clear();
-  dp.memo.clear();
-  // 「3 年やらない」見積もり（今のまま以外のまとまりすべて）
+  lines.push(`まとめた行き先の中身と標準の続き: ${so.sums} 枚（続きの見積もりの 36 か月目の行き先 ${so.leaves}・${msOut.toFixed(0)} ms）`);
+  lines.push(`標準の続きの手の割合・判断の一番良い手の割合（見直し truth-1）: ${contShares(tree)}`);
+  // 「3 年やらない」見積もり（今のまま以外のまとまりすべて。_all は今日の手の q を出した表）
   const fams = [...new Set(Object.values(w.kinds).map((k) => k.family))].filter((f) => f !== "keep");
-  const fineAt = (k: string) => !!stats.find((s) => s.kind === k)?.calib.fine;
-  const nv = opts.never ? neverValues(w, S, (k, x) => gen.modeFor(k, x, "lean"), fineAt, fams) : null;
+  if (opts.never) progress("「3 年やらない」見積もり");
+  const nv: NeverResult | null = opts.never ? neverValues(w, S, fineAt, fams, root, oc) : null;
   if (nv) {
     const all = nv.never._all!;
     lines.push("「3 年やらない」見積もり（never。粗い表をその種類なしで作り直す）: まとまり | 今日の手 | 360 万円 | 540 万円 | k = _all − never（360・540） | 表のマス | ms");
     for (const k of ["_all", ...fams]) {
       const v = nv.never[k]!;
       const i = nv.info[k]!;
-      lines.push(
-        `  ${k} | ${i.k} | ${Wsum(v, 30).toFixed(2)} | ${Wsum(v, 45).toFixed(2)} | ${k === "_all" ? "-" : `${(Wsum(all, 30) - Wsum(v, 30)).toFixed(2)}・${(Wsum(all, 45) - Wsum(v, 45)).toFixed(2)}`} | ${i.cells} | ${i.ms.toFixed(0)}`,
-      );
+      lines.push(`  ${k} | ${i.k} | ${Wsum(v, 30).toFixed(2)} | ${Wsum(v, 45).toFixed(2)} | ${k === "_all" ? "-" : two((s) => Wsum(all, s) - Wsum(v, s))} | ${i.cells} | ${i.ms.toFixed(0)}`);
     }
-    const kn = (s: number) => (Wsum(all, s) - Wsum(nv.none.v, s)).toFixed(3);
-    lines.push(`  k(none)（入れ物なしで作り直した同じ計算との差）: 360 万円 ${kn(30)}・540 万円 ${kn(45)}（${nv.none.ms.toFixed(0)} ms）`);
-    const bestRoot = tree.kids.reduce((b, a) => (Wsum(a.qv!, S) > Wsum(b.qv!, S) ? a : b));
-    lines.push(
-      `  参考: 生成の粗い表での今日の q の一番（${bestRoot.kind} ${Wsum(bestRoot.qv!, S).toFixed(2)}）− _all（${nv.info._all!.k} ${Wsum(all, S).toFixed(2)}）= ${(Wsum(bestRoot.qv!, S) - Wsum(all, S)).toFixed(2)}（粗い表は引く順で代表の状態が変わる）`,
-    );
+    lines.push(`  K0 3 か月の結果の入れ物を使い回して作り直した _all との差 k(none): ${two((s) => Wsum(all, s) - Wsum(nv.none.v, s), 3)}（${nv.none.ms.toFixed(0)} ms・入れ物 ${oc.m.size} 件・使い回し ${oc.hits} 回）`);
+    const neg = fams.filter((f) => [30, 45].some((s) => Wsum(all, s) - Wsum(nv.never[f]!, s) < -1));
+    if (neg.length) lines.push(`  注意: k(fam) < −1 のまとまり ${neg.map((f) => `${f}（${two((s) => Wsum(all, s) - Wsum(nv.never[f]!, s))}）`).join("・")}。手を除いて良くなるのは、標準の続きがその手を損な所で選ぶ印（見直し truth-1・truth-5）`);
   }
+  if (report && gains) {
+    // 標準の続きを 1 段改善した時の伸び（見直し truth-5）: 最初の手で違えば q の差はその分だけ偏る
+    const g = gains;
+    const keepG = g.gains.find((x) => x.k === "keep");
+    const gl = (s: number) => g.gains.map((x) => `${x.k} ${(Wsum(x.qImproved, s) - Wsum(x.q, s)).toFixed(2)}`).join("・");
+    lines.push(`標準の続きを 1 段改善した時の今日の手の q の伸び（万円。続きの状態 ${g.states}・${g.ms.toFixed(0)} ms。見直し truth-5）:`);
+    lines.push(`  360: ${gl(30)}`);
+    lines.push(`  540: ${gl(45)}`);
+    if (keepG) {
+      const dl = (s: number) => g.gains.filter((x) => x.k !== "keep").map((x) => `${x.k} ${(Wsum(x.q, s) - Wsum(keepG.q, s)).toFixed(2)}→${(Wsum(x.qImproved, s) - Wsum(keepG.qImproved, s)).toFixed(2)}`).join("・");
+      lines.push(`  今のままとの差 q → 改善した続きの q: 360 ${dl(30)}`);
+      lines.push(`  540 ${dl(45)}`);
+    }
+    // q の順位で隣どうしの差が、伸びの差（続きの偏り）より小さい所は、順位を言い切れない（★ や順位の変化は、差が伸びの差を超える時だけ数える）
+    for (const sal of [30, 45]) {
+      const byQ = [...g.gains].sort((a, b) => Wsum(b.q, sal) - Wsum(a.q, sal));
+      const weak: string[] = [];
+      for (let i = 0; i + 1 < byQ.length; i++) {
+        const [a, b] = [byQ[i]!, byQ[i + 1]!];
+        const lead = Wsum(a.q, sal) - Wsum(b.q, sal);
+        const bias = Math.abs(Wsum(a.qImproved, sal) - Wsum(a.q, sal) - (Wsum(b.qImproved, sal) - Wsum(b.q, sal)));
+        if (lead <= bias) weak.push(`${a.k} > ${b.k}（差 ${lead.toFixed(2)} ≤ 伸びの差 ${bias.toFixed(2)}）`);
+      }
+      lines.push(`  ${12 * sal}: q の順位 ${byQ.map((x) => x.k).join(" > ")}${weak.length ? `。言い切れない隣どうし: ${weak.join("・")}` : "（どの隣どうしも、差が伸びの差より大きい）"}`);
+    }
+    // 表を引き始める順を変えた時の幅（見直し truth-2）: 今日の手の差（q）と k
+    if (opts.spread > 1) {
+      progress("表を引き始める順を変えた時の幅");
+      const t = performance.now();
+      const runs = orderRuns(w, S, fineAt, root, opts.spreadNever ? nv : null, fams, opts.spread, oc);
+      const keys = w.rootMenu.filter((k) => k !== "keep" && (!opts.only || opts.only.includes(k)));
+      lines.push(`表を引き始める順を変えた時の幅（${runs.length} 通り: ${runs.map((r) => r.name).join("・")}。${((performance.now() - t) / 1000).toFixed(0)} 秒。見直し truth-2）:`);
+      for (const s of [30, 45]) {
+        const sp = (f: (r: (typeof runs)[number]) => number) => {
+          const x = spreadOf(runs, f);
+          return `${x.lo.toFixed(2)}〜${x.hi.toFixed(2)}（幅 ${(x.hi - x.lo).toFixed(2)}）`;
+        };
+        const bestOf = (r: (typeof runs)[number]) => w.rootMenu.filter((k) => r.qs[k]).reduce((b, k) => (Wsum(r.qs[k]!, s) > Wsum(r.qs[b]!, s) + 1e-9 ? k : b));
+        lines.push(`  ${12 * s}: 今のままの q ${sp((r) => Wsum(r.qs.keep!, s))}・今日の一番の手 ${[...new Set(runs.map(bestOf))].join("・")}`);
+        lines.push(`    今のままとの差（q）: ${keys.map((k) => `${k} ${sp((r) => Wsum(r.qs[k]!, s) - Wsum(r.qs.keep!, s))}`).join("・")}`);
+        if (nv && opts.spreadNever) lines.push(`    k: ${fams.map((f) => `${f} ${sp((r) => Wsum(r.never._all!, s) - Wsum(r.never[f]!, s))}`).join("・")}`);
+        if (new Set(runs.map(bestOf)).size > 1) lines.push(`    注意: 今日の一番の手が順で変わる（年収 ${12 * s} 万円）`);
+      }
+    }
+  }
+  // 3 か月の結果の入れ物（大きい）は、ここから先は使わない
+  oc.m.clear();
+  progress("★ の数と点検");
   // ★ の数（見直し truth-2）: 木の値で比べた場合と、同じ見積もり方で比べた場合
   rollbackApp(tree, S);
   {
@@ -171,16 +277,23 @@ function runOnce(base: World, opts: CliOpts, report: boolean): Run {
     lines.push(row("一番の手を広げ、まとめた手も並ぶ判断", sc.mixed));
     lines.push(row("おすすめの道の上", sc.pi));
   }
+  // 届け出の答えの順（見直し truth-4。数えるだけ）
+  for (const annual of [360, 540]) {
+    rollbackApp(tree, annual / 12);
+    const d = filingDominance(tree, annual / 12);
+    lines.push(`届け出の答えの順（年収 ${annual}）: 答えで分かれた手 ${d.options}・SpellDash だけ可 < どちらも不可 ${d.sn}（最大 ${d.worstSn.toFixed(2)}）・全部可 < SpellDash だけ可 ${d.as}（最大 ${d.worstAs.toFixed(2)}）${d.examples.length ? `・例 ${d.examples.join(" / ")}` : ""}`);
+  }
   // 前提の点検と転職活動の数（値は生成の年収で後ろから出し直してから）
+  rollbackApp(tree, S);
   const chk = checkTree(w, tree);
   const outFails = checkOutputs(w, tree, { stats, tol: P.tol, ...(nv ? { never: nv, fams } : {}), maxNodes: MAX_NODES });
   lines.push(`メモリ: ヒープ ${(process.memoryUsage().heapUsed / 1e6).toFixed(0)} MB（「3 年やらない」見積もりの後）`);
+  lines.push(`前提の文と手の決まり（J3・J4・K2）: 通らない ${prem.length}${prem.length ? `（${prem.join(" / ")}）` : ""}`);
   lines.push(`前提の点検: 状態 ${chk.counts.states}（顧客の社数の違う場合をまとめた状態 ${chk.counts.mixed}）・通らない ${chk.fails.length}${chk.warns.length ? `・注意 ${chk.warns.join(" / ")}` : ""}・新しい出力の点検で通らない ${outFails.length}`);
   lines.push("最初の手 | 転職活動を 1 期以上 | 36 か月目に転職している | 一度でも転職 | 転職活動の期の数の平均 | 一番ありそうな道（見込み・続けて決まらなかった転職活動の一番長い期の数）");
   for (const s of chk.search) lines.push(`${s.kind} | ${pct(s.pSearch)} | ${pct(s.pSwitched)} | ${pct(s.pEverSwitched)} | ${s.meanSearch.toFixed(2)} | ${pct(s.chainP)}・${s.chainMaxFailRun}`);
   for (const s of chk.search) lines.push(`  ${s.kind}: ${s.chain.join(" ")}`);
   if (report) console.log(lines.join("\n"));
-  const fails: string[] = [];
   if (con.violations > 0 || con.piIntoStub > 0) fails.push(`一貫性: まとめた手が勝った判断 ${con.violations}・まとめた手に入った道 ${con.piIntoStub}`);
   fails.push(...chk.fails, ...outFails);
   // 生成の木の値（読んだ地図の値と比べる）
@@ -215,6 +328,13 @@ export async function main(root: string, args: string[]): Promise<number> {
   }
   const historyPath = path.resolve(opts.history ?? path.join(root, "scripts/impact/releases.json"));
   const history = JSON.parse(fs.readFileSync(historyPath, "utf8")) as ReleaseHistory;
+  // 書き出す場所にもう物があれば、--force が無い限り作る前に断る（測った木・試し版の木を黙って書き換えない。見直し format-4）
+  const targets = [path.resolve(opts.out), `${path.resolve(opts.out)}.gz`, ...(opts.bundle ? [path.resolve(opts.bundle)] : []), ...(opts.record ? [path.resolve(opts.record)] : [])];
+  const existing = targets.filter((p) => fs.existsSync(p));
+  if (existing.length && !opts.force) {
+    console.error(`書き出す場所にもうファイルがあります（書き直すなら --force）: ${existing.join("・")}`);
+    return 2;
+  }
 
   const r1 = runOnce(base, opts, true);
   if (r1.fails.length || !r1.dev) {
@@ -339,7 +459,13 @@ export async function main(root: string, args: string[]): Promise<number> {
     console.log(`版の記録（提案）: ${rp}`);
   }
   if (opts.appendHistory && verdict === "append") {
-    const rec: ReleaseEntry = { release: opts.release, hash: r1.hash, scheme: "q1", anchor: map.header.anchor };
+    const rec: ReleaseEntry = {
+      release: opts.release,
+      hash: r1.hash,
+      scheme: "q1",
+      anchor: map.header.anchor,
+      build: { B: opts.params.B, tol: opts.params.tol, moves: stats.length, never: opts.never, runs: opts.runs, nodes: map.n },
+    };
     fs.writeFileSync(historyPath, formatHistory({ ...history, releases: [...history.releases, rec] }));
     console.log(`版の記録に足しました: ${historyPath}（版 ${opts.release}）`);
   }

@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p scripts/impact",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node tests/e2e/run.mjs",

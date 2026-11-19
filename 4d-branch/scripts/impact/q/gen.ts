@@ -14,9 +14,9 @@
 
 import type { MapContStep, MapMix, MapRole, MapWhy } from "../../../src/deepmap/mapData";
 import type { Vec3 } from "../sim";
-import { add3, CoarseDP, GRID, quarterOutcomes, Rollouts, scale3, Wsum, type Mode, type Roll } from "./core";
+import { add3, CoarseDP, quarterOutcomes, Rollouts, scale3, Wsum, type Mode, type Roll } from "./core";
 import type { OutcomeQ } from "./group";
-import { driverQ, feasibleQ } from "./quarter";
+import { feasibleQ } from "./quarter";
 import { runRateQ, toQ, type QSt } from "./sim";
 import { H, NSTAGE, type WorldQ } from "./world";
 
@@ -76,10 +76,6 @@ export interface Params {
   /** 今日の後の判断で見せる手の数（今のまま・一番良い手・別の領域・避けたい手）。altsBy[段] があればそちら */
   maxAlts: number;
   altsBy?: number[];
-  /** まとめた手の結果のまとめ方 */
-  stubMode: Mode;
-  /** 顧客の数（営業の結果）を事実として必ず分ける */
-  factCl: boolean;
   /** 粗い表の上から何個を正確に見積もるか */
   topN: number;
   /** 避けたい手: 今のままとの差がこれ以下（万円） */
@@ -94,7 +90,7 @@ export interface Params {
   areaDiscount: number;
 }
 
-export const DEFAULTS: Params = { B: 2000, maxAlts: 4, stubMode: "split", factCl: false, topN: 3, warn: -15, chainDiscount: 0.3, tol: 0.02, fineDepth: 3, areaDiscount: 0.3 };
+export const DEFAULTS: Params = { B: 2000, maxAlts: 4, topN: 3, warn: -15, chainDiscount: 0.3, tol: 0.02, fineDepth: 3, areaDiscount: 0.3 };
 
 /** R1 が選んだ形（報告 §11）: 1 年目 4・2 年目 3・3 年目 2 の手を見せる */
 export const R1_ALTS_BY: readonly number[] = [0, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2];
@@ -105,7 +101,6 @@ export const CODE: Record<string, string> = {
   sd_permpro: "pp",
   sd_grow: "sg",
   sd_pilot: "sp",
-  sd_pro: "pr",
   sd_school: "ss",
   sd_ads: "sa",
   sd_retain: "sr",
@@ -393,7 +388,7 @@ export class Gen {
     public dp: CoarseDP,
     public P: Params,
   ) {
-    this.ro = new Rollouts(w, S, dp, (k, x) => this.modeFor(k, x, "lean"));
+    this.ro = new Rollouts(w, S, dp);
     this.kinds = Object.keys(w.kinds);
   }
   area(kind: string): string {
@@ -404,14 +399,6 @@ export class Gen {
   }
   isKeyFam(kind: string): boolean {
     return this.w.keyFamilies.includes(this.fam(kind));
-  }
-  modeFor(kind: string, x: QSt, level: Mode): Mode {
-    if (level === "split") return "split";
-    if (this.P.factCl) {
-      const d = driverQ(kind, x);
-      if (d.t === "num" && d.metric === "cl") return "split";
-    }
-    return level;
   }
   /** その手のここでの正確な見積もり: 3 か月の結果 + その後は粗い表の通りに続けた見積もり。fine なら事実の小さい組も分ける */
   evalMove(s: number, x: QSt, kind: string, mode: Mode, fine = false): Eval {
@@ -546,7 +533,7 @@ export class Gen {
     if (worst) cand.add(worst[0]);
     const evalAll = (lv: Mode) => {
       const m = new Map<string, Eval>();
-      for (const k of cand) if (feas.includes(k)) m.set(k, this.evalMove(s, x, k, this.modeFor(k, x, lv), fine));
+      for (const k of cand) if (feas.includes(k)) m.set(k, this.evalMove(s, x, k, lv, fine));
       return m;
     };
     const sortEv = (m: Map<string, Eval>) => [...m.entries()].sort((a, b) => b[1].q - a[1].q || Number(b[0] === "keep") - Number(a[0] === "keep"));
@@ -591,25 +578,16 @@ export class Gen {
         expand.add(areaK);
       }
     }
-    // まとめた手は、判断より粗いまとめ方で見せてよい（一番良い手を超えない時だけ。決まり 4）
-    const disp = new Map<string, Eval>();
-    for (const [k] of shown) {
-      let e = ev.get(k)!;
-      if (!expand.has(k) && this.P.stubMode !== "split" && level !== this.P.stubMode && level !== "lean") {
-        const f = this.evalMove(s, x, k, this.modeFor(k, x, this.P.stubMode), fine);
-        if (f.q <= order[0]![1].q + 1e-9) e = f;
-      }
-      disp.set(k, e);
-    }
+    // まとめた手は判断と同じまとめ方で見せる（R1 の決まり 4 の「より粗いまとめ方」は使わない: 見積もりは広げた手と同じ）
     // この判断の余裕: 広げた一番良い手の値が、見せたほかの手（まとめた手と、広げた別の領域の手）の見積もりに負けずに下がってよい幅。
     // 別の領域の手も入れるので、その手を後でまとめた手に戻しても決まり 2 が保たれる。ずっと今のままの道で広げた今のままは入れない（元の決まり）
-    const stubQs = shown.filter(([k]) => k !== best && !(k === "keep" && d.chain)).map(([k]) => disp.get(k)!.q);
+    const stubQs = shown.filter(([k]) => k !== best && !(k === "keep" && d.chain)).map(([k]) => ev.get(k)!.q);
     const margin = stubQs.length ? order[0]![1].q - Math.max(...stubQs) : Infinity;
     const childAllow = Math.min(margin, allow - usedHere);
     const children: QNode[] = [];
     let bestSplitExtra = 0;
     for (const [k, why] of shown) {
-      const e = disp.get(k)!;
+      const e = ev.get(k)!;
       const tok = s === 0 ? k : `${s}${CODE[k] ?? k}`;
       const a: QNode = { key: `${d.key}.${tok}`, role: "a", m: m0, st: x, stage: s, kind: k, kids: [], parent: d, pPath: d.pPath, V: 0, why, Q: e.q };
       d.kids.push(a);
@@ -734,15 +712,28 @@ export class Gen {
 }
 
 /**
- * 試作と同じ順で粗い表を引き始めてから作る（表の代表の状態は最初に通った状態なので、この順も結果の一部）。
+ * 粗い表を引き始める順（表の代表の状態は最初に通った状態なので、この順も結果の一部。見直し truth-2）。
+ * order が無ければ試作の入口（proto.ts）と同じ: 今日の状態の 3 か月後のマスから引く（今日の手が無い世界では引かない）。
+ * order があれば、その順に今日の手の 3 か月の結果の状態から引く（順を変えた時の値の幅を測るため）
+ */
+export function warmTable(w: WorldQ, dp: CoarseDP, order?: readonly string[]): void {
+  const today = toQ(w, w.today);
+  if (!order) {
+    if (w.rootMenu.length > 0) dp.value(1, today);
+    return;
+  }
+  for (const k of order) for (const o of quarterOutcomes(w, today, k, 0, "split", dp.S)) dp.value(1, o.st);
+}
+
+/**
+ * 粗い表を引き始めてから作る（warmTable。既定は試作と同じ順）。
  * dp0: 前に作った粗い表を引き継ぐ（テスト用。引き継いだ表で作った木は、表を新しく作った木と同じとは限らない）
  */
-export function generate(w: WorldQ, P: Params, only?: string[], dp0?: CoarseDP): { root: QNode; stats: MoveStats[]; gen: Gen; dp: CoarseDP; msTable: number; msGen: number } {
+export function generate(w: WorldQ, P: Params, only?: string[], dp0?: CoarseDP, warm?: readonly string[]): { root: QNode; stats: MoveStats[]; gen: Gen; dp: CoarseDP; msTable: number; msGen: number } {
   const S = w.annual / 12;
   const t0 = performance.now();
-  const dp = dp0 ?? new CoarseDP(w, S, Object.keys(w.kinds), GRID);
-  // 試作の入口（proto.ts）と同じ: 今日の状態の 3 か月後のマスから表を引き始める（今日の手が無い世界では引かない）
-  if (!dp0 && w.rootMenu.length > 0) dp.value(1, toQ(w, w.today));
+  const dp = dp0 ?? new CoarseDP(w, S, Object.keys(w.kinds));
+  if (!dp0) warmTable(w, dp, warm);
   const t1 = performance.now();
   const gen = new Gen(w, S, dp, P);
   const { root, stats } = gen.build(only);

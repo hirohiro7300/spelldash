@@ -7,6 +7,12 @@
 //   K1  暦: 4 月の月の番号はどれも (anchorMonth + a) mod 12 = 4 で、漏れが無い
 //   J1  転職活動: この会社での期の数は searchMax まで、続けて決まらなかった期の数は searchRun まで（どの状態でも）
 //   J2  一番ありそうな道で、続けて決まらなかった転職活動は searchRun 期まで（最初の手ごと）
+//   J3  転職は 3 年で 1 回: 移った後の会社員の判断に転職活動の手が無い（前提の文と決まりが合うかは premiseRuleChecks）
+//   J4  週 4 日は戻さない: 週 4 日の判断に転職活動の手が無い（同じく premiseRuleChecks）
+// 前提の文と手の決まりの点検（premiseRuleChecks。世界だけで見る。見直し truth-3・truth-6・truth-7）:
+//   J3  前提の文に SWITCH_ONCE がある ⇔ 移った後の会社員は転職活動を選べない（独立してから会社員に戻ると、また選べる）
+//   J4  前提の文に PART_ONEWAY がある ⇔ 週 4 日からは転職活動も週 4 日の相談もできず、どの手でも 3 か月で会社員（週 5 日）に戻らない
+//   K2  昇格を狙える 3 か月（4 月を含む段）でだけ昇格を狙う手が選べ、今日がその 3 か月なら今日の手にある
 // 数（おすすめの道。どの判断でも一番良い手を選び、出来事はすべて）: 転職活動を 1 期以上する見込み・転職した見込み・転職活動の期の数の平均
 // 新しい出力の点検（checkOutputs。作業メモ SPEC v1 §2.4・§2.6）:
 //   Q1  まとめた手でない手にはどれも q（有限の R3）があり、まとめた手には無い
@@ -15,17 +21,18 @@
 //   M2  まとめた行き先にはどれも cont があり、まとめた手の 3 か月の後から 33 か月目まで 3 か月ごとに 1 つずつ。手は世界の手、出来事は決まった語彙
 //   B1  分かれ道の数は、最初の手ごとに min(目標, 届く上限) の ±tol
 //   N1  ノードは maxNodes 枚まで
-//   K0  never に _all とまとまりすべてがあり、k(none) = _all − （何も除かない同じ計算）が年収 360・540 万円で ±0.5
+//   K0  never に _all とまとまりすべてがあり、3 か月の結果の入れ物を使い回して何も除かない計算をし直すと _all と同じ
+//       （k(none) = 0。入れ物が値を変えないことの点検。年収 360・540 万円で 1e-9 まで）
 
-import { calendarCheck } from "./calendar";
+import { calendarCheck, calendarOf } from "./calendar";
 import { Wsum } from "./core";
 import { displayOrder } from "./devTree";
 import type { MoveStats, QNode } from "./gen";
 import { bandOf } from "./group";
 import { CONT_EVENTS, likeValue, type NeverResult } from "./outputs";
-import { isSearch, uses } from "./quarter";
-import { bookStats } from "./sim";
-import { H, type WorldQ } from "./world";
+import { feasibleQ, isSearch, uses } from "./quarter";
+import { bookStats, simQ, toQ, type QSt } from "./sim";
+import { H, NSTAGE, PART_ONEWAY, SWITCH_ONCE, type WorldQ } from "./world";
 
 export interface SearchStats {
   kind: string;
@@ -53,8 +60,11 @@ const better = (a: QNode, b: QNode) => a.V > b.V + 1e-9 || (Math.abs(a.V - b.V) 
 /** 判断で一番良い手（値が同じなら今のまま）。rollbackApp の後に呼ぶ */
 export const bestOf = (d: QNode): QNode => d.kids.reduce((b, a) => (better(a, b) ? a : b));
 
-/** 名前に書いた社数（「顧客 1〜2 社」「顧客 3 社」「全部可・1 社目」）。無ければ null */
-function labelClients(lab: string): { lo: number; hi: number } | null {
+/**
+ * 名前に書いた社数（「顧客 1〜2 社」「顧客 3 社」「全部可・1 社目」）。無ければ null。名前は ./group.ts の describe（clRange・permside の名前）が書く物で、
+ * 書き方を変えたらここも変える（変えないと C2 が何も見なくなる。テストが本物の名前で確かめる）
+ */
+export function labelClients(lab: string): { lo: number; hi: number } | null {
   const range = /顧客 (\d+)〜(\d+) 社/.exec(lab);
   if (range) return { lo: Number(range[1]), hi: Number(range[2]) };
   const one = /顧客 (\d+) 社/.exec(lab);
@@ -122,6 +132,10 @@ export function checkTree(w: WorldQ, root: QNode): TreeCheck {
       }
       // J1 転職活動の上限
       if (uses(st, "q") > w.q.searchMax || uses(st, "r") > w.q.searchRun) fail(`J1 転職活動の期の数が上限を超える: ${n.key}（${st.fl.join(",")}）`);
+      // J3・J4 移った後の会社員・週 4 日の判断に転職活動の手が無い
+      const search = n.kids.find((a) => a.role === "a" && isSearch(a.kind!));
+      if (search && st.j === "e" && st.fl.includes("switched")) fail(`J3 移った後の会社で転職活動の手: ${search.key}`);
+      if (search && st.j === "p") fail(`J4 週 4 日で転職活動の手: ${search.key}`);
     }
     for (const k of n.kids) walk(k);
   };
@@ -130,6 +144,92 @@ export function checkTree(w: WorldQ, root: QNode): TreeCheck {
   const search = root.kids.map((a0) => searchStats(w, a0));
   for (const s of search) if (s.chainMaxFailRun > w.q.searchRun) fail(`J2 一番ありそうな道で続けて決まらなかった転職活動が ${s.chainMaxFailRun} 期（${s.kind}）`);
   return { fails, warns, counts, search };
+}
+
+/**
+ * 前提の文と手の決まりが合うか（世界だけで見る。生成は木を作る前に呼ぶ）。通らない物の文を返す:
+ *   J3 前提の文に SWITCH_ONCE がある ⇔ 移った後の会社員は転職活動（1 期目・続ける）を選べない。独立してから会社員に戻ると印が外れて、また選べる
+ *   J4 前提の文に PART_ONEWAY がある ⇔ 週 4 日からは転職活動・週 4 日の相談を選べず、どの手でも 3 か月で週 5 日の会社員に戻らない
+ *   K2 昇格を狙う手は 4 月を含む 3 か月（calendarOf の promoStages）でだけ選べ、今日がその 3 か月なら今日の手にある
+ * feas は手の決まり（テストで決まりを変えて、文と合わない時に通らないことを確かめる）
+ */
+export function premiseRuleChecks(w: WorldQ, feas: (w: WorldQ, x: QSt, kind: string, m0: number) => boolean = feasibleQ): string[] {
+  const fails: string[] = [];
+  const stated = (t: string) => w.premises.some((p) => p.includes(t));
+  const today = toQ(w, w.today);
+  const at = (j: QSt["j"], fl: string[]): QSt => ({ ...today, j, fl: [...fl].sort(), cb: today.cb });
+  // J3 転職は 3 年で 1 回
+  const moved = at("e", ["switched"]);
+  const locked = !feas(w, moved, "fc_switch", 3) && !feas(w, at("e", ["jx", "q1", "switched"]), "fc_switch2", 3);
+  if (stated(SWITCH_ONCE) !== locked) fail(`J3 前提の文（転職は 3 年で 1 回）${stated(SWITCH_ONCE) ? "がある" : "が無い"}のに、移った後の会社員が転職活動を${locked ? "選べない" : "選べる"}`);
+  const back = simQ(w, at("i", ["switched"]), "back_emp", 3).filter((x) => x.x.j === "e");
+  if (!back.length || back.some((x) => !feas(w, x.x, "fc_switch", 6))) fail("J3 独立してから会社員に戻った会社で、転職活動の 1 期目を選べない");
+  // J4 週 4 日は戻さない
+  const part = at("p", ["pq"]);
+  const noSearch = ["fc_switch", "fc_switch2", "part"].every((k) => !feas(w, part, k, 3) && !feas(w, at("p", ["jx", "pq", "q1"]), k, 3));
+  const toFull: string[] = [];
+  for (const k of Object.keys(w.kinds)) if (feas(w, part, k, 3) && simQ(w, part, k, 3).some((x) => x.x.j === "e")) toFull.push(k);
+  const oneWay = noSearch && !toFull.length;
+  if (stated(PART_ONEWAY) !== oneWay) fail(`J4 前提の文（週 4 日は戻さない）${stated(PART_ONEWAY) ? "がある" : "が無い"}のに、週 4 日から${oneWay ? "戻らない" : `戻る・転職活動ができる（${toFull.join(",") || "転職活動・週 4 日の相談"}）`}`);
+  // K2 昇格を狙える 3 か月
+  const cal = calendarOf(w.anchor, H);
+  for (let s = 0; s < NSTAGE; s++) {
+    const promo = cal.promoStages.includes(s);
+    for (const j of ["e", "p"] as const) if (feas(w, at(j, []), "fc_push", 3 * s) !== promo) fail(`K2 ${3 * s} か月目の昇格を狙う手が${promo ? "選べない（4 月を含む 3 か月）" : "選べる（4 月を含まない 3 か月）"}（${j}）`);
+  }
+  if (cal.promoStages.includes(0) && !w.rootMenu.includes("fc_push")) fail("K2 今日の 3 か月が昇格を狙える 3 か月なのに、今日の手に昇格を狙う手が無い");
+  return fails;
+  function fail(x: string): void {
+    fails.push(x);
+  }
+}
+
+/** 届け出の答えの順（見直し truth-4）: 届け出る手ごとに、答えごとの値 V(答え) = Σ p (w(e) + V(子)) / Σ p（rollbackApp の後に呼ぶ） */
+export interface Dominance {
+  /** 答えで分かれた届け出る手の数 */
+  options: number;
+  /** V(SpellDash だけ可) < V(どちらも不可) − eps の手・V(全部可) < V(SpellDash だけ可) − eps の手と、一番大きい差（万円）・例 */
+  sn: number;
+  as: number;
+  worstSn: number;
+  worstAs: number;
+  examples: string[];
+}
+
+/** 届け出の答えの順 V(全部可) ≥ V(SpellDash だけ可) ≥ V(どちらも不可) を、届け出る手ごとに見る（数えるだけ。年収 S で rollbackApp した後） */
+export function filingDominance(root: QNode, S: number, eps = 1e-6): Dominance {
+  const d: Dominance = { options: 0, sn: 0, as: 0, worstSn: 0, worstAs: 0, examples: [] };
+  const walk = (n: QNode) => {
+    if (n.role === "a" && n.kids.length && n.kids.every((c) => c.out && (c.out.ln.metric === "perm" || c.out.ln.metric === "permside"))) {
+      const acc = new Map<string, [number, number]>();
+      for (const c of n.kids) {
+        const ans = c.out!.id.charAt(0);
+        const t = acc.get(ans) ?? [0, 0];
+        t[0] += c.out!.p * (Wsum(c.r!, S) + c.V);
+        t[1] += c.out!.p;
+        acc.set(ans, t);
+      }
+      const v = (a: string) => {
+        const t = acc.get(a);
+        return t ? t[0] / t[1] : null;
+      };
+      const [va, vs, vn] = [v("a"), v("s"), v("n")];
+      d.options++;
+      if (vs !== null && vn !== null && vs < vn - eps) {
+        d.sn++;
+        d.worstSn = Math.max(d.worstSn, vn - vs);
+        if (d.examples.length < 3) d.examples.push(`${n.key}（SpellDash だけ可 ${(vs - vn).toFixed(2)}）`);
+      }
+      if (va !== null && vs !== null && va < vs - eps) {
+        d.as++;
+        d.worstAs = Math.max(d.worstAs, vs - va);
+        if (d.examples.length < 3) d.examples.push(`${n.key}（全部可 ${(va - vs).toFixed(2)}）`);
+      }
+    }
+    for (const k of n.kids) walk(k);
+  };
+  walk(root);
+  return d;
 }
 
 /** 最初の手 a0 のおすすめの道（どの判断でも一番良い手）の転職活動の数と、一番ありそうな道 */
@@ -244,10 +344,11 @@ export function checkOutputs(w: WorldQ, root: QNode, o: OutputCheckOpts): string
   if (o.never) {
     const nv = o.never.never;
     for (const k of ["_all", ...(o.fams ?? [])]) if (!isR3(nv[k])) fail(`K0 never に ${k} が無い`);
+    // 3 か月の結果の入れ物を使い回して作り直した _all（none）が、新しい入れ物で作った _all と同じ（入れ物が値を変えない）
     for (const annual of [360, 540]) {
       const s = annual / 12;
       const k = Wsum(nv._all!, s) - Wsum(o.never.none.v, s);
-      if (!(Math.abs(k) <= 0.5)) fail(`K0 k(none) = ${k.toFixed(3)}（年収 ${annual} 万円）`);
+      if (!(Math.abs(k) <= 1e-9)) fail(`K0 3 か月の結果の入れ物を使い回すと値が変わる: k(none) = ${k.toExponential(2)}（年収 ${annual} 万円）`);
     }
   }
   return fails;
