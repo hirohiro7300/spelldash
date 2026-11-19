@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
+import { impactQAlias } from "./vite.config";
 
 export default defineConfig({
+  resolve: { alias: impactQAlias() },
   test: {
     environment: "node",
     include: ["tests/unit/**/*.test.ts"],
