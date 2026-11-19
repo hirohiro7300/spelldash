@@ -5,13 +5,14 @@
 // 初めての 1 枚は道の長さぶん（と兄弟の題）、後は引くだけ。段取りと題は年収で変わらないので、年収を替えても作り直さない
 import type { MapData } from "../../deepmap/mapData";
 import { BANKS } from "./banks";
-import { composeMarked } from "./compose";
+import { composeContMarked, composeMarked, type ContCard } from "./compose";
 import { ctxOf } from "./path";
 import { spaceJa, strip } from "./text";
 import type { Banks, Card } from "./types";
 
 export { BANKS } from "./banks";
-export { ripple, type Ripple } from "./path";
+export { optionValue, recommended, ripple, type Ripple } from "./path";
+export type { ContCard } from "./compose";
 export type { Banks, Card, CardTodo, Consts, Step, Variant } from "./types";
 
 export interface ComposeOpts {
@@ -41,6 +42,18 @@ export function finishCard(c: Card): Card {
 /** カード i の文章（題・短い名前・本文・数の行・やること 3 つまで（元にしたやりたいことリストの番号つき）・使った文の型） */
 export function composeCard(map: MapData, i: number, opts: ComposeOpts): Card {
   return finishCard(composeMarkedCard(map, i, opts));
+}
+
+/**
+ * まとめた行き先 i の標準の続き（cont）の k 番目の期の文章（題・本文・やること）。道の画面が、まとめた行き先の後の期を 1 行ずつ
+ * 薄く出すときに使う（SPEC §5.4・reader-1）。まとめた行き先でない・k が範囲の外なら null
+ */
+export function composeCont(map: MapData, i: number, k: number, opts: ComposeOpts): ContCard | null {
+  check(map, i, opts.annual);
+  const c = composeContMarked(ctxOf(map, opts.banks ?? BANKS, opts.annual), i, k);
+  if (!c) return null;
+  const fin = (s: string): string => spaceJa(strip(s));
+  return { m: c.m, kind: c.kind, title: fin(c.title), body: fin(c.body), todo: c.todo.map((t) => ({ text: t.text, cite: t.cite })) };
 }
 
 /** 写し（複製・コピー）に入れる文章: 数の行（1 行）と本文。写しは地図の外のカードになるので、その時の年収で文にして残す */

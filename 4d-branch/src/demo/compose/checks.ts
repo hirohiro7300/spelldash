@@ -4,23 +4,27 @@
 //   C3 長さ・C4 地図の文の決まり（% と差・敬語・位置・気持ち・埋まっていない差し込み）・C4b 英数字の名前を書かない・C5 結果の名前と顧客の数（本当の状態）・
 //   C5b 顧客と席は整数・C7 モデルに無い月額（人が見る）・C10 数の言い方（給与は月にならして・有料は手数料とサーバー代を引いて・月に遊んだ人・
 //   3 か月は 3 つの月・数の行の数を今日・状態・行き先の本文に書かない）・D1 / D2 文では直せないデータ（計算の側へ返す。まとめた行き先は除く）
+//   C11 手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が、その結果の状態と合う（reader-4）・
+//   C12 道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間。reader-6）
 // 道ごと: C9 道で 1 回だけの文（暦・静かな期の一言・出来事の助言・避けたい訳）が、今日から行き先までの道で 2 回出ない
 import type { MapData } from "../../deepmap/mapData";
 import type { WishData } from "../wishlist";
-import { ME, MS, PE, PS, spaceJa, strip } from "./text";
-import type { Banks, Card } from "./types";
+import { clBand, mergedFact, newFeeOf } from "./path";
+import { clr, f2, man, ME, MS, n0, PE, PS, spaceJa, strip } from "./text";
+import type { Banks, Card, Consts } from "./types";
 
 /** 文の型が差し込みなしで書いてよい数字（決まった言い方・月・少ない数） */
-export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /週 4 日/g, /\d{1,2} ?月/g, /[1-9] ?か月/g, /[1-3] ?年/g, /[1-3] ?社目/g, /[1-9] ?回/g, /[1-5] ?つ/g, /[1-9] ?件/g, /[1-9] ?本/g, /[1-9] ?期/g, /[0-9] ?円/g, /[1-9] ?日/g, /[1-9] ?人/g, /もう 1 社/g, /1 社 月/g, /1 社あたり/g, /1on1/g, /A4/g, /GA4/g, /D1|D7|D30/g];
+export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /週 4 日/g, /1 校/g, /\d{1,2} ?月/g, /[1-9] ?か月/g, /[1-3] ?年/g, /[1-3] ?社目/g, /[1-9] ?回/g, /[1-5] ?つ/g, /[1-9] ?件/g, /[1-9] ?本/g, /[1-9] ?期/g, /[0-9] ?円/g, /[1-9] ?日/g, /[1-9] ?人/g, /もう 1 社/g, /1 社 月/g, /1 社あたり/g, /1on1/g, /A4/g, /GA4/g, /D1|D7|D30/g];
 
 /**
  * 役割ごとの長さ（題の字数・本文の字数の下と上）。今日の手は先に読むので本文を長くしてよい。
  * 0.2: 数を数の行に移し（SPEC §4.2）、助言を道で 1 回にしたので、静かな期の本文は短い（数の行が上にある）。
- * 上と下は R1 の木（79,092 枚・年収 360 と 540）で測って決めた: 手 p5 186・最大 466（避けたい手）、状態 p5 63・最大 353、行き先 p5 159・最大 291。
- * 本当の木で測り直す（truth-14）
+ * 0.4: どの手にも 3 年の見積もりとおすすめとの差（reader-1・reader-2）、広げた手には先の分かれ道の数、まとめた手には結果ごとの 3 年の稼ぎを足した。
+ *   上は新しい前提の木（71,619 枚・年収 360 と 540）で測り直した（truth-14）: 手の最大 646（結果が 3 つのまとめた独立の手）、
+ *   行き先の最大 490、状態の最大 346、今日の手の最大 458。下は前の測り方のまま
  */
-export const LIMITS = { a: { title: 16, min: 60, max: 480 }, s: { title: 22, min: 30, max: 380 }, e: { title: 24, min: 80, max: 480 }, r: { title: 40, min: 0, max: 600 } } as const;
-export const FIRST_MOVE_MAX = 420;
+export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 400 }, e: { title: 24, min: 80, max: 560 }, r: { title: 40, min: 0, max: 600 } } as const;
+export const FIRST_MOVE_MAX = 520;
 export const TODO_MAX = 24;
 
 const SLOT_SPAN = new RegExp(`${MS}[^${ME}]*${ME}`, "g");
@@ -105,8 +109,11 @@ export function numberWording(text: string): string[] {
 /** 数の行の数を、今日・状態・行き先の本文に書いていないか（SPEC §4.2・user-9b） */
 const ROW_IN_PROSE: readonly RegExp[] = [/年収 (?:平均 )?[0-9,]+ ?万円/, /月にならして [0-9.]+ ?万円/, /月に遊んだ人 (?:平均 )?[0-9,]+ ?人/, /有料 (?:平均 )?[0-9,]+ 人（/, /週 [0-9]+ 時間/, /広告運用 (?:平均 )?[0-9〜]+ ?社（売上/];
 
-/** 1 枚の点検。t は印つきの形（composeMarkedCard）。見つかった物を「点検の名前 説明」で返す */
-export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: ReadonlyMap<string, WishText>): string[] {
+/**
+ * 1 枚の点検。t は印つきの形（composeMarkedCard）。見つかった物を「点検の名前 説明」で返す。
+ * annual を渡すと、年収で決まる額（年収・昇格の額）も結果の状態と比べる（C11）
+ */
+export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: ReadonlyMap<string, WishText>, annual?: number): string[] {
   const out: string[] = [];
   const role = map.role(i);
   const sum = role === "e" && map.sum(i);
@@ -150,8 +157,11 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
   // C10: 数の言い方
   for (const x of numberWording(all)) out.push(`C10 ${x}`);
   if (role !== "a") for (const re of ROW_IN_PROSE) if (re.test(plain)) out.push(`C10 数の行の数を本文に書いている（${re.source}）`);
-  // C5b: 顧客と学校の席は整数（ならした値の端数を書かない。truth-5・truth-9）
+  // C5b: 顧客と学校の席は整数（ならした値の端数を書かない。truth-5・truth-9）。本文と題の「N 席」は 1 校の席の倍数（3 年後の平均の席を言わない。facts-3）
   if (/[0-9]+\.[0-9]+ ?(?:社|席)/.test(all)) out.push("C5b 顧客か席に端数");
+  for (const m of `${plain}\n${title}`.matchAll(/([0-9][0-9,]*) ?席/g)) if (Number(m[1]!.replace(/,/g, "")) % banks.C.schoolSeats !== 0) out.push(`C5b 学校の席が 1 校の席の倍数でない「${m[0]}」`);
+  if (role === "a") for (const x of moveClaims(map, i, plain, banks.C, annual)) out.push(`C11 ${x}`);
+  for (const x of pathContext(map, i, plain, t)) out.push(`C12 ${x}`);
   // C2: 状態と食い違わない（結果・行き先だけ。同じ手の別の結果を言う文は除く）。まとめた行き先は中身の幅と比べる（truth-5）
   if (role === "s" || role === "e") {
     const s = map.st(i);
@@ -185,6 +195,7 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
       ];
       // 中身の幅の無いまとめた行き先（平均）は、一番多い仕事の道として書くので仕事の決まりだけを見る（有料・顧客・席・転職は平均で、道ごとに違う）
       for (const [c, re, why] of sum ? ban.slice(0, 2) : ban) if (c && re.test(own + title)) out.push(`C2 状態と合わない（${why}）`);
+      if (!sum) for (const x of mergedIssues(map, i, own + "。" + title, banks.C)) out.push(`C2 まとめた結果を 1 つの事実として言う（${x}）`);
     }
     // まとめた行き先の顧客の数（題・数の行・本文）: 中身の幅か平均に合う整数だけ。結果の名前（『』の中と「…の後」）は、その 3 か月の結果なので除く（truth-5）
     if (sum) for (const x of sumClientIssues(s.cl, mix, [title, ...nums, plain])) out.push(`C2 まとめた行き先の顧客の数${x}`);
@@ -222,7 +233,138 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
   for (const td of t.todo) {
     const st = book.find((x) => x.id === td.cite);
     if (!st) continue;
-    for (const mm of `${st.act}${st.todo}`.matchAll(/月 ?([\d.]+) ?万円/g)) if (![C.sideFee, C.indFee, C.spend, C.overhead].includes(Number(mm[1]))) out.push(`C7 モデルに無い月額 ${mm[0]}: ${td.cite}`);
+    for (const mm of `${st.act}${st.todo}`.matchAll(/月 ?([\d.]+) ?万円/g)) if (![C.feeFirst, C.feeRaised, C.indFee, C.spend, C.overhead].includes(Number(mm[1]))) out.push(`C7 モデルに無い月額 ${mm[0]}: ${td.cite}`);
+  }
+  return out;
+}
+
+/**
+ * まとめた結果（事実の場合をまとめた 'all'・上げ幅をまとめた 'high_mid'・社数の違う場合をまとめた幅）を、どちらか一方の事実として
+ * 言っていないか（C2・facts-1・reader-3）。見つかった物の説明を返す
+ */
+export function mergedIssues(map: MapData, i: number, text: string, C: Consts): string[] {
+  const out: string[] = [];
+  const k = map.kind(map.parent(i)) ?? "";
+  if (mergedFact(map, i)) {
+    if (k === "fc_push" && /昇格しなかった|評価は据え置き|据え置きで、|評価でも昇格|昇格が決まり|評価で昇格し|一段上がり/.test(text)) out.push("昇格と据え置きをまとめた結果");
+    if (k === "sd_school" && /導入を見送った|導入を決め/.test(text)) out.push("導入と見送りをまとめた結果");
+    if (map.outId(i) === "high_mid" && /給与が今日の [0-9.]+ 倍の会社へ(?:小幅増で)?移った/.test(text)) out.push("上げ幅の違う転職をまとめた結果");
+  }
+  const b = map.band(i)?.cl;
+  if (b && b[0] < b[1]) {
+    const m = /1 社目（月|1 社目が決まり|もう 1 社増えた|[0-9]+ 社目が決まった。|顧客が [0-9]+ 社離れた|契約の終わった顧客が|社との契約が更新されずに|が運用を打ち切った|新しい顧客は決まらなかった|候補からは決まらなかった|まだ良い返事が来ていない|今回も良い返事が来なかった|契約には至らなかった|声をかけたが、まだ決まらない/.exec(text);
+    if (m) out.push(`社数の幅 ${b[0]}〜${b[1]} 社「${m[0]}」`);
+    const j = map.st(i).j;
+    const cap = j === "i" ? C.capInd : j === "p" ? C.capPart : C.capEmp;
+    if (b[0] < cap && /上限に届いた|上限まで顧客がいて|上限に届いている/.test(text)) out.push(`社数の幅 ${b[0]}〜${b[1]} 社で上限と言う`);
+  }
+  return out;
+}
+
+/** 判断 d までの道で、顧客が上の月額の数（raiseAt 社）に確かに届いたか（会社員に戻って顧客を手放した所より前は数えない。SPEC §2.3 #6） */
+export function reachedRaise(map: MapData, d: number, C: Consts): boolean {
+  for (let x = d; x >= 0; ) {
+    if (clBand(map, x)[0] >= C.raiseAt) return true;
+    const mv = map.parent(x);
+    if (mv < 0) return false;
+    const up = map.parent(mv);
+    if (map.st(up).j === "i" && map.st(x).j !== "i") return false;
+    x = up;
+  }
+  return false;
+}
+
+/** 表に出す結果の名前（地図の名前。英数字の名前なら null） */
+const shownLabel = (map: MapData, o: number): string | null => {
+  const lab = map.label(o);
+  return lab && !/^[\x00-\x7F]*$/.test(lab) && !/[A-Za-z]+_/.test(lab) ? lab : null;
+};
+
+/**
+ * 手が結果について言う額と数が、その結果の状態と合うか（C11・reader-4）: 次の顧客の月額（道で決まる段）・昇格の額（2 つの結果の給与の差）・
+ * 結果ごとの売上・席・倍率・年収（『結果』なら…の中。まとめた行き先は 3 年後の平均なので比べない）。text は仕上げた本文
+ */
+export function moveClaims(map: MapData, a: number, text: string, C: Consts, annual?: number): string[] {
+  const out: string[] = [];
+  const kind = map.kind(a) ?? "";
+  const d = map.parent(a);
+  const s0 = map.st(a);
+  if (kind === "ad_side" || kind === "ad_more") {
+    const fee = newFeeOf(C, s0.j, reachedRaise(map, d, C));
+    for (const m of text.matchAll(/(?:社目|もう 1 社)（月 ([0-9.]+) 万円）|1 社 月 ([0-9.]+) 万円/g)) if (Math.abs(Number(m[1] ?? m[2]) - fee) > 1e-9) out.push(`次の顧客の月額「${m[0]}」が道の月額 ${fee} 万円と違う`);
+  }
+  const kids: number[] = [];
+  for (let k = 0; k < map.childCount(a); k++) kids.push(map.child(a, k));
+  if (kind === "fc_push" && annual !== undefined) {
+    const real = kids.filter((o) => !map.sum(o));
+    const up = real.find((o) => map.outId(o) === "up");
+    const same = real.find((o) => map.outId(o) === "same");
+    const want = up !== undefined && same !== undefined ? annual * (map.rr(up)[0] - map.rr(same)[0]) : annual * C.step * (1 + C.aprilRaise) * (s0.j === "p" ? C.partFactor : 1);
+    for (const m of text.matchAll(/年収(?:が|は) ([0-9,]+) ?万円上が/g)) if (Number(m[1]!.replace(/,/g, "")) !== Math.round(want)) out.push(`昇格の額「${m[0]}」が結果の給与の差 ${Math.round(want)} 万円と違う`);
+  }
+  for (const o of kids) {
+    const lab = shownLabel(map, o);
+    if (map.sum(o) || !lab) continue;
+    const at = text.indexOf(`『${lab}』なら`);
+    if (at < 0) continue;
+    const rest = text.slice(at + lab.length + 4);
+    const seg = rest.slice(0, Math.min(...[rest.indexOf("『"), rest.indexOf("。")].map((x) => (x < 0 ? rest.length : x))));
+    const so = map.st(o);
+    const rr = map.rr(o);
+    for (const m of seg.matchAll(/売上 月 ([0-9.]+) 万円/g)) if (m[1] !== man(so.cl * so.fee)) out.push(`『${lab}』の売上「${m[0]}」が結果の ${man(so.cl * so.fee)} 万円と違う`);
+    for (const m of seg.matchAll(/([0-9,]+) 席分/g)) if (m[1] !== n0(Math.max(0, so.seats - s0.seats))) out.push(`『${lab}』の席「${m[0]}」が加わる席 ${n0(Math.max(0, so.seats - s0.seats))} と違う`);
+    for (const m of seg.matchAll(/今日の ([0-9.]+) 倍/g)) if (m[1] !== f2(rr[0]) && m[1] !== f2(so.sal)) out.push(`『${lab}』の倍率「${m[0]}」が結果の ${f2(rr[0])} 倍と違う`);
+    if (annual !== undefined) for (const m of seg.matchAll(/年収 ([0-9,]+) 万円/g)) if (m[1] !== n0(annual * rr[0])) out.push(`『${lab}』の年収「${m[0]}」が結果の ${n0(annual * rr[0])} 万円と違う`);
+    const [lo, hi] = map.band(o)?.cl ? clBand(map, o) : [Math.floor(so.cl + 1e-9), Math.ceil(so.cl - 1e-9)];
+    for (const m of seg.matchAll(/顧客は (?:ほぼ )?([0-9]+)(?:〜([0-9]+))? 社/g)) {
+      const a1 = Number(m[1]);
+      const b1 = m[2] === undefined ? a1 : Number(m[2]);
+      if (a1 < Math.min(lo, clr(so.cl)) || b1 > Math.max(hi, clr(so.cl))) out.push(`『${lab}』の顧客「${m[0]}」が結果の ${lo}〜${hi} 社と違う`);
+    }
+  }
+  return out;
+}
+
+/** 手 a までの道で、今の会社での転職活動の期の数（a を含む。転職・会社員に戻るより前は数えない） */
+export function searchQuarters(map: MapData, a: number): number {
+  const isSearch = (k: string | null): boolean => k === "fc_switch" || k === "fc_switch2";
+  let n = isSearch(map.kind(a)) ? 1 : 0;
+  for (let d = map.parent(a); d > 0 && map.role(d) === "s"; ) {
+    const mv = map.parent(d);
+    const up = map.parent(mv);
+    if (isSearch(map.kind(mv)) && /^(high|mid|high_mid)$/.test(map.outId(d))) break;
+    if (map.st(up).j === "i" && map.st(d).j !== "i") break;
+    if (isSearch(map.kind(mv))) n++;
+    d = up;
+  }
+  return n;
+}
+
+/** 道の歩みと合わない文（C12・reader-6）: 前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ */
+export function pathContext(map: MapData, i: number, text: string, t: Card): string[] {
+  const out: string[] = [];
+  const role = map.role(i);
+  if (/面接に進めなかった/.test(text) && /面接の手応え/.test(text)) out.push("面接に進めなかったのに面接の手応え");
+  if (role === "a") {
+    const kind = map.kind(i) ?? "";
+    const d = map.parent(i);
+    const prevKind = map.role(d) === "s" ? map.kind(map.parent(d)) : null;
+    if (/前の 3 か月の(?:面接|応募)の手応え/.test(text) && prevKind !== "fc_switch" && prevKind !== "fc_switch2") out.push("前の 3 か月が転職活動でないのに、その手応え");
+    if (kind === "fc_switch2")
+      for (const m of text.matchAll(/転職活動(?:の|は) ?([0-9]+) 期目|（([0-9]+) 期目）/g)) {
+        const n = Number(m[1] ?? m[2]);
+        const actual = searchQuarters(map, i);
+        if (n !== actual) out.push(`転職活動の期が ${n}（道では ${actual}）`);
+      }
+    const dPrev = map.role(d) === "s" ? map.parent(map.parent(d)) : -1;
+    if (/過去 6 か月の月次報告/.test(text) && (map.st(d).j === "i" || (dPrev >= 0 && map.st(dPrev).j === "i"))) out.push("独立していた期があるのに過去 6 か月の月次報告");
+    if (kind === "ad_portfolio" && (clr(map.st(d).cl) >= 1 || map.st(d).j === "i") && /副業を始めるときに|副業の 1 社目探し/.test(text)) out.push("顧客がいるのに副業を始めるとき");
+    if (t.todo.some((x) => /区切る顧客/.test(x.text)) && map.st(d).cl < 0.5) out.push("顧客がいないのに区切る顧客");
+  }
+  if (role === "s" && /副業と SpellDash の所得/.test(text)) {
+    let any = false;
+    for (let x = i; x >= 0 && !any; x = map.parent(x)) if (map.role(x) !== "a" && (map.st(x).cl >= 0.05 || (map.band(x)?.cl?.[1] ?? 0) >= 1)) any = true;
+    if (!any) out.push("広告運用の稼ぎが無い道で副業の所得");
   }
   return out;
 }

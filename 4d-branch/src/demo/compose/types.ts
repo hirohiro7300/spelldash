@@ -20,10 +20,16 @@ export interface Step {
   if?: string;
 }
 
-/** 文が言う計算の前提の数。scripts/impact/world.json と同じ値にする（テストで確かめる） */
+/**
+ * 文が言う計算の前提の数。scripts/impact/world.json と同じ値にする（テストで確かめる）。
+ * 副業の月額の段（feeFirst・feeRaised・raiseAt）は 3 か月ごとの世界（W-gen の scripts/impact/q/world.ts の quarterWorld）の値（SPEC §2.3 #6）
+ */
 export interface Consts {
-  /** 副業の顧客 1 社の月額（万円） */
-  sideFee: number;
+  /** 副業の新しい顧客 1 社の月額（万円） */
+  feeFirst: number;
+  /** 顧客が raiseAt 社に届いた後に増えた顧客 1 社の月額（万円。今の顧客は据え置く） */
+  feeRaised: number;
+  raiseAt: number;
   /** 独立してから増やした顧客 1 社の月額（万円） */
   indFee: number;
   /** 独立の経費（万円/月） */
@@ -38,8 +44,25 @@ export interface Consts {
   net: number;
   /** サーバー代（万円/月） */
   infra: number;
-  /** 昇格 1 回の給与の上がり幅（今の年収の倍率） */
+  /** 昇格 1 回の給与の上がり幅（今日の年収の倍率に足す。4 月の昇給の前に足す） */
   step: number;
+  /** 4 月の定期の昇給 */
+  aprilRaise: number;
+  /** 4 月の評価で昇格する見込み・担当を広げていた場合（fl:scope） */
+  promoP: number;
+  promoPScope: number;
+  /** 学校への提案が 3 か月で導入になる見込みと、試用の実績（fl:pilot）がある場合の倍率 */
+  schoolP: number;
+  pilotMult: number;
+  /** 届け出て『全部可』のとき、その 3 か月に副業の 1 社目が決まる見込み・事例（fl:portfolio）がある場合 */
+  firstP: number;
+  firstPortfolio: number;
+  /** 副業の顧客をもう 1 社探す 3 か月で決まる見込み・事例がある場合 */
+  sideP: number;
+  sidePPortfolio: number;
+  /** 転職で移る先の給与（移る前の給与の倍率）: 大きく上がる・少し上がる */
+  switchHigh: number;
+  switchMid: number;
   /** 学校の 1 席（円/月） */
   seatYen: number;
   /** 週 4 日勤務の給与の倍率 */
@@ -91,8 +114,12 @@ export interface Banks {
   avoid: Record<string, Variant[]>;
   /** 手の短い名前 */
   short: Record<string, string>;
-  /** 手の名詞の形（「前の 3 か月は〜」） */
+  /** 手の名詞の形（この後の目安の並び） */
   nextNoun: Record<string, string>;
+  /** 手をした後の言い方（「前の 3 か月は担当を広げた。」。reader-10） */
+  did: Record<string, string>;
+  /** 標準の続きの 1 期の言い方（手の種類か「種類.出来事」。この後の目安の並び。reader-5） */
+  contNoun: Record<string, string>;
 }
 
 /** カードのやること 1 つ: 文と、元にしたやりたいことリストの番号 */

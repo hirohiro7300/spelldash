@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bankSpacing, cli, fixtureGolden, goldenMarkdown, goldenPaths, likeliest, mask, ownDateAgain, recommended, reportMarkdown, runTextChecks, sentencesOf, skeleton, spacingIssues, TEXT_CHECKS, TEXT_GATES } from "../../scripts/impact/textChecks";
+import { bankSpacing, cli, fixtureGolden, goldenMarkdown, goldenPaths, joinsRow, likeliest, mask, ownDateAgain, recommended, reportMarkdown, runTextChecks, sentencesOf, skeleton, spacingIssues, TEXT_CHECKS, TEXT_GATES } from "../../scripts/impact/textChecks";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, DevTreeNode } from "../../src/deepmap/mapData";
 import { BANKS, type Banks } from "../../src/demo/compose";
-import { sumClientIssues } from "../../src/demo/compose/checks";
+import { mergedIssues, moveClaims, pathContext, searchQuarters, sumClientIssues } from "../../src/demo/compose/checks";
 import { calendarOf } from "../../src/demo/compose/path";
 import golden from "./composeGolden.json";
 import { header, move, out, RULES, st, TREE } from "./composeFixture";
@@ -36,10 +36,10 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     }
   });
 
-  it("点検の名前は SPEC §4.6 の C1〜C10 と C4b・T4。D はデータの指摘で止めない", () => {
-    expect(TEXT_CHECKS.map((c) => c.id)).toEqual(["C1", "C1b", "C2", "C3", "C4", "C4b", "C5", "C5b", "C6", "C7", "C8", "C9", "C10", "T4", "D1", "D2"]);
+  it("点検の名前は SPEC §4.6 の C1〜C10 と C4b・T4、見直しで足した C11（手が言う額と数）・C12（道の歩み）。D はデータの指摘で止めない", () => {
+    expect(TEXT_CHECKS.map((c) => c.id)).toEqual(["C1", "C1b", "C2", "C3", "C4", "C4b", "C5", "C5b", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "T4", "D1", "D2"]);
     expect(TEXT_CHECKS.filter((c) => !c.block).map((c) => c.id)).toEqual(["D1", "D2"]);
-    expect(TEXT_GATES).toEqual({ pathRepeats: 4, siblingSame: 0 });
+    expect(TEXT_GATES).toEqual({ pathRepeats: 4, siblingSame: 0, decisionRepeats: 1 });
   });
 
   it("束に混ぜた誤り（手書きの数字・%・英数字の名前・給与の月額の言い方・差し込みの隣の空白）を、点検の名前ごとに数えて止める", () => {
@@ -69,15 +69,15 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     expect(rep.runs[0]!.siblings.titleSame).toBe(0);
   });
 
-  it("C6: 道の繰り返しの門は、同じ手が続く期を 1 つにまとめて数える（門を 0 にすると、手で作った地図でも止まる）", () => {
-    // TREE は今のままが 12 期続く道で、まとめない数は多いが、まとめると 0
+  it("C6: 道の繰り返しの門は、道の画面と同じまとめ方で数える（門を 0 にすると、手で作った地図でも止まる。code-2）", () => {
+    // TREE は今のままが 12 期続く道（結果が 1 つの同じ手が続く）で、まとめない数は多いが、まとめると 0
     const tree = runTextChecks(fromDevTree(TREE), { annuals: [360] }).runs[0]!.pathRepeats;
     expect(tree.raw.max).toBeGreaterThan(TEXT_GATES.pathRepeats);
     expect(tree.dist.max).toBe(0);
     const rep = runTextChecks(fromDevTree(RULES), { annuals: [360], gates: { pathRepeats: 0 } });
     const pr = rep.runs[0]!.pathRepeats;
     expect(pr.overGate).toBeGreaterThan(0);
-    expect(rep.runs[0]!.checks.find((c) => c.id === "C6")?.n).toBe(pr.overGate);
+    expect(rep.runs[0]!.checks.find((c) => c.id === "C6")?.by.path).toBe(pr.overGate);
     expect(pr.raw.mean).toBeGreaterThanOrEqual(pr.dist.mean);
     expect(Object.values(pr.hist).reduce((a, b) => a + b, 0)).toBe(pr.paths);
   });
@@ -130,8 +130,15 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
       expect(p.prob).toBeGreaterThan(0);
       expect(p.prob).toBeLessThanOrEqual(100);
     }
-    // 決まった種の道は今日の手ごとに 5 本まで（同じ道は数えない）
-    for (const f of new Set(a.map((p) => p.first))) expect(a.filter((p) => p.first === f && p.how !== "likely").length).toBeLessThanOrEqual(5);
+    // 決まった種の道は今日の手ごとに 5 本まで、どの手も同じ重みの道は 3 本まで（同じ道は数えない）
+    for (const f of new Set(a.map((p) => p.first))) {
+      expect(a.filter((p) => p.first === f && p.how.startsWith("random-")).length).toBeLessThanOrEqual(5);
+      expect(a.filter((p) => p.first === f && p.how.startsWith("any-")).length).toBeLessThanOrEqual(3);
+    }
+    // どの手も同じ重みの道は、まとめた手とまとめた行き先にも行き着く（読む人が一番よく見る所を見本に入れる。reader-1）
+    const any = a.filter((p) => p.how.startsWith("any-"));
+    expect(any.some((p) => p.cards.some((c) => c.stub))).toBe(true);
+    expect(any.some((p) => p.cards.some((c) => c.sum))).toBe(true);
     const md = goldenMarkdown(map, a, 360);
     expect(md).toContain("# 道の見本（年収 360 万円・2026-11 時点の地図");
     expect(md).toContain("一番ありそうな道（見込み");
@@ -141,6 +148,60 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     const now = JSON.parse(fixtureGolden({ TREE, RULES })) as typeof golden;
     expect(now.textVersion).toBe(BANKS.version);
     expect(now).toEqual(golden);
+  });
+
+  it("道の画面と同じまとめ方（W-view の groupRows）: 同じ手で、どちらもまとめた手でなく、結果が 1 つか同じ名前なら 1 行（code-2）", () => {
+    const row = (kind: string, single: boolean, label: string, stub = false) => ({ kind, stub, single, label });
+    // 学校への提案が「見送られる」→「導入が決まる」は 2 行、会社員に戻る仕事探しが「独立のまま」→「独立のまま」は 1 行
+    expect(joinsRow(row("sd_school", false, "見送られる"), row("sd_school", false, "導入が決まる"))).toBe(false);
+    expect(joinsRow(row("back_emp", false, "独立のまま"), row("back_emp", false, "独立のまま"))).toBe(true);
+    expect(joinsRow(row("keep", true, "どの場合も"), row("keep", true, "どの場合も"))).toBe(true);
+    expect(joinsRow(row("keep", true, "どの場合も"), row("keep", true, "どの場合も", true))).toBe(false);
+    expect(joinsRow(row("keep", true, "どの場合も"), row("sd_grow", true, "どの場合も"))).toBe(false);
+    expect(joinsRow(null, row("keep", true, "どの場合も"))).toBe(false);
+  });
+
+  it("C2・C11・C12: まとめた結果を事実と言う・手が言う額と結果の数が違う・道の歩みと合わない文を見つける", () => {
+    const rules = fromDevTree(RULES);
+    const tree = fromDevTree(TREE);
+    const k = (m: typeof rules, key: string): number => m.indexOfKey(key);
+    const s6 = rules.indexOfKey("r.merge.0keep.all.1fc_push.all");
+    expect(mergedIssues(rules, s6, "4 月の評価では昇格しなかった。", BANKS.C)).toHaveLength(1);
+    expect(mergedIssues(rules, s6, "4 月の評価は、昇格した場合（3 割）と据え置きの場合をまとめた見積もり。", BANKS.C)).toEqual([]);
+    const s9 = rules.indexOfKey("r.merge.0keep.all.1fc_push.all.2ad_side.all");
+    expect(mergedIssues(rules, s9, "この 3 か月では新しい顧客は決まらなかった。", BANKS.C)).toHaveLength(1);
+    // 次の顧客の月額（道で 3 万円）・昇格の額（結果の給与の差 26 万円）
+    const ad = k(tree, "r.ad_permside.a0_a1.1ad");
+    expect(moveClaims(tree, ad, "副業の 2 社目（月 5 万円）を取りにいく。", BANKS.C, 360)).toHaveLength(1);
+    expect(moveClaims(tree, ad, "副業の 2 社目（月 3 万円）を取りにいく。", BANKS.C, 360)).toEqual([]);
+    const fp = rules.indexOfKey("r.merge.0keep.all.1fc_push");
+    expect(moveClaims(rules, fp, "昇格すれば年収が 25 万円上がる。", BANKS.C, 360)).toHaveLength(1);
+    expect(moveClaims(rules, fp, "昇格すれば年収が 26 万円上がる。", BANKS.C, 360)).toEqual([]);
+    // 結果ごとの売上と席
+    expect(moveClaims(tree, ad, "『顧客 2 社以上』なら売上 月 6 万円ほど。", BANKS.C, 360)).toHaveLength(1);
+    const ss = rules.indexOfKey("r.fee.0part.p.1keep.all.2ad_side.cl4.3sd_school");
+    expect(moveClaims(rules, ss, "『導入が決まる』なら 44 席分の売上が加わる。", BANKS.C, 360)).toHaveLength(1);
+    // 道の歩み: 転職活動の期（転職活動と続けた期を合わせる）・前の 3 か月の手応え・月次報告
+    const fw2 = rules.indexOfKey("r.search.0keep.all.1fc_switch.none.2fc_switch2.none.3fc_switch2");
+    expect(searchQuarters(rules, fw2)).toBe(3);
+    const card = { title: "", short: "", body: "", numbers: [], todo: [], trace: [] };
+    expect(pathContext(rules, fw2, "転職活動の 2 期目。", card)).toEqual(["転職活動の期が 2（道では 3）"]);
+    expect(pathContext(rules, fw2, "転職活動の 3 期目。前の 3 か月の応募の手応えを踏まえる。", card)).toEqual([]);
+    const fs = rules.indexOfKey("r.quit.0fc_scope.all.1ind_quit");
+    expect(pathContext(rules, fs, "前の 3 か月の面接の手応えを踏まえる。", card)).toHaveLength(1);
+    const back = rules.indexOfKey("r.back.0sd_grow.all.1ind_quit.cl0.2back_emp");
+    expect(pathContext(rules, back, "過去 6 か月の月次報告から拾う。", card)).toHaveLength(1);
+    expect(pathContext(rules, back, "", { ...card, todo: [{ text: "区切る顧客に振り返りを 1 枚で渡す", cite: "ind-side-d14" }] })).toHaveLength(1);
+    expect(pathContext(rules, back, "書類で落ちる先が多く、面接に進めなかった。面接の手応えを生かせる。", card)).toHaveLength(1);
+  });
+
+  it("C3: 題が年収で変わる束は止める（題は兄弟ごとに覚えるので、組み立ての順で題が変わる。code-1）", () => {
+    const bad = editBanks((b) => {
+      b.title.keep = [{ v: ["{salYen}で続ける"] }];
+    });
+    const rep = runTextChecks(fromDevTree(TREE), { banks: bad });
+    expect(rep.ok).toBe(false);
+    expect(rep.failures.some((x) => /題が年収で変わる/.test(x))).toBe(true);
   });
 
   it("CLI: 木を受け取り、まとめと書き出すファイルを返す（止める点検が落ちれば 1）", () => {

@@ -34,6 +34,19 @@ export function n0(x: number): string {
 /** 小数 2 桁（給与の倍率） */
 export const f2 = (x: number): string => (Math.round(x * 100) / 100).toFixed(2);
 
+/** 見込み（0〜1）を割と分で言う（「3 割」「1 割 5 分」。% を書かない地図の決まり C4）。数は差し込みの印で包む */
+export function wari(p: number): string {
+  const t = Math.round(p * 100);
+  const w = Math.floor(t / 10);
+  const b = t % 10;
+  if (!b) return `${slot(w)} 割`;
+  if (!w) return `${slot(b)} 分`;
+  return `${slot(w)} 割 ${slot(b)} 分`;
+}
+
+/** 形容詞で終わる述語をつなぐ形にする（「多い」→「多く」。2 つの差を「、」で並べるとき。reader-10） */
+export const renyo = (s: string): string => s.replace(/い$/, "く");
+
 /** 顧客の数を整数にする（状態の顧客の数は結果をならした値のことがある） */
 export const clr = (cl: number): number => Math.round(cl);
 

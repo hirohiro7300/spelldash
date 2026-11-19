@@ -152,6 +152,8 @@ export interface Step {
   others?: (m: number, key: string) => DevTreeNode[];
   /** 同じ判断のほかの手（m は手の月、key は判断の鍵） */
   alts?: (m: number, key: string) => DevTreeNode[];
+  /** 結果のほかの値（幅 band など） */
+  o?: Partial<DevTreeNode>;
 }
 
 /** 手と結果を交互に並べた 1 本の道。最後の結果が 36 か月目なら行き先、そうでなければ状態で止まる。先頭の手を返す */
@@ -162,7 +164,7 @@ export function line(key: string, m: number, from: ImpactSt, steps: Step[]): Dev
   const id = s.id ?? "all";
   const ok = `${mk}.${id}`;
   const kids = rest.length ? [line(ok, m + 3, s.to, rest), ...(rest[0]!.alts?.(m + 3, ok) ?? [])] : [];
-  const o = out(ok, m + 3, s.to, id, s.id ? (s.p ?? 60) : 100, s.lab ?? (s.id ? id : "どの場合も"), s.ln ?? null, s.e ?? [3 * rrOf(s.to)[0], 0, -0.9], rrOf(s.to), kids);
+  const o = out(ok, m + 3, s.to, id, s.id ? (s.p ?? 60) : 100, s.lab ?? (s.id ? id : "どの場合も"), s.ln ?? null, s.e ?? [3 * rrOf(s.to)[0], 0, -0.9], rrOf(s.to), kids, s.o ?? {});
   return move(mk, s.kind, m, from, [o, ...(s.others?.(m + 3, mk) ?? [])], s.why ? { why: s.why } : {});
 }
 
@@ -190,6 +192,24 @@ export const CONT_A: MapContStep[] = [
   { m: 24, kind: "ad_side", ev: "FIRST_CLIENT" },
   { m: 27, kind: "keep" },
   { m: 30, kind: "keep" },
+  { m: 33, kind: "keep" },
+];
+/** 中身の幅: 大きな事実が無い（題は遊ぶ人で言い、年収では言わない。code-1） */
+export const MIX_MAU: MapMix = { j: { e: 0.85, p: 0, i: 0.15 }, pm: { "?": 0.8, a: 0.1, s: 0.1, n: 0 }, pro: 0.05, switched: 0.2, school: 0, cl: [0, 0, 0.3], pu: [0, 0, 2], mau: [1079, 1279, 1479], sal: [0, 1.05, 1.12] };
+/** 中身の幅: 独立した後、多くの道で会社員に戻る */
+export const MIX_BACK: MapMix = { j: { e: 0.8, p: 0, i: 0.2 }, pm: { "?": 0.05, a: 0, s: 0.95, n: 0 }, pro: 0.95, switched: 0, school: 0, cl: [0, 0, 1], pu: [20, 30, 41], mau: [650, 700, 760], sal: [0, 1.05, 1.08] };
+/** 標準の続き: 紹介での顧客探しが続いた後、2029 年 5 月に会社員に戻る（長いので途中を「ほか N 期」にまとめても、戻る期は残す） */
+export const CONT_BACK: MapContStep[] = [
+  { m: 3, kind: "ad_more" },
+  { m: 6, kind: "ad_side", ev: "CLIENT_UP" },
+  { m: 9, kind: "ad_more" },
+  { m: 12, kind: "sd_grow" },
+  { m: 15, kind: "ad_more", ev: "CLIENT_LOST" },
+  { m: 18, kind: "sd_grow" },
+  { m: 21, kind: "ad_side" },
+  { m: 24, kind: "sd_retain" },
+  { m: 27, kind: "ad_more" },
+  { m: 30, kind: "back_emp", ev: "BACK_EMP" },
   { m: 33, kind: "keep" },
 ];
 /** 標準の続き: 束にも地図にも名前の無い手と出来事を含む（英数字の名前を出さない） */
@@ -284,10 +304,37 @@ const RULES_ROOT: DevTreeNode = {
       { kind: "fc_switch2", to: st({ mau: 90, fl: ["js"] }), id: "none", lab: "転職せず", ln: ["sal", 15, null, null, "none"] },
       ...keeps(7, st({ mau: 100, fl: ["js"] })),
     ]),
+    // まとめた結果（facts-1・reader-3・reader-9）: 昇格と据え置きをまとめた結果・社数の違う場合をまとめた顧客探し（幅）・幅のまま進む今のまま
+    line("r.merge", 0, S0, [
+      { kind: "keep", to: st({ pm: "a", pro: 1, mau: 50, pu: 1, cl: 1, fee: 3 }) },
+      { kind: "fc_push", to: st({ pm: "a", pro: 1, mau: 55, pu: 1, cl: 1, fee: 3, sal: 1.0516 }) },
+      { kind: "ad_side", to: st({ pm: "a", pro: 1, mau: 60, pu: 2, cl: 1.55, fee: 3, sal: 1.0516 }), o: { band: { cl: [1, 2] } } },
+      { kind: "keep", to: st({ pm: "a", pro: 1, mau: 65, pu: 2, cl: 1.4, fee: 3, sal: 1.0516 }), o: { band: { cl: [1, 2] } } },
+    ]),
+    // 次の顧客の月額（facts-2）: 週 4 日で顧客が 4 社に届いた後に増える顧客は月 5 万円。学校の 2 校目は 40 席が加わる（facts-3）
+    line("r.fee", 0, S0, [
+      { kind: "part", to: st({ j: "p", pm: "a", pro: 1, mau: 50, pu: 2, cl: 4, fee: 3 }), id: "p", lab: "週 4 日に", ln: ["job", 3, null, null, "p"] },
+      { kind: "keep", to: st({ j: "p", pm: "a", pro: 1, mau: 55, pu: 2, cl: 3, fee: 3 }) },
+      { kind: "ad_side", to: st({ j: "p", pm: "a", pro: 1, mau: 60, pu: 3, cl: 4, fee: 3.5, seats: 40, fl: ["school"] }), id: "cl4", lab: "顧客 4 社", ln: ["cl", 9, 4, null], others: (m, k) => [out(`${k}.cl3`, m, st({ j: "p", pm: "a", pro: 1, mau: 60, pu: 3, cl: 3, fee: 3, seats: 40, fl: ["school"] }), "cl3", 45, "顧客 3 社", ["cl", 9, null, 4], [2.4, 9, 0.3], rrOf(st({ j: "p", pm: "a", pro: 1, mau: 60, pu: 3, cl: 3, fee: 3 })))] },
+      { kind: "sd_school", to: st({ j: "p", pm: "a", pro: 1, mau: 70, pu: 83, cl: 4, fee: 3.5, seats: 80, fl: ["school"] }), id: "yes", lab: "導入が決まる", ln: ["school", 12, null, null, "yes"], others: (m, k) => [out(`${k}.no`, m, st({ j: "p", pm: "a", pro: 1, mau: 70, pu: 43, cl: 4, fee: 3.5, seats: 40, fl: ["school"] }), "no", 85, "見送られる", ["school", 12, null, null, "no"], [2.4, 14, 3], rrOf(st({ j: "p", pm: "a", pro: 1, mau: 70, pu: 43, cl: 4, fee: 3.5, seats: 40 })))] },
+    ]),
+    // 確定申告（facts-4）: 11 月までの所得は線の 7 割（14 万円）に届かないが、12 月の稼ぎを足すと届く（「要らない」と言い切らない）
+    line("r.dec", 0, S0, [{ kind: "sd_permpro", to: st({ pm: "s", pro: 1, mau: 50, pu: 30 }), id: "s", lab: "SpellDash だけ", ln: ["perm", 3, null, null, "s"], e: [3, 0, 0.3] }, ...keeps(4, st({ pm: "s", pro: 1, mau: 50, pu: 30 }), [3, 0, 3.9])]),
+    // 節目の月（facts-7）: 9 か月目に転職を言う状態は「大きな節目はまだ無い」と言わない
+    line("r.since", 0, S0, [...keeps(2, st({ mau: 50 })), { kind: "fc_switch", to: st({ mau: 60, sal: 1.18, fl: ["switched"] }), id: "high", lab: "大きく上げて転職", ln: ["sal", 9, null, null, "high"] }, ...keeps(1, st({ mau: 70, sal: 1.18, fl: ["switched"] }))]),
     // まとめた行き先: 中身の幅がそろう・そろわない・幅が無い（平均）。標準の続きの目安
     sumMove("r.mix", "keep", S0, st({ pm: "a", pro: 1, mau: 880, pu: 35, cl: 1.6, fee: 5, sal: 1.07 }), [1.07, 8, 3], { mix: MIX_SURE, cont: CONT_A }),
     sumMove("r.mixb", "sd_grow", S0, st({ pm: "?", pro: 1, mau: 700, pu: 13.4, cl: 1.3, fee: 5, sal: 1.1, seats: 8 }), [0.8, 5, 1], { mix: MIX_SPLIT, cont: CONT_B }),
     sumMove("r.avg", "sd_pilot", S0, st({ pm: "n", pro: 1, mau: 900, pu: 41.3, cl: 1.31, fee: 5, sal: 1.09, seats: 3 }), [1.09, 6.6, 3.6], { cont: CONT_A }),
+    // 題が年収で変わらない（code-1）: 大きな事実の無い中身の幅（独立は 9 割未満・顧客の上が 0・Pro はほぼ無い・遊ぶ人は 4 桁）
+    sumMove("r.mau", "sd_grow", S0, st({ mau: 1300, sal: 1.05 }), [1.05, 0, -0.3], { mix: MIX_MAU }),
+    // 標準の続きを短くするときも、会社員に戻る期を残す（facts-9）
+    sumMove("r.contback", "ind_quit", S0, st({ pm: "s", pro: 1, mau: 700, pu: 30, sal: 1.05 }), [1.05, 0, 2.5], { mix: MIX_BACK, cont: CONT_BACK }),
+    // 中身の同じまとめた行き先の兄弟（reader-5）: 違うのはこの 3 か月の結果と、そこからの稼ぎの合計
+    move("r.twins", "ind_quit", 0, S0, [
+      out("r.twins.cl0", 36, st({ pm: "s", pro: 1, mau: 700, pu: 30, sal: 1.05 }), "cl0", 60, "顧客 0 社", ["cl", 3, null, 1], [28, -6, 20], [1.05, 0, 2.5], [], { sum: true, mix: MIX_BACK, cont: CONT_BACK }),
+      out("r.twins.cl1", 36, st({ pm: "s", pro: 1, mau: 700, pu: 30, sal: 1.05 }), "cl1", 40, "顧客 1 社", ["cl", 3, 1, null], [28, 9, 20], [1.05, 0, 2.5], [], { sum: true, mix: MIX_BACK, cont: CONT_BACK }),
+    ], { stub: true, why: "avoid" }),
   ],
 };
 

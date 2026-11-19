@@ -3,21 +3,22 @@
 // 1 枚ごとの点検は src/demo/compose/checks.ts（checkCard）、ここは束・兄弟・道の点検と、まとめ・道の見本（golden）を持つ
 //   C1 数はどれもデータから・C1b 手引きの数字は引いた項目に・C2 状態と食い違わない・C3 長さと題とやること 3 つ・C4 地図の文の決まり・
 //   C4b 英数字の名前・C5 結果の名前と状態（本当の状態）・C5b 顧客と席は整数・C6 似かた（兄弟の骨組み・道の繰り返し）・C7 手引きの月額・
-//   C8 言葉の間とカードの年月の言い直し・C9 道で 1 回だけの文・C10 数の言い方・T4 兄弟の題は違う（手も結果も。gaps-11）
+//   C8 言葉の間とカードの年月の言い直し・C9 道で 1 回だけの文・C10 数の言い方・C11 手が結果について言う額と数が結果の状態と合う（reader-4）・
+//   C12 道の歩みと合う（reader-6）・T4 兄弟の題は違う（手も結果も。gaps-11）。題は年収で変わらない（年収ごとに新しい覚えで組み立てて比べる。code-1）
 //   D1・D2 は文では直せないデータ（警告。計算の側へ返す）
 // 使い方（CLI）: node scripts/impact/runTextChecks.mjs <木.json|木.json.gz> [--annual 360,540] [--examples 5] [--out 報告.md] [--golden 置き場]
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, MapData, MapRole } from "../../src/deepmap/mapData";
 import { BANKS, composeMarkedCard, finishCard, type Banks, type Card } from "../../src/demo/compose";
 import { checkBanks, checkCard, checkPaths, wishIndex, type WishText } from "../../src/demo/compose/checks";
-import { calendarOf, type Calendar } from "../../src/demo/compose/path";
-import { hash } from "../../src/demo/compose/text";
+import { calendarOf, likeliest, recommended, type Calendar } from "../../src/demo/compose/path";
+import { hash, spaceJa, strip } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
 import wishData from "../../src/demo/wishlist-data.json";
 
 // ---- 点検の名前
 
-export type TextCheckId = "C1" | "C1b" | "C2" | "C3" | "C4" | "C4b" | "C5" | "C5b" | "C6" | "C7" | "C8" | "C9" | "C10" | "T4" | "D1" | "D2";
+export type TextCheckId = "C1" | "C1b" | "C2" | "C3" | "C4" | "C4b" | "C5" | "C5b" | "C6" | "C7" | "C8" | "C9" | "C10" | "C11" | "C12" | "T4" | "D1" | "D2";
 
 export interface TextCheckDef {
   id: TextCheckId;
@@ -35,11 +36,13 @@ export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C4b", name: "英数字の名前を書かない", block: true },
   { id: "C5", name: "結果の名前と状態の顧客の数が合う（本当の状態と行き先）", block: true },
   { id: "C5b", name: "顧客と学校の席は整数", block: true },
-  { id: "C6", name: "似かた（兄弟の骨組み・道の繰り返し）", block: true },
+  { id: "C6", name: "似かた（兄弟の骨組み・中身の同じまとめた行き先・道の繰り返し・判断ごとの繰り返し）", block: true },
   { id: "C7", name: "手引きの月額がモデルにある", block: true },
   { id: "C8", name: "言葉の間・カードの年月を言い直さない", block: true },
   { id: "C9", name: "道で 1 回だけの文が、道で 2 回出ない", block: true },
   { id: "C10", name: "数の言い方（月にならして・手数料とサーバー代を引いて・月に遊んだ人・3 つの月）", block: true },
+  { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う", block: true },
+  { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ）", block: true },
   { id: "T4", name: "兄弟の題が違う（手も結果も）", block: true },
   { id: "D1", name: "『どちらも不可』なのに Pro が続く（データ。計算の側へ返す）", block: false },
   { id: "D2", name: "本当の状態の顧客の数が整数でない（データ。計算の側へ返す）", block: false },
@@ -54,14 +57,16 @@ export interface TextGates {
   pathRepeats: number;
   /** 兄弟（同じ判断の手どうし・同じ手の結果どうし）で本文の骨組みが同じ組の数の上限 */
   siblingSame: number;
+  /** 続く 2 つの判断に並ぶ同じ種類の手（道で選ばなかった方）どうしが、同じ骨組みで言う構造でない文の数の上限（reader-8） */
+  decisionRepeats: number;
 }
 
 /**
- * 門（SPEC の始まりの値のまま）: R1 の木（79,092 枚）と新しい前提の木（71,619 枚）を年収 360 と 540 で測って決めた（作業メモ reports/text-v1.md）。
- * 同じ手が続く期をまとめた繰り返しは、どの道も 3〜4 まで（平均 0.1）。まとめない数は最大 28〜31（同じ手が 6〜10 期続く道）で、門にはかけず報告する。
- * 兄弟の骨組みが同じ組は 0。P3 で締める
+ * 門（SPEC §4.6: 測ってから決める）。道の繰り返しは、道の画面（W-view の groupRows）と同じまとめ方で数えて道 1 本 4 まで。
+ * 兄弟の骨組みが同じ組は 0。判断ごとの繰り返しは、続く 2 つの判断の同じ種類の手が同じ文を 1 つまで（今のままの書き出し・手引きは判断の月で回す）。
+ * 測った値は作業メモ reports/text-v1.md。P3 で締める
  */
-export const TEXT_GATES: TextGates = { pathRepeats: 4, siblingSame: 0 };
+export const TEXT_GATES: TextGates = { pathRepeats: 4, siblingSame: 0, decisionRepeats: 1 };
 
 // ---- 骨組み（数字を # にした文）と、構造の文
 
@@ -103,6 +108,13 @@ export const STRUCTURAL: readonly RegExp[] = [
   /^『[^』]*』なら(?:売上 月 # 万円ほど|広告運用の売上はまだ無い|有料 # 人ほど|月に遊ぶ人 # 人ほど|# 年 # 月に平均で)/,
   // 前の 3 か月の手をつなぐ一言（道のデータ。道の画面では前の行にある）
   /^前の # か月は[^、]*$/,
+  // 事実の答えが出る月（手）
+  /^答えが出るのは # 年 # 月の/,
+  // この手の 3 年の見積もりと、この手の先の分かれ道の数（どの手にもある数の行と同じデータ。reader-1・reader-2）
+  /^この手で進むと、ここから # 年 # 月までの稼ぎは合わせて/,
+  /^この手の先、# 年 # 月までの分かれ道は/,
+  // まとめた手の印（SPEC §4.2 が求める決まった注。手の種類の名前のような物）
+  /^この手の先は分かれ道を開かず、標準の選び方で続けた見積もり$/,
 ];
 
 /** 文の骨組み。構造の文なら null。書き出しの年月（「# 年 # 月、」）と、来た結果を受ける言葉（「『…』を受けて、」）は落として比べる */
@@ -117,7 +129,7 @@ export function skeleton(sentence: string): string | null {
 /** 文の型に差し込む言葉のうち、日本語で始まることがある物（前に空白を置くと「は 年収」になる） */
 const JA_START = new Set(["salYen", "salNow", "partLoss", "job", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
 /** 日本語で終わる物（後ろに空白を置くと「社 の」になる） */
-const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "job", "salx", "salYen", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle"]);
+const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "job", "salx", "salYen", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "share", "hiX", "midX"]);
 
 /** 束の言い換えの、差し込みの隣の空白（間は組み立てが空ける。R2 の C8） */
 export function bankSpacing(banks: Banks): string[] {
@@ -230,6 +242,17 @@ export interface Siblings {
   titleSameByRole: Record<string, number>;
 }
 
+/** 判断ごとの繰り返し: 続く 2 つの判断に並ぶ同じ種類の手（道で選ばなかった方）どうしが同じ骨組みで言う構造でない文の数 */
+export interface DecisionRepeats {
+  /** 比べた組の数 */
+  pairs: number;
+  /** 同じ文の数 → 組の数 */
+  hist: Record<number, number>;
+  overGate: number;
+  /** よく重なる骨組み（組の数） */
+  top: Array<[string, number]>;
+}
+
 export interface TextCheckRun {
   annual: number;
   cards: number;
@@ -238,6 +261,7 @@ export interface TextCheckRun {
   lengths: Record<string, Dist>;
   titleLengths: Record<string, Dist>;
   pathRepeats: PathRepeats;
+  decisionRepeats: DecisionRepeats;
   siblings: Siblings;
   /** いとこ（同じ最初の手・月・種類で親が違う。R2 と同じ抜き出し）: 同じ文・同じ骨組み（参考。門ではない） */
   cousins: { pairs: number; same: number; skeleton: number };
@@ -320,8 +344,19 @@ export function runTextChecks(map: MapData, opts: TextCheckOpts = {}): TextCheck
   const bt = new Tally(k);
   for (const x of checkBanks(banks, wish)) bt.add(x, "bank");
   for (const x of bankSpacing(banks)) bt.add(x, "bank");
+  // 題は年収で変わらない（題は兄弟ごとに覚えるので、年収で変わると組み立ての順で題が変わる。code-1）。年収ごとに束を写して新しい覚えで組み立て、題を比べる
+  const titles: string[][] = [];
+  const runs = annuals.map((annual, r) => runOne(map, annual, r === 0 ? banks : { ...banks }, wish, k, gates, (t) => titles.push(t)));
+  for (let r = 1; r < titles.length; r++) {
+    let diff = 0;
+    for (let i = 0; i < map.n; i++)
+      if (titles[r]![i] !== titles[0]![i]) {
+        if (diff < k) bt.add(`C3 題が年収で変わる（${annuals[0]}「${titles[0]![i]}」・${annuals[r]}「${titles[r]![i]}」）`, map.role(i), map.key(i));
+        diff++;
+      }
+    for (let j = k; j < diff; j++) bt.add("C3 題が年収で変わる", "title");
+  }
   const bank = bt.list();
-  const runs = annuals.map((annual) => runOne(map, annual, banks, wish, k, gates));
   const failures: string[] = [];
   const warnings: string[] = [];
   const emit = (c: CheckCount, at: string): void => {
@@ -335,7 +370,7 @@ export function runTextChecks(map: MapData, opts: TextCheckOpts = {}): TextCheck
   return { ok: failures.length === 0, tree: { nodes: map.n, hash: map.header.hash, anchor: map.header.anchor }, gates, failures, warnings, bank, runs };
 }
 
-function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<string, WishText>, k: number, gates: TextGates): TextCheckRun {
+function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<string, WishText>, k: number, gates: TextGates, onTitles: (t: string[]) => void): TextCheckRun {
   const n = map.n;
   const cal = calendarOf(map.header);
   const marked: Card[] = new Array<Card>(n);
@@ -353,7 +388,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   for (let i = 0; i < n; i++) {
     const role = map.role(i);
     const key = map.key(i);
-    for (const x of checkCard(map, i, marked[i]!, banks, wish)) tally.add(x, role, key);
+    for (const x of checkCard(map, i, marked[i]!, banks, wish, annual)) tally.add(x, role, key);
     const f = fin[i]!;
     for (const part of [f.title, f.short, f.body, ...f.numbers, ...f.todo.map((t) => t.text)]) for (const x of spacingIssues(part)) tally.add(`C8 ${x}`, role, key);
     const again = ownDateAgain(f.body, cal, map.month(i));
@@ -366,6 +401,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   const pathRepeats = repeatsOnPaths(map, fin, gates, k);
   for (const w of pathRepeats.worst.filter((x) => x.n > gates.pathRepeats)) tally.add(`C6 道の繰り返し ${w.n}（門 ${gates.pathRepeats}）: ${w.repeated.slice(0, 3).join(" / ")}`, "path", w.key);
   for (let j = pathRepeats.worst.filter((x) => x.n > gates.pathRepeats).length; j < pathRepeats.overGate; j++) tally.add(`C6 道の繰り返しが門（${gates.pathRepeats}）を超える`, "path");
+  const decisionRepeats = repeatsByDecision(map, marked, gates, (msg, key) => tally.add(msg, "decision", key));
   const tPaths = now() - t2;
   // 兄弟（C6 の骨組み・T4 の題）
   const t3 = now();
@@ -391,6 +427,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   for (let i = 1; i < n; i++) bodies.set(fin[i]!.body, (bodies.get(fin[i]!.body) ?? 0) + 1);
   let dup = 0;
   for (const v of bodies.values()) if (v > 1) dup += v;
+  onTitles(fin.map((c) => c.title));
   return {
     annual,
     cards: n,
@@ -398,6 +435,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
     lengths,
     titleLengths,
     pathRepeats,
+    decisionRepeats,
     siblings,
     cousins,
     identical: n > 1 ? dup / (n - 1) : 0,
@@ -405,21 +443,14 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
   };
 }
 
-/**
- * 道（今日から行き先まで）ごとの、構造でない文の繰り返しの数。全部の道を深さ優先で 1 回。2 つ数える:
- * - そのまま: 同じ骨組みの文が道で n 回なら n − 1
- * - 門にかける数: 同じ手が続く期（同じ種類の手が続けて選ばれた間の手と結果）を 1 つにまとめて数える。道の画面は同じ手が続く期を
- *   1 行にまとめる（SPEC §5.4）ので、続く間に同じ文が出るのは水増しでなく同じ状況。まとめた後の、別の期どうしの繰り返しを門にかける
- */
-function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k: number): PathRepeats {
-  const n = map.n;
-  // 骨組みを番号にする
+/** 文の骨組みを番号にした、カードごとの構造でない文（道の繰り返し・判断ごとの繰り返しで使う）。bodyOf は比べる本文 */
+function skeletonIds(map: MapData, bodyOf: (i: number) => string): { perCard: Int32Array[]; names: string[] } {
   const ids = new Map<string, number>();
   const names: string[] = [];
-  const perCard: Int32Array[] = new Array<Int32Array>(n);
-  for (let i = 0; i < n; i++) {
+  const perCard: Int32Array[] = new Array<Int32Array>(map.n);
+  for (let i = 0; i < map.n; i++) {
     const arr: number[] = [];
-    for (const s of sentencesOf(fin[i]!.body)) {
+    for (const s of sentencesOf(bodyOf(i))) {
       const sk = skeleton(s);
       if (sk === null) continue;
       let id = ids.get(sk);
@@ -432,6 +463,34 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
     }
     perCard[i] = Int32Array.from(arr);
   }
+  return { perCard, names };
+}
+
+/** 道の行（判断・手・結果）の、前の行とまとめるかを決める値（W-view の groupRows と同じ。src/deepmap/core/path.ts） */
+interface RowKey {
+  kind: string;
+  stub: boolean;
+  single: boolean;
+  label: string;
+}
+
+/**
+ * 道の画面が前の行とまとめるか（W-view の groupRows と同じ決まり）: 同じ種類の手で、どちらもまとめた手でなく、
+ * どちらも結果が 1 つか、結果の名前が同じ（code-2: 種類だけでまとめると、道の画面より多くまとめてしまう）
+ */
+export function joinsRow(prev: RowKey | null, cur: RowKey): boolean {
+  return !!prev && !cur.stub && !prev.stub && prev.kind === cur.kind && ((prev.single && cur.single) || prev.label === cur.label);
+}
+
+/**
+ * 道（今日から行き先まで）ごとの、構造でない文の繰り返しの数。全部の道を深さ優先で 1 回。2 つ数える:
+ * - そのまま: 同じ骨組みの文が道で n 回なら n − 1
+ * - 門にかける数: 道の画面が 1 行にまとめる行（joinsRow: 同じ手が続き、結果が 1 つか同じ名前）を 1 つにまとめて数える。
+ *   まとめた行の中で同じ文が出るのは、画面では 1 行に入る同じ状況。別の行どうしの繰り返しを門にかける（SPEC §4.6・§5.4、W-view の groupRows）
+ * 手の文は、その結果の行に入れて数える（行は判断・手・結果の組）
+ */
+function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k: number): PathRepeats {
+  const { perCard, names } = skeletonIds(map, (i) => fin[i]!.body);
   const cnt = new Int32Array(names.length);
   const runs = new Int32Array(names.length);
   const lastRun = new Int32Array(names.length).fill(-2);
@@ -445,37 +504,10 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
   let rep = 0;
   // 今の道で、門にかかる繰り返しになった骨組み
   const active: number[] = [];
-  // 元に戻す記録: [骨組み, 前の lastRun, 別の期の繰り返しだったか]
+  // 元に戻す記録: [骨組み, 前の lastRun（−3 は同じ行の中）, 別の行の繰り返しだったか]
   type Undo = Array<[number, number, boolean]>;
-  // [カード, 期の番号（同じ種類の手が続く間は同じ）, 前の手の種類, 戻るときの記録]
-  const stack: Array<[number, number, string, Undo | null]> = [[0, -1, "", null]];
-  while (stack.length) {
-    const [i, run, prevKind, undo] = stack.pop()!;
-    if (undo) {
-      for (let j = undo.length - 1; j >= 0; j--) {
-        const [s, prev, counted] = undo[j]!;
-        cnt[s]!--;
-        if (cnt[s]! >= 1) raw--;
-        if (prev !== -3) {
-          runs[s]!--;
-          lastRun[s] = prev;
-        }
-        if (counted) {
-          rep--;
-          active.pop();
-        }
-      }
-      continue;
-    }
-    // 手は、前の手と同じ種類なら同じ期。結果（状態・行き先）はその手の期
-    let r = run;
-    let kind = prevKind;
-    if (map.role(i) === "a") {
-      kind = map.kind(i) ?? "";
-      if (kind !== prevKind) r = map.month(i);
-    }
-    const u: Undo = [];
-    for (const s of perCard[i]!) {
+  const count = (ids: Int32Array, r: number, u: Undo): void => {
+    for (const s of ids) {
       if (cnt[s]! >= 1) raw++;
       cnt[s]!++;
       if (lastRun[s] === r) {
@@ -491,7 +523,42 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       u.push([s, lastRun[s]!, counted]);
       lastRun[s] = r;
     }
-    stack.push([i, r, kind, u]);
+  };
+  // [カード, 行の番号, 前の行の値, 戻るときの記録]
+  const stack: Array<[number, number, RowKey | null, Undo | null]> = [[0, -1, null, null]];
+  while (stack.length) {
+    const [i, run, prev, undo] = stack.pop()!;
+    if (undo) {
+      for (let j = undo.length - 1; j >= 0; j--) {
+        const [s, last, counted] = undo[j]!;
+        cnt[s]!--;
+        if (cnt[s]! >= 1) raw--;
+        if (last !== -3) {
+          runs[s]!--;
+          lastRun[s] = last;
+        }
+        if (counted) {
+          rep--;
+          active.pop();
+        }
+      }
+      continue;
+    }
+    const role = map.role(i);
+    let r = run;
+    let next = prev;
+    const u: Undo = [];
+    if (role === "r") count(perCard[i]!, r, u);
+    else if (role === "s" || role === "e") {
+      // 行（判断・手・結果）: 道の画面が前の行とまとめるなら同じ行の番号、そうでなければ新しい行（手の月は道で増えるので番号に使える）
+      const a = map.parent(i);
+      const cur: RowKey = { kind: map.kind(a) ?? "", stub: map.stub(a), single: map.childCount(a) === 1, label: map.label(i) };
+      if (!joinsRow(prev, cur)) r = map.month(a);
+      next = cur;
+      count(perCard[a]!, r, u);
+      count(perCard[i]!, r, u);
+    }
+    if (role !== "a") stack.push([i, r, next, u]);
     const kids = map.childCount(i);
     if (!kids) {
       per.push(rep);
@@ -508,12 +575,59 @@ function repeatsOnPaths(map: MapData, fin: readonly Card[], gates: TextGates, k:
       }
       continue;
     }
-    for (let c = kids - 1; c >= 0; c--) stack.push([map.child(i, c), r, kind, null]);
+    for (let c = kids - 1; c >= 0; c--) stack.push([map.child(i, c), r, next, null]);
   }
   const top: Array<[string, number]> = [];
   for (let s = 0; s < names.length; s++) if (repAt[s]! > 0) top.push([names[s]!, repAt[s]!]);
   top.sort((a, b) => b[1] - a[1]);
   return { paths: per.length, dist: dist(per), hist, raw: dist(perRaw), histRaw, overGate: per.filter((x) => x > gates.pathRepeats).length, worst: worst.slice(0, Math.max(k, 10)), top: top.slice(0, 15) };
+}
+
+/**
+ * 判断ごとの繰り返し（reader-8）: 判断 d の手 a と、1 つ前の判断に並ぶ同じ種類の手 b（d へ来た手は除く。それは道の上で続く手で、
+ * 道の繰り返しで数える）が、同じ骨組みで言う構造でない文の数。道をたどる人が判断ごとにほかの手を開くと、この文が続けて出る。
+ * 1 つ前の判断が今日なら比べない（今日の手は見取り図で並べて読む決まった 10 の手で、言い換えの種は道の最初の手ごとに決まる）。
+ * 手引きの文（その種類の手で最初にやること。独立なら退職の規則を確かめる）は、いつ選んでも同じなのが正しいので比べない。
+ * ただし今のままの手引きは決まった順の無い日々の歩みなので比べる（どの判断にも並び、同じ歩みを続けて出さない）
+ */
+function repeatsByDecision(map: MapData, marked: readonly Card[], gates: TextGates, fail: (msg: string, key: string) => void): DecisionRepeats {
+  const PB = /\u0003[^\u0004]*\u0004/g;
+  const { perCard, names } = skeletonIds(map, (i) => {
+    const b = map.role(i) === "a" && map.kind(i) !== "keep" ? marked[i]!.body.replace(PB, "") : marked[i]!.body;
+    return spaceJa(strip(b));
+  });
+  const hist: Record<number, number> = {};
+  const seen = new Map<number, number>();
+  let pairs = 0;
+  let over = 0;
+  for (let a = 0; a < map.n; a++) {
+    if (map.role(a) !== "a") continue;
+    const d = map.parent(a);
+    if (map.role(d) !== "s") continue;
+    const via = map.parent(d);
+    const d2 = map.parent(via);
+    if (map.role(d2) === "r") continue;
+    let b = -1;
+    for (let c = 0; c < map.childCount(d2); c++) {
+      const x = map.child(d2, c);
+      if (x !== via && map.kind(x) === map.kind(a)) {
+        b = x;
+        break;
+      }
+    }
+    if (b < 0) continue;
+    pairs++;
+    const sb = new Set(perCard[b]!);
+    const shared = [...new Set(perCard[a]!)].filter((s) => sb.has(s));
+    hist[shared.length] = (hist[shared.length] ?? 0) + 1;
+    for (const s of shared) seen.set(s, (seen.get(s) ?? 0) + 1);
+    if (shared.length > gates.decisionRepeats) {
+      over++;
+      fail(`C6 判断ごとの繰り返し ${shared.length}（門 ${gates.decisionRepeats}）: ${shared.map((s) => `「${names[s]!.slice(0, 24)}…」`).join(" / ")}（${map.key(b)}）`, map.key(a));
+    }
+  }
+  const top = [...seen].sort((x, y) => y[1] - x[1]).slice(0, 10).map(([s, c]) => [names[s]!, c] as [string, number]);
+  return { pairs, hist, overGate: over, top };
 }
 
 /**
@@ -544,6 +658,8 @@ function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: 
           if (same) r.outSame++;
         }
         if (same && r.moveSame + r.outSame > allowed) fail(`C6 兄弟の本文の骨組みが同じ: ${map.key(y)}`, role, map.key(x));
+        // 中身（幅と続き）が同じまとめた行き先は、同じだと言い、違い（稼ぎの合計）を先に置く（reader-5）
+        if (role === "e" && map.sum(x) && map.sum(y) && sumKey(map, x) === sumKey(map, y) && !(fin[x]!.trace.includes("sum:same") && fin[y]!.trace.includes("sum:same"))) fail(`C6 中身の同じまとめた行き先が、同じだと言わない: ${map.key(y)}`, role, map.key(x));
         r.titlePairs++;
         if (fin[x]!.title === fin[y]!.title) {
           r.titleSame++;
@@ -554,6 +670,9 @@ function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: 
   }
   return r;
 }
+
+/** まとめた行き先の中身（幅・続き。幅が無ければ平均の状態）の鍵 */
+const sumKey = (map: MapData, x: number): string => JSON.stringify([map.mix(x), map.cont(x), map.mix(x) ? null : map.st(x)]);
 
 /** いとこ（同じ最初の手・同じ月・同じ種類の手か同じ手の同じ結果で、親が違う）を決まった抜き出しで比べる（R2 の scale.ts と同じ） */
 function cousinPass(map: MapData, fin: readonly Card[]): { pairs: number; same: number; skeleton: number } {
@@ -593,6 +712,9 @@ export interface GoldenCard {
   k: string;
   r: MapRole;
   m: number;
+  /** まとめた手・まとめた行き先（無ければ書かない） */
+  stub?: true;
+  sum?: true;
   /** 結果の見込み %（手は無し） */
   p?: number;
   label?: string;
@@ -605,7 +727,8 @@ export interface GoldenCard {
 export interface GoldenPath {
   /** 今日の手の種類 */
   first: string;
-  /** likely: 一番ありそうな道（おすすめの手・一番ありそうな結果）/ random-N: 決まった種で選んだ道 */
+  /** likely: 一番ありそうな道（おすすめの手・一番ありそうな結果）/ random-N: 決まった種で選んだ道（まとめていない手から）/
+   *  any-N: どの手も同じ重みで選ぶ道（まとめた手も選ぶ。読む人が一番よく行き着く、まとめた行き先と「ほか N 期」を見本に入れる。reader-1） */
   how: string;
   /** 道の見込み（結果の見込みの積、%） */
   prob: number;
@@ -624,35 +747,24 @@ export function rng(seed: number): () => number {
   };
 }
 
-/** 判断のおすすめの手（why=best、無ければ今のまま） */
-export function recommended(map: MapData, d: number): number {
-  let base = -1;
-  for (let c = 0; c < map.childCount(d); c++) {
-    const a = map.child(d, c);
-    if (map.why(a) === "best") return a;
-    if (map.isBase(a) && base < 0) base = a;
-  }
-  return base >= 0 ? base : map.child(d, 0);
-}
-
-/** 手の一番ありそうな結果（同じ見込みなら並びの先） */
-export function likeliest(map: MapData, a: number): number {
-  let o = map.child(a, 0);
-  for (let c = 1; c < map.childCount(a); c++) if (map.p(map.child(a, c)) > map.p(o)) o = map.child(a, c);
-  return o;
-}
+/** 判断のおすすめの手（why=best、無ければ今のまま）・手の一番ありそうな結果は、組み立てと同じ物（src/demo/compose/path.ts） */
+export { likeliest, recommended };
 
 /**
  * 今日の手ごとの道の見本: 一番ありそうな道（判断ではおすすめの手、手では一番ありそうな結果）と、決まった種で選んだ道 random 本
  * （判断ではまとめていない手から同じ重みで選ぶ（全部まとめた手ならその中から）。道を 3 年先まで読めるように。結果は見込みの重み。
- * 同じ道が出たら引き直す・10 回で諦める）
+ * 同じ道が出たら引き直す・10 回で諦める）と、どの手も同じ重みで選ぶ道 any 本（まとめた手も選ぶ。別の種。reader-1: 読む人が一番よく行き着く
+ * まとめた手・まとめた行き先・「ほか N 期」を、見直しの見本に入れる）
  */
-export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks; random?: number; seed?: number; first?: (key: string) => boolean }): GoldenPath[] {
+export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks; random?: number; any?: number; seed?: number; first?: (key: string) => boolean }): GoldenPath[] {
   const banks = opts.banks ?? BANKS;
   const nRandom = opts.random ?? 5;
+  const nAny = opts.any ?? 3;
   const card = (i: number): GoldenCard => {
     const c = finishCard(composeMarkedCard(map, i, { annual: opts.annual, banks }));
     const out: GoldenCard = { k: map.key(i), r: map.role(i), m: map.month(i), title: c.title, numbers: c.numbers, body: c.body, todo: c.todo.map((t) => `${t.text}（${t.cite}）`) };
+    if (map.role(i) === "a" && map.stub(i)) out.stub = true;
+    if (map.role(i) === "e" && map.sum(i)) out.sum = true;
     if (map.role(i) === "s" || map.role(i) === "e") {
       out.p = map.p(i);
       out.label = map.label(i);
@@ -676,6 +788,15 @@ export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks;
   };
   const out: GoldenPath[] = [];
   const r = rng(opts.seed ?? 20261119);
+  const r2 = rng((opts.seed ?? 20261119) + 1);
+  const byP = (rr: () => number) => (a: number): number => {
+    let roll = rr() * 100;
+    for (let c = 0; c < map.childCount(a); c++) {
+      roll -= map.p(map.child(a, c));
+      if (roll < 0) return map.child(a, c);
+    }
+    return map.child(a, map.childCount(a) - 1);
+  };
   for (let f = 0; f < map.childCount(0); f++) {
     const first = map.child(0, f);
     if (opts.first && !opts.first(map.key(first))) continue;
@@ -697,17 +818,18 @@ export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks;
             const pool = open.length ? open : all;
             return pool[Math.floor(r() * pool.length)]!;
           },
-          (a) => {
-            let roll = r() * 100;
-            for (let c = 0; c < map.childCount(a); c++) {
-              roll -= map.p(map.child(a, c));
-              if (roll < 0) return map.child(a, c);
-            }
-            return map.child(a, map.childCount(a) - 1);
-          },
+          byP(r),
         );
         if (seen.has(w.cards.join(",")) && tries < 9) continue;
         if (!seen.has(w.cards.join(","))) add(`random-${t + 1}`, w);
+        break;
+      }
+    }
+    for (let t = 0; t < nAny; t++) {
+      for (let tries = 0; tries < 10; tries++) {
+        const w = walk(first, (d) => map.child(d, Math.floor(r2() * map.childCount(d))), byP(r2));
+        if (seen.has(w.cards.join(",")) && tries < 9) continue;
+        if (!seen.has(w.cards.join(","))) add(`any-${t + 1}`, w);
         break;
       }
     }
@@ -719,11 +841,12 @@ export function goldenPaths(map: MapData, opts: { annual: number; banks?: Banks;
 export function goldenMarkdown(map: MapData, paths: readonly GoldenPath[], annual: number): string {
   const L: string[] = [];
   L.push(`# 道の見本（年収 ${annual} 万円・${map.header.anchor} 時点の地図・${map.n.toLocaleString("en-US")} 枚・${map.header.hash}）`, "");
-  L.push("今日の手ごとに、一番ありそうな道（判断ではおすすめの手、手では一番ありそうな結果）と、決まった種で選んだ道（判断ではまとめていない手から同じ重み、結果は見込みの重み）。SPEC v1 §4.7", "");
+  L.push("今日の手ごとに、一番ありそうな道（判断ではおすすめの手、手では一番ありそうな結果）と、決まった種で選んだ道（判断ではまとめていない手から同じ重み、結果は見込みの重み）と、どの手も同じ重みで選ぶ道（まとめた手も選ぶ。読む人がよく行き着くまとめた行き先を見るため）。SPEC v1 §4.7", "");
   for (const p of paths) {
-    L.push(`## ${p.first} — ${p.how === "likely" ? "一番ありそうな道" : `決まった種の道 ${p.how.slice(7)}`}（見込み ${p.prob}%・${p.cards.length} 枚）`, "");
+    const how = p.how === "likely" ? "一番ありそうな道" : p.how.startsWith("any-") ? `どの手も同じ重みの道 ${p.how.slice(4)}` : `決まった種の道 ${p.how.slice(7)}`;
+    L.push(`## ${p.first} — ${how}（見込み ${p.prob}%・${p.cards.length} 枚）`, "");
     for (const c of p.cards) {
-      const head = c.r === "a" ? "手" : c.r === "s" ? `状態（${c.p}%「${c.label}」）` : `行き先（${c.p}%「${c.label}」）`;
+      const head = c.r === "a" ? (c.stub ? "まとめた手" : "手") : c.r === "s" ? `状態（${c.p}%「${c.label}」）` : `${c.sum ? "まとめた行き先" : "行き先"}（${c.p}%「${c.label}」）`;
       L.push(`### ${c.m} か月目・${head}: ${c.title}`, `<sub>${c.k}</sub>`, "");
       if (c.numbers.length) L.push(`> ${c.numbers.join("｜")}`, "");
       L.push(c.body, "");
@@ -741,8 +864,9 @@ export const FIXTURE_GOLDEN: Readonly<Record<string, { runs: ReadonlyArray<reado
       [540, 0],
     ],
   },
-  // まとめた行き先の中身の幅と標準の続き・確定申告の年・移った会社と戻った会社（R1 の木に無い所）
-  RULES: { runs: [[360, 0]], only: ["r.mix", "r.mixb", "r.avg", "r.ind", "r.quit", "r.back", "r.refile", "r.handover", "r.sonly"] },
+  // まとめた行き先の中身の幅と標準の続き・確定申告の年・移った会社と戻った会社（R1 の木に無い所）・まとめた結果・次の顧客の月額・節目の月・
+  //   題と年収・標準の続きの残す期・中身の同じ兄弟（見直しの指摘）
+  RULES: { runs: [[360, 0]], only: ["r.mix", "r.mixb", "r.avg", "r.ind", "r.quit", "r.back", "r.refile", "r.handover", "r.sonly", "r.merge", "r.fee", "r.since", "r.dec", "r.mau", "r.contback", "r.twins"] },
 };
 
 /**
@@ -772,7 +896,7 @@ const dl = (d: Dist): string => `最小 ${f(d.min)}・中央 ${f(d.median)}・p9
 export function reportMarkdown(rep: TextCheckReport): string {
   const L: string[] = [];
   L.push(`# 文章の点検（${rep.tree.hash}・${f(rep.tree.nodes)} 枚・${rep.tree.anchor} 時点）: ${rep.ok ? "通る" : "止める"}`, "");
-  L.push(`門: 道 1 本の構造でない文の繰り返し ${rep.gates.pathRepeats} まで・兄弟で骨組みが同じ組 ${rep.gates.siblingSame} まで`, "");
+  L.push(`門: 道 1 本の構造でない文の繰り返し ${rep.gates.pathRepeats} まで（道の画面と同じまとめ方）・兄弟で骨組みが同じ組 ${rep.gates.siblingSame} まで・続く判断の同じ種類の手が同じ文 ${rep.gates.decisionRepeats} まで`, "");
   if (rep.bank.length) {
     L.push("## 束", "");
     for (const c of rep.bank) L.push(`- ${c.id} ${f(c.n)} 件: ${c.examples.join(" / ")}`);
@@ -805,6 +929,15 @@ export function reportMarkdown(rep: TextCheckReport): string {
       .join("・")}`);
     L.push(`  - よく繰り返す文（道の数）: ${pr.top
       .slice(0, 10)
+      .map(([x, c]) => `「${x.slice(0, 32)}…」${f(c)}`)
+      .join(" / ")}`);
+    const dr = r.decisionRepeats;
+    L.push(`- 判断ごとの繰り返し（続く 2 つの判断の同じ種類の手が同じ骨組みで言う文。${f(dr.pairs)} 組）: 門を超える組 ${f(dr.overGate)}`);
+    L.push(`  - 同じ文の数ごとの組: ${Object.entries(dr.hist)
+      .map(([x, c]) => `${x}: ${f(c)}`)
+      .join("・")}`);
+    L.push(`  - よく重なる文（組の数）: ${dr.top
+      .slice(0, 8)
       .map(([x, c]) => `「${x.slice(0, 32)}…」${f(c)}`)
       .join(" / ")}`);
     const s = r.siblings;
