@@ -594,6 +594,8 @@ describe("64 ビットの ID（作業メモ SPEC v1 §2.5・D9。版 6 の 32 �
 
 describe("版の記録（scripts/impact/releases.json。足すだけ）", () => {
   const h = releasesJson as unknown as ReleaseHistory;
+  /** 記録の例に使う基準の文書の指紋（形だけ。小さい木の指紋は quarterDigest.test.ts） */
+  const DIG = "08ywb3s0oh106s";
   /** 本番の形で作った記録の作った形（2,000・±2%・今日の 10 手・never・2 回） */
   const prodBuild = { B: 2000, tol: 0.02, moves: 10, never: true, runs: 2, nodes: 71_619 };
   it("記録は点検に通り、決まった書き方のままで、最後はアプリが同梱している版 6 と同じ", () => {
@@ -605,21 +607,21 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
   });
 
   it("同じ（版の順番・指紋）は足さずに済み、戻る順番・使い直す順番・使った指紋は断る", () => {
-    expect(checkReleaseAppend(h, { release: 7, hash: "0123456789abcd" }).verdict).toBe("append");
+    expect(checkReleaseAppend(h, { release: 7, hash: "0123456789abcd", digest: DIG }).verdict).toBe("append");
     expect(checkReleaseAppend(h, { release: 6, hash: "bvpn-apwrrf" }).verdict).toBe("same");
     expect(checkReleaseAppend(h, { release: 6, hash: "0123456789abcd" }).verdict).toBe("refuse");
     expect(checkReleaseAppend(h, { release: 5, hash: "0123456789abcd" }).verdict).toBe("refuse");
     expect(checkReleaseAppend(h, { release: 8, hash: "bvpn-apwrrf" }).verdict).toBe("refuse");
     expect(checkReleaseAppend(h, { release: 8, hash: "bl06-12wmu46" }).verdict).toBe("refuse");
-    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1", anchor: "2026-11", build: prodBuild }] };
+    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1", anchor: "2026-11", build: prodBuild, digest: DIG }] };
     expect(checkReleaseHistory(withR7)).toEqual([]);
-    expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abce" }).verdict).toBe("refuse");
+    expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abce", digest: DIG }).verdict).toBe("refuse");
     expect(formatHistory(withR7).split("\n").length).toBe(releasesText.split("\n").length + 1);
   });
 
   it("記録の点検は、戻る・同じ順番が 2 つ・同じ指紋が 2 つ・形の違う指紋を見つける", () => {
     const base = h.releases;
-    const q = (release: number, hash: string) => ({ release, hash, scheme: "q1" as const, build: prodBuild });
+    const q = (release: number, hash: string) => ({ release, hash, scheme: "q1" as const, build: prodBuild, digest: DIG });
     expect(checkReleaseHistory({ releases: [...base, q(7, "0123456789abcd"), q(7, "0123456789abce")] })).toHaveLength(1);
     expect(checkReleaseHistory({ releases: [...base, q(5, "0123456789abcd")] })).toHaveLength(1);
     expect(checkReleaseHistory({ releases: [...base, q(7, "0123456789abcd"), q(8, "0123456789abcd")] })).toHaveLength(1);
@@ -628,7 +630,7 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
   });
 
   it("3 か月ごとの地図の記録（q1）は本番の形で作った物だけ（試しの木で版の番号を使い切らない。format-1）", () => {
-    const rec = (build: Partial<typeof prodBuild> | null) => ({ releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1" as const, ...(build ? { build: { ...prodBuild, ...build } } : {}) }] });
+    const rec = (build: Partial<typeof prodBuild> | null) => ({ releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1" as const, digest: DIG, ...(build ? { build: { ...prodBuild, ...build } } : {}) }] });
     expect(checkReleaseHistory(rec({}))).toEqual([]);
     expect(checkReleaseHistory(rec({ moves: 11 }))).toEqual([]);
     for (const bad of [{ B: 40 }, { tol: 12 }, { moves: 1 }, { never: false }, { runs: 1 }, { nodes: 0 }, { nodes: 90_001 }]) {
@@ -638,28 +640,55 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
     }
     expect(checkReleaseHistory(rec(null))[0]).toContain("作った形 build がありません");
     // 足せるかの判断も、本番の形でない記録の上には足さない
-    expect(checkReleaseAppend(rec({ B: 40 }), { release: 8, hash: "0123456789abce" }).verdict).toBe("refuse");
+    expect(checkReleaseAppend(rec({ B: 40 }), { release: 8, hash: "0123456789abce", digest: DIG }).verdict).toBe("refuse");
     // 実際の記録（版 6 まで）の q1 はどれも本番の形
     for (const r of h.releases) if (r.scheme === "q1") expect(r.build).toMatchObject({ B: 2000, never: true, runs: 2 });
   });
 
   it("基準の文書の指紋（digest）: 記録の形を点検し、同じ版の順番と中身の指紋のまま違う指紋は足さない（組み立てを変えたら版の順番を進める。safety-4）", () => {
     const rec = (digest: unknown) => ({ release: 7, hash: "0123456789abcd", scheme: "q1" as const, anchor: "2026-11", build: prodBuild, digest: digest as string });
-    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, rec("1mz094e0w56p6q")] };
+    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, rec(DIG)] };
     expect(checkReleaseHistory(withR7)).toEqual([]);
-    expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd", digest: "1mz094e0w56p6q" }).verdict).toBe("same");
+    expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd", digest: DIG }).verdict).toBe("same");
     const changed = checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd", digest: "0000000000000a" });
     expect(changed.verdict).toBe("refuse");
     expect(changed.why[0]).toContain("基準の文書の指紋");
-    // 指紋の無い古い記録・指紋を渡さない点検は今までどおり
-    expect(checkReleaseAppend(h, { release: 6, hash: "bvpn-apwrrf", digest: "1mz094e0w56p6q" }).verdict).toBe("same");
-    expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd" }).verdict).toBe("same");
-    expect(checkReleaseAppend(withR7, { release: 8, hash: "0123456789abce", digest: "1mz094e0w56p6q" }).verdict).toBe("append");
+    // 版 6 までの記録（v2-json）は指紋が無くても今までどおり
+    expect(checkReleaseAppend(h, { release: 6, hash: "bvpn-apwrrf", digest: DIG }).verdict).toBe("same");
+    expect(checkReleaseAppend(h, { release: 6, hash: "bvpn-apwrrf" }).verdict).toBe("same");
+    expect(checkReleaseAppend(withR7, { release: 8, hash: "0123456789abce", digest: DIG }).verdict).toBe("append");
     // 形の違う指紋・版 6 までの記録（v2-json）の指紋は通らない
     for (const bad of ["short", 12, "0123456789ABCD"]) expect(checkReleaseHistory({ ...h, releases: [...h.releases, rec(bad)] }), String(bad)).toHaveLength(1);
     expect(checkReleaseHistory({ releases: [{ release: 1, hash: "bm4g-1hcxhva", scheme: "v2-json", digest: "1mz094e0w56p6q" }] })).toHaveLength(1);
     // 小さい木の記録の指紋は、組み立てた文書の指紋（quarterDigest.test.ts で中身を確かめる）
     expect(impactBaselineDigest(buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: 0 }), impactNodeId64(map.key(0)))).toMatch(/^[0-9a-z]{14}$/);
+  });
+
+  it("3 か月ごとの地図（q1）の記録には基準の文書の指紋が要る: 無い記録は点検で止め、その上では same と言わず、指紋の無い記録は足さない（見直し compat-3）", () => {
+    // 指紋の無い q1 の記録（P2.0 の前の生成が足しうる形）: 点検は 1 つだけ止め、足すだけの記録なので版の順番を進めて足し直すと言う
+    const noDigest: ReleaseHistory = { ...h, releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1", anchor: "2026-11", build: prodBuild }] };
+    const f = checkReleaseHistory(noDigest);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toContain("基準の文書の指紋 digest がありません");
+    expect(f[0]).toContain("版の順番を進めて");
+    // その記録の上では、同じ版・同じ中身の指紋でも same にしない（どの指紋とも比べられない）
+    for (const digest of [DIG, "0000000000000a", undefined]) {
+      const r = checkReleaseAppend(noDigest, { release: 7, hash: "0123456789abcd", ...(digest ? { digest } : {}) });
+      expect([String(digest), r.verdict]).toEqual([String(digest), "refuse"]);
+    }
+    // 指紋のある記録の上でも、今の組み立ての指紋を渡さない・形が違う点検は same にしない
+    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1", anchor: "2026-11", build: prodBuild, digest: DIG }] };
+    for (const digest of [undefined, "", "short", "0123456789ABCD"]) {
+      const r = checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd", ...(digest !== undefined ? { digest } : {}) });
+      expect([String(digest), r.verdict]).toEqual([String(digest), "refuse"]);
+      expect(r.why[0]).toContain("比べられません");
+    }
+    // 指紋の無い・形の違う記録は足さない（生成の BD が落ちて指紋が空のときも）
+    for (const digest of [undefined, "", "short"]) {
+      const r = checkReleaseAppend(h, { release: 7, hash: "0123456789abcd", ...(digest !== undefined ? { digest } : {}) });
+      expect([String(digest), r.verdict]).toEqual([String(digest), "refuse"]);
+      expect(r.why[0]).toContain("基準の文書の指紋");
+    }
   });
 });
 

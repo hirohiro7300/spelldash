@@ -449,7 +449,11 @@ export function checkReleaseHistory(h: ReleaseHistory): string[] {
     prev = Math.max(prev, r.release);
     if (!(r.scheme in HASH_FORM)) out.push(`H1 知らない指紋の作り: ${String(r.scheme)}（版 ${r.release}）`);
     else if (!HASH_FORM[r.scheme].test(r.hash)) out.push(`H1 指紋の形が違います: ${r.hash}（版 ${r.release}・${r.scheme}）`);
-    if (r.scheme === "q1") for (const p of buildProblems(r.build)) out.push(`H1 版 ${r.release} は本番の形で作っていません: ${p}`);
+    if (r.scheme === "q1") {
+      for (const p of buildProblems(r.build)) out.push(`H1 版 ${r.release} は本番の形で作っていません: ${p}`);
+      // 3 か月ごとの地図の記録には基準の文書の指紋が要る（無いと、同じ版のまま組み立てが変わっても比べられない。記録は足すだけで後から足せない: 見直し compat-3）
+      if (r.digest === undefined) out.push(`H1 版 ${r.release}（q1）に基準の文書の指紋 digest がありません（版の順番を進めて、指紋のある記録を足し直す）`);
+    }
     if (r.digest !== undefined && !(r.scheme === "q1" && HASH_FORM.q1.test(r.digest))) out.push(`H1 基準の文書の指紋の形が違います: ${String(r.digest)}（版 ${r.release}・${r.scheme}）`);
     for (const x of [r.hash, ...(r.replaced ?? []).map((y) => y.hash)]) {
       const was = hashes.get(x);
@@ -461,17 +465,23 @@ export function checkReleaseHistory(h: ReleaseHistory): string[] {
 }
 
 /**
- * H1: 新しい記録 rec を足せるか。同じ（版の順番・指紋）がもうあれば足さずに済む（"same"）。ただし記録の基準の文書の指紋（digest）が
- * 今の組み立ての指紋と違えば断る（同じ版のまま組み立てが変わった: 版の順番を進める。見直し safety-4）。
+ * H1: 新しい記録 rec（3 か月ごとの地図。基準の文書の指紋 digest つき）を足せるか。同じ（版の順番・指紋）がもうあれば足さずに済む（"same"）。
+ * ただし記録の基準の文書の指紋が今の組み立ての指紋と違えば断る（同じ版のまま組み立てが変わった: 版の順番を進める。見直し safety-4）。
+ * 3 か月ごとの地図（q1）の記録は、どちらかの指紋が無ければ比べられないので "same" にしない・足さない（見直し compat-3）。
  * 版の順番が最後の版以下（戻る・使い直す）や、同じ指紋が別の版の順番にある物は足さない（文を返す）
  */
 export function checkReleaseAppend(h: ReleaseHistory, rec: { release: number; hash: string; digest?: string }): { verdict: "append" | "same" | "refuse"; why: string[] } {
   const why = checkReleaseHistory(h);
   if (why.length) return { verdict: "refuse", why };
+  const hasDigest = rec.digest !== undefined && HASH_FORM.q1.test(rec.digest);
   const same = h.releases.find((r) => r.release === rec.release);
   if (same && same.hash === rec.hash) {
-    if (same.digest !== undefined && rec.digest !== undefined && same.digest !== rec.digest)
-      return { verdict: "refuse", why: [`H1 版 ${rec.release} の基準の文書の指紋 ${same.digest} が今の組み立て ${rec.digest} と違います（鍵・ID・線・タグ・期限の作りを変えたら版の順番を進める）`] };
+    if (same.scheme === "q1") {
+      if (same.digest === undefined) return { verdict: "refuse", why: [`H1 版 ${rec.release} の記録に基準の文書の指紋がありません（今の組み立てと比べられない。版の順番を進めて記録し直す）`] };
+      if (!hasDigest) return { verdict: "refuse", why: [`H1 今の組み立ての基準の文書の指紋が無いか形が違うので（${String(rec.digest)}）、版 ${rec.release} の記録と比べられません`] };
+      if (same.digest !== rec.digest)
+        return { verdict: "refuse", why: [`H1 版 ${rec.release} の基準の文書の指紋 ${same.digest} が今の組み立て ${rec.digest} と違います（鍵・ID・線・タグ・期限・やることの元の作りを変えたら版の順番を進める）`] };
+    }
     return { verdict: "same", why: [] };
   }
   if (same) return { verdict: "refuse", why: [`H1 版 ${rec.release} はもう別の指紋 ${same.hash} で記録されています（中身を変えたら版の順番を進める）`] };
@@ -479,6 +489,7 @@ export function checkReleaseAppend(h: ReleaseHistory, rec: { release: number; ha
   if (used) return { verdict: "refuse", why: [`H1 指紋 ${rec.hash} はもう版 ${used.release} で記録されています`] };
   const last = Math.max(0, ...h.releases.map((r) => r.release));
   if (rec.release <= last) return { verdict: "refuse", why: [`H1 版の順番 ${rec.release} は最後の版 ${last} 以下です（戻せない）`] };
+  if (!hasDigest) return { verdict: "refuse", why: [`H1 基準の文書の指紋が無いか形が違う記録（${String(rec.digest)}）は足しません（足すだけの記録なので、後から指紋を足せない）`] };
   return { verdict: "append", why: [] };
 }
 

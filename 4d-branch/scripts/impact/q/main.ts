@@ -406,7 +406,7 @@ export async function main(root: string, args: string[]): Promise<number> {
     } catch (e) {
       why = [`BD 基準の文書を組み立てられません: ${(e as Error).message}`];
     }
-    add("BD 基準の文書の指紋（軽い組み立ての文書の鍵・ID・親・線・やることの項目・プロジェクト・シナリオ・タグ・期限）", why, `${digest || "なし"}（2 回で同じ・${((performance.now() - t) / 2).toFixed(0)} ms）`);
+    add("BD 基準の文書の指紋（軽い組み立ての文書の鍵・ID・親・線・やることの項目と元の番号・プロジェクト・シナリオ・タグ・期限）", why, `${digest || "なし"}（2 回で同じ・${((performance.now() - t) / 2).toFixed(0)} ms）`);
   }
   // 大きさ
   const gz = gzipSync(r1.bytes, { level: 9 });
