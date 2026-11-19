@@ -1,13 +1,16 @@
 // 作った木を、開発用の入れ子の木（src/deepmap/mapData.ts の DevTree）にする。src/deepmap/dev/fromTree.ts が読むだけの地図にする。
 // 並べる順と、確かめるだけの事実（rv: 会社の答えは会社ごとに 1 つ）は R1 の試作（model-tree/bundleq.ts の toBundle）と同じ。
-// 結果の名前（lab）・線の文（line）・判断の線（ln）は計算の結果のまま（../group.ts の describe）。文章（title・short など）はまだ入れない
+// 結果の名前（lab）・線の文（line）・判断の線（ln）は計算の結果のまま（./group.ts の describe）。文章（title・short など）はまだ入れない。
+// 顧客の社数の違う場合をまとめた状態（まとめた結果・まとめた行き先）には、社数の幅 band.cl（整数）を付ける
 
 import { IMPACT_TITLE, type ImpactLine, type ImpactSt, type R3 } from "../../../src/demo/impact";
 import type { DevTree, DevTreeNode, MapHeader } from "../../../src/deepmap/mapData";
 import type { Line } from "../group";
-import { runRate, type St, type Vec3 } from "../sim";
+import type { St, Vec3 } from "../sim";
 import { Wsum } from "./core";
 import { rollbackApp, type QNode } from "./gen";
+import { bandOf } from "./group";
+import { runRateQ } from "./sim";
 import { H, type WorldQ } from "./world";
 
 export interface DevTreeOpts {
@@ -57,7 +60,7 @@ export function toDevTree(w: WorldQ, root: QNode, opts: DevTreeOpts): DevTree {
     if (kids.length >= 2) counts.forks++;
     if ((n.role === "r" || n.role === "s") && kids.length >= 2) counts.decisions++;
     const d: DevTreeNode = { k: n.key, r: n.role, m: n.m, st: stOut(n.st) };
-    if (n.role === "r") d.rr = runRate(w, n.st);
+    if (n.role === "r") d.rr = runRateQ(w, n.st);
     else if (n.role === "a") {
       counts.options++;
       d.kind = n.kind!;
@@ -68,7 +71,9 @@ export function toDevTree(w: WorldQ, root: QNode, opts: DevTreeOpts): DevTree {
       if (n.stub) d.stub = true;
     } else {
       const o = n.out!;
-      d.rr = r3(n.rr ?? runRate(w, n.st));
+      d.rr = r3(n.rr ?? runRateQ(w, n.st));
+      const band = bandOf(w, n.st);
+      if (band) d.band = band;
       d.id = o.id;
       d.p = o.p;
       d.lab = o.lab;

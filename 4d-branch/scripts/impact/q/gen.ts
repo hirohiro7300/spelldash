@@ -1,5 +1,5 @@
 // 3 か月ごと 12 段の地図を、最初の手ごとの予算（分かれ道の数）で作る。設計: 作業メモ SPEC v1 §2、R1 の報告 §6
-// R1 の試作（model-tree/gen.ts）を移した物で、計算も作る順も同じ（粗い表は引く順で値が変わるので、順を変えないこと）。
+// R1 の試作（model-tree/gen.ts）を移した物で、作る順も同じ（粗い表は引く順で値が変わるので、順を変えないこと）。3 か月の計算は P2 の前提（./sim.ts）
 // 1. 最初の手の 3 か月を元の地図と同じまとめ方で分け、その結果（次の判断）を、そこへ来る見込みの大きい順に取り出す
 // 2. 判断では候補の手を正確に見積もり（3 か月 + 粗い表の通りに続けた見積もり）、一番良い手だけを広げる。
 //    ほかに見せる手（今のまま・別の領域・避けたい手）は「まとめた手」: 3 か月の結果と、36 か月目のまとめた行き先だけ
@@ -8,10 +8,11 @@
 // 一貫性（報告 §6.4 の決まり 1〜4）: 広げた手はいつもアプリの選ぶ一番良い手になり、おすすめの道はまとめた手に入らない
 
 import type { MapRole, MapWhy } from "../../../src/deepmap/mapData";
-import type { Outcome } from "../group";
-import { runRate, type St, type Vec3 } from "../sim";
+import type { Vec3 } from "../sim";
 import { add3, CoarseDP, quarterOutcomes, Rollouts, Wsum, type Mode, type Roll } from "./core";
+import type { OutcomeQ } from "./group";
 import { driverQ, feasibleQ } from "./quarter";
+import { runRateQ, toQ, type QSt } from "./sim";
 import { H, NSTAGE, type WorldQ } from "./world";
 
 export interface QNode {
@@ -20,11 +21,11 @@ export interface QNode {
   role: MapRole;
   /** 判断・結果・行き先はその月。手は始める月 */
   m: number;
-  st: St;
+  st: QSt;
   /** 判断の段（0..11。行き先は 12） */
   stage: number;
   kind?: string;
-  out?: Outcome;
+  out?: OutcomeQ;
   /** この結果・行き先への線の稼ぎ [給与の月数, 広告運用 万円, SpellDash 万円]（まとめた行き先: その 3 か月 + 続きの見積もり） */
   r?: Vec3;
   /** 行き先の月の稼ぎ（まとめた行き先: 36 か月目の見込み） */
@@ -164,7 +165,7 @@ export interface MoveStats {
   Bint: number;
 }
 
-type Eval = { q: number; outs: Outcome[]; conts: Roll[] };
+type Eval = { q: number; outs: OutcomeQ[]; conts: Roll[] };
 
 export class Gen {
   ro: Rollouts;
@@ -191,7 +192,7 @@ export class Gen {
   isKeyFam(kind: string): boolean {
     return this.w.keyFamilies.includes(this.fam(kind));
   }
-  modeFor(kind: string, x: St, level: Mode): Mode {
+  modeFor(kind: string, x: QSt, level: Mode): Mode {
     if (level === "split") return "split";
     if (this.P.factCl) {
       const d = driverQ(kind, x);
@@ -200,7 +201,7 @@ export class Gen {
     return level;
   }
   /** その手のここでの正確な見積もり: 3 か月の結果 + その後は粗い表の通りに続けた見積もり */
-  evalMove(s: number, x: St, kind: string, mode: Mode): Eval {
+  evalMove(s: number, x: QSt, kind: string, mode: Mode): Eval {
     this.evals++;
     const outs = quarterOutcomes(this.w, x, kind, 3 * s, mode, this.S);
     let q = 0;
@@ -212,7 +213,7 @@ export class Gen {
   /** 今日と最初の手（only があればその手だけ）。最初の手ごとに予算を合わせ込む */
   build(only?: string[]): { root: QNode; stats: MoveStats[] } {
     const w = this.w;
-    const root: QNode = { key: "r", role: "r", m: 0, st: w.today, stage: 0, kids: [], parent: null, pPath: 1, V: 0, onPi: true };
+    const root: QNode = { key: "r", role: "r", m: 0, st: toQ(w, w.today), stage: 0, kids: [], parent: null, pPath: 1, V: 0, onPi: true };
     const stats: MoveStats[] = [];
     for (const k0 of w.rootMenu) {
       if (only && !only.includes(k0)) continue;
@@ -244,7 +245,7 @@ export class Gen {
   firstMove(root: QNode, k0: string, Bint: number): QNode {
     const w = this.w;
     const S = this.S;
-    const a0: QNode = { key: `r.${k0}`, role: "a", m: 0, st: w.today, stage: 0, kind: k0, kids: [], parent: root, pPath: 1, V: 0, why: k0 === "keep" ? "keep" : "menu" };
+    const a0: QNode = { key: `r.${k0}`, role: "a", m: 0, st: root.st, stage: 0, kind: k0, kids: [], parent: root, pPath: 1, V: 0, why: k0 === "keep" ? "keep" : "menu" };
     root.kids.push(a0);
     const heap = new Heap<QNode>();
     let forks = 0;
@@ -254,7 +255,7 @@ export class Gen {
     let seen = 0;
     let sumC = 0;
     const resv = (s: number) => (NSTAGE - s) * cBase;
-    const outs0 = quarterOutcomes(w, w.today, k0, 0, "split", S);
+    const outs0 = quarterOutcomes(w, root.st, k0, 0, "split", S);
     if (outs0.length >= 2) forks++;
     for (const o of outs0) {
       const d: QNode = { key: `${a0.key}.${o.id}`, role: "s", m: 3, st: o.st, stage: 1, out: o, r: o.r, kids: [], parent: a0, pPath: o.p / 100, V: 0, chain: k0 === "keep", onPi: true };
@@ -374,7 +375,7 @@ export class Gen {
       e.outs.forEach((o, i) => {
         const key = `${a.key}.${o.id}`;
         if (s + 1 >= NSTAGE) {
-          a.kids.push({ key, role: "e", m: H, st: o.st, stage: NSTAGE, out: o, r: o.r, rr: runRate(w, o.st), kids: [], parent: a, pPath: d.pPath * (o.p / 100), V: 0 });
+          a.kids.push({ key, role: "e", m: H, st: o.st, stage: NSTAGE, out: o, r: o.r, rr: runRateQ(w, o.st), kids: [], parent: a, pPath: d.pPath * (o.p / 100), V: 0 });
           return;
         }
         if (!isExp) {
@@ -440,7 +441,7 @@ export function generate(w: WorldQ, P: Params, only?: string[]): { root: QNode; 
   const t0 = performance.now();
   const dp = new CoarseDP(w, S, Object.keys(w.kinds), { sal: 0.05, sd: false, corr: true });
   // 試作の入口（proto.ts）と同じ: 今日の状態の 3 か月後のマスから表を引き始める（今日の手が無い世界では引かない）
-  if (w.rootMenu.length > 0) dp.value(1, w.today);
+  if (w.rootMenu.length > 0) dp.value(1, toQ(w, w.today));
   const t1 = performance.now();
   const gen = new Gen(w, S, dp, P);
   const { root, stats } = gen.build(only);

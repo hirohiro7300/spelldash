@@ -5,31 +5,36 @@
 //   --budget 最初の手ごとの分かれ道の数・--alts 見せる手の数・--alts-by 段ごとの見せる手の数（off で --alts だけ）・--stub まとめた手の結果のまとめ方・
 //   --fact-cl 顧客の数を事実として必ず分ける・--only 作る最初の手・--anchor 0 か月目の年月・--hash 入口の指紋の欄（開発用の木は仮の名前）
 // 既定は R1 が選んだ形（最初の手ごとに 2,000 の分かれ道・見せる手は 1 年目 4・2 年目 3・3 年目 2・まとめた手の結果も元の地図と同じまとめ方）。
+// 前提は P2 の物（作業メモ SPEC v1 §2.2・§2.3。world.ts の CHANGES）。4 月などの暦は --anchor の年月から出す。
 // 書き出す物: <木.json>（開発用の入れ子の木。src/deepmap/mapData.ts の DevTree）と、その隣の <木.json>.gz。
-// 一貫性の点検（おすすめの道ではまとめた手が広げた手に勝たない・おすすめの道はまとめた手に入らない）に通らなければ書き出さない。
-// 既定の形で 79,092 枚・1 つの CPU で 20〜30 秒・同じ引数なら同じ木（バイトまで同じ）。木は大きい（27 MB）のでリポジトリの外に書き出す
+// 一貫性の点検（おすすめの道ではまとめた手が広げた手に勝たない・おすすめの道はまとめた手に入らない）と、前提の点検（checks.ts: N10・N7・
+// 顧客は整数・幅・名前・事実・暦・転職活動の上限）に通らなければ書き出さない。
+// 同じ引数なら同じ木（バイトまで同じ）。木は大きい（20 MB 台）のでリポジトリの外に書き出す
 
 import fs from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import type { World } from "../sim";
+import { checkTree } from "./checks";
 import { parseArgs, USAGE } from "./cli";
 import { simCount } from "./core";
 import { toDevTree } from "./devTree";
 import { consistencyOf, generate, rollbackApp } from "./gen";
 import { quarterWorld } from "./world";
 
+const pct = (x: number) => `${(100 * x).toFixed(1)}%`;
+
 export function main(root: string, args: string[]): number {
   const base = JSON.parse(fs.readFileSync(path.join(root, "scripts/impact/world.json"), "utf8")) as World;
-  const w = quarterWorld(base);
   let opts;
   try {
-    opts = parseArgs(args, w.rootMenu);
+    opts = parseArgs(args, base.rootMenu);
   } catch (e) {
     console.error((e as Error).message);
     console.error(USAGE);
     return 2;
   }
+  const w = quarterWorld(base, opts.anchor);
   const P = opts.params;
   const S = w.annual / 12;
   simCount.n = 0;
@@ -49,7 +54,7 @@ export function main(root: string, args: string[]): number {
     const q = (p: number) => (sf[Math.floor(p * (sf.length - 1))] ?? 0).toFixed(2);
     lines.push(`分け方を落とした時の不足（続きの見積もり − 細かく分けた一番良い手、万円）: 10% ${q(0.1)}・50% ${q(0.5)}・90% ${q(0.9)}・最大 ${q(1)}`);
   }
-  lines.push(`今日の値 ${vRoot.toFixed(2)}・ずっと今のまま ${vSQ.toFixed(2)}（年収 ${w.annual} 万円）`);
+  lines.push(`今日の値 ${vRoot.toFixed(2)}・ずっと今のまま ${vSQ.toFixed(2)}（年収 ${w.annual} 万円・地図の年月 ${w.anchor}・4 月 ${w.constants.aprilMonths.join(",")} か月目）`);
   lines.push("最初の手 | 分かれ道（判断/広げた手/まとめた手） | ノード | 判断 | 手（まとめた手） | 行き先（まとめた行き先） | 数も分けた判断 | 深さ | ms（作り直し） | 今のままとの差 | 3〜33 か月目の状態の数");
   const tot = { forks: 0, nodes: 1, decisions: 0, options: 0, stubs: 0, ends: 0, sumEnds: 0 };
   for (const s of stats) {
@@ -72,9 +77,20 @@ export function main(root: string, args: string[]): number {
     const q = (p: number) => (im[Math.min(im.length - 1, Math.floor(p * im.length))] ?? 0).toFixed(2);
     lines.push(`広げた一番良い手の木の値 − その手の見積もり（万円）: 10% ${q(0.1)}・50% ${q(0.5)}・90% ${q(0.9)}・最大 ${q(0.999)}`);
   }
+  // 前提の点検と転職活動の数（値は生成の年収で後ろから出し直してから）
+  rollbackApp(tree, S);
+  const chk = checkTree(w, tree);
+  lines.push(`前提の点検: 状態 ${chk.counts.states}（顧客の社数の違う場合をまとめた状態 ${chk.counts.mixed}）・通らない ${chk.fails.length}${chk.warns.length ? `・注意 ${chk.warns.join(" / ")}` : ""}`);
+  lines.push("最初の手 | 転職活動を 1 期以上 | 36 か月目に転職している | 一度でも転職 | 転職活動の期の数の平均 | 一番ありそうな道（見込み・続けて決まらなかった転職活動の一番長い期の数）");
+  for (const s of chk.search) lines.push(`${s.kind} | ${pct(s.pSearch)} | ${pct(s.pSwitched)} | ${pct(s.pEverSwitched)} | ${s.meanSearch.toFixed(2)} | ${pct(s.chainP)}・${s.chainMaxFailRun}`);
+  for (const s of chk.search) lines.push(`  ${s.kind}: ${s.chain.join(" ")}`);
   console.log(lines.join("\n"));
   if (con.violations > 0 || con.piIntoStub > 0) {
     console.error("一貫性の点検に通らないので書き出しません");
+    return 1;
+  }
+  if (chk.fails.length) {
+    console.error(`前提の点検に通らないので書き出しません:\n${chk.fails.join("\n")}`);
     return 1;
   }
   const dev = toDevTree(w, tree, { anchor: opts.anchor, release: 0, hash: opts.hash, textVersion: "dev" });
