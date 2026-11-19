@@ -4,6 +4,7 @@
 // ほかの結果や手に切り替えるのは、そのカードを pivot にして walkPath をもう一度呼ぶだけ（約 2,000 のどの分かれ道もたどれる）。
 // 続けて同じ手で結果が 1 つか同じ名前の静かな期は 1 つにまとめる（groups）。まとめた手の後は標準の続き（cont）を薄い行で出す。
 
+import type { MapData } from "../mapData";
 import { F_BASE, F_STUB, F_SUM, isUnder, kindKey, ROLE_A, type CompiledMap } from "./compile";
 import { assertFresh, deltaBetween, type Analysis, type Delta } from "./passes";
 import { Weighted } from "./stats";
@@ -201,27 +202,46 @@ export function walkPath(a: Analysis, pivot: number, from = 0): PathView {
   return { from: start, pivot, pivotRow, rows, groups: groupRows(a, rows), p: cum, end, summary, cont };
 }
 
-/** 続けて同じ手で、結果が 1 つか同じ名前の静かな期をまとめる（まとめた手の行はまとめない） */
+/** 道の行（手とその結果）を前の行とまとめるかを決める値 */
+export interface RowJoin {
+  /** 手の種類（鍵。種類の無い手は ""） */
+  kind: string;
+  /** まとめた手 */
+  stub: boolean;
+  /** 手の結果が 1 つ */
+  single: boolean;
+  /** 結果の名前（結果が無ければ ""） */
+  label: string;
+}
+
+/** 道の行（手 option と、その結果 outcome。結果が無ければ −1）の、まとめるかを決める値 */
+export function rowJoinOf(map: MapData, option: number, outcome: number): RowJoin {
+  return { kind: map.kind(option) ?? "", stub: map.stub(option), single: map.childCount(option) === 1, label: outcome >= 0 ? map.label(outcome) : "" };
+}
+
+/**
+ * 道の画面が行を前の行とまとめるか: 同じ種類の手が続き、どちらもまとめた手でなく、どちらも結果が 1 つか、結果の名前が同じ（静かな期）。
+ * groupRows と、文章の点検の道の繰り返し（scripts/impact/textChecks.ts）が使う 1 つの決まり（画面と点検で数え方がずれない）
+ */
+export function joinsRow(prev: RowJoin | null, cur: RowJoin): boolean {
+  return !!prev && !cur.stub && !prev.stub && prev.kind === cur.kind && ((prev.single && cur.single) || prev.label === cur.label);
+}
+
+/** 続けて同じ手で、結果が 1 つか同じ名前の静かな期をまとめる（まとめた手の行はまとめない。決まりは joinsRow） */
 export function groupRows(a: Analysis, rows: readonly PathRow[]): PathGroup[] {
   const cm = a.cm;
-  const map = cm.map;
-  const single = (r: PathRow) => cm.kidOff[r.option + 1]! - cm.kidOff[r.option]! === 1;
-  const labelOf = (r: PathRow) => (r.outcome >= 0 ? map.label(r.outcome) : "");
+  const keys = rows.map((r) => rowJoinOf(cm.map, r.option, r.outcome));
   const groups: PathGroup[] = [];
   for (let k = 0; k < rows.length; k++) {
     const r = rows[k]!;
     const g = groups[groups.length - 1];
-    if (g && !r.stub) {
-      const prev = rows[g.to]!;
-      const sameKind = cm.kind[prev.option] === cm.kind[r.option];
-      if (sameKind && !prev.stub && ((single(prev) && single(r)) || labelOf(prev) === labelOf(r))) {
-        g.to = k;
-        g.count++;
-        g.quiet = true;
-        g.mNext = r.mNext;
-        g.w *= r.w;
-        continue;
-      }
+    if (g && joinsRow(keys[g.to]!, keys[k]!)) {
+      g.to = k;
+      g.count++;
+      g.quiet = true;
+      g.mNext = r.mNext;
+      g.w *= r.w;
+      continue;
     }
     groups.push({ from: k, to: k, count: 1, kind: kindKey(cm, r.option), quiet: false, m: r.m, mNext: r.mNext, w: r.w });
   }
