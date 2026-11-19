@@ -29,6 +29,7 @@ import {
 import { fnv36, fnv64x36, fnv64x36Bytes, impactEdgeId64, impactNodeId, impactNodeId64, type ImpactSt, type ImpactRelease } from "../../src/demo/impact";
 import { base64ToBytes, decodeBundle, decodeBundleBytes, gunzipBytes, ImpactBundleError, SCALE } from "../../src/demo/impactBundle";
 import { impactBaselineDigest } from "../../src/demo/impactDigest";
+import { buildQuarterDoc } from "../../src/demo/quarterDoc";
 import { gunzipSync, InflateError } from "../../src/demo/inflate";
 import releaseRec from "../../src/demo/impact-release.json";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
@@ -642,8 +643,23 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
     for (const r of h.releases) if (r.scheme === "q1") expect(r.build).toMatchObject({ B: 2000, never: true, runs: 2 });
   });
 
-  it("基準の文書の指紋はまだ作っていない（W-store が作る。入口の形だけ決めてある）", () => {
-    expect(() => impactBaselineDigest({} as never, "n_i_x")).toThrow(/W-store/);
+  it("基準の文書の指紋（digest）: 記録の形を点検し、同じ版の順番と中身の指紋のまま違う指紋は足さない（組み立てを変えたら版の順番を進める。safety-4）", () => {
+    const rec = (digest: unknown) => ({ release: 7, hash: "0123456789abcd", scheme: "q1" as const, anchor: "2026-11", build: prodBuild, digest: digest as string });
+    const withR7: ReleaseHistory = { ...h, releases: [...h.releases, rec("1mz094e0w56p6q")] };
+    expect(checkReleaseHistory(withR7)).toEqual([]);
+    expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd", digest: "1mz094e0w56p6q" }).verdict).toBe("same");
+    const changed = checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd", digest: "0000000000000a" });
+    expect(changed.verdict).toBe("refuse");
+    expect(changed.why[0]).toContain("基準の文書の指紋");
+    // 指紋の無い古い記録・指紋を渡さない点検は今までどおり
+    expect(checkReleaseAppend(h, { release: 6, hash: "bvpn-apwrrf", digest: "1mz094e0w56p6q" }).verdict).toBe("same");
+    expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abcd" }).verdict).toBe("same");
+    expect(checkReleaseAppend(withR7, { release: 8, hash: "0123456789abce", digest: "1mz094e0w56p6q" }).verdict).toBe("append");
+    // 形の違う指紋・版 6 までの記録（v2-json）の指紋は通らない
+    for (const bad of ["short", 12, "0123456789ABCD"]) expect(checkReleaseHistory({ ...h, releases: [...h.releases, rec(bad)] }), String(bad)).toHaveLength(1);
+    expect(checkReleaseHistory({ releases: [{ release: 1, hash: "bm4g-1hcxhva", scheme: "v2-json", digest: "1mz094e0w56p6q" }] })).toHaveLength(1);
+    // 小さい木の記録の指紋は、組み立てた文書の指紋（quarterDigest.test.ts で中身を確かめる）
+    expect(impactBaselineDigest(buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: 0 }), impactNodeId64(map.key(0)))).toMatch(/^[0-9a-z]{14}$/);
   });
 });
 

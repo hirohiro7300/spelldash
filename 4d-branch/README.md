@@ -49,6 +49,7 @@ npm run dev
 | `npm run e2e:impact` | 右のパネルの「3 年の影響」の通しのテスト（概要・選んだ手・順位・全部ひらく・スマホの引き出し。先に `npm run build`） |
 | `npm run check` | 上の全部 |
 | `npm run test:slow` | 遅いテスト（8 万枚の木。`IMPACT_Q_FULL` に生成の書き出しの場所を渡す。作り方は `scripts/test-slow.mjs` の先頭） |
+| `npm run test:tz` | 3 か月ごとの地図の組み立て（`src/demo/quarterDoc.ts`）と基準の文書の指紋を、時差の違う 2 つのプロセス（America/Los_Angeles・Asia/Tokyo）で確かめる（小さい木の指紋は決まった値） |
 
 E2E は `vite preview` を自分で立ち上げます。ブラウザが無ければ `npx playwright-core install chromium` で入れてください。
 

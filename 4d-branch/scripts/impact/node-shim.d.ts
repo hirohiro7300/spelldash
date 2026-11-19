@@ -37,3 +37,8 @@ declare const process: {
   exit(code?: number): never;
   memoryUsage(): { heapUsed: number; rss: number };
 };
+
+// 生成は Vite の SSR で src を読むので、import.meta.env がある（開発の組み立て: DEV は true。src/demo/quarterDoc.ts が共有の部品を凍らせるかに使う）
+interface ImportMeta {
+  readonly env: { readonly DEV: boolean; readonly PROD: boolean; readonly MODE: string };
+}

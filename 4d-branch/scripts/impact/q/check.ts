@@ -7,17 +7,21 @@
 //   C1  顧客の社数: 幅の無い状態は整数の社数、幅は整数で小さい順
 //   K1  暦: 入口の年月と 4 月の月の番号（(anchorMonth + a) mod 12 = 4）
 //   R1  一貫性（生成の年収）: 最初の手ごとのおすすめの道で、アプリの一番良い手がまとめた手になる判断が 0
-//   R2  アプリと同じ値: 読んだ地図からアプリの文書を組み立て、computeImpact の今日の値・ずっと今のまま・すべての手の差が、
-//       読んだ値から直接出した値と |差| ≤ 1e-9（年収 360・540）。一番良い手も同じ
+//   R2  アプリと同じ値: 読んだ地図からアプリの文書を軽い組み立て（src/demo/quarterDoc.ts の buildQuarterDoc。P2 のアプリが使う物）で作り、
+//       computeImpact の今日の値・ずっと今のまま・すべての手の差が、読んだ値から直接出した値と |差| ≤ 1e-9（年収 360・540）。一番良い手も同じ
 //   I1  ID: 鍵からの 64 ビットの ID（ノード n_i_・線 e_i_）が重ならない
 //   D1  決まり: 2 回作った決まった並びのバイト列と指紋が同じ（読んだ地図を書き直しても同じバイト列）
 //   Z1・Z2 大きさ: 決まった並び ≤ 4 MB・gzip ≤ 1.2 MB（base64 も報告）
 //   H1  版の記録（scripts/impact/releases.json）: 版の順番は増えるだけ、同じ版の順番に違う指紋・同じ指紋に違う版の順番は無い。
-//       3 か月ごとの地図の記録（q1）は本番の形で作った物だけ（作った形 build: 2,000・±2% 以内・never・2 回・今日の手すべて。見直し format-1）
+//       3 か月ごとの地図の記録（q1）は本番の形で作った物だけ（作った形 build: 2,000・±2% 以内・never・2 回・今日の手すべて。見直し format-1）。
+//       記録の基準の文書の指紋（digest。src/demo/impactDigest.ts）は 36 進 14 文字で、同じ版の順番と中身の指紋のまま違う指紋にはしない
+//       （組み立てを変えて鍵・ID・線・タグ・期限が変わったら、版の順番を進める。見直し safety-4）
 
 import { calendarCheck } from "./calendar";
 import { DEFAULTS } from "./gen";
-import { buildImpactDoc, impactEdgeId64, impactNodeId, impactNodeId64, type ImpactAltX, type ImpactBNode, type ImpactBundle, type ImpactOutX, type ImpactRootX } from "../../../src/demo/impact";
+import { impactEdgeId64, impactNodeId64 } from "../../../src/demo/impact";
+import { DIGEST_AT } from "../../../src/demo/impactDigest";
+import { buildQuarterDoc } from "../../../src/demo/quarterDoc";
 import type { MapData } from "../../../src/deepmap/mapData";
 import { computeForecast } from "../../../src/model/forecast";
 import { buildIndex } from "../../../src/model/graph";
@@ -281,42 +285,6 @@ export function consistencyOfMap(map: MapData, annual: number): Consistency {
   return { decisions, intoStub, fails };
 }
 
-/** アプリの文書を組み立てるための版 6 の形の同梱データ（値の確かめだけに使う。32 ビットの ID が重なる鍵は ~ を足して避ける） */
-export function toV2Bundle(map: MapData): { bundle: ImpactBundle; ids: string[] } {
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  const nodes: ImpactBNode[] = [];
-  for (let i = 0; i < map.n; i++) {
-    let key = map.key(i);
-    while (seen.has(impactNodeId(key))) key += "~";
-    seen.add(impactNodeId(key));
-    ids.push(impactNodeId(key));
-    const role = map.role(i);
-    let x: ImpactRootX | ImpactAltX | ImpactOutX;
-    if (role === "r") x = { st: map.st(i), rr: map.rr(i) };
-    else if (role === "a") x = { k: map.kind(i) ?? "", h: map.hours(i), ...(map.isBase(i) ? { base: 1 as const } : {}), len: 3 };
-    else {
-      const rv = map.rv(i);
-      x = { p: map.p(i), lab: map.label(i), line: map.line(i), ln: map.ln(i) ?? ["none", map.month(i), null, null], r: map.e(i), st: map.st(i), rr: map.rr(i), ...(rv ? { rv } : {}) };
-    }
-    nodes.push([key, map.parent(i), role, map.month(i), map.title(i), map.short(i), "", x]);
-  }
-  const h = map.header;
-  const bundle: ImpactBundle = {
-    v: 2,
-    kind: "impact3y",
-    title: h.title,
-    annual: h.annual,
-    horizon: h.horizon,
-    kinds: h.kinds,
-    fams: h.fams,
-    premises: h.premises,
-    nodes,
-    check: { annual: h.annual, vRoot: 0, vSQ: 0, rootDelta: {}, counts: { nodes: h.counts.nodes, decisions: h.counts.decisions, options: h.counts.options, forks: h.counts.forks, ends: h.counts.ends } },
-  };
-  return { bundle, ids };
-}
-
 export interface Parity {
   annual: number;
   /** アプリ・読んだ値から直接 */
@@ -330,11 +298,11 @@ export interface Parity {
   ms: number;
 }
 
-/** R2: アプリの文書（版 6 の組み立て）を年収ごとに computeImpact し、読んだ値から直接出した値と比べる */
+/** R2: アプリの文書（軽い組み立て buildQuarterDoc。64 ビットの ID）を年収ごとに computeImpact し、読んだ値から直接出した値と比べる */
 export function appParity(map: MapData, annuals: readonly number[]): { parities: Parity[]; fails: string[] } {
   const { fails, fail } = collector();
-  const { bundle, ids } = toV2Bundle(map);
-  const doc = buildImpactDoc(bundle, new Date(2026, 10, 1), "check");
+  const doc = buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: DIGEST_AT });
+  const ids = Array.from({ length: map.n }, (_, i) => impactNodeId64(map.key(i)));
   const idx = buildIndex(doc);
   const rootId = ids[0]!;
   const parities: Parity[] = [];
@@ -445,6 +413,8 @@ export interface ReleaseEntry {
   replaced?: Array<{ hash: string; commit?: string }>;
   /** 3 か月ごとの地図（q1）を作った形: 分かれ道の目標・幅・最初の手の数・never・作った回数・ノードの数（本番の形でなければ記録に足さない） */
   build?: { B: number; tol: number; moves: number; never: boolean; runs: number; nodes: number };
+  /** 3 か月ごとの地図（q1）の基準の文書の指紋（src/demo/impactDigest.ts の mapBaselineDigest。36 進 14 文字） */
+  digest?: string;
 }
 
 /** 版の記録の作った形が本番の形か（今日の手すべて = 10 手以上・2,000・±2% 以内・never・2 回・ノード 90,000 まで）。違う所の文を返す */
@@ -480,6 +450,7 @@ export function checkReleaseHistory(h: ReleaseHistory): string[] {
     if (!(r.scheme in HASH_FORM)) out.push(`H1 知らない指紋の作り: ${String(r.scheme)}（版 ${r.release}）`);
     else if (!HASH_FORM[r.scheme].test(r.hash)) out.push(`H1 指紋の形が違います: ${r.hash}（版 ${r.release}・${r.scheme}）`);
     if (r.scheme === "q1") for (const p of buildProblems(r.build)) out.push(`H1 版 ${r.release} は本番の形で作っていません: ${p}`);
+    if (r.digest !== undefined && !(r.scheme === "q1" && HASH_FORM.q1.test(r.digest))) out.push(`H1 基準の文書の指紋の形が違います: ${String(r.digest)}（版 ${r.release}・${r.scheme}）`);
     for (const x of [r.hash, ...(r.replaced ?? []).map((y) => y.hash)]) {
       const was = hashes.get(x);
       if (was !== undefined) out.push(`H1 同じ指紋が 2 回あります: ${x}（版 ${was} と ${r.release}）`);
@@ -490,14 +461,19 @@ export function checkReleaseHistory(h: ReleaseHistory): string[] {
 }
 
 /**
- * H1: 新しい記録 rec を足せるか。同じ（版の順番・指紋）がもうあれば足さずに済む（"same"）。
+ * H1: 新しい記録 rec を足せるか。同じ（版の順番・指紋）がもうあれば足さずに済む（"same"）。ただし記録の基準の文書の指紋（digest）が
+ * 今の組み立ての指紋と違えば断る（同じ版のまま組み立てが変わった: 版の順番を進める。見直し safety-4）。
  * 版の順番が最後の版以下（戻る・使い直す）や、同じ指紋が別の版の順番にある物は足さない（文を返す）
  */
-export function checkReleaseAppend(h: ReleaseHistory, rec: { release: number; hash: string }): { verdict: "append" | "same" | "refuse"; why: string[] } {
+export function checkReleaseAppend(h: ReleaseHistory, rec: { release: number; hash: string; digest?: string }): { verdict: "append" | "same" | "refuse"; why: string[] } {
   const why = checkReleaseHistory(h);
   if (why.length) return { verdict: "refuse", why };
   const same = h.releases.find((r) => r.release === rec.release);
-  if (same && same.hash === rec.hash) return { verdict: "same", why: [] };
+  if (same && same.hash === rec.hash) {
+    if (same.digest !== undefined && rec.digest !== undefined && same.digest !== rec.digest)
+      return { verdict: "refuse", why: [`H1 版 ${rec.release} の基準の文書の指紋 ${same.digest} が今の組み立て ${rec.digest} と違います（鍵・ID・線・タグ・期限の作りを変えたら版の順番を進める）`] };
+    return { verdict: "same", why: [] };
+  }
   if (same) return { verdict: "refuse", why: [`H1 版 ${rec.release} はもう別の指紋 ${same.hash} で記録されています（中身を変えたら版の順番を進める）`] };
   const used = h.releases.find((r) => r.hash === rec.hash || (r.replaced ?? []).some((y) => y.hash === rec.hash));
   if (used) return { verdict: "refuse", why: [`H1 指紋 ${rec.hash} はもう版 ${used.release} で記録されています`] };
