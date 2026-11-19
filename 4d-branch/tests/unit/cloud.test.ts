@@ -881,12 +881,15 @@ describe("同期の決まり: ふだんの同期", () => {
     const repo = new CloudRepo(be, "user1", "newer");
     const newer = { ...realDoc("新しい版の内容"), version: SCHEMA_VERSION + 1 } as DocData;
     await repo.write(newer, null);
-    const before = (await repo.readManifest())!.gen;
+    // そのマニフェストには中身の版が入っていて、この版では読まない（世代は保存先から直に見る）
+    await expect(repo.readManifest()).rejects.toBeInstanceOf(CloudNewerError);
+    const genOf = async () => ((await be.get(repo.manifestPath)).data as { gen: string }).gen;
+    const before = await genOf();
     const a = device(be, "A", realDoc("手元"));
     await a.sync.start();
     expect(a.sync.state).toBe("paused");
     expect(a.sync.message).toContain("開き直して");
-    expect((await repo.readManifest())!.gen).toBe(before);
+    expect(await genOf()).toBe(before);
     a.sync.stop();
   });
 
@@ -921,7 +924,10 @@ describe("同期の決まり: ふだんの同期", () => {
     const t = new Date(Date.now() + 60_000).toISOString();
     const thin = { ...realDoc("新しい版の内容"), version: SCHEMA_VERSION + 1, updatedAt: t, thin: { v: 1, patches: {} } } as DocData;
     await newerRepo.write(thin, await newerRepo.readManifest());
-    const gen = (await newerRepo.readManifest())!.gen;
+    // そのマニフェストには中身の版が入っていて、この版では読まない（世代は保存先から直に見る）
+    await expect(newerRepo.readManifest()).rejects.toBeInstanceOf(CloudNewerError);
+    const genOf = async () => ((await be.get(newerRepo.manifestPath)).data as { gen: string }).gen;
+    const gen = await genOf();
     const writes = state.writes;
     // 見張りで気づいて読みに行き、止まる
     for (let i = 0; i < 100 && a.sync.state !== "paused"; i++) await tick(10);
@@ -938,7 +944,7 @@ describe("同期の決まり: ふだんの同期", () => {
     await tick(60);
     expect(a.sync.state).toBe("paused");
     expect(state.writes).toBe(writes);
-    expect((await newerRepo.readManifest())!.gen).toBe(gen);
+    expect(await genOf()).toBe(gen);
     expect(a.local.adopted).toEqual([]);
     expect(a.local.backups).toEqual([]);
     a.sync.stop();
@@ -2969,20 +2975,21 @@ describe("同期の決まり: アカウントの写しがこのページより�
   }
 
   /**
-   * 新しい版のページ（別の端末）がアカウントに確定した形にする。doc: 中身のドキュメントの版が新しい（マニフェストはこの版の形）・
+   * 新しい版のページ（別の端末）がアカウントに確定した形にする。doc: 中身のドキュメントの版が新しい（この版の確定を受け継ぐので、
+   * マニフェストに中身の版 docVersion が入る）・content: 中身の版が新しいが、マニフェストに中身の版が無い（前の版の確定の形。中身を読んで初めて分かる）・
    * format: マニフェストの形が新しい・enc: 知らない符号化。マニフェストは 1 回だけ書く（途中の読める形を見張りに見せない）
    */
-  async function writeNewer(be: CloudBackend, kind: "doc" | "format" | "enc"): Promise<string> {
+  async function writeNewer(be: CloudBackend, kind: "doc" | "content" | "format" | "enc"): Promise<string> {
     const repo = new CloudRepo(be, "user1", "newer");
     const t = new Date(Date.now() + 60_000).toISOString();
     if (kind === "doc") {
       const thin = { ...realDoc("新しい版の内容"), version: SCHEMA_VERSION + 1, updatedAt: t, thin: { v: 1, patches: {} } } as DocData;
       return (await repo.write(thin, await repo.readManifest())).gen;
     }
-    const p = await repo.prepare({ ...realDoc("新しい版の内容"), updatedAt: t });
+    const p = await repo.prepare({ ...realDoc("新しい版の内容"), ...(kind === "content" ? { version: SCHEMA_VERSION + 1 } : {}), updatedAt: t });
     await repo.writeParts(p);
     const m = { format: 1, enc: p.enc, gen: p.gen, parts: p.parts.length, hash: p.hash, bytes: p.bytes, docId: p.docId, docUpdatedAt: p.docUpdatedAt, title: p.title, nodes: p.nodes, edges: p.edges, savedAt: p.savedAt, writer: "newer", stale: [], lineage: [] };
-    await be.set(MANIFEST, { ...m, ...(kind === "format" ? { format: 2 } : { enc: "brotli-b64" }) });
+    await be.set(MANIFEST, { ...m, ...(kind === "format" ? { format: 2 } : kind === "enc" ? { enc: "brotli-b64" } : {}) });
     return p.gen;
   }
 
@@ -3070,8 +3077,8 @@ describe("同期の決まり: アカウントの写しがこのページより�
     }
   });
 
-  it("新しい版の写し（中身の版・マニフェストの形・知らない符号化）に気づいたら、1 回だけ知らせて閲覧のみにし、編集を断る（アカウントには書かない）。起動したときにもう新しい版でも同じ（聞かない）", async () => {
-    for (const kind of ["doc", "format", "enc"] as const) {
+  it("新しい版の写し（中身の版: マニフェストに書いてあっても、中身を読んで分かっても・マニフェストの形・知らない符号化）に気づいたら、1 回だけ知らせて閲覧のみにし、編集を断る（アカウントには書かない）。起動したときにもう新しい版でも同じ（聞かない）", async () => {
+    for (const kind of ["doc", "content", "format", "enc"] as const) {
       const { be, state, docs } = memoryBackend();
       const a = device(be, "A", realDoc("この版の内容"));
       const lock = withEditLock(a);
@@ -3263,6 +3270,192 @@ describe("同期の決まり: アカウントの写しがこのページより�
     expect(a.local.backups).toEqual([]);
     expect(a.local.base!.gen).toBe(baseGen);
     expect(lock.ui.banners).toBe(1);
+    a.sync.stop();
+  });
+
+  /** 次の版のページ（版 2）が保存した中身（この版の決まりで作れる形のまま、版だけが新しい） */
+  const newerDoc = () => ({ ...realDoc("新しい版の内容"), version: SCHEMA_VERSION + 1, updatedAt: new Date(Date.now() + 60_000).toISOString() }) as DocData;
+
+  it("マニフェストに中身の版（docVersion）を書き、それが新しければ、ほかの項目（形・分割・ハッシュ・符号化）を見る前に新しい版と見分ける", async () => {
+    const { be, docs } = memoryBackend();
+    const repo = new CloudRepo(be, "user1", "dev");
+    const m = await repo.write(realDoc("中身"), null);
+    expect(m.docVersion).toBe(SCHEMA_VERSION);
+    expect(docs.get(MANIFEST)!.docVersion).toBe(SCHEMA_VERSION);
+    expect((await repo.readManifest())!.docVersion).toBe(SCHEMA_VERSION);
+    const written = docs.get(MANIFEST)!;
+    const classify = async (patch: Record<string, unknown>) => {
+      docs.set(MANIFEST, { ...written, ...patch });
+      return repo.readManifest().then(
+        (x) => (x ? "manifest" : "empty"),
+        (e: unknown) => (e instanceof CloudNewerError ? "newer" : e instanceof CloudError ? e.code : String(e)),
+      );
+    };
+    const newer = SCHEMA_VERSION + 1;
+    // 中身の版が新しい: 形 1 のマニフェストの項目・分割・ハッシュがこの版の読み方と違っても、空・壊れた写しと見なさない
+    expect(await classify({ docVersion: newer })).toBe("newer");
+    expect(await classify({ docVersion: newer, parts: undefined, inline: { nodes: {} } })).toBe("newer");
+    expect(await classify({ docVersion: newer, gen: 7, hash: undefined })).toBe("newer");
+    expect(await classify({ docVersion: newer, format: 0 })).toBe("newer");
+    // 前の版の写し（docVersion が無い）・この版と同じ版は今までどおり読む。数でない印は版と見なさない（ドキュメントの version と同じ見分け方）
+    expect(await classify({ docVersion: undefined })).toBe("manifest");
+    expect(await classify({ docVersion: SCHEMA_VERSION })).toBe("manifest");
+    expect(await classify({ docVersion: String(newer) })).toBe("manifest");
+    // 中身の版が無いと、形 1 のまま入れ物を変えた写しは空のアカウントに見える（次の版が守ること: DESIGN.md §3.10）
+    expect(await classify({ docVersion: undefined, parts: undefined })).toBe("empty");
+  });
+
+  it("次の版が形 1 のまま入れ物を変えても（ハッシュの取り方・分割の置き場所・中身をマニフェストに入れる）、中身の版が新しければ止める。この端末の基準の上に確定され、手元に変更が無くても書き直さない（新しい端末も送らない）", async () => {
+    for (const kind of ["hash", "parts", "inline"] as const) {
+      const { be, state, docs } = memoryBackend();
+      const a = device(be, "A", realDoc("この版の内容"));
+      const lock = withEditLock(a);
+      await a.sync.start();
+      expect(a.sync.state).toBe("synced");
+      const baseGen = a.local.base!.gen;
+      const notices = a.local.notices.length;
+      // 新しい版のページ（別の端末）が、この端末の基準の上に確定した（この版の確定を受け継ぐので、マニフェストに中身の版が入る）
+      const repo = new CloudRepo(be, "user1", "newer");
+      const prev = (await repo.readManifest())!;
+      if (kind === "inline") {
+        const d = newerDoc();
+        await be.set(MANIFEST, { format: 1, enc: "json", gen: "gNEWER", inline: d, docVersion: d.version, seq: (prev.seq ?? 0) + 1, chain: prev.chain, lineage: [...prev.lineage, prev.gen], stale: [], writer: "newer", savedAt: d.updatedAt });
+      } else {
+        const p = await repo.prepare(newerDoc());
+        // hash: ハッシュの取り方を変えた（この版では確かめられない）。parts: 分割を別の置き場所に書いた（この版の置き場所には無い）
+        if (kind === "hash") await repo.writeParts(p);
+        const { manifest } = await repo.commit(kind === "hash" ? { ...p, hash: `sha512:${p.hash}` } : p, prev);
+        expect(manifest.docVersion).toBe(SCHEMA_VERSION + 1);
+        expect(manifest.lineage[manifest.lineage.length - 1]).toBe(baseGen);
+      }
+      const after = JSON.stringify(docs.get(MANIFEST));
+      const writes = state.writes;
+      await waitNewer(a);
+      expect(a.sync.accountNewer, kind).toBe(true);
+      expect(lock.ui.banners, kind).toBe(1);
+      expect(a.store.readOnly, kind).toBe(true);
+      expect(a.sync.state, kind).toBe("paused");
+      expect(a.sync.message).toContain("開き直して");
+      expect(a.edit("止めた後の変更")).toBe(false);
+      // 壊れた写しとして書き直さない（前はハッシュが合わないと 2 秒後に、この端末の古い内容で書き直していた）・空と見なして送らない
+      await tick(kind === "hash" ? 2300 : 100);
+      expect(state.writes, kind).toBe(writes);
+      expect(JSON.stringify(docs.get(MANIFEST)), kind).toBe(after);
+      expect(a.local.notices.slice(notices), kind).toEqual([]);
+      expect(a.local.adopted).toEqual([]);
+      expect(a.local.backups).toEqual([]);
+      a.sync.stop();
+
+      // 別のブラウザで、開いたときにはもうその写しだった（基準が無い。前は空・壊れた写しとして、この端末の内容を送っていた）
+      const b = device(be, "B", realDoc("B の内容"), { choice: "local" });
+      const lockB = withEditLock(b);
+      await b.sync.start();
+      await waitNewer(b);
+      expect(b.sync.accountNewer, kind).toBe(true);
+      expect(lockB.ui.banners).toBe(1);
+      expect(b.store.readOnly).toBe(true);
+      expect(b.local.asked).toBe(0);
+      await tick(kind === "hash" ? 2300 : 100);
+      expect(state.writes, kind).toBe(writes);
+      expect(JSON.stringify(docs.get(MANIFEST)), kind).toBe(after);
+      b.sync.stop();
+    }
+  });
+
+  it("圧縮を読めないブラウザでも、中身の版が新しい写しは新しい版と分かって止める（この版の写しは今までどおり、読めないと知らせるだけで編集は止めない）", async () => {
+    const saved = globalThis.DecompressionStream;
+    (globalThis as { DecompressionStream?: unknown }).DecompressionStream = undefined;
+    try {
+      // この版の写し（圧縮）: 読めないので同期は止めるが、閲覧のみにはしない
+      {
+        const { be, state } = memoryBackend();
+        await new CloudRepo(be, "user1", "other").write(realDoc("別の端末の内容"), null);
+        const writes = state.writes;
+        const a = device(be, "A", realDoc("この版の内容"));
+        const lock = withEditLock(a);
+        await a.sync.start();
+        expect(a.sync.state).toBe("paused");
+        expect(a.sync.message).toContain("このブラウザでは");
+        expect(a.sync.accountNewer).toBe(false);
+        expect(lock.ui.banners).toBe(0);
+        expect(a.store.readOnly).toBe(false);
+        expect(a.edit("読めない写しの後の変更")).toBe(true);
+        expect(state.writes).toBe(writes);
+        a.sync.stop();
+      }
+      // 新しい版の写し（圧縮・中身の版が新しい）: 中身を読む前に、マニフェストの中身の版で新しい版と分かる
+      {
+        const { be, state, docs } = memoryBackend();
+        const a = device(be, "A", realDoc("この版の内容"));
+        const lock = withEditLock(a);
+        await a.sync.start();
+        expect(a.sync.state).toBe("synced");
+        const repo = new CloudRepo(be, "user1", "newer");
+        const m = await repo.write(newerDoc(), await repo.readManifest());
+        expect(m.enc).toBe("gzip-b64");
+        expect(m.docVersion).toBe(SCHEMA_VERSION + 1);
+        const writes = state.writes;
+        const after = JSON.stringify(docs.get(MANIFEST));
+        await waitNewer(a);
+        expect(a.sync.accountNewer).toBe(true);
+        expect(lock.ui.banners).toBe(1);
+        expect(a.store.readOnly).toBe(true);
+        expect(a.sync.message).toContain("開き直して");
+        expect(a.edit("止めた後の変更")).toBe(false);
+        await tick(60);
+        expect(state.writes).toBe(writes);
+        expect(JSON.stringify(docs.get(MANIFEST))).toBe(after);
+        a.sync.stop();
+      }
+    } finally {
+      (globalThis as { DecompressionStream?: unknown }).DecompressionStream = saved;
+    }
+  });
+
+  it("突き合わせの途中で書き手でなくなっても（マニフェストを読む間に別のタブに引き継がれた）、新しい版の写しと分かったら止めて 1 回だけ知らせ、止めた訳を出したままにする", async () => {
+    const mem = memoryBackend();
+    const flags = { loseOnRead: false };
+    let a: ReturnType<typeof device> | null = null;
+    // マニフェストを読み終えた時には、もう書き手でない（別のタブが「このタブで編集する」を押した）
+    const be: CloudBackend = {
+      ...mem.be,
+      async get(path) {
+        const d = await mem.be.get(path);
+        if (flags.loseOnRead && path === MANIFEST && a) {
+          flags.loseOnRead = false;
+          a.local.writer = false;
+        }
+        return d;
+      },
+    };
+    a = device(be, "A", realDoc("この版の内容"));
+    const lock = withEditLock(a);
+    await a.sync.start();
+    expect(a.sync.state).toBe("synced");
+    const writes = mem.state.writes;
+    flags.loseOnRead = true;
+    await writeNewer(mem.be, "format");
+    const after = mem.state.writes;
+    await waitNewer(a);
+    expect(flags.loseOnRead).toBe(false);
+    expect(a.local.writer).toBe(false);
+    expect(a.sync.accountNewer).toBe(true);
+    expect(lock.ui.banners).toBe(1);
+    expect(a.sync.state).toBe("paused");
+    expect(a.sync.message).toContain("新しい版");
+    expect(a.sync.message).toContain("開き直して");
+    // App は保存の知らせで、書き手でなくなったと同期に伝える: 止めた訳はそのまま。「このタブで編集する」で戻っても編集できない
+    const message = a.sync.message;
+    lock.lose();
+    expect(a.sync.message).toBe(message);
+    lock.takeOver();
+    expect(a.store.readOnly).toBe(true);
+    expect(a.edit("戻った後の変更")).toBe(false);
+    await tick(60);
+    expect(a.sync.message).toBe(message);
+    expect(lock.ui.banners).toBe(1);
+    expect(mem.state.writes).toBe(after);
+    expect(after).toBeGreaterThan(writes);
     a.sync.stop();
   });
 });

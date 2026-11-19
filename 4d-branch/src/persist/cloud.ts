@@ -14,11 +14,13 @@
 // - 連続した入力は 1 回の送信にまとめる（送る内容を固めたら窓を区切る）。失敗したら決めた時刻までは送らない
 // - アカウントの写しがこのページより新しい版（CloudNewerError）なら、開き直すまで同期しない。App は新しい編集を受けなくなる
 //   （それまでの手元の変更は送らず・捨てずに残す）。形が違う・壊れた写しは新しい版と分け、今までどおり
+// - マニフェストには中身のドキュメントの版（docVersion）も書く。それが新しければ、ほかの項目を見る前に新しい版と見分ける
+//   （次の版が写しの入れ物を変えても、空のアカウント・壊れた写しと取り違えて書き直さない。docs/DESIGN.md §3.10）
 
 import type { DbApi } from "../host/claude";
 import { errorCode } from "../host/claude";
 import { newId, nowISO } from "../model/ids";
-import { DocFormatError, NewerDocError, docCounts, normalizeDoc } from "../model/schema";
+import { DocFormatError, NewerDocError, docCounts, isNewerVersion, normalizeDoc } from "../model/schema";
 import type { DocData } from "../model/types";
 import { Emitter } from "../store/emitter";
 
@@ -98,6 +100,11 @@ export interface Manifest {
   bytes: number;
   docId: string;
   docUpdatedAt: string;
+  /**
+   * 中身のドキュメントの版（この版から書く。前の版の写しには無い）。このページより新しければ、ほかの項目を見る前に新しい版と見分ける
+   * （分割・ハッシュ・符号化を確かめる前に。入れ物を変えた次の版の写しを、空のアカウント・壊れた写しと取り違えて書き直さない）
+   */
+  docVersion?: number;
   title: string;
   nodes: number;
   edges: number;
@@ -188,11 +195,13 @@ export async function decodeDoc(enc: Manifest["enc"], payload: string): Promise<
 }
 
 /**
- * マニフェストを読む。新しい版の形（format が 1 より大きい）・知らない符号化なら CloudNewerError、ほかの違う形なら format を投げる
- * （どちらも空と見なして上書きしない）。
+ * マニフェストを読む。中身の版（docVersion）が新しければ、ほかの項目を見る前に CloudNewerError（次の版が入れ物を変えていても:
+ * 下の決まりでは空・壊れた写しに見えて、手元の内容で書き直してしまう）。新しい版の形（format が 1 より大きい）・知らない符号化も
+ * CloudNewerError、ほかの違う形なら format を投げる（どれも空と見なして上書きしない）。
  * この版の形で中身が壊れているときは null（読めない写しは手元で書き直す）
  */
 function parseManifest(d: Record<string, unknown> | undefined): Manifest | null {
+  if (d && isNewerVersion(d.docVersion)) throw new CloudNewerError(`アカウントの写しは新しい版のアプリで保存されています（中身の版 ${d.docVersion}）`);
   if (d && typeof d.format === "number" && d.format !== 1) {
     if (d.format > 1) throw new CloudNewerError("アカウントの写しは新しい版のアプリで保存されています");
     throw new CloudError("format", "アカウントの写しの形が違います");
@@ -211,6 +220,7 @@ function parseManifest(d: Record<string, unknown> | undefined): Manifest | null 
     bytes: typeof d.bytes === "number" ? d.bytes : 0,
     docId: typeof d.docId === "string" ? d.docId : "",
     docUpdatedAt: typeof d.docUpdatedAt === "string" ? d.docUpdatedAt : "",
+    docVersion: typeof d.docVersion === "number" && Number.isFinite(d.docVersion) ? d.docVersion : undefined,
     title: typeof d.title === "string" ? d.title : "",
     nodes: typeof d.nodes === "number" ? d.nodes : 0,
     edges: typeof d.edges === "number" ? d.edges : 0,
@@ -299,6 +309,8 @@ export interface Prepared {
   bytes: number;
   docId: string;
   docUpdatedAt: string;
+  /** 中身のドキュメントの版（マニフェストの docVersion に書く） */
+  docVersion: number;
   title: string;
   nodes: number;
   edges: number;
@@ -382,13 +394,14 @@ export class CloudRepo {
     const counts = docCounts(doc);
     const docId = doc.id;
     const docUpdatedAt = doc.updatedAt;
+    const docVersion = doc.version;
     // 題名はマニフェストでは表示に使うだけ。長すぎて 256 KiB を超えないよう切る（中身は分割の方に全部ある）
     const title = [...doc.title].slice(0, MANIFEST_TITLE_MAX).join("");
     const { enc, payload, bytes } = await encodeDoc(doc);
     const parts: string[] = [];
     for (let i = 0; i < payload.length; i += PART_CHARS) parts.push(payload.slice(i, i + PART_CHARS));
     if (parts.length === 0) parts.push("");
-    return { gen: `g${newId("b").slice(2)}`, enc, parts, hash: await sha256Hex(payload), bytes, docId, docUpdatedAt, title, nodes: counts.nodes, edges: counts.edges, savedAt: nowISO() };
+    return { gen: `g${newId("b").slice(2)}`, enc, parts, hash: await sha256Hex(payload), bytes, docId, docUpdatedAt, docVersion, title, nodes: counts.nodes, edges: counts.edges, savedAt: nowISO() };
   }
 
   /** 分割を書く（まだ確定ではない。失敗したら書けた分を消す） */
@@ -425,6 +438,8 @@ export class CloudRepo {
       bytes: p.bytes,
       docId: p.docId,
       docUpdatedAt: p.docUpdatedAt,
+      // 中身の版（次の版がこの確定を受け継げば、入れ物を変えても、この版は中身を読む前に新しい版と見分ける）
+      docVersion: p.docVersion,
       title: p.title,
       nodes: p.nodes,
       edges: p.edges,

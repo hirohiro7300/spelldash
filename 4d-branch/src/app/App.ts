@@ -24,7 +24,7 @@ import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
-import { closeMenus, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
+import { closeMenus, closeToasts, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
 import { ACCOUNT_NEWER_BLOCKED, accountNewerBanner, showNewerScreen } from "../ui/newerScreen";
 import { Commands } from "./commands";
@@ -73,12 +73,21 @@ const WAIT_FUTURE = "アカウントの内容を確かめています。済ん�
 
 /** 待つのをやめた・待ち終えた: 「済んだら開きます」のお知らせを下げる（もう果たさない約束を出したままにしない） */
 function closeWaitToast(): void {
-  for (const t of document.querySelectorAll(".toast:not(.closing)")) {
-    if (t.querySelector(".toast-text")?.textContent === WAIT_FUTURE) t.querySelector<HTMLButtonElement>(".toast-close")?.click();
-  }
+  closeToasts((t) => t === WAIT_FUTURE);
 }
+/** 閲覧のみのタブで編集しようとしたときのお知らせ */
+const READ_ONLY_BLOCKED = "このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。";
 /** 閲覧のみのタブで「未来の道筋」を押したときのお知らせ */
 const READ_ONLY_FUTURE = "このタブは閲覧のみです。未来の道筋を開くには、上の「このタブで編集する」を押してください。";
+/** 閲覧のみのタブで、何もしていないデモに未来の道筋を自動で開けないときのお知らせ */
+const READ_ONLY_AUTO_FUTURE = "このタブは閲覧のみです（別のタブかウィンドウでも開いています）。上の「このタブで編集する」を押すと、未来の道筋を開きます";
+/** 「このタブで編集する」で引き継いだときのお知らせ */
+const TAKEN_OVER = "このタブで編集できるようになりました";
+/**
+ * アカウントに新しい版の内容があって編集を止めたら下げるお知らせ（止めた帯と食い違う）: 「このタブで編集する」を押すよう勧める物
+ * （そのボタンは出さず、押しても編集できない）と、引き継いだ直後の突き合わせで分かったときの「このタブで編集できるようになりました」
+ */
+const TAKE_OVER_TOASTS = new Set([READ_ONLY_BLOCKED, READ_ONLY_FUTURE, READ_ONLY_AUTO_FUTURE, TAKEN_OVER]);
 /** 未来の道筋を一度に開く入れ替えの名前（履歴・安全用バックアップ） */
 const FUTURE_OPEN_LABEL = "未来の道筋を開く";
 /** 地図の未来の道筋が、このページより新しい版で作られているとき（古い版に戻さない） */
@@ -259,7 +268,7 @@ export class App implements AppContext {
       this.renderBanner();
       if (!w) this.cloud?.writerLost();
     });
-    this.store.on("blocked", () => toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : "このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。", { tone: "warn" }));
+    this.store.on("blocked", () => toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : READ_ONLY_BLOCKED, { tone: "warn" }));
     this.ui.on("prefs", (p) => this.applyPrefs(p));
     this.view.onCamera(() => this.onCamera());
     this.persistence.on("status", () => this.renderBanner());
@@ -425,7 +434,8 @@ export class App implements AppContext {
     this.applyReadOnly();
     this.cloud?.resync();
     this.renderBanner();
-    if (!this.store.readOnly) toast("このタブで編集できるようになりました", { tone: "ok" });
+    // 閲覧のみのタブはアカウントを読んでいないので、新しい版の内容があると分かるのは、この後の突き合わせ（そのときは下げる）
+    if (!this.store.readOnly) toast(TAKEN_OVER, { tone: "ok" });
   }
 
   private async resolveConflict(choice: "reload" | "overwrite"): Promise<void> {
@@ -487,7 +497,9 @@ export class App implements AppContext {
    * 新しい編集を受けない: その場の入力は確定してから（打った文字も手元に残る）ストアを閲覧のみにし、開き直すよう伝える帯を出す。
    * それまでの編集は手元に保存したまま（送らない・捨てない。次の版が扱う）。以後は書き手に戻っても・「このタブで編集する」でも・
    * 後の同期でも編集できる状態に戻さない。開いていたメニュー（開いたときの状態で項目を作ってある）と、
-   * 突き合わせを待って未来の道筋を開く頼みもやめる。形が違う・壊れた写しでは呼ばれない（今までどおり編集できる）。設計: docs/DESIGN.md §5・§5.1
+   * 突き合わせを待って未来の道筋を開く頼みもやめる。「このタブで編集できるようになりました」（引き継いだ直後の突き合わせで分かったとき）と、
+   * 「このタブで編集する」を押すよう勧めるお知らせも下げる（帯と食い違う）。形が違う・壊れた写しでは呼ばれない（今までどおり編集できる）。
+   * 設計: docs/DESIGN.md §5・§5.1
    */
   private holdForAccountNewer(): void {
     if (this.heldByAccount || this.newerShown) return;
@@ -496,6 +508,7 @@ export class App implements AppContext {
     this.applyReadOnly();
     if (this.futureWait) closeWaitToast();
     this.futureWait = 0;
+    closeToasts((t) => TAKE_OVER_TOASTS.has(t));
     closeMenus();
     this.renderBanner();
   }
@@ -1154,7 +1167,7 @@ export class App implements AppContext {
       if (this.store.readOnly) {
         if (!toldReadOnly && waited > 3000) {
           toldReadOnly = true;
-          toast("このタブは閲覧のみです（別のタブかウィンドウでも開いています）。上の「このタブで編集する」を押すと、未来の道筋を開きます", { tone: "warn", ms: 9000 });
+          toast(READ_ONLY_AUTO_FUTURE, { tone: "warn", ms: 9000 });
         }
         setTimeout(tick, 500);
         return;

@@ -198,6 +198,8 @@ await check("初めての端末: アカウントへ写しを送る（gzip・分�
   await A.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
   const m = JSON.parse(dbStore.get("data/users/u_test/fourd"));
   assert(m.format === 1 && m.enc === "gzip-b64" && m.parts >= 1, JSON.stringify(m).slice(0, 200));
+  // マニフェストに中身の版も書く（次の版の写しを、入れ物を確かめる前に見分けるため。この版は 1）
+  assert(m.docVersion === 1, `マニフェストに中身の版が無い: ${JSON.stringify(m).slice(0, 200)}`);
   assert(dbStore.has(`data/users/u_test/fourd/parts/${m.gen}-0`), "分割が無い");
   const footer = await A.page.locator(".side-footer").innerText();
   assert(footer.includes("アカウント: 同期済み"), footer);
@@ -962,6 +964,54 @@ await check("アカウントの写しが新しい版（マニフェストの形 
   const after = [...dbStore.keys()].filter((k) => k.startsWith("data/users/u_newer/")).map((k) => `${k}=${dbStore.get(k)}`).join("\n");
   assert(after === before, "新しい版の写しのアカウントに書いた");
   await P.ctx.close();
+});
+
+await check("公開の骨組み（<html> に言語が無い）でもページは日本語: アカウントの写しが新しい版のときの帯は、スマホの幅（390px・360px）で文節の切れ目で折り返し、はみ出さない", async () => {
+  // 帯の文の文節（この切れ目でだけ折り返す。言語が無いと「このページ｜は」「開き直｜して」のように語の途中で折れていた）
+  const PHRASES = ["アカウントに", "新しい", "版の", "内容が", "あります。", "この", "ページは", "古い", "版なので、", "編集を", "止めました。", "ページを", "開き直して", "ください"];
+  const breaks = new Set(PHRASES.map((_, i) => PHRASES.slice(0, i + 1).join("").length));
+  for (const width of [390, 360]) {
+    const uid = `u_newer_${width}`;
+    dbStore.set(`data/users/${uid}/fourd`, JSON.stringify({ format: 2, gen: "g_newer", parts: 1, hash: "h" }));
+    const P = await newDevice({ uid }, { width, height: 844 });
+    await P.page.getByRole("button", { name: "すぐに使う" }).click();
+    await P.page.locator(".banner-newer").waitFor({ timeout: 15000 });
+    await P.page.getByRole("dialog", { name: "4D Branch へようこそ" }).waitFor({ state: "hidden" });
+    const r = await P.page.evaluate(() => {
+      const t = document.querySelector(".banner-newer .banner-text");
+      const node = t.firstChild;
+      // 行の頭の文字の位置（文字ごとの矩形の上端が下がった所）
+      const starts = [];
+      let top = null;
+      for (let i = 0; i < node.length; i++) {
+        const range = document.createRange();
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        const rect = range.getClientRects()[0];
+        if (!rect) continue;
+        if (top !== null && rect.top - top > 8) starts.push(i);
+        if (top === null || rect.top - top > 8) top = rect.top;
+      }
+      return {
+        text: node.data,
+        starts,
+        page: document.documentElement.lang,
+        app: document.getElementById("app").getAttribute("lang"),
+        banner: t.closest("[lang]")?.getAttribute("lang") ?? "",
+        wordBreak: getComputedStyle(t).wordBreak,
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    SHOTS && (await P.page.screenshot({ path: path.join(SHOTS, `artifact-account-newer-${width}.png`) }));
+    assert(r.text === PHRASES.join(""), `帯の文が変わった（文節の表も直す）: ${r.text}`);
+    assert(r.page === "ja" && r.app === "ja" && r.banner === "ja", `言語: ${JSON.stringify(r)}`);
+    assert(r.wordBreak === "auto-phrase", `折り返し方: ${r.wordBreak}`);
+    assert(r.starts.length >= 1, `${width}px で折り返していない（確かめにならない）: ${JSON.stringify(r)}`);
+    const bad = r.starts.filter((i) => !breaks.has(i)).map((i) => `${r.text.slice(Math.max(0, i - 4), i)}｜${r.text.slice(i, i + 4)}`);
+    assert(bad.length === 0, `${width}px で語の途中で折り返した: ${bad.join(" / ")}`);
+    assert(r.overflow <= 0, `${width}px で横にはみ出す: ${r.overflow}px`);
+    await P.ctx.close();
+  }
 });
 
 await check("古い版の地図のまま開き直した端末: 新しい版を勧めるお知らせの後に、アカウントの内容（別の端末で新しい版にした地図）を読み込んだら、そのお知らせを下げる", async () => {

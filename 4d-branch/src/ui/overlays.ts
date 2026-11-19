@@ -365,6 +365,13 @@ export function toast(text: string, opts: ToastOpts = {}): () => void {
   return close;
 }
 
+/** 出ているお知らせのうち、文が合う物を下げる（状態が変わって、もう当てはまらない・画面と食い違うお知らせを出したままにしない） */
+export function closeToasts(match: (text: string) => boolean): void {
+  for (const el of document.querySelectorAll(".toast:not(.closing)")) {
+    if (match(el.querySelector(".toast-text")?.textContent ?? "")) toastClosers.get(el)?.();
+  }
+}
+
 export function clearChildren(el: HTMLElement): void {
   clear(el);
 }

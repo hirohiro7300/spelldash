@@ -3107,7 +3107,12 @@ async function main() {
   const fakeAccount = async (context) => {
     const db = new Map();
     const writes = [];
-    await context.exposeBinding("__acctGet", (_s, p) => (db.has(p) ? JSON.parse(db.get(p)) : null));
+    /** アカウントの返事の遅さ（読むたびに待つ ms。突き合わせが済む前の操作を確かめる） */
+    const net = { delayMs: 0 };
+    await context.exposeBinding("__acctGet", async (_s, p) => {
+      if (net.delayMs) await new Promise((r) => setTimeout(r, net.delayMs));
+      return db.has(p) ? JSON.parse(db.get(p)) : null;
+    });
     await context.exposeBinding("__acctSet", (_s, p, json) => {
       writes.push(p);
       db.set(p, json);
@@ -3167,6 +3172,7 @@ async function main() {
     }, ACCOUNT_UID);
     return {
       writes,
+      net,
       put: (p, v) => db.set(p, JSON.stringify(v)),
       get: (p) => (db.has(p) ? JSON.parse(db.get(p)) : null),
       /** 新しい版のページ（別の端末）が確定した写し: 中身のドキュメントの版が 2（マニフェストはこの版の形 1・符号化は json） */
@@ -3214,12 +3220,28 @@ async function main() {
         }),
       title,
     );
+  /** 閲覧のみかが見える所: 詳細のパネル（見出しの「閲覧のみ」・欄）・上部の追加と元に戻す・左のプロジェクトとシナリオの追加 */
+  const panelState = (p) =>
+    p.evaluate(() => {
+      const insp = document.querySelector(".sidebar-right");
+      const fields = [...insp.querySelectorAll("input, textarea, select")].filter((e) => e.offsetParent !== null);
+      return {
+        inspReadOnly: insp.querySelector(".insp-head")?.textContent.includes("閲覧のみ") ?? false,
+        inspFields: fields.length,
+        inspEnabled: fields.filter((e) => !e.disabled && !e.readOnly).length,
+        addGroupDisabled: document.querySelector(".topbar .add-group").classList.contains("disabled"),
+        undoDisabled: document.querySelector('.topbar button[aria-label="元に戻す"]').disabled,
+        leftAdds: [...document.querySelectorAll('.sidebar-left button[aria-label="プロジェクトを追加"], .sidebar-left button[aria-label="シナリオを追加"]')].map((b) => b.disabled),
+      };
+    });
+  /** 出ているお知らせの文（閉じかけの物は除く） */
+  const shownToasts = (p) => p.evaluate(() => [...document.querySelectorAll(".toast:not(.closing) .toast-text")].map((t) => t.textContent));
 
   for (const [label, viewport, mobile] of [
     ["スマホ 390×844", { width: 390, height: 844 }, true],
     ["パソコン 1440×900", { width: 1440, height: 900 }, false],
   ]) {
-    await check(`アカウントに新しい版の内容（${label}）: 開いている間に新しい版の写しが届いたら、開き直すまで出したままの帯を出して編集を断り、それまでの変更は手元に残して送らない。「ページを開き直す」で開き直す`, async () => {
+    await check(`アカウントに新しい版の内容（${label}）: 開いている間に新しい版の写しが届いたら、開き直すまで出したままの帯を出して編集を断り、それまでの変更は手元に残して送らない。${mobile ? "開いていたメニューは閉じる" : "書きかけの題名は確定してから止め、パネルも閲覧のみに描き直す"}。「ページを開き直す」で開き直す`, async () => {
       const c = await settledContext({ viewport, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
       const acct = await fakeAccount(c);
       const p = await c.newPage();
@@ -3228,6 +3250,25 @@ async function main() {
       await p.waitForFunction(() => window.__fourD?.app?.cloudInfo?.state === "synced", null, { timeout: 15000 });
       // この版で編集した（アカウントへ送るのは 5 秒まとめてから）。その間に新しい版のページ（別の端末）が確定した
       await p.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: 0, y: 1600 }, { title: "止める前の変更", exact: true }));
+      let typedId = null;
+      if (mobile) {
+        // スマホ: キャンバスのメニュー（長押し・右クリック。開いたときの状態で項目を作ってある）を開いたまま
+        await p.evaluate(() => {
+          const cv = window.__fourD.app.view.canvas;
+          const r = cv.getBoundingClientRect();
+          cv.dispatchEvent(new MouseEvent("contextmenu", { clientX: r.left + 40, clientY: r.top + r.height - 140, bubbles: true, cancelable: true }));
+        });
+        await p.locator(".menu").first().waitFor({ timeout: 3000 });
+      } else {
+        // パソコン: 左右のパネルを開き、ノードの題名をその場で書きかけている
+        typedId = await p.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 400, y: 1600 }, { title: "書きかける前の題名", exact: true }));
+        await p.evaluate(() => window.__fourD.ui.setPrefs({ leftOpen: true, rightOpen: true }));
+        await startInlineEdit(p, typedId);
+        await p.keyboard.press("Control+a");
+        await p.keyboard.type("打ちかけの題名");
+        const ps = await panelState(p);
+        assert(!ps.inspReadOnly && ps.inspEnabled > 0 && !ps.addGroupDisabled && !ps.undoDisabled && ps.leftAdds.length === 2 && ps.leftAdds.every((d) => !d), `止める前から編集できない: ${JSON.stringify(ps)}`);
+      }
       const editedAt = Date.now();
       const newer = acct.putNewer();
       const sent = acct.writes.length;
@@ -3248,6 +3289,25 @@ async function main() {
       const box = await reload.boundingBox();
       assert(box && box.x >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height && box.height >= 44, `ボタンが画面に収まらない・小さい: ${JSON.stringify(box)}`);
       await shot(`e2e-account-newer-${viewport.width}`, p);
+      if (mobile) {
+        // 開いていたメニュー（編集の項目を、止める前の状態で作ってある）は閉じた
+        assert((await p.locator(".menu").count()) === 0, "止めた後もメニューを開いたまま");
+      } else {
+        // 書きかけの題名は確定してから止めた（打った文字は手元に残る）・題名の欄は閉じた
+        assert((await p.locator(".inline-editor").count()) === 0, "止めた後も題名の欄を開いたまま");
+        const typed = await p.evaluate((id) => window.__fourD.store.doc.nodes[id]?.title, typedId);
+        assert(typed === "打ちかけの題名", `書きかけの題名が入っていない: ${typed}`);
+        // パネルも閲覧のみに描き直す（詳細の欄・上部の追加と元に戻す・左の追加）
+        const ps = await panelState(p);
+        assert(ps.inspReadOnly && ps.inspFields > 0 && ps.inspEnabled === 0 && ps.addGroupDisabled && ps.undoDisabled && ps.leftAdds.length === 2 && ps.leftAdds.every((d) => d), `閲覧のみに描き直していない: ${JSON.stringify(ps)}`);
+      }
+      // 保存の状態が変わって帯を描き直しても、同じ帯のまま（「ページを開き直す」のフォーカスを外さない）
+      await reload.focus();
+      await p.evaluate(() => (document.querySelector(".banner-newer").dataset.e2eMark = "same"));
+      await p.evaluate(() => window.__fourD.persistence.markDirty());
+      await waitSaved(p);
+      const kept = await p.evaluate(() => ({ count: document.querySelectorAll(".banner-newer").length, same: document.querySelector(".banner-newer")?.dataset.e2eMark === "same", focused: document.activeElement?.classList.contains("banner-reload") ?? false }));
+      assert(kept.count === 1 && kept.same && kept.focused, `描き直しで帯を作り直した・フォーカスを外した: ${JSON.stringify(kept)}`);
       // 新しい編集は断る（キーでも・コマンドでも）。訳は「このタブで編集する」ではなく、開き直すこと
       const before = await p.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
       await p.locator(".graph-canvas").focus();
@@ -3259,6 +3319,7 @@ async function main() {
       // それまでの変更は手元に残り（このブラウザに保存される）、すぐ送る（⌘S）でもアカウントへは送らない
       await waitSaved(p);
       assert(await storedHas(p, "止める前の変更"), "止める前の変更が手元に保存されていない");
+      if (!mobile) assert(await storedHas(p, "打ちかけの題名"), "書きかけの題名が手元に保存されていない");
       await p.keyboard.press("Control+s");
       // 編集からまとめる時間（5 秒）を過ぎても送っていない
       await p.waitForTimeout(Math.max(600, editedAt + 5600 - Date.now()));
@@ -3284,15 +3345,29 @@ async function main() {
     await a.goto(BASE, { waitUntil: "networkidle" });
     await a.locator(".banner-newer").waitFor({ timeout: 8000 });
     assert((await cloudOf(a)).readOnly === true, "起動の突き合わせで気づいたのに編集できる");
-    // 2 つ目のタブは閲覧のみ（書き手でないので、まだアカウントを読んでいない）
+    // 2 つ目のタブは閲覧のみ（書き手でないので、まだアカウントを読んでいない）。編集しようとすると「このタブで編集する」を勧める
     const b = await c.newPage();
     watch(b);
     await b.goto(BASE, { waitUntil: "networkidle" });
     await b.waitForFunction(() => window.__fourD?.store.readOnly === true);
+    assert((await b.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 0, y: 1700 }, { title: "閲覧のみのタブの変更", exact: true }))) === null, "閲覧のみのタブで作れた");
+    await b.locator(".toast", { hasText: "編集するには上の「このタブで編集する」を押してください" }).waitFor({ timeout: 3000 });
+    // 出たお知らせを覚えておく（引き継いだ直後に「編集できるようになりました」が出て、止めたときに下がるのを確かめる）
+    await b.evaluate(() => {
+      window.__e2eToasts = [];
+      new MutationObserver((ms) => {
+        for (const m of ms) for (const n of m.addedNodes) if (n instanceof HTMLElement && n.classList.contains("toast")) window.__e2eToasts.push(n.textContent);
+      }).observe(document.getElementById("toast-stack") ?? document.body, { childList: true, subtree: true });
+    });
     await b.getByRole("button", { name: "このタブで編集する" }).click();
     // 引き継いだタブも、突き合わせで気づいて止まる
     await b.locator(".banner-newer").waitFor({ timeout: 8000 });
     await b.waitForFunction(() => window.__fourD.store.readOnly === true && window.__fourD.app.accountNewer === true);
+    // 止めた帯の横に「このタブで編集できるようになりました」・「このタブで編集する」を押すよう勧めるお知らせを残さない
+    // （閲覧のみのタブはアカウントを読んでいないので、新しい版と分かるのは引き継いだ後の突き合わせ）
+    const bToasts = await shownToasts(b);
+    const bShown = await b.evaluate(() => window.__e2eToasts);
+    assert(!bToasts.some((t) => t.includes("このタブで編集")), `引き継いだタブのお知らせ: ${bToasts.join(" / ")}（出た物: ${bShown.join(" / ")}）`);
     // 引き継がれたタブ: 帯は開き直すよう伝える物だけ（「このタブで編集する」は出さない）
     await a.waitForFunction(() => window.__fourD.persistence.writer === false);
     assert((await a.getByRole("button", { name: "このタブで編集する" }).count()) === 0, "止めたタブに引き継ぎのボタンを出した");
@@ -3314,6 +3389,58 @@ async function main() {
     assert((await dlg.locator(".storage-row", { hasText: "アカウント" }).textContent()).includes("開き直して"), "アカウントの行に開き直すことが無い");
     await b.keyboard.press("Escape");
     assert(acct.writes.length === 0, `アカウントに書いた: ${acct.writes.join(", ")}`);
+    await c.close();
+  });
+
+  await check("アカウントに新しい版の内容（開いたときから）: 何もしていないデモでも未来の道筋を自動で開かず、閲覧のみの訳（「このタブで編集する」）も知らせない", async () => {
+    const c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    // 未来の道筋の自動表示はまだ（ほかの案内は済ませた）
+    await c.addInitScript(() => {
+      try {
+        const k = "4d-branch:prefs";
+        if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ onboardingDone: true, wishlistOffered: true, futureOffered: true }));
+      } catch {
+        /* about:blank など */
+      }
+    });
+    const acct = await fakeAccount(c);
+    const newer = acct.putNewer();
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(BASE, { waitUntil: "networkidle" });
+    await p.locator(".banner-newer").waitFor({ timeout: 8000 });
+    // 自動で開く見張りは、閲覧のみのタブなら 3 秒たってから「このタブで編集する」を押すよう知らせる。その時間を過ぎても出さず、開きもしない
+    await p.waitForTimeout(5000);
+    const s = await p.evaluate(() => ({ readOnly: window.__fourD.store.readOnly, future: Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true) }));
+    const toasts = await shownToasts(p);
+    assert(s.readOnly && !s.future, JSON.stringify(s));
+    assert(!toasts.some((t) => t.includes("このタブで編集") || OPENED_FUTURE.test(t)), `止めた後に知らせた: ${toasts.join(" / ")}`);
+    assert(acct.writes.length === 0 && JSON.stringify(acct.get(ACCOUNT_MANIFEST)) === newer, `アカウントに書いた: ${acct.writes.join(", ")}`);
+    await c.close();
+  });
+
+  await check("アカウントに新しい版の内容: 「未来の道筋」を押して突き合わせを待つ間に止めたら、その頼みはやめる（待ちのお知らせを下げ、読み込みの確認も訳のお知らせも出さない）", async () => {
+    const c = await settledContext({ viewport: { width: 1440, height: 900 } });
+    const acct = await fakeAccount(c);
+    const newer = acct.putNewer();
+    // アカウントの返事が遅い（突き合わせが済む前に「未来の道筋」を押せる）
+    acct.net.delayMs = 1500;
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(BASE, { waitUntil: "load" });
+    await p.waitForFunction(() => ["connecting", "syncing"].includes(window.__fourD?.app?.cloudInfo?.state), null, { timeout: 10000 });
+    // 何もしていないデモで押した: 突き合わせが済むのを待つ
+    await p.locator(".zoom-ctl .future-btn").click();
+    await p.locator(".toast:not(.closing)", { hasText: "アカウントの内容を確かめています" }).waitFor({ timeout: 3000 });
+    await p.locator(".banner-newer").waitFor({ timeout: 10000 });
+    // 待ちを確かめ直す間（0.4 秒ごと）を過ぎても、頼みを果たそうとしない
+    await p.waitForTimeout(1200);
+    const s = await p.evaluate(() => ({ future: Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), dialog: !!document.querySelector('[role="dialog"]') }));
+    const toasts = await shownToasts(p);
+    assert(!s.future && !s.dialog, JSON.stringify(s));
+    assert(!toasts.some((t) => t.includes("確かめています") || t.includes("編集を止めています")), `待ちの頼みを続けた: ${toasts.join(" / ")}`);
+    acct.net.delayMs = 0;
+    assert(acct.writes.length === 0 && JSON.stringify(acct.get(ACCOUNT_MANIFEST)) === newer, `アカウントに書いた: ${acct.writes.join(", ")}`);
     await c.close();
   });
 

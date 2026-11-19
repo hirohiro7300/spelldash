@@ -23,6 +23,9 @@ function readMode(): { stress: number; demo: boolean } {
 }
 
 async function boot(): Promise<void> {
+  // ページの言語（Artifact 版は公開のときの骨組みの <html> に言語が無い）。読み上げ・文節の切れ目での折り返し（word-break: auto-phrase）は、
+  // 日本語と分かる所でしか効かない。#app には付けてあるが、その外に足す物（ファイルを落とす所など）もあるので、ページにも付ける
+  if (!document.documentElement.lang) document.documentElement.lang = "ja";
   const mount = document.getElementById("app")!;
   const mode = readMode();
   const ephemeral = mode.stress > 0 || mode.demo;
