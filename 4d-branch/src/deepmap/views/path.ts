@@ -3,7 +3,8 @@
 //   見出し: 題名・この道の見込み・3 年の合計・最後の月の稼ぎ・月の稼ぎの線（この道とずっと今のまま）・一番ありそうな道と違う所
 //   行: 判断の年月・選ぶ手・結果と見込み・月の稼ぎ・ここまでの稼ぎ。押すと開く（その 3 か月の文章・数字の行・やること・
 //       この手の結果とこの判断で選べる手。ほかを押すとその道に切り替わる）。「次の 3 か月へ」で次の行を開く
-//   続けて同じ手の静かな期は 1 行（押すと 1 期ずつ）。まとめた手の後は標準の続きを薄い行で
+//   続けて同じ手の静かな期は 1 行（押すと 1 期ずつ）。まとめた手の後は標準の続きを薄い行で（文章の作り手が標準の続きの文章を
+//   持てば、押すとその期の文章とやること。見積もりの印つき。「次の 3 か月へ」は道の行の後、その行を順に開いてから着いた所へ）
 // 行き来（ハッシュ）は使う側が決める: ほかの結果・手はリンク（#path-…）で、押す前に onSwitch で知らせる（切り替えた行の位置を保つため）。
 
 import { append, clear, h, nobr, s, type Child } from "./dom";
@@ -57,12 +58,12 @@ function bodyEl(text: string, provisional: boolean): HTMLElement | null {
   return h("p", { class: "dm-tl-text" }, provisional ? h("span", { class: "dm-prov" }, PROVISIONAL_TEXT) : null, text);
 }
 
-/** 文章のカード（その 3 か月・結果） */
-function cardEl(c: PathCardVM, kind: "move" | "out", provisional: boolean): HTMLElement {
+/** 文章のカード（その 3 か月・結果・標準の続きの 1 期。見積もりの文章は見出しに印） */
+function cardEl(c: PathCardVM, kind: "move" | "out" | "cont", provisional: boolean): HTMLElement {
   return h(
     "section",
-    { class: `dm-tl-card is-${kind}` },
-    h("p", { class: "dm-tl-card-head" }, nobr(c.head)),
+    { class: `dm-tl-card is-${kind}${c.est ? " is-est" : ""}` },
+    h("p", { class: "dm-tl-card-head" }, c.est ? h("span", { class: "dm-tl-tag is-est" }, "見積もり") : null, nobr(c.head)),
     h("h4", { class: "dm-tl-card-title" }, c.title),
     numbersRow(c.numbers),
     bodyEl(c.body, provisional),
@@ -281,17 +282,19 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
   };
 
   const endEl = endCard(vm);
+  /** 「次の 3 か月へ」で順に開く行の鍵: 道の行（並び順）、その後にまとめた手の後の開ける薄い行 */
+  const reading = [...vm.steps.map((st) => st.key), ...vm.items.flatMap((it) => (it.type === "light" && it.detail ? [it.key] : []))];
   /** 次の 3 か月へ: この行を閉じ、次の行を開いてそこへ（最後の行の次は着いた所） */
   const stepTo = (k: number, fromKey: string | null) => {
     if (fromKey) setOpen(fromKey, false);
-    const next = vm.steps[k];
+    const next = reading[k];
     if (!next) {
       endEl.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
       endEl.focus({ preventScroll: true });
       return;
     }
-    setOpen(next.key, true);
-    scrollToHead(next.key);
+    setOpen(next, true);
+    scrollToHead(next);
   };
 
   /** 行の見出し（押すと開く） */
@@ -351,6 +354,34 @@ export function renderPathPage(vm: PathVM, opts: PathPageOpts = {}): PathPageHan
 
   const itemEl = (it: PathItemVM): HTMLElement => {
     if (it.type === "step") return stepEl(it.step);
+    if (it.type === "light" && it.detail) {
+      // 開ける標準の続きの行: 押すとその期の文章（見積もりの印つき）とやること、次の 3 か月へ
+      const detail = it.detail;
+      const key = it.key;
+      const head = headBtn(
+        key,
+        it.aria,
+        h("span", { class: "dm-tl-when" }, h("b", null, whenText(it.ym))),
+        h("span", { class: "dm-tl-move" }, h("span", { class: "dm-tl-move-name" }, it.title)),
+      );
+      const body = h("div", { class: "dm-tl-body", attrs: { id: `dm-tl-${id}-${key}`, role: "region", "aria-label": `${it.ym}の中身（見積もり）` } });
+      body.hidden = true;
+      const li = h("li", { class: "dm-tl-item is-light is-light-open", dataset: { key } }, head, body);
+      const nextText = it.nextText ?? "着いた所へ";
+      rows.set(key, {
+        li,
+        head,
+        body,
+        fill: () => {
+          const d = detail();
+          append(body, [
+            h("div", { class: "dm-tl-cards" }, d ? cardEl(d, "cont", false) : h("p", { class: "dm-tl-note" }, "この期の文章は無い（標準の選び方で続けた見積もり）")),
+            h("button", { class: "dm-btn dm-tl-next", attrs: { type: "button" }, on: { click: () => stepTo(reading.indexOf(key) + 1, key) } }, nextText, h("span", { attrs: { "aria-hidden": "true" } }, " ↓")),
+          ]);
+        },
+      });
+      return li;
+    }
     if (it.type === "light") {
       return h(
         "li",

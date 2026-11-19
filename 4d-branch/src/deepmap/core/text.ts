@@ -1,6 +1,6 @@
-// カードの文章の入口（TextSource）と、地図の数だけで作る仮の文章（設計: 作業メモ SPEC v1 §4.1・§4.2）
-// 本当の文章は文章の組み立て（src/demo/compose。別の作業）が作る。見取り図・道の画面はこの入口だけを使い、
-// 組み立てができたら差し替える（ここでは組み立てをまねない）。仮の文章も英字の鍵は出さない。
+// カードの文章の入口（TextSource）と、地図の数だけで作る仮の文章（設計: 作業メモ SPEC v1 §4.1・§4.2・§5.4）
+// 本当の文章は文章の組み立て（src/demo/compose）が作り、試し版は src/preview/composeText.ts でこの入口につなぐ。
+// 見取り図・道の画面はこの入口だけを使う（ここでは組み立てをまねない）。仮の文章も英字の鍵は出さない。
 // 仮の文章は、行の見出しにすでに出ている事（年月・手の名前・結果と見込み）を繰り返さず、数から分かる事だけを書く:
 //   手      結果ごとの 3 か月後の月の稼ぎ（判断の月の稼ぎと並べて）
 //   状態    3 か月前の判断から変わった所（仕事・会社の答え・年収・顧客・Pro・有料・遊ぶ人・学校の席）
@@ -8,9 +8,17 @@
 // 判断の線の文（map.line: 「6 か月後の給与が 3 か月後の 1.07 倍未満」）は 0 か月目からの数え方で、行の年月と食い違うので使わない（作業メモ user-4）。
 
 import type { ImpactSt } from "../../demo/impact";
-import type { MapData, MapMix } from "../mapData";
+import type { MapData, MapMix, MapTodo } from "../mapData";
 import { destClassOf, destLabel } from "./dest";
 import { ymText } from "./time";
+
+/** まとめた行き先の後の標準の続きの 1 期の文章（その期の標準の手と一番ありそうな出来事。見積もりの代表の 1 本） */
+export interface ContText {
+  title: string;
+  body: string;
+  /** やること（元にしたやりたいことリストの番号つき） */
+  todo: readonly MapTodo[];
+}
 
 export interface TextSource {
   /** 題名 */
@@ -23,6 +31,11 @@ export interface TextSource {
   numbers(i: number): string[];
   /** 仮の文章（地図の数だけで作った物）。画面は本文に「文章は仮」と付ける。文章の組み立ては付けない（無ければ仮ではない） */
   readonly provisional?: boolean;
+  /**
+   * まとめた行き先 i の標準の続き（map.cont(i)）の k 番目の期の文章。無ければ null。
+   * 持つ作り手なら、道の画面はまとめた手の後の薄い行を押して開ける（開いたときに 1 期ずつ呼ぶ）。仮の文章は持たない（行は年月と手の名前だけ）
+   */
+  cont?(i: number, k: number): ContText | null;
 }
 
 /** 手の種類の名前（見出しの名前。無ければ「別の手」） */

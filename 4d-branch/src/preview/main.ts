@@ -6,6 +6,8 @@
 // 道は鍵から作る名前で指すので、地図を作り直して番号がずれても同じカードの道が開く。今の地図に無い道（と前の版の番号の道）は、
 // 見取り図を出して「この道は今の地図には無い」と知らせる（作業メモ code-2）。
 // 年収を変えると計算だけやり直す（地図の組み直しはしない）。年収はこの端末にだけ覚える（使えなければ覚えない）。
+// 地図は同梱データ（版 7 の候補から。開発用の入れ子の木も読める。load.ts）。カードの文章は文章の組み立て（./composeText.ts）が、
+// 道の画面で開いた行と着いた所のカードだけを、その時の年収で書く（起動では組み立てない）。
 
 import "../styles/tokens.css";
 import "../deepmap/views/views.css";
@@ -33,11 +35,15 @@ import {
   type PathPageHandle,
 } from "../deepmap/views";
 import { parseAnnual } from "../model/impactText";
+import { composedText, composeStats, type ComposeStats } from "./composeText";
 import { LoadError, loadMap, readEmbedded } from "./load";
-import { textSourceFor } from "./textSource";
+import { setTextFactory, textSourceFor } from "./textSource";
 
 const STORE_KEY = "deepmap-preview:annual";
 const TITLE = "3 年の分かれ道（試し版）";
+
+// カードの文章は文章の組み立て（地図の数だけの仮の文章は使わない）
+setTextFactory(composedText);
 
 interface State {
   cm: CompiledMap;
@@ -61,8 +67,12 @@ interface PreviewInfo {
   pathSwitches: number[];
   /** 地図が持つ物の数（q・mix・cont・never） */
   has: { q: number; mix: number; cont: number; never: boolean } | null;
+  /** 埋め込んだデータの形・版の順番・指紋・文の型の版 */
+  map: { format: string; release: number; hash: string; textVersion: string } | null;
+  /** 文章: 仮の文章か・組み立てた枚数と時間（起動の後は 0 枚。開いた行の分だけ増える） */
+  text: { provisional: boolean; composed: ComposeStats };
 }
-const info: PreviewInfo = { ready: false, visible: false, error: null, n: 0, timings: {}, pathSwitches: [], has: null };
+const info: PreviewInfo = { ready: false, visible: false, error: null, n: 0, timings: {}, pathSwitches: [], has: null, map: null, text: { provisional: false, composed: composeStats } };
 (globalThis as { __deepmapPreview?: PreviewInfo }).__deepmapPreview = info;
 
 function readStoredAnnual(): number | null {
@@ -107,8 +117,10 @@ async function boot(): Promise<void> {
   if (!app) return;
   const t0 = performance.now();
   let cm: CompiledMap;
+  let format = "";
   try {
     const src = readEmbedded(document);
+    format = src.format;
     const t1 = performance.now();
     const map = await loadMap(src);
     const t2 = performance.now();
@@ -128,6 +140,8 @@ async function boot(): Promise<void> {
   info.timings.analyze = performance.now() - t3;
   info.n = cm.n;
   info.has = { ...cm.has };
+  info.map = { format, release: map.header.release, hash: map.header.hash, textVersion: map.header.textVersion };
+  info.text.provisional = !!st.text.provisional;
 
   // ---- 見出し（題名・地図の年月・木の様子・年収・地図の大きさ）
   const input = h("input", {

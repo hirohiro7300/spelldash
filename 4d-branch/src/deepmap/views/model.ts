@@ -931,10 +931,12 @@ export interface PathCardVM {
   /** 数字の行（年収・広告運用・有料・遊ぶ人・週の時間） */
   numbers: string[];
   body: string;
-  /** やること（手のカードだけ） */
+  /** やること（手のカードと、標準の続きの期のカード） */
   todo: string[];
   /** 本文の下の数（「今日からここまでの見込み 45%」など） */
   facts: string[];
+  /** 見積もりの文章（まとめた手の後の標準の続きの 1 期）。見出しに「見積もり」の印を付ける */
+  est?: boolean;
 }
 
 export interface PathStepDetailVM {
@@ -1021,8 +1023,24 @@ export type PathItemVM =
       pivot: boolean;
       aria: string;
     }
-  /** まとめた手の後の標準の続き（薄い行）。head は見積もりの印の行（cont の行の前に 1 つ） */
-  | { type: "light"; key: string; ym: string; title: string; note: string | null; head: boolean };
+  /**
+   * まとめた手の後の標準の続き（薄い行）。head は見積もりの印の行（cont の行の前に 1 つ）。
+   * 文章の作り手が標準の続きの文章（TextSource.cont）を持てば、cont の行は押して開ける（detail はその期の文章。開いたときに作り、
+   * 同じ物を返す。文章が無ければ null）。開けない行は detail も null
+   */
+  | {
+      type: "light";
+      key: string;
+      ym: string;
+      title: string;
+      note: string | null;
+      head: boolean;
+      /** 開ける行の読み上げ（開けない行は空） */
+      aria: string;
+      /** 開いた行の「次の 3 か月へ（2028 年 2 月・見積もり）」・最後の行は「着いた所へ（2029 年 11 月）」（開けない行は null） */
+      nextText: string | null;
+      detail: (() => PathCardVM | null) | null;
+    };
 
 export interface PathFigureVM {
   label: string;
@@ -1377,7 +1395,8 @@ export function pathVM(a: Analysis, node: number, text: TextSource, opts: { from
       aria: [`${span}`, title, outcomeText, last.monthlyText ? `${last.moneyAt ?? ""} ${last.monthlyText}` : null, last.runningText, `${num(g.count)} 期をまとめた行。押すと 1 期ずつ出る`].filter((x): x is string => !!x).join("。"),
     });
   }
-  // まとめた手の後（標準の続き）: cont があれば見積もりの印の行と代表の 1 本の手、無ければ 1 本の薄い行
+  // まとめた手の後（標準の続き）: cont があれば見積もりの印の行と代表の 1 本の手、無ければ 1 本の薄い行。
+  // 文章の作り手が標準の続きの文章を持てば、手の行は押して開ける（その期の文章・やること。見積もりの印つき。作業メモ reader-1・SPEC §5.4）
   const lastRow = pv.rows[pv.rows.length - 1];
   if (pv.summary && lastRow?.stub) {
     const from = lastRow.m + 3;
@@ -1388,13 +1407,63 @@ export function pathVM(a: Analysis, node: number, text: TextSource, opts: { from
       /* 年月が読めない */
     }
     if (pv.cont.length) {
-      items.push({ type: "light", key: "ch", ym: span, title: "ここから先は標準の選び方で続けた見積もり", note: "代表の 1 本（一番ありそうな出来事と標準の手）。数は着いた所の平均", head: true });
+      const readable = typeof text.cont === "function";
+      const endNode = pv.end;
+      const arrive = `着いた所へ（${ym(map, cm.month[endNode]!)}）`;
+      items.push({
+        type: "light",
+        key: "ch",
+        ym: span,
+        title: "ここから先は標準の選び方で続けた見積もり",
+        note: readable ? "代表の 1 本（一番ありそうな出来事と標準の手）。行を押すと、その 3 か月の文章。数は着いた所の平均" : "代表の 1 本（一番ありそうな出来事と標準の手）。数は着いた所の平均",
+        head: true,
+        aria: "",
+        nextText: null,
+        detail: null,
+      });
       pv.cont.forEach((c, k) => {
         const isKeep = map.header.kinds[c.kind]?.[1] === "base";
-        items.push({ type: "light", key: `c${k}`, ym: ym(map, c.m), title: isKeep ? "今のまま" : kindName(map, c.kind), note: null, head: false });
+        const name = isKeep ? "今のまま" : kindName(map, c.kind);
+        const at = ym(map, c.m);
+        const next = pv.cont[k + 1];
+        let memo: PathCardVM | null | undefined;
+        const detail = (): PathCardVM | null => {
+          if (memo !== undefined) return memo;
+          const ct = text.cont?.(endNode, k) ?? null;
+          if (!ct) return (memo = null);
+          let qs = "";
+          try {
+            qs = `（${quarterSpanText(anchor, c.m)}）`;
+          } catch {
+            /* 年月が読めない */
+          }
+          return (memo = {
+            head: `この 3 か月${qs}・標準の続きの代表の 1 本`,
+            title: safeName(ct.title, name),
+            numbers: [],
+            body: ct.body,
+            todo: ct.todo.map((t) => t.text.trim()).filter((t) => t && !looksLikeId(t)),
+            facts: [],
+            est: true,
+          });
+        };
+        items.push({
+          type: "light",
+          key: `c${k}`,
+          ym: at,
+          title: name,
+          note: null,
+          head: false,
+          aria: readable ? `${at}・${name}（標準の続きの見積もり）。押すと、その 3 か月の文章とやること` : "",
+          nextText: readable ? (next ? `次の 3 か月へ（${ym(map, next.m)}・見積もり）` : arrive) : null,
+          detail: readable ? detail : null,
+        });
       });
+      // まとめた手の行の「次の 3 か月へ」は、開ける標準の続きの最初の行へ（着いた所へ飛ばない）
+      const stubStep = steps[steps.length - 1];
+      if (readable && stubStep?.stub) stubStep.nextText = `次の 3 か月へ（${ym(map, pv.cont[0]!.m)}・見積もり）`;
     } else if (from < cm.H) {
-      items.push({ type: "light", key: "c", ym: span, title: "標準の選び方で続けた見積もり", note: "3 か月ごとの手と結果は、この地図では 1 つずつに分けていない", head: true });
+      items.push({ type: "light", key: "c", ym: span, title: "標準の選び方で続けた見積もり", note: "3 か月ごとの手と結果は、この地図では 1 つずつに分けていない", head: true, aria: "", nextText: null, detail: null });
     }
   }
   // 一番ありそうな道と違う所

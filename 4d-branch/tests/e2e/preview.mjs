@@ -1,15 +1,18 @@
 // 試し版（3 年の分かれ道）の E2E: npm run e2e:preview（= node tests/e2e/preview.mjs）
 //   node tests/e2e/preview.mjs [ページ] [写真の置き場] [--no-build]
-//     ページを渡さなければ、先に scripts/build-preview.mjs でページを作る（木は DEEPMAP_TREE か作業メモの r1-tree.json.gz）
+//     ページを渡さなければ、先に scripts/build-preview.mjs でページを作る（地図は DEEPMAP_TREE か、版 7 の候補の同梱データ。
+//     出力は DEEPMAP_PREVIEW_OUT か作業メモの view/preview-v2.html）。写真の置き場は DEEPMAP_PREVIEW_SHOTS か view/v2/shots
 //     PW_CHROMIUM でブラウザの場所を変えられる。E2E_ONLY に名前の一部を渡すと、その確かめだけ（前の状態を使う物は単独では動かない）
 // 公開のときの骨組み（<!doctype html><html><head><meta charset=utf8><meta name=viewport …></head><body>ページ</body></html>）で包み、
 // 外の物を読めない CSP の下で、390×844（スマホ）と 1440×900 で開いて確かめる:
 //   コンソールにエラーが無い・390px で横にはみ出さない・押す所は 44px 以上・英字の鍵が画面に出ない・
 //   見取り図の 10 行と「10 の手をひと目で」（390×844 の最初の画面に 10 行）・手の詳しい画面と扇・2029 年 11 月（36 か月目）までの道・
 //   ほかの結果や手への切り替え（戻る・進むも）・静かな期のまとめ・標準の続きの薄い行（cont のある地図は見積もりの印の行と代表の手、
-//   無い地図は 1 本の行）・次の 3 か月へ・仮の文章の印・道の名前で直接ひらく（今の地図に無い道は知らせ）・年収を変えると計算し直す
+//   無い地図は 1 本の行）・次の 3 か月へ・道の名前で直接ひらく（今の地図に無い道は知らせ）・年収を変えると計算し直す
+// 文章（文章の組み立て。作業メモ SPEC v1 §4・§5.4）: 「文章は仮」がどこにも無い・起動ではカードを組み立てない・開いた行の手の本文は
+//   150 字より長く、やることは手ごとにちょうど 3 つ（焼き込んだ地図）・まとめた手の後の行は開くと見積もりの印つきの文章とやること
 // 時間（作業メモ SPEC v1 §7.2）: 開き始めから見取り図が描かれるまで（3 回の一番速い物）を 1440×900 と CPU 4 倍遅くした 390×844 で。
-//   上限 机 1.5 秒・スマホ（4 倍）5 秒。道の切り替え（押してから次の画面まで）は机で 50ms 以下（真ん中の値）
+//   上限は最初に役に立つ画面の予算 机 0.8 秒・スマホ（4 倍）3 秒。道の切り替え（押してから次の画面まで）は机で 50ms 以下（真ん中の値）
 // 写真（deviceScaleFactor 1）は写真の置き場に、時間はその隣の timings-preview.jsonl に残す。
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -23,8 +26,8 @@ const SCRATCH = "/tmp/claude-0/-home-user-spelldash/342dd9ca-ed44-551f-af59-60da
 const args = process.argv.slice(2);
 const pos = args.filter((a) => !a.startsWith("--"));
 const NO_BUILD = args.includes("--no-build") || pos.length > 0;
-const PAGE = path.resolve(pos[0] || process.env.DEEPMAP_PREVIEW_OUT || path.join(SCRATCH, "preview.html"));
-const SHOTS = path.resolve(pos[1] || process.env.DEEPMAP_PREVIEW_SHOTS || path.join(SCRATCH, "shots"));
+const PAGE = path.resolve(pos[0] || process.env.DEEPMAP_PREVIEW_OUT || path.join(SCRATCH, "preview-v2.html"));
+const SHOTS = path.resolve(pos[1] || process.env.DEEPMAP_PREVIEW_SHOTS || path.join(SCRATCH, "v2", "shots"));
 const ONLY = process.env.E2E_ONLY || "";
 
 // ---- ページを作る（渡されたページを使うときは作らない）
@@ -37,6 +40,12 @@ fs.mkdirSync(SHOTS, { recursive: true });
 
 // 公開のときの骨組み（このとおりに包む）と、骨組みが足す小さな初期化（文字・余白・color-scheme: light）を入れた物
 const pageHtml = fs.readFileSync(PAGE, "utf8");
+/** 埋め込んだ地図の形（同梱データは DecompressionStream が無くても小さな伸長で開く。開発用の木は開けない） */
+const FORMAT = /id="deepmap-data" data-format="([^"]+)"/.exec(pageHtml)?.[1] ?? "";
+const IS_BUNDLE = FORMAT === "impact-bundle-gzip";
+/** 開いたページの地図（版・指紋・文の型の版。最初の確かめで読む）。文の型の版が無い・dev の地図は、やることを焼き込んでいない */
+let MAP = null;
+const todoBaked = () => !!MAP && !!MAP.textVersion && MAP.textVersion !== "dev";
 const WRAP = (page) => `<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>${page}</body></html>`;
 const HOST_STYLE = "<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>";
 const html = WRAP(pageHtml);
@@ -116,6 +125,31 @@ async function layoutChecks(page, label) {
   assert(r.small.length === 0, `${label}: 44px より小さい押す所: ${r.small.join(" / ")}`);
   const m = ID_RE.exec(r.text);
   assert(!m, `${label}: 英字の鍵が画面に出ている: 「${m?.[0]}」（…${r.text.slice(Math.max(0, (m?.index ?? 0) - 30), (m?.index ?? 0) + 30)}…）`);
+  // 文章は文章の組み立て（仮の文章の印は出ない）
+  assert(!r.text.includes("文章は仮"), `${label}: 「文章は仮」が出ている`);
+}
+
+/**
+ * 開いた道の行の文章（作業メモ SPEC v1 §4・§5.4）: 「文章は仮」が無い・手の本文は 150 字より長い・やることは手ごとにちょうど 3 つ
+ * （焼き込んだ地図）・結果のカードにも本文。その行の文章を返す
+ */
+async function openedRowText(li, label) {
+  const r = await li.evaluate((el) => {
+    const body = el.querySelector(":scope > .dm-tl-body");
+    const move = body?.querySelector(".dm-tl-card.is-move");
+    return {
+      all: body?.innerText ?? "",
+      move: move?.querySelector(".dm-tl-text")?.textContent ?? "",
+      todo: move ? move.querySelectorAll(".dm-tl-todo li").length : -1,
+      out: body?.querySelector(".dm-tl-card.is-out .dm-tl-text")?.textContent ?? null,
+      stub: el.classList.contains("is-stub"),
+    };
+  });
+  assert(!r.all.includes("文章は仮"), `${label}: 「文章は仮」が出ている`);
+  assert(r.move.length > 150, `${label}: 手の本文が 150 字以下（${r.move.length} 字）: ${r.move}`);
+  if (todoBaked()) assert(r.todo === 3, `${label}: 手のやることが 3 つではない（${r.todo}）`);
+  if (!r.stub) assert(r.out !== null && r.out.length > 20, `${label}: 結果の本文が無い・短い: ${r.out}`);
+  return r;
 }
 
 /** 見取り図から始める（前の確かめが途中で落ちても続けられるように） */
@@ -171,10 +205,19 @@ async function pathState(page) {
 }
 
 async function shot(page, name, full = true) {
-  // 全体の写真は上から（追いかける欄が途中に写らないように）
-  if (full) await page.evaluate(() => scrollTo(0, 0));
+  // 全体の写真は上から（追いかける欄が途中に写らないように）。画面の外を描くのを後回しにした所（content-visibility: auto）は、
+  // 画面の外まで写す全体の写真では描かれないまま写るので、写す間だけ描く（ページの見た目は変えない。W-view の報告 §3）
+  if (full)
+    await page.evaluate(() => {
+      scrollTo(0, 0);
+      const st = document.createElement("style");
+      st.id = "e2e-cv";
+      st.textContent = "*{content-visibility:visible!important}";
+      document.head.append(st);
+    });
   await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: full });
+  if (full) await page.evaluate(() => document.getElementById("e2e-cv")?.remove());
 }
 
 // 前の版の写真の名前（overview-move-* など）は消す（この版の名前と混ざらないように）
@@ -186,12 +229,17 @@ for (const [vp, mobile, tag] of [
 ]) {
   console.log(`— ${tag}`);
   let s = null;
-  await check(`${tag}: 読み込んで見取り図の 10 行を出す`, async () => {
+  await check(`${tag}: 読み込んで見取り図の 10 行を出す（文章は組み立て・起動ではカードを組み立てない）`, async () => {
     s = await open(vp, mobile);
     const rows = await s.page.locator(".dm-row").count();
     assert(rows === 10, `見取り図の行が 10 ではない: ${rows}`);
     const first = await s.page.locator(".dm-row").first().innerText();
     assert(/分かれ道/.test(first) && /万円/.test(first), `行に分かれ道と万円が無い: ${first}`);
+    const info = await s.page.evaluate(() => window.__deepmapPreview);
+    MAP = info.map;
+    assert(MAP && MAP.format === FORMAT, `埋め込んだ形と読んだ形が違う: ${JSON.stringify(MAP)} / ${FORMAT}`);
+    assert(info.text && info.text.provisional === false, "文章が仮のまま（文章の組み立てがつながっていない）");
+    assert(info.text.composed.cards === 0 && info.text.composed.cont === 0, `起動でカードを組み立てた: ${JSON.stringify(info.text.composed)}`);
     await shot(s.page, `overview-${tag}-top`, false);
     await shot(s.page, `overview-${tag}`);
   });
@@ -297,8 +345,8 @@ for (const [vp, mobile, tag] of [
     assert((await body.locator(".dm-alt.is-current").count()) >= 1, "この道の物の印が無い");
     const t = await body.innerText();
     assert(t.includes("この手の結果") || t.includes("に選べる手"), `ほかの並びの見出しが無い: ${t.slice(0, 80)}`);
-    // 仮の文章は「文章は仮」と出す（作業メモ user-4）
-    assert(t.includes("文章は仮"), "仮の文章の印が無い");
+    // 組み立てた文章（「文章は仮」が無い・手の本文は 150 字より長い・やることは 3 つ）
+    await openedRowText(row, "開いた行");
     await layoutChecks(page, "開いた行");
     await shot(page, `path-${tag}-open`, false);
     const before = await pathState(page);
@@ -310,6 +358,31 @@ for (const [vp, mobile, tag] of [
     }, before.steps[1].key);
     // 開いた次の行はまとめの中でも見える（まとめも開く）
     assert(await page.locator(".dm-tl-item.is-step.is-open > .dm-tl-head").first().isVisible(), "次の行が見えない");
+  });
+  await check(`${tag}: 一番ありそうな道を「次の 3 か月へ」で最後まで読む（どの行も組み立てた文章・手の本文 150 字より長い・やること 3 つ）`, async () => {
+    await goChain(page);
+    // 前に開いた行（道ごとに覚えている）を閉じてから読む
+    const opened = page.locator(".dm-tl-item.is-step.is-open > .dm-tl-head");
+    while ((await opened.count()) > 0) await opened.first().click();
+    const c0 = (await page.evaluate(() => window.__deepmapPreview.text.composed)).cards;
+    await page.locator(".dm-pathv-actions .dm-btn", { hasText: "最初の 3 か月から読む" }).click();
+    const n = await page.locator(".dm-tl-item.is-step").count();
+    for (let k = 0; k < n; k++) {
+      const li = page.locator(".dm-tl-item.is-step.is-open");
+      await li.first().locator(":scope > .dm-tl-body .dm-tl-next").waitFor();
+      assert((await li.count()) === 1, `開いている行が 1 行ではない（${k + 1} 行目で ${await li.count()}）`);
+      const key = await li.first().getAttribute("data-key");
+      await openedRowText(li.first(), `${k + 1} 行目`);
+      await li.first().locator(":scope > .dm-tl-body .dm-tl-next").click();
+      if (k < n - 1) await page.waitForFunction((x) => !document.querySelector(`.dm-tl-item.is-step.is-open[data-key="${x}"]`) && !!document.querySelector(".dm-tl-item.is-step.is-open"), key);
+    }
+    assert((await page.locator(".dm-tl-item.is-step.is-open").count()) === 0, "最後の行の次で行が閉じない");
+    // 着いた所も組み立てた文章
+    const end = await page.locator(".dm-tl-end .dm-tl-text").innerText();
+    assert(end.length > 150 && !end.includes("文章は仮"), `着いた所の本文が短いか仮: ${end}`);
+    // 組み立てたのは開いた行と道の始め・着いた所の分だけ（全部のカードではない）
+    const c1 = (await page.evaluate(() => window.__deepmapPreview.text.composed)).cards;
+    assert(c1 - c0 >= n && c1 - c0 <= 2 * n + 2, `組み立てた枚数が開いた行の分と合わない: ${c1 - c0}（行 ${n}）`);
   });
   await check(`${tag}: ほかの結果に切り替えると道が変わり、戻る・進むで行き来できる`, async () => {
     await goChain(page);
@@ -377,6 +450,77 @@ for (const [vp, mobile, tag] of [
     assert(figs.includes("標準の続きに入るまでの見込み") && !figs.includes("この道の見込み") && !figs.includes("出来事の分かれが無い道"), `見込みの言葉が違う: ${figs.slice(0, 80)}`);
     await layoutChecks(page, "標準の続きの道");
     await shot(page, `path-${tag}-summary`);
+  });
+  await check(`${tag}: まとめた手の後の行を開くと、見積もりの印つきの文章とやること（「次の 3 か月へ」はまとめた手の行から順に）`, async () => {
+    const has = await page.evaluate(() => window.__deepmapPreview.has);
+    // cont の無い地図は 1 本の薄い行（開けない。前の確かめで見た）
+    if (!(has.cont > 0)) return;
+    // 前の確かめの道（まとめた手に切り替えた道）の続き。単独で動かすときは切り替えから
+    if (!(await page.locator(".dm-tl-end.is-summary").count())) {
+      await goChain(page);
+      const row = await openRow(page, 1);
+      await row.locator(":scope > .dm-tl-body a.dm-alt", { hasText: "この先は標準の続きの見積もり" }).first().click();
+      await page.waitForFunction(() => document.querySelector(".dm-tl-end.is-summary"));
+    }
+    const light = page.locator(".dm-tl-item.is-light-open");
+    const nLight = await light.count();
+    const allLight = await page.locator(".dm-tl-item.is-light").count();
+    assert(nLight >= 1 && nLight === allLight - 1, `開ける標準の続きの行の数が違う: ${nLight}（薄い行 ${allLight}）`);
+    // まとめた手の行（切り替えた行）の「次の 3 か月へ」は、着いた所でなく標準の続きの最初の行へ
+    const stubRow = page.locator(".dm-tl-item.is-step.is-stub").last();
+    const stubHead = stubRow.locator(":scope > .dm-tl-head");
+    if ((await stubHead.getAttribute("aria-expanded")) !== "true") await stubHead.click();
+    await stubRow.locator(":scope > .dm-tl-body .dm-tl-next").waitFor();
+    await openedRowText(stubRow, "まとめた手の行");
+    const next = stubRow.locator(":scope > .dm-tl-body .dm-tl-next");
+    assert((await next.innerText()).includes("見積もり"), `まとめた手の行の「次の 3 か月へ」が標準の続きへ行かない: ${await next.innerText()}`);
+    const cont0 = (await page.evaluate(() => window.__deepmapPreview.text.composed)).cont;
+    await next.click();
+    await light.first().locator(":scope > .dm-tl-body .dm-tl-card").waitFor();
+    assert((await stubHead.getAttribute("aria-expanded")) === "false", "まとめた手の行が閉じない");
+    /** 開いた標準の続きの行: 見積もりの印・題・本文・やること（1〜3 つ） */
+    const contCard = async (li, label) => {
+      const r = await li.evaluate((el) => {
+        const card = el.querySelector(":scope > .dm-tl-body .dm-tl-card");
+        return {
+          est: !!card?.classList.contains("is-est"),
+          chip: card?.querySelector(".dm-tl-card-head .dm-tl-tag.is-est")?.textContent ?? "",
+          title: card?.querySelector(".dm-tl-card-title")?.textContent ?? "",
+          body: card?.querySelector(".dm-tl-text")?.textContent ?? "",
+          todo: card ? card.querySelectorAll(".dm-tl-todo li").length : -1,
+          all: el.innerText,
+        };
+      });
+      assert(r.est && r.chip === "見積もり", `${label}: 見積もりの印が無い`);
+      assert(r.title.trim().length >= 2, `${label}: 題が無い`);
+      assert(r.body.length > 100 && !r.all.includes("文章は仮"), `${label}: 本文が 100 字以下か仮: ${r.body}`);
+      assert(r.todo >= 1 && r.todo <= 3, `${label}: やることの数が違う（${r.todo}）`);
+    };
+    await contCard(light.first(), "標準の続きの 1 行目");
+    // 標準の続きの行の「次の 3 か月へ」は次の行へ（前の行は閉じる）。最後の行の次は着いた所
+    if (nLight >= 2) {
+      await light.first().locator(":scope > .dm-tl-body .dm-tl-next").click();
+      await light.nth(1).locator(":scope > .dm-tl-body .dm-tl-card").waitFor();
+      assert((await light.first().locator(":scope > .dm-tl-head").getAttribute("aria-expanded")) === "false", "前の標準の続きの行が閉じない");
+      await contCard(light.nth(1), "標準の続きの 2 行目");
+    }
+    const lastHead = light.last().locator(":scope > .dm-tl-head");
+    if ((await lastHead.getAttribute("aria-expanded")) !== "true") await lastHead.click();
+    await light.last().locator(":scope > .dm-tl-body .dm-tl-card").waitFor();
+    await contCard(light.last(), "標準の続きの最後の行");
+    assert((await light.last().locator(":scope > .dm-tl-body .dm-tl-next").innerText()).includes("着いた所へ"), "標準の続きの最後の行の次が着いた所ではない");
+    // 組み立てたのは開いた行の分だけ
+    const opened = new Set([0, nLight >= 2 ? 1 : 0, nLight - 1]).size;
+    const cont1 = (await page.evaluate(() => window.__deepmapPreview.text.composed)).cont;
+    assert(cont1 - cont0 === opened, `標準の続きの文章を開いた行の分だけ組み立てていない: ${cont1 - cont0}（開いた行 ${opened}）`);
+    // 写真: 今日の手の行・まとめた手の行・標準の続きの行を開いた道（全体）と、標準の続きの行（画面）
+    const first = page.locator(".dm-tl > .dm-tl-item.is-step").first().locator(":scope > .dm-tl-head");
+    if ((await first.getAttribute("aria-expanded")) !== "true") await first.click();
+    if ((await stubHead.getAttribute("aria-expanded")) !== "true") await stubHead.click();
+    await layoutChecks(page, "標準の続きの行を開いた道");
+    await shot(page, `path-${tag}-summary-open`);
+    await light.last().locator(":scope > .dm-tl-head").evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await shot(page, `path-${tag}-cont-open`, false);
   });
   await check(`${tag}: 道の切り替えの時間（押してから次の画面まで・5 回）`, async () => {
     await goChain(page);
@@ -482,12 +626,13 @@ await check("骨組みの初期化（color-scheme: light）でも暗い見た目
   await ctx.close();
 });
 
-// 読み込みの時間（3 回の一番速い物）: 開き始めから見取り図が描かれた次の画面まで（performance の 0 から）。
-// 1440×900（CPU そのまま）と、CPU を 4 倍遅くした 390×844（スマホの見立て）。予算 1.5 秒・5 秒（作業メモ SPEC v1 §7.2）
+// 読み込みの時間（3 回の一番速い物）: 開き始めから見取り図が描かれた次の画面まで（performance の 0 から。この画面で押せる）。
+// 1440×900（CPU そのまま）と、CPU を 4 倍遅くした 390×844（スマホの見立て）。同梱データのページは最初に役に立つ画面（見取り図）の
+// 予算 0.8 秒・3 秒（作業メモ SPEC v1 §7.2）。開発用の木（大きな JSON をほどく。開発で確かめる用）は押せるまでの予算 1.5 秒・5 秒
 await check("読み込みの時間（3 回の一番速い物）と、スマホの見立てでの道の切り替え", async () => {
   for (const [vp, rate, limit] of [
-    [{ width: 1440, height: 900 }, 1, 1500],
-    [{ width: 390, height: 844 }, 4, 5000],
+    [{ width: 1440, height: 900 }, 1, IS_BUNDLE ? 800 : 1500],
+    [{ width: 390, height: 844 }, 4, IS_BUNDLE ? 3000 : 5000],
   ]) {
     let best = null;
     const runs = [];
@@ -521,17 +666,29 @@ await check("読み込みの時間（3 回の一番速い物）と、スマホ�
   }
 });
 
-// DecompressionStream の無いブラウザ: はっきりした言葉で止まる
-await check("圧縮をほどけないブラウザでは、訳を出して止まる", async () => {
+// DecompressionStream の無いブラウザ（古い Safari など）: 同梱データは小さな伸長（src/demo/inflate.ts）で開く。開発用の木は、はっきりした言葉で止まる
+await check(IS_BUNDLE ? "圧縮をほどけないブラウザでも、同梱データは小さな伸長で開く" : "圧縮をほどけないブラウザでは、訳を出して止まる", async () => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await ctx.addInitScript(() => {
     delete window.DecompressionStream;
   });
   const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(BASE);
-  await page.waitForFunction(() => window.__deepmapPreview?.error);
-  const t = await page.locator(".pv-error").innerText();
-  assert(t.includes("圧縮したデータを開けない"), `訳が出ない: ${t}`);
+  if (IS_BUNDLE) {
+    await page.waitForFunction(() => window.__deepmapPreview?.visible || window.__deepmapPreview?.error, null, { timeout: 60_000 });
+    const r = await page.evaluate(() => ({ error: window.__deepmapPreview.error, ds: typeof window.DecompressionStream, decode: window.__deepmapPreview.timings.decode }));
+    assert(r.ds === "undefined", "DecompressionStream が消えていない");
+    assert(!r.error, `開けない: ${r.error}`);
+    assert((await page.locator(".dm-row").count()) === 10, "見取り図の 10 行が出ない");
+    assert(errors.length === 0, errors.join("\n"));
+    console.log(`    小さな伸長でほどいて読む時間: ${Math.round(r.decode)} ms`);
+  } else {
+    await page.waitForFunction(() => window.__deepmapPreview?.error);
+    const t = await page.locator(".pv-error").innerText();
+    assert(t.includes("圧縮したデータを開けない"), `訳が出ない: ${t}`);
+  }
   await ctx.close();
 });
 

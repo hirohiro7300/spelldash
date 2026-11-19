@@ -3,7 +3,7 @@
 // 扇の目盛り・進め方の割合・道の行。8 万枚の木での数は deepmapViewsSlow.test.ts（DEEPMAP_SLOW=1 のときだけ）
 
 import { describe, expect, it } from "vitest";
-import { analyze, compileMap, destClassOf, destinations, destLabel, destParts, endsFrom, fallbackText, kindKey, medianEnd, overview, placeIn, planView, refillNumbers, type Analysis, type MoveCounts } from "../../src/deepmap/core";
+import { analyze, compileMap, destClassOf, destinations, destLabel, destParts, endsFrom, fallbackText, kindKey, medianEnd, overview, placeIn, planView, refillNumbers, type Analysis, type MoveCounts, type TextSource } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, DevTreeNode } from "../../src/deepmap/mapData";
 import {
@@ -508,6 +508,53 @@ describe("手の詳しい画面・道の画面", () => {
     const l2 = stub2.items.filter((x) => x.type === "light");
     expect(l2.map((x) => (x.type === "light" ? `${x.ym} ${x.title}` : ""))).toEqual(["2027 年 5 月〜2029 年 8 月 標準の選び方で続けた見積もり"]);
     expect(stub2.steps[stub2.steps.length - 1]!.detail().note).toContain("分けていない");
+  });
+
+  it("道の画面: 文章の作り手が標準の続きの文章を持てば、まとめた手の後の行は開ける（開くまで作らない・見積もりの印・やること・次の 3 か月へ）", () => {
+    const a = handAnalysis();
+    const map = a.cm.map;
+    const base = fallbackText(map, { annual: 360 });
+    const asked: Array<[number, number]> = [];
+    const text: TextSource = {
+      title: base.title,
+      short: base.short,
+      body: base.body,
+      numbers: base.numbers,
+      cont: (i, k) => {
+        asked.push([i, k]);
+        return k === 1 ? null : { title: `続きの題 ${k}`, body: `続きの本文 ${k}`, todo: [{ text: "やること A", cite: "w-1" }, { text: " ", cite: "w-2" }, { text: "sd_grow", cite: "w-3" }] };
+      },
+    };
+    const key = "r.ad_permside.a.1as.cl1.2k";
+    const stub = pathVM(a, map.indexOfKey(key), text);
+    expect(stub.provisional).toBe(false);
+    const light = stub.items.flatMap((x) => (x.type === "light" ? [x] : []));
+    // 見積もりの印の行は開けない（開けると書く）。cont の行は開ける。開くまで文章は作らない
+    expect(light.map((x) => [x.key, x.head, x.detail !== null])).toEqual([
+      ["ch", true, false],
+      ["c0", false, true],
+      ["c1", false, true],
+    ]);
+    expect(light[0]!.note).toContain("行を押すと、その 3 か月の文章");
+    expect(asked).toEqual([]);
+    const c0 = light[1]!;
+    const d0 = c0.detail!()!;
+    expect(c0.detail!()).toBe(d0);
+    expect(asked).toEqual([[stub.end.node, 0]]);
+    // 見積もりの印・その期の 3 か月・題・本文・やること（空と英字の鍵は出さない）・数の行は無い（数は着いた所の平均）
+    expect(d0).toEqual({ head: "この 3 か月（9 月〜11 月）・標準の続きの代表の 1 本", title: "続きの題 0", numbers: [], body: "続きの本文 0", todo: ["やること A"], facts: [], est: true });
+    expect(c0.aria).toBe("2027 年 8 月・紹介で顧客を増やす（標準の続きの見積もり）。押すと、その 3 か月の文章とやること");
+    // 文章の無い期は null（画面は短い注記）
+    expect(light[2]!.detail!()).toBeNull();
+    // 次の 3 か月へ: まとめた手の行 → 標準の続きの行を順に → 着いた所
+    expect(stub.steps[stub.steps.length - 1]!.nextText).toBe("次の 3 か月へ（2027 年 8 月・見積もり）");
+    expect(light.map((x) => x.nextText)).toEqual([null, "次の 3 か月へ（2027 年 11 月・見積もり）", "着いた所へ（2029 年 11 月）"]);
+    // 標準の続きの文章を持たない作り手（仮の文章）は、今までどおり開けない行で、まとめた手の行の次は着いた所
+    const plain = pathVM(a, map.indexOfKey(key), base);
+    expect(plain.items.every((x) => x.type !== "light" || x.detail === null)).toBe(true);
+    expect(plain.steps[plain.steps.length - 1]!.nextText).toBe("着いた所へ（2029 年 11 月）");
+    const plainHead = plain.items.flatMap((x) => (x.type === "light" && x.head ? [x] : []))[0];
+    expect(plainHead?.note).toBe("代表の 1 本（一番ありそうな出来事と標準の手）。数は着いた所の平均");
   });
 
   it("道の画面: ほかの手は、この先も読める手が先、先を広げていない手が後。閉じた行にも先が見積もりと書く（作業メモ user-5）", () => {

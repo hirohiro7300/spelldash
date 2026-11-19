@@ -1,8 +1,12 @@
-// 試し版のページに埋め込んだ地図のデータを読む（設計: 作業メモ SPEC v1 §3.3・§10）
+// 試し版のページに埋め込んだ地図のデータを読む（設計: 作業メモ SPEC v1 §3.1・§3.3・§10）
 // ページの中の <script type="application/octet-stream" id="deepmap-data" data-format="…"> に base64 で入っている。
-// 形（data-format）ごとに読み手を差し替えられる: いまは開発用の入れ子の木（gzip した JSON）。
-// 同梱データの詰めた形（W-gen の読み手 src/demo/impactBundle.ts）は registerDecoder で足す。
+// 形（data-format）ごとに読み手がある（registerDecoder で足せる）:
+//   impact-bundle-gzip  同梱データ（決まった並びの列と文字列の表を gzip した物。版 7 から。題・短い名前・やることを焼き込んである）。
+//                       読み手は W-gen の src/demo/impactBundle.ts（decodeBundle と同じ: gzip を伸ばしてから decodeBundleBytes）。
+//                       gzip は DecompressionStream、無いブラウザは小さな伸長（src/demo/inflate.ts）で伸ばす
+//   devtree-json-gzip   開発用の入れ子の木（gzip した JSON。開発中の木を確かめる用）。DecompressionStream が要る
 
+import { decodeBundleBytes, gunzipBytes, ImpactBundleError } from "../demo/impactBundle";
 import { fromDevTree } from "../deepmap/dev/fromTree";
 import type { DevTree, MapData } from "../deepmap/mapData";
 
@@ -29,6 +33,7 @@ export class LoadError extends Error {
 
 export const DATA_ELEMENT_ID = "deepmap-data";
 export const DEV_TREE_GZIP = "devtree-json-gzip";
+export const BUNDLE_GZIP = "impact-bundle-gzip";
 
 const decoders = new Map<string, MapDecoder>();
 
@@ -84,6 +89,26 @@ registerDecoder(DEV_TREE_GZIP, async (src) => {
     throw new LoadError("地図のデータが壊れていて開けない（中身を読めなかった）", "decode");
   }
   return fromDevTree(asDevTree(json));
+});
+
+/** 同梱データの読み手の食い違いの言葉（「同梱データ: 」を除いた物）が、形の違い（別の物・知らない形の版）か */
+const OTHER_FORMAT = /同梱データではありません|知らない形の版/;
+
+registerDecoder(BUNDLE_GZIP, async (src) => {
+  let raw: Uint8Array;
+  try {
+    raw = await gunzipBytes(src.bytes);
+  } catch {
+    throw new LoadError("地図のデータが壊れていて開けない（圧縮をほどけなかった）", "decode");
+  }
+  try {
+    return decodeBundleBytes(raw);
+  } catch (e) {
+    if (!(e instanceof ImpactBundleError)) throw e;
+    const why = e.message.replace(/^同梱データ: /, "");
+    if (OTHER_FORMAT.test(why)) throw new LoadError(`地図のデータの形が、この試し版の読める形と違う（${why}）`, "format");
+    throw new LoadError(`地図のデータが壊れていて開けない（${why}）`, "decode");
+  }
 });
 
 /** ページに埋め込んだデータを取り出す */
