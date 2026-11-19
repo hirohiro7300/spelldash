@@ -1,14 +1,14 @@
 // 8 万枚の開発用の木での「画面に出す形」の確かめ（遅いので DEEPMAP_SLOW=1 のときだけ。ふだんの npm test では飛ばす）
 //   DEEPMAP_SLOW=1 npx vitest run tests/unit/deepmapViewsSlow.test.ts --maxWorkers=2
-// 木の置き場は DEEPMAP_TREE（R1 の木）・DEEPMAP_QTREE（前提を直した木。あれば）で変えられる。.json.gz でもよい。
+// 木の置き場は DEEPMAP_TREE（R1 の木。無ければ R1 の木の確かめは飛ばす）・DEEPMAP_QTREE（前提を直した木。あれば）で変えられる。.json.gz でもよい。
 // 確かめること: 年収 360 の見取り図の並び・差・数の 1 行・会社の答え・分かれ道の帯（作業メモ dev/check-values.ts と review の数）・
 // どの画面の文字にも英字の鍵が出ない・見取り図と 10 の手の詳しい画面を全部作る時間（3 回の一番速い物）
 
 import { describe, expect, it } from "vitest";
-import { analyze, compileMap, fallbackText, type Analysis } from "../../src/deepmap/core";
+import { analyze, compileMap, fallbackText, worthOf, type Analysis } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../src/deepmap/mapData";
-import { moveDetailVM, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, type PathVM } from "../../src/deepmap/views";
+import { moveDetailVM, notesVM, overviewVM, pathVM, SMALL_DELTA_TEXT, WORTH_NOISE, type PathVM } from "../../src/deepmap/views";
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const SLOW = env.DEEPMAP_SLOW === "1";
@@ -23,6 +23,17 @@ interface NodeFs {
 interface NodeZlib {
   gunzipSync(b: Uint8Array): Uint8Array;
 }
+
+/** 木のファイル（.json か .json.gz）があるか */
+async function treeExists(path: string): Promise<boolean> {
+  const fsName = "node:fs";
+  const fs = (await import(/* @vite-ignore */ fsName)) as NodeFs;
+  return fs.existsSync(path) || fs.existsSync(`${path}.gz`);
+}
+
+/** R1 の木（作業メモの試作の木。リポジトリには無く、CI でも作れない）があるか。無ければ R1 の木の確かめは飛ばす（前提を直した木の確かめは動く） */
+const HAS_R1 = SLOW && (await treeExists(TREE));
+if (SLOW && !HAS_R1) console.log(`R1 の木がありません: ${TREE}。R1 の木の確かめは飛ばします（DEEPMAP_TREE で場所を渡せる）`);
 
 /** 木を読む（.json か .json.gz。無ければ null） */
 async function loadTree(path: string): Promise<DevTree | null> {
@@ -77,7 +88,7 @@ function allTexts(a: Analysis): string[] {
 }
 
 describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面の言葉", () => {
-  it("年収 360: 並び・差・数の 1 行・会社の答え・分かれ道の帯・英字の鍵なし", async () => {
+  it.runIf(HAS_R1)("年収 360: 並び・差・数の 1 行・会社の答え・分かれ道の帯・英字の鍵なし", async () => {
     const t = await loadTree(TREE);
     expect(t, `木がありません: ${TREE}`).not.toBeNull();
     const a = analyze(compileMap(fromDevTree(t!)), 360);
@@ -119,7 +130,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(bad).toEqual([]);
   }, 120_000);
 
-  it("年収 360: 道の画面（届け出て副業の 1 社目を探す の一番ありそうな道と、切り替えた道）", async () => {
+  it.runIf(HAS_R1)("年収 360: 道の画面（届け出て副業の 1 社目を探す の一番ありそうな道と、切り替えた道）", async () => {
     const t = await loadTree(TREE);
     const a = analyze(compileMap(fromDevTree(t!)), 360);
     const text = fallbackText(a.cm.map, { annual: 360 });
@@ -165,7 +176,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(r.end.facts).toEqual(["3 年の合計 1,248 万円（多くの道の平均・ずっと今のままより +124 万円）", "標準の続きに入るまでの見込み 45%"]);
   }, 120_000);
 
-  it("道の画面を作る時間（今日の手ごとの道と、その 2 行目のほかの結果・手への切り替え。3 回の一番速い物）", async () => {
+  it.runIf(HAS_R1)("道の画面を作る時間（今日の手ごとの道と、その 2 行目のほかの結果・手への切り替え。3 回の一番速い物）", async () => {
     const t = await loadTree(TREE);
     const a = analyze(compileMap(fromDevTree(t!)), 360);
     const text = fallbackText(a.cm.map, { annual: 360 });
@@ -190,7 +201,7 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
     expect(ms / n).toBeLessThan(10);
   }, 120_000);
 
-  it("見取り図と 10 の手の詳しい画面を全部作る時間（3 回の一番速い物）", async () => {
+  it.runIf(HAS_R1)("見取り図と 10 の手の詳しい画面を全部作る時間（3 回の一番速い物）", async () => {
     const t = await loadTree(TREE);
     const a = analyze(compileMap(fromDevTree(t!)), 360);
     let ms = Infinity;
@@ -237,10 +248,17 @@ describe.skipIf(!SLOW)("8 万枚の木での見取り図と手の詳しい画面
       expect([annual, kind, d.kind]).toEqual([annual, kind, k]);
       expect("note" in d ? d.note : null).toBe(SMALL_DELTA_TEXT);
     }
-    // 学校・塾（−5.1 万円）など、マイナスの「3 年やらない場合との差」は誤差として「ほぼ差なし」（作業メモ truth-4）
-    const vm = overviewVM(analyze(cm, 360));
+    // 学校・塾など、マイナスの「3 年やらない場合との差」は誤差として「ほぼ差なし」（作業メモ truth-4）
+    const a360 = analyze(cm, 360);
+    const vm = overviewVM(a360);
     expect(vm.rows.find((r) => r.kind === "sd_pilot")!.worth?.text).toBe("ほぼ差なし");
-    expect(vm.worthNoise).toBeGreaterThan(5);
+    // 誤差の幅は 4 と、一番小さい（マイナスの）差の大きさの、大きい方。学校の席の値段の直し（37c8d9d）の後は、学校・塾は −1.14 万円で
+    // 4 より小さいので、幅は 4（直しの前は −5.1 で、幅は 5 より大きかった。見直し found-2）
+    const school = worthOf(a360, "school");
+    expect(school).not.toBeNull();
+    expect(school!).toBeLessThan(0);
+    expect(-school!).toBeLessThan(WORTH_NOISE);
+    expect(vm.worthNoise).toBe(WORTH_NOISE);
   }, 240_000);
 
   it("前提を直した木（あれば）: まとめた手を通る道は「この道の見込み」と書かず、標準の続きは見積もりの印の行から（作業メモ truth-1・code-1）", async () => {

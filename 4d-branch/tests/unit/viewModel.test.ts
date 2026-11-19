@@ -4,7 +4,7 @@ import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
 import { ImpactCards } from "../../src/canvas/impactCards";
 import { buildImpactDoc } from "../../src/demo/impact";
-import { futureData } from "../../src/demo/futureBundle";
+import { r6Bundle } from "./helpers/r6";
 import { createEmptyDoc, makeEdge, makeNode, makeProject, makeScenario } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
 import { Store } from "../../src/store/store";
@@ -191,7 +191,7 @@ describe("お知らせの「元に戻す」", () => {
 
 describe("3 年の分かれ道: 開く・閉じるは見え方だけ（文書・履歴・保存は変えない）", () => {
   const TODAY = new Date(2026, 10, 18);
-  const base = buildImpactDoc(futureData(), TODAY, "t");
+  const base = buildImpactDoc(r6Bundle(), TODAY, "t");
   const rootId = Object.values(base.nodes).find((n) => n.meta.forecastRoot === true)!.id;
 
   function openImpact(narrow = true) {
@@ -353,7 +353,7 @@ describe("3 年の分かれ道: 開く・閉じるは見え方だけ（文書・
 
 describe("見え方の計算: 範囲と折りたたみは材料が同じなら使い回す", () => {
   it("選択・検索・時点だけでは計算し直さず、開閉・文書・シナリオ・絞り込みが変わったら計算し直す（どちらも作り直したときと同じ結果）", () => {
-    const { store, ui, vm, cmd } = setup(buildImpactDoc(futureData(), new Date(2026, 10, 18), "t"));
+    const { store, ui, vm, cmd } = setup(buildImpactDoc(r6Bundle(), new Date(2026, 10, 18), "t"));
     vm.narrow = () => false;
     const col = () => (vm as unknown as { last: { col: unknown } }).last.col;
     /** 同じ文書・設定・選択で、いちから作った見え方と同じか */

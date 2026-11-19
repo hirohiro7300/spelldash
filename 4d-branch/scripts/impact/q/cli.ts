@@ -16,7 +16,7 @@ export interface CliOpts {
   bundle?: string;
   /** 版の順番（入口の release。開発用の木は 0） */
   release: number;
-  /** 提案する版の記録 {release, hash, anchor} を書き出す場所（release が 1 以上のとき） */
+  /** 提案する版の記録 {release, hash, digest, anchor} を書き出す場所（release が 1 以上のとき。digest は基準の文書の指紋） */
   record?: string;
   /** 版の記録（足すだけ）の場所。無ければ scripts/impact/releases.json */
   history?: string;

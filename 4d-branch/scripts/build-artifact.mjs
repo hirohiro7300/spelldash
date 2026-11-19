@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertPageSize } from "./pageSize.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
@@ -43,10 +44,12 @@ ${jsText}
 </script>
 `;
 
-fs.mkdirSync(OUT_DIR, { recursive: true });
-fs.writeFileSync(OUT, page);
+// 確かめてから書く（大きすぎるページ・形の違うページは残さない）
 const head = page.slice(0, 8192);
 if (!/<title>4D Branch<\/title>/.test(head)) throw new Error("題名が先頭 8KB に無い");
 if (/<!doctype|<html|<head|<body/i.test(page.replace(jsText, "").replace(cssText, ""))) throw new Error("骨組みのタグが入っている");
 if (!/<div id="app" lang="ja">/.test(page.replace(jsText, ""))) throw new Error("本体（#app）に言語（lang=\"ja\"）が無い");
-console.log(`artifact/4d-branch.html を作りました（${(page.length / 1024).toFixed(1)} KB）`);
+const bytes = assertPageSize(page, "artifact/4d-branch.html");
+fs.mkdirSync(OUT_DIR, { recursive: true });
+fs.writeFileSync(OUT, page);
+console.log(`artifact/4d-branch.html を作りました（${(bytes / 1024).toFixed(1)} KB）`);

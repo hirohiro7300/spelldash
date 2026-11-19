@@ -16,7 +16,8 @@ import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/
 import type { BackupKind, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
-import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
+import { chooseSyncSource, openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
+import { openFutureDialog } from "../ui/futureDialog";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { offerImpactSalary } from "../ui/impactPanel";

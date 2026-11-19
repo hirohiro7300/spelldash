@@ -12,8 +12,49 @@ on:
       - "4d-branch/**"
       - ".github/workflows/4d-branch.yml"
 
+# 仕事を分けて並べて走らせ、どれも時間の上限より十分短く終わるようにする（見直し gaps-4・gaps-16・gaps-17）。
+# どの仕事も 取り出し → node → npm ci から始め、ほかの仕事を待たない。
+# 3 か月ごとの地図の木はリポジトリに無い（30 MB 台）ので、試し版の E2E と遅いテストは、その仕事の中で生成の点検ごと作る
+# （同じ引数なら同じ木。--runs 1 --spread 1 は、決まった並びの作り直しと報告だけの幅を省く。木は既定の物と同じ）
 jobs:
   check:
+    name: 型・単体テスト・ビルド
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: 4d-branch
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 4d-branch/package-lock.json
+
+      - name: 依存インストール
+        run: npm ci
+
+      - name: 型チェック（アプリ・テスト・生成の入口）
+        run: npm run typecheck
+
+      - name: 単体テスト（データモデル・ストア・保存・同期・地図の計算。8 万枚の木は遅いテストで）
+        run: npm test
+
+      # 3 か月ごとの地図の組み立てと基準の文書の指紋を、時差の違う 2 つのプロセス（America/Los_Angeles・Asia/Tokyo）で。
+      # 読み込んだ時に 1 度だけ時差を読む作りは、同じプロセスの中で時差を変えるテスト（npm test）では見つからない（見直し found-4・safety-14）
+      - name: 時差の違う 2 つのプロセスでの確かめ
+        run: npm run test:tz
+
+      - name: ビルド
+        run: npm run build
+
+      - name: Artifact 用の 1 枚のページを作る（15 MB を超えたら止まる）
+        run: node scripts/build-artifact.mjs
+
+  e2e:
+    name: E2E（操作の通し・再読み込み・複数タブ・入出力・2,000 ノードの描画時間）
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -31,11 +72,61 @@ jobs:
       - name: 依存インストール
         run: npm ci
 
-      - name: 型チェック
-        run: npm run typecheck
+      - name: ビルド
+        run: npm run build
 
-      - name: 単体テスト（データモデル・ストア・折りたたみ・保存・取り込み）
-        run: npm test
+      - name: ブラウザのインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: E2E
+        run: npm run e2e
+
+  e2e-artifact:
+    name: Artifact 版の E2E（偽の window.claude で同期・別の端末・書き出し・スマホの幅）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: 4d-branch
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 4d-branch/package-lock.json
+
+      - name: 依存インストール
+        run: npm ci
+
+      - name: Artifact 用の 1 枚のページを作る（ビルド。15 MB を超えたら止まる）
+        run: npm run build:artifact
+
+      - name: ブラウザのインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Artifact 版の E2E
+        run: npm run e2e:artifact
+
+  e2e-impact:
+    name: 3 年の影響のパネルの E2E（概要・選んだ手・順位・全部ひらく・スマホの引き出し）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: 4d-branch
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 4d-branch/package-lock.json
+
+      - name: 依存インストール
+        run: npm ci
 
       - name: ビルド
         run: npm run build
@@ -43,11 +134,64 @@ jobs:
       - name: ブラウザのインストール
         run: npx playwright-core install --with-deps chromium
 
-      - name: E2E（操作の通し・再読み込み・複数タブ・入出力・2,000 ノードの描画時間）
-        run: npm run e2e
+      - name: 3 年の影響のパネルの E2E
+        run: npm run e2e:impact
 
-      - name: Artifact 用の 1 枚のページを作る
-        run: node scripts/build-artifact.mjs
+  e2e-preview:
+    name: 試し版（3 年の分かれ道）の E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: 4d-branch
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Artifact 版の E2E（偽の window.claude で同期・別の端末・書き出し・スマホの幅）
-        run: npm run e2e:artifact
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 4d-branch/package-lock.json
+
+      - name: 依存インストール
+        run: npm ci
+
+      - name: 3 か月ごとの地図の木を作る（生成と点検）
+        run: node scripts/impact/q/run.mjs --out "$RUNNER_TEMP/tree/q-tree.json" --bundle "$RUNNER_TEMP/tree/impact-q.b64" --runs 1 --spread 1
+
+      - name: ブラウザのインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: 試し版の E2E（作った木でページを作り、390 と 1440 の幅で確かめる）
+        run: npm run e2e:preview
+        env:
+          DEEPMAP_TREE: ${{ runner.temp }}/tree/q-tree.json.gz
+          DEEPMAP_PREVIEW_OUT: ${{ runner.temp }}/preview/preview.html
+          DEEPMAP_PREVIEW_SHOTS: ${{ runner.temp }}/preview/shots
+
+  slow:
+    name: 遅いテスト（8 万枚の木）
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: 4d-branch
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 4d-branch/package-lock.json
+
+      - name: 依存インストール
+        run: npm ci
+
+      - name: 3 か月ごとの地図の木と同梱データを作る（生成と点検）
+        run: node scripts/impact/q/run.mjs --out "$RUNNER_TEMP/tree/q-tree.json" --bundle "$RUNNER_TEMP/tree/impact-q.b64" --runs 1 --spread 1
+
+      - name: 遅いテスト（*Slow・*Full。R1 の試作の木は CI に無いので、その確かめは飛ぶ）
+        run: npm run test:slow
+        env:
+          IMPACT_Q_FULL: ${{ runner.temp }}/tree

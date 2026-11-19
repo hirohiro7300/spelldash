@@ -9,7 +9,8 @@
 //   --spread 粗い表を引き始める順を変えて今日の手の差の幅を測る順の数（報告だけ。1 で測らない）・--spread-never その順ごとに k の幅も測る（遅い）・
 //   --force 書き出す場所にファイルがあっても書き直す・
 //   --bundle 同梱データ（決まった並びの gzip の base64。src/demo/impactBundle.ts が読む）を書く場所・--release 入口の版の順番（開発用の木は 0）・
-//   --record 提案する版の記録 {release, hash, anchor} を書く場所・--history 版の記録（足すだけ。既定は scripts/impact/releases.json）・
+//   --record 提案する版の記録 {release, hash, digest, anchor} を書く場所（digest は基準の文書の指紋。src/demo/impactDigest.ts）・
+//   --history 版の記録（足すだけ。既定は scripts/impact/releases.json）・
 //   --append-history 版の記録に足す（既定は足せるかだけを点検する）・--runs 2 なら最初から作り直して、決まった並びと指紋が同じかを点検する（既定 2）
 // 版の順番を付ける（--release 1 以上）のは本番の形の時だけ（今日の手すべて・2,000・±2%・never・2 回。cli.ts の productionProblems）。
 // 版の木は版ごとの場所（例 作業メモ deepmap/gen/r7/）に書き、開発用の木（deepmap/dev/*.json）は --release 0 で作る（試し版の画面が版の番号を出すので）。
@@ -21,7 +22,7 @@
 // その隣の <木.json>.gz、--bundle の同梱データ、--record の版の記録。
 // 前提の文と手の決まりの点検（./checks.ts の premiseRuleChecks: J3・J4・K2）、生成の木の点検（./checks.ts: 一貫性・N10・N7・顧客は整数・幅・名前・事実・暦・
 // 転職活動の上限・q・mix・cont・分かれ道の数・ノードの数・3 か月の結果の入れ物）と、同梱データを読み手で読んだ地図の点検（./check.ts: 読み手・ノードの数・
-// 分かれ道・N10・顧客・暦・一貫性・アプリと同じ値・ID・決まり・大きさ・版の記録）にどれか通らなければ、何も書き出さない。
+// 分かれ道・N10・顧客・暦・一貫性・アプリと同じ値・ID・基準の文書の指紋・決まり・大きさ・版の記録）にどれか通らなければ、何も書き出さない。
 // 報告だけの数（通らなくても書き出す）: 表を引く順を変えた時の今日の手の差と k の幅（truth-2）・標準の続きを 1 段改善した時の伸び（truth-5）・
 // 届け出の答えの順（truth-4）・k(fam) < −1 の注意・標準の続きと一番良い手の手の割合（truth-1）。
 // 同じ引数なら同じ木と同じ同梱データ（バイトまで同じ）。木は大きい（30 MB 台）のでリポジトリの外に書き出す
@@ -30,6 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { BUNDLE_FORMAT, decodeBundle, decodeBundleBytes } from "../../../src/demo/impactBundle";
+import { mapBaselineDigest } from "../../../src/demo/impactDigest";
 import { gunzipSync as gunzipJs } from "../../../src/demo/inflate";
 import { fromDevTree } from "../../../src/deepmap/dev/fromTree";
 import type { DevTree } from "../../../src/deepmap/mapData";
@@ -393,6 +395,19 @@ export async function main(root: string, args: string[]): Promise<number> {
   }
   const ids = checkIds(map);
   add("I1 64 ビットの ID が重ならない", ids.fails, `ノード ${ids.nodes}・線 ${ids.edges}`);
+  // 基準の文書の指紋（作業メモ SPEC v1 §2.6・§6・見直し safety-4）: 軽い組み立ての文書の鍵・ID・線・タグ・期限から。版の記録に書く
+  let digest = "";
+  {
+    const t = performance.now();
+    let why: string[] = [];
+    try {
+      digest = mapBaselineDigest(map);
+      if (mapBaselineDigest(map) !== digest) why = ["BD 基準の文書の指紋が 2 回の組み立てで違います"];
+    } catch (e) {
+      why = [`BD 基準の文書を組み立てられません: ${(e as Error).message}`];
+    }
+    add("BD 基準の文書の指紋（軽い組み立ての文書の鍵・ID・親・線・やることの項目と元の番号・プロジェクト・シナリオ・タグ・期限）", why, `${digest || "なし"}（2 回で同じ・${((performance.now() - t) / 2).toFixed(0)} ms）`);
+  }
   // 大きさ
   const gz = gzipSync(r1.bytes, { level: 9 });
   const b64 = bytesToBase64(gz);
@@ -417,7 +432,7 @@ export async function main(root: string, args: string[]): Promise<number> {
   add("H1 版の記録（足すだけ・順番は増えるだけ）", checkReleaseHistory(history), `${path.relative(root, historyPath)}・最後の版 ${Math.max(...history.releases.map((r) => r.release))}`);
   let verdict: "append" | "same" | "refuse" | null = null;
   if (opts.release >= 1) {
-    const ap = checkReleaseAppend(history, { release: opts.release, hash: r1.hash });
+    const ap = checkReleaseAppend(history, { release: opts.release, hash: r1.hash, digest });
     verdict = ap.verdict;
     add(`H1 版 ${opts.release}・指紋 ${r1.hash} を記録に足せる`, ap.why, ap.verdict === "same" ? "同じ記録がもうある" : ap.verdict);
   }
@@ -455,7 +470,7 @@ export async function main(root: string, args: string[]): Promise<number> {
   if (opts.record) {
     const rp = path.resolve(opts.record);
     fs.mkdirSync(path.dirname(rp), { recursive: true });
-    fs.writeFileSync(rp, `${JSON.stringify({ release: opts.release, hash: r1.hash, anchor: map.header.anchor }, null, 2)}\n`);
+    fs.writeFileSync(rp, `${JSON.stringify({ release: opts.release, hash: r1.hash, digest, anchor: map.header.anchor }, null, 2)}\n`);
     console.log(`版の記録（提案）: ${rp}`);
   }
   if (opts.appendHistory && verdict === "append") {
@@ -465,6 +480,7 @@ export async function main(root: string, args: string[]): Promise<number> {
       scheme: "q1",
       anchor: map.header.anchor,
       build: { B: opts.params.B, tol: opts.params.tol, moves: stats.length, never: opts.never, runs: opts.runs, nodes: map.n },
+      digest,
     };
     fs.writeFileSync(historyPath, formatHistory({ ...history, releases: [...history.releases, rec] }));
     console.log(`版の記録に足しました: ${historyPath}（版 ${opts.release}）`);

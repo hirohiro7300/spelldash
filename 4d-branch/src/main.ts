@@ -1,4 +1,4 @@
-// 起動: 保存先を開く → 編集できるタブか確かめる → 読み込む（無ければデモ）→ 画面を組み立てる → （Artifact の中なら）アカウントと同期
+// 起動: 保存先を開く → 同梱の地図を読み込む → 編集できるタブか確かめる → 読み込む（無ければデモ）→ 画面を組み立てる → （Artifact の中なら）アカウントと同期
 // 保存してあったのがこのページより新しい版なら、読み込みの所で止める（画面・設定・同期を組み立てず、何も書かない）
 
 import "./styles/tokens.css";
@@ -6,6 +6,7 @@ import "./styles/app.css";
 import { App } from "./app/App";
 import { UiState } from "./app/uiState";
 import { buildDemoDoc } from "./demo/demo";
+import { loadImpactBundle } from "./demo/futureBundle";
 import { buildStressDoc } from "./demo/stress";
 import type { DocData } from "./model/types";
 import { Persistence } from "./persist/persistence";
@@ -36,6 +37,10 @@ async function boot(): Promise<void> {
   });
   const persistence = new Persistence({ mode: ephemeral ? "memory" : "auto" });
   await persistence.open();
+  // 同梱の地図（未来の道筋）を、保存してあった文書を読む前に 1 度だけ読み込む（画面・同期・地図の版の見分けは、
+  // 同期で読む口 futureVersion などを使う。済む前に呼ぶと止まる）。P2 からは、保存してあった文書に地図がある時か、
+  // 利用者が地図を開く時だけ読む（src/demo/futureBundle.ts）
+  await loadImpactBundle();
 
   let doc: DocData | null = null;
   let notices: string[] = [];

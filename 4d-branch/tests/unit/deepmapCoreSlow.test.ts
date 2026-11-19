@@ -1,6 +1,6 @@
 // 8 万枚の開発用の木での計算の芯の確かめ（遅いので DEEPMAP_SLOW=1 のときだけ。ふだんの npm test では飛ばす）
 //   DEEPMAP_SLOW=1 npx vitest run tests/unit/deepmapCoreSlow.test.ts --maxWorkers=2
-// 木の置き場は DEEPMAP_TREE（R1 の木）・DEEPMAP_QTREE（前提を直した木。あれば）で変えられる。.json.gz でもよい。
+// 木の置き場は DEEPMAP_TREE（R1 の木。無ければ R1 の木の確かめは飛ばす）・DEEPMAP_QTREE（前提を直した木。あれば）で変えられる。.json.gz でもよい。
 // 確かめること: 年収 360 の確かめの数（作業メモ dev/check-values.ts）・8 万枚の文書でアプリの計算（computeImpact）と同じ答え・
 // 時間の上限（組み直し ≤ 150 ms・逆にたどる + 前へ流す 1 回 ≤ 20 ms・今日の手ごとの見取り図の数を全部 ≤ 100 ms。3 回の一番速い物）
 
@@ -23,6 +23,17 @@ interface NodeFs {
 interface NodeZlib {
   gunzipSync(b: Uint8Array): Uint8Array;
 }
+
+/** 木のファイル（.json か .json.gz）があるか */
+async function treeExists(path: string): Promise<boolean> {
+  const fsName = "node:fs";
+  const fs = (await import(/* @vite-ignore */ fsName)) as NodeFs;
+  return fs.existsSync(path) || fs.existsSync(`${path}.gz`);
+}
+
+/** R1 の木（作業メモの試作の木。リポジトリには無く、CI でも作れない）があるか。無ければ R1 の木の確かめは飛ばす（前提を直した木の確かめは動く） */
+const HAS_R1 = SLOW && (await treeExists(TREE));
+if (SLOW && !HAS_R1) console.log(`R1 の木がありません: ${TREE}。R1 の木の確かめは飛ばします（DEEPMAP_TREE で場所を渡せる）`);
 
 /** 木を読む（.json か .json.gz。無ければ null） */
 async function loadTree(path: string): Promise<DevTree | null> {
@@ -69,7 +80,7 @@ function allViews(a: Analysis): number {
 
 const REF: Record<string, number> = { ad_permside: 21.97, sd_permpro: 16.12, fc_switch: 15.04, fc_scope: 10.15, sd_grow: 5.1, sd_pilot: 4.93, ad_portfolio: 4.06, part: -76.59, ind_quit: -218.62, keep: 0 };
 
-describe.runIf(SLOW)("計算の芯: 8 万枚の開発用の木（R1）", () => {
+describe.runIf(HAS_R1)("計算の芯: 8 万枚の開発用の木（R1）", () => {
   let tree: DevTree | null = null;
   let map: MapData;
   let cm: CompiledMap;

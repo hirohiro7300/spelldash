@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildImpactDoc } from "../../src/demo/impact";
-import { futureData } from "../../src/demo/futureBundle";
+import { r6Bundle } from "./helpers/r6";
 import { computeForecast } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
 import { computeImpact } from "../../src/model/impact";
@@ -198,7 +198,7 @@ describe("3 年の影響の言葉", () => {
   });
 
   it("同梱の地図: 今日の選択肢の 2 行目・内訳・目印が組み立てられる", () => {
-    const doc = buildImpactDoc(futureData(), new Date(2026, 10, 18), "t");
+    const doc = buildImpactDoc(r6Bundle(), new Date(2026, 10, 18), "t");
     const idx = buildIndex(doc);
     const res = computeImpact(doc, idx.out, computeForecast(doc, idx.out), null);
     const root = res.decision.get(res.root!)!;

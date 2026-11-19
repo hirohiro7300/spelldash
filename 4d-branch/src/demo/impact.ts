@@ -96,6 +96,11 @@ const SCENARIOS = [
   { id: "s_focus", name: "SpellDash集中", color: "#4FD1E8", description: "広告に頼らずオーガニックで伸ばし、SpellDash に時間を寄せる。" },
 ];
 
+/** 同梱の地図の仕事の 3 つの領域（プロジェクト）。3 か月ごとの地図の組み立て（./quarterDoc.ts）も同じ物を使う */
+export const IMPACT_AREAS: Readonly<typeof AREAS> = AREAS;
+/** 同梱の地図の方針（シナリオ）。手の種類のシナリオ（header.kinds の 4 つ目）はこの ID を指す */
+export const IMPACT_SCENARIOS: ReadonlyArray<Readonly<(typeof SCENARIOS)[number]>> = SCENARIOS;
+
 /** 文字列の指紋（FNV-1a の 36 進） */
 export function fnv36(s: string): string {
   let h = 0x811c9dc5;

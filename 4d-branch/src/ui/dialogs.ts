@@ -1,4 +1,4 @@
-// ダイアログ: バックアップと復元・インポート・ヘルプ・ようこそ・文章の編集
+// ダイアログ: バックアップと復元・インポート・ヘルプ・ようこそ・文章の編集（未来の道筋を読み込む前の確認は futureDialog.ts）
 
 import type { AppContext, LoadOpts } from "../app/context";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER } from "../model/constants";
@@ -6,8 +6,6 @@ import { DocFormatError } from "../model/schema";
 import type { DocData } from "../model/types";
 import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { buildWishlist } from "../demo/wishlistBundle";
-import { buildFuture } from "../demo/futureBundle";
-import { FUTURE_MIN_ZOOM, nearFutureRoot } from "../demo/futureSwap";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, isNewerBackup, type BackupMeta } from "../persist/persistence";
@@ -201,9 +199,9 @@ export async function openImportDialog(app: AppContext, file: File): Promise<voi
   });
 }
 
-type ImportMode = "merge" | "replace";
+export type ImportMode = "merge" | "replace";
 
-interface ImportPreviewOpts {
+export interface ImportPreviewOpts {
   title: string;
   subtitle?: string;
   icon: string;
@@ -226,8 +224,8 @@ interface ImportPreviewOpts {
 /** ラジオの組の名前を画面ごとに分ける（2 枚重なっても、互いの選択を外さない） */
 let importSeq = 0;
 
-/** 読み込む前の確認（件数・直したところ・追加か置き換えか） */
-function openImportPreview(app: AppContext, pv: ImportPreview, o: ImportPreviewOpts): void {
+/** 読み込む前の確認（件数・直したところ・追加か置き換えか）。未来の道筋の確認（futureDialog.ts）も使う */
+export function openImportPreview(app: AppContext, pv: ImportPreview, o: ImportPreviewOpts): void {
   const m = openModal({ title: o.title, subtitle: o.subtitle, width: 560, icon: o.icon, onClose: o.onClose });
   if (o.lead) m.body.append(o.lead);
   const group = `import-mode-${++importSeq}`;
@@ -317,63 +315,6 @@ export function openWishlistDialog(app: AppContext): void {
         const ids = pid ? added.filter((id) => doc.nodes[id]?.projectIds.includes(pid)) : [];
         return ids.length ? ids : added;
       },
-    },
-  });
-}
-
-/** 確かめの画面を開いている間は、もう 1 枚開かない */
-let futureOpen = false;
-
-/** 未来の道筋（仕事・3 年の分かれ道）を読み込む前の確認。組み立てに失敗したら、そう伝えて閉じる */
-export function openFutureDialog(app: AppContext): void {
-  if (futureOpen) return;
-  let built: ReturnType<typeof buildFuture>;
-  try {
-    built = buildFuture();
-  } catch {
-    const m = openModal({ title: "読み込めませんでした", width: 460, icon: "alert" });
-    m.body.append(h("p", { class: "modal-text" }, "未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください。"));
-    m.footer.append(h("button", { class: "btn btn-primary", type: "button", onClick: () => m.close() }, "閉じる"));
-    return;
-  }
-  const { pv, stats } = built;
-  const lead = h(
-    "div",
-    { class: "wish-lead" },
-    h("p", { class: "modal-text" }, "SpellDash・FC マーケティング・独立の 3 つの仕事で、今日から 3 年先までの選択肢と、その手で 3 年の稼ぎがどれだけ変わるかを計算した地図です。", h("b", null, `判断 ${stats.decisions} か所・選択肢 ${stats.options}`), "から、", h("b", null, `${stats.ends.toLocaleString("ja-JP")} の 3 年後`), "に分かれます。"),
-    h(
-      "ul",
-      { class: "wish-howto" },
-      h("li", null, h("b", null, "今日"), "の 10 の手から始まり、3 か月後・1 年後にまた選び直します。どの道も 3 年後の行き先まで書いてあります。"),
-      h("li", null, h("b", null, "選択肢のカード"), "の色付きの数は、その手で 3 年の稼ぎが「今のまま」よりどれだけ変わるか（青 = 増える・赤 = 減る）。"),
-      h("li", null, h("b", null, "結果"), "には見込み % と判断の線（測れる条件）が付いています。% を直すと、すぐに計算し直します。"),
-      h("li", null, h("b", null, "右の概要"), "に「今決めること」の順位と 3 年後の分布が出ます。年収を入れると本業の数が合います。"),
-    ),
-  );
-  futureOpen = true;
-  openImportPreview(app, pv, {
-    onClose: () => (futureOpen = false),
-    title: "未来の道筋を読み込む",
-    subtitle: `今日から 3 年後まで、${stats.ends.toLocaleString("ja-JP")} の行き先に分かれる道`,
-    icon: "split",
-    lead,
-    stats: [
-      ["判断", stats.decisions],
-      ["選択肢", stats.options],
-      ["分かれ道", stats.forks],
-      ["3 年後の行き先", stats.ends],
-    ],
-    mode: "merge",
-    mergeDesc: "今のデータはそのまま。未来の道筋を右側に足します。SpellDash事業など同じ名前のプロジェクトとシナリオはまとめます。",
-    replaceDesc: "今のデータを未来の道筋だけに入れ替えます。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。",
-    label: { merge: "未来の道筋を追加", replace: "未来の道筋に入れ替え" },
-    selectAdded: false,
-    after: {
-      replaceDone: "未来の道筋に入れ替えました。右の概要に今決めることと 3 年後の分布が出ます",
-      mergeDone: "未来の道筋: ",
-      // 全体は横に長すぎて読めないので、今日から数歩先までに寄る（カードの文字が読める大きさで始める。狭い画面では今日から）
-      fitTo: (doc, added) => nearFutureRoot(doc, added),
-      fitMinZoom: FUTURE_MIN_ZOOM,
     },
   });
 }

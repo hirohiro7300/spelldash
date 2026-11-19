@@ -46,7 +46,10 @@ npm run dev
 | `npm run e2e` | ブラウザでの通しのテスト（Playwright。先に `npm run build`） |
 | `npm run build:artifact` | claude.ai の Artifact 用の 1 枚のページ（`artifact/4d-branch.html`） |
 | `npm run e2e:artifact` | Artifact 版の通しのテスト（偽の `window.claude` で同期・書き出し・スマホの幅） |
+| `npm run e2e:impact` | 右のパネルの「3 年の影響」の通しのテスト（概要・選んだ手・順位・全部ひらく・スマホの引き出し。先に `npm run build`） |
 | `npm run check` | 上の全部 |
+| `npm run test:slow` | 遅いテスト（8 万枚の木。`IMPACT_Q_FULL` に生成の書き出しの場所を渡す。作り方は `scripts/test-slow.mjs` の先頭） |
+| `npm run test:tz` | 3 か月ごとの地図の組み立て（`src/demo/quarterDoc.ts`）と基準の文書の指紋を、時差の違う 2 つのプロセス（America/Los_Angeles・Asia/Tokyo）で確かめる（小さい木の指紋は決まった値） |
 
 E2E は `vite preview` を自分で立ち上げます。ブラウザが無ければ `npx playwright-core install chromium` で入れてください。
 
@@ -133,7 +136,7 @@ claude.ai の Artifact として公開しています。Artifact の中では次
 git subtree split --prefix=4d-branch -b 4d-branch-only
 ```
 
-CI は `.github/workflows/4d-branch.yml`（`4d-branch/` を変えたときだけ動く）。切り出すときは `4d-branch/.github/workflows/` へ移し、`working-directory` を外してください。
+CI は `.github/workflows/4d-branch.yml`（`4d-branch/` を変えたときだけ動く）。仕事は 型・単体テスト・ビルド／E2E／Artifact 版の E2E／3 年の影響の E2E／試し版の E2E／遅いテスト に分かれて並んで走り、試し版と遅いテストは、3 か月ごとの地図の木を生成の点検ごと作ってから動きます。切り出すときは `4d-branch/.github/workflows/` へ移し、`working-directory` を外してください。
 
 ## 今後の拡張（今回は作っていない）
 

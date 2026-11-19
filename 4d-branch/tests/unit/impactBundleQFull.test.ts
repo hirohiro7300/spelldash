@@ -66,8 +66,10 @@ describe.skipIf(!DIR)("8 万枚の木の同梱データ（IMPACT_Q_FULL があ�
       expect(checkSizes({ raw: stream.length, gzip: gz.length, base64: b64.length })).toEqual([]);
       const fs = await nodeFs();
       if (fs.existsSync(`${DIR}/impact-release.json`)) {
-        const rec = JSON.parse(new TextDecoder().decode(fs.readFileSync(`${DIR}/impact-release.json`))) as { release: number; hash: string; anchor: string };
-        expect(rec).toEqual({ release: map.header.release, hash: map.header.hash, anchor: map.header.anchor });
+        // 版の記録（基準の文書の指紋 digest は、指紋を書くようになった生成の記録だけにある。あれば同じ組み立ての指紋: quarterDocFull.test.ts）
+        const rec = JSON.parse(new TextDecoder().decode(fs.readFileSync(`${DIR}/impact-release.json`))) as { release: number; hash: string; anchor: string; digest?: string };
+        const { digest: _digest, ...rest } = rec;
+        expect(rest).toEqual({ release: map.header.release, hash: map.header.hash, anchor: map.header.anchor });
       }
     },
     SLOW,

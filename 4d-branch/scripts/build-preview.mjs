@@ -12,6 +12,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
+import { assertPageSize } from "./pageSize.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCRATCH = "/tmp/claude-0/-home-user-spelldash/342dd9ca-ed44-551f-af59-60da8aff2834/scratchpad/deepmap";
@@ -124,14 +125,14 @@ if (!head.includes(`<title>${TITLE}</title>`)) throw new Error("題名が先頭 
 const outside = page.replace(jsText, "").replace(cssText, "").replace(b64, "");
 if (/<!doctype|<html|<head|<body/i.test(outside)) throw new Error("骨組みのタグが入っている");
 if (/<link\b|\ssrc=["']?https?:|<iframe|<object|<embed/i.test(outside)) throw new Error("外のものを読むタグが入っている");
-if (page.length > 15 * 1024 * 1024) throw new Error(`ページが大きすぎる（${(page.length / 1048576).toFixed(1)} MB）`);
+const bytes = assertPageSize(page, path.basename(OUT));
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, page);
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
 console.log(
   [
-    `${OUT} を作りました（${(page.length / 1048576).toFixed(2)} MB: 地図 ${kb(b64.length)}・JS ${kb(jsText.length)}・CSS ${kb(cssText.length)}・${((Date.now() - t0) / 1000).toFixed(1)} 秒）`,
+    `${OUT} を作りました（${(bytes / 1048576).toFixed(2)} MB: 地図 ${kb(b64.length)}・JS ${kb(jsText.length)}・CSS ${kb(cssText.length)}・${((Date.now() - t0) / 1000).toFixed(1)} 秒）`,
     `  木: ${TREE}（カード ${nodes.toLocaleString("en-US")} 枚・0 か月目 ${header.anchor}・版の順番 ${header.release}・q のある手 ${withQ.toLocaleString("en-US")}）`,
   ].join("\n"),
 );

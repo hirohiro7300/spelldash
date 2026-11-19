@@ -3,7 +3,7 @@ import { Commands } from "../../src/app/commands";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
 import { buildDemoDoc } from "../../src/demo/demo";
-import { buildFuture, futureData, futureRelease, futureVersion } from "../../src/demo/futureBundle";
+import { buildFuture, futureRelease, futureVersion } from "../../src/demo/futureBundle";
 import { futureAge, futureMaps, hasEditPrints, hasStaleFuture, inPlaceRoot, newerFutureMaps, staleFutureMaps, swapFutureDoc } from "../../src/demo/futureSwap";
 import { buildImpactDoc, edgeTextPrint, fnv36, impactDataVersion, impactTagsOf, nextImpactRelease, type ImpactBundle, type ImpactOutX } from "../../src/demo/impact";
 import raw from "../../src/demo/impact-data.json?raw";
@@ -13,9 +13,12 @@ import { createEmptyDoc, makeEdge, makeNode, normalizeDoc } from "../../src/mode
 import type { DocData, GEdge, GNode, ID } from "../../src/model/types";
 import { mergeDocs } from "../../src/persist/io";
 import { Store } from "../../src/store/store";
+import { R6_RELEASE, buildR6Future, r6Bundle } from "./helpers/r6";
 
 const TODAY = new Date(2026, 10, 18);
-const data = futureData();
+// 版 6 の地図（凍結した写し tests/fixtures/impact-r6.json）と、それを少し変えた次の版で確かめる（新しい版にする仕組みは、
+// 版 6 のような鍵の地図のまま残る。今の同梱データが 3 か月ごとの地図に替わっても、ここは版 6 のまま）。版の順番の確かめだけは今の同梱データ
+const data = r6Bundle();
 
 /** 同梱データを少し変えた次の版（edit で変える） */
 function nextBundle(edit: (b: ImpactBundle) => void): ImpactBundle {
@@ -83,13 +86,13 @@ const next = nextBundle((b) => {
 });
 // 次の版の地図と、手を入れた今の地図は一度だけ作って使い回す（swapFutureDoc は渡した文書を変えない。並べて走る計算の速さのテストを邪魔しない）
 let nextMemo: DocData | null = null;
-const nextDoc = (): DocData => (nextMemo ??= mapOf(next, "next-version", futureRelease() + 1));
+const nextDoc = (): DocData => (nextMemo ??= mapOf(next, "next-version", R6_RELEASE.release + 1));
 let editedMemo: ReturnType<typeof buildEdited> | null = null;
 const edited = (): ReturnType<typeof buildEdited> => (editedMemo ??= buildEdited());
 
 /** 今の版の地図に、利用者が手を入れた物（どれも新しい版にしても残るはずの物） */
 function buildEdited() {
-  const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+  const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
   const d = () => store.doc;
   const root = rootOf(d());
   // 自分で足した手（今日の下）とその先、外のメモからの「相乗効果」の線
@@ -181,7 +184,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     const root = d.nodes[u.root]!;
     expect(annualOf(root)).toBe(540);
     expect(root.meta.futureVersion).toBe("next-version");
-    expect(root.meta.futureRelease).toBe(futureRelease() + 1);
+    expect(root.meta.futureRelease).toBe(R6_RELEASE.release + 1);
     expect(Object.values(d.nodes).filter((n) => n.meta.forecastRoot === true).length).toBe(1);
 
     // 書き換えたタイトル・本文・タグは残り、指紋は新しい版の物（次の版でも書き換えたと分かる）
@@ -208,7 +211,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     expect(res.updated).toBeGreaterThanOrEqual(3);
     expect(res.kept).toBeGreaterThanOrEqual(6);
     // 同じ版を当て直しても何も変わらない（書き換えた所も残ったまま）
-    const again = swapFutureDoc(d, mapOf(next, "next-version", futureRelease() + 1));
+    const again = swapFutureDoc(d, mapOf(next, "next-version", R6_RELEASE.release + 1));
     expect([again.updated, again.added, again.removed]).toEqual([0, 0, 0]);
     expect(byKey(again.doc, "r.sd_grow")!.title).toBe("遊ぶ人を増やす（自分の言葉）");
     expect(edgeBetween(again.doc, "r.fc_switch", "r.fc_switch.high")!.meta.prob).toBe(77);
@@ -221,7 +224,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
       (at(b, "r.fc_switch.high").n[7] as ImpactOutX).p = 20;
       (at(b, "r.fc_switch.none").n[7] as ImpactOutX).p = 62;
     });
-    const d = swapFutureDoc(first, mapOf(third, "third", futureRelease() + 2)).doc;
+    const d = swapFutureDoc(first, mapOf(third, "third", R6_RELEASE.release + 2)).doc;
     expect(byKey(d, "r.sd_grow")!.title).toBe("遊ぶ人を増やす（自分の言葉）");
     expect(edgeBetween(d, "r.fc_switch", "r.fc_switch.high")!.meta.prob).toBe(77);
     expect(edgeBetween(d, "r.fc_switch", "r.fc_switch.none")!.meta.prob).toBe(62);
@@ -229,7 +232,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
 
   it("地図のカードから自分のノードへつないでも、新しい版にしたときにそのノードと先のノードは消えない", () => {
     const demo = buildDemoDoc();
-    const merged = mergeDocs(demo, buildFuture(TODAY).pv.doc).doc;
+    const merged = mergeDocs(demo, buildR6Future(TODAY).pv.doc).doc;
     const { store, cmd } = setup(merged);
     const target = Object.values(store.doc.nodes).find((n) => n.title.startsWith("広告運用を学ぶ"))!;
     // 3 年後の行き先・選択肢・結果のカードから、それぞれ自分のノードへ（つなぐと「進む」「条件付き」になる）
@@ -263,7 +266,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
       const { p0: _p, c0: _c, ...meta } = e.meta;
       legacy.edges[id] = { ...e, meta };
     }
-    expect(staleFutureMaps(legacy, futureVersion(), futureRelease()).length).toBe(1);
+    expect(staleFutureMaps(legacy, R6_RELEASE.version, R6_RELEASE.release).length).toBe(1);
     const res = swapFutureDoc(legacy, nextDoc());
     const d = res.doc;
     expect(res.inPlace).toBe(true);
@@ -282,8 +285,8 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
 
   it("入口が 2 つ（別の地図を足した）: 数字と概要を出す入口の年収を引き継ぎ、もう 1 つの地図は消す", () => {
     for (const first of ["a", "b"] as const) {
-      const a = buildFuture(TODAY).pv.doc;
-      const b = buildFuture(TODAY).pv.doc;
+      const a = buildR6Future(TODAY).pv.doc;
+      const b = buildR6Future(TODAY).pv.doc;
       const ra = rootOf(a);
       const rb = rootOf(b);
       a.nodes[ra.id] = { ...ra, createdAt: first === "a" ? "2026-01-01T00:00:00.000Z" : "2026-03-01T00:00:00.000Z", meta: { ...ra.meta, impact: { ...(ra.meta.impact as object), annual: 540 } } };
@@ -302,7 +305,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
   });
 
   it("今日を複製したカードは入口にならない（印を外した自分のカード）。新しい版にしても自分のカードとして残り、年収は入口の物", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const root = rootOf(store.doc);
     cmd.updateNode(root.id, { meta: { ...root.meta, impact: { ...(root.meta.impact as object), annual: 540 } } });
     const [dup] = cmd.duplicate([root.id]);
@@ -325,26 +328,26 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     const third = nextBundle((b) => {
       b.fams = { ...b.fams!, side: "広告運用の副業（次の版）" };
     });
-    const res = swapFutureDoc(old, mapOf(third, "third", futureRelease() + 2));
+    const res = swapFutureDoc(old, mapOf(third, "third", R6_RELEASE.release + 2));
     const root = res.doc.nodes[u.root]!;
     expect(res.inPlace).toBe(true);
     expect(root.meta.fams).toEqual(third.fams);
     expect(annualOf(root)).toBe(540);
     // 名前のある地図も、新しい版の名前に（入口は更新したカードに数える）
-    const again = swapFutureDoc(res.doc, mapOf(next, "next-version", futureRelease() + 3));
+    const again = swapFutureDoc(res.doc, mapOf(next, "next-version", R6_RELEASE.release + 3));
     expect(again.doc.nodes[u.root]!.meta.fams).toEqual(next.fams);
     expect((again.doc.nodes[u.root]!.meta.fams as Record<string, string>).side).not.toBe(third.fams!.side);
     // 入れ替え（v1 の地図）でも、新しい版の入口の名前
     const v1 = createEmptyDoc();
     v1.nodes.n_f_S0 = makeNode({ id: "n_f_S0", title: "今日", x: 0, y: 0, meta: { forecastRoot: true, futureVersion: "v1" } });
-    const swapped = swapFutureDoc(v1, mapOf(third, "third", futureRelease() + 2));
+    const swapped = swapFutureDoc(v1, mapOf(third, "third", R6_RELEASE.release + 2));
     expect(swapped.inPlace).toBe(false);
     expect(swapped.doc.nodes[swapped.root!]!.meta.fams).toEqual(third.fams);
   });
 
   it("同じ版を当てても何も変わらない（ID も文章も見込みも）", () => {
     const u = edited();
-    const res = swapFutureDoc(u.doc, buildFuture(TODAY).pv.doc);
+    const res = swapFutureDoc(u.doc, buildR6Future(TODAY).pv.doc);
     expect([res.inPlace, res.updated, res.added, res.removed]).toEqual([true, 0, 0, 0]);
     expect(Object.keys(res.doc.nodes).sort()).toEqual(Object.keys(u.doc.nodes).sort());
     expect(Object.keys(res.doc.edges).sort()).toEqual(Object.keys(u.doc.edges).sort());
@@ -369,20 +372,20 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
   });
 
   it("線の指紋と元の見込みは、同梱の線にだけ付く（自分で引いた線には付かない）", () => {
-    const doc = buildFuture(TODAY).pv.doc;
+    const doc = buildR6Future(TODAY).pv.doc;
     for (const e of Object.values(doc.edges)) {
       expect(e.meta.c0).toBe(edgeTextPrint(e.label, e.condition));
       if (e.relation === "condition") expect(e.meta.p0).toBe(e.meta.prob);
       else expect(e.meta.p0).toBeUndefined();
     }
     for (const n of Object.values(doc.nodes)) expect([n.meta.t0, n.meta.b0]).toEqual([fnv36(n.title), fnv36(n.body)]);
-    expect(rootOf(doc).meta.futureRelease).toBe(futureRelease());
+    expect(rootOf(doc).meta.futureRelease).toBe(R6_RELEASE.release);
     const fresh = makeEdge({ source: "a", target: "b" });
     expect(fresh.meta.c0).toBeUndefined();
   });
 
   it("自分で引いたカードどうしの線（指紋の無い線）は、新しい版にしても残る", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const a = byKey(store.doc, "r.fc_switch.none")!;
     const b = byKey(store.doc, "r.sd_grow")!;
     const [own] = cmd.connect([a.id], b.id);
@@ -392,7 +395,7 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
 
   it("同じ鍵のカードが 2 つ（複製を今日の下につないだ）: 先に作った方を同梱のカードとして新しくし、複製は利用者のノードのまま残す", () => {
     // 地図を作った時刻を前にずらす（複製は押した時刻で作られ、必ず後になる）
-    const base = buildFuture(TODAY).pv.doc;
+    const base = buildR6Future(TODAY).pv.doc;
     for (const [id, n] of Object.entries(base.nodes)) base.nodes[id] = { ...n, createdAt: "2026-01-01T00:00:00.000Z" };
     const { store, cmd } = setup(base);
     const root = rootOf(store.doc);
@@ -466,7 +469,7 @@ function oldAppUpgrade(doc: DocData, fresh: DocData, at: string): DocData {
 
 describe("地図から外れたカード・同じ鍵のノードも新しい版にする（新しい版にした後、同じ鍵は 1 つだけ）", () => {
   it("道の線を相乗効果に変えて地図から外れたカード: 足し直さずに、もとのカード（ID・決めたこと・書き換え）を新しい版にし、線は道の線に戻す（2 枚の間は 1 本）", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const opt = byKey(store.doc, "r.sd_pilot")!;
     const yes = byKey(store.doc, "r.sd_pilot.yes")!;
     const e = edgeBetween(store.doc, "r.sd_pilot", "r.sd_pilot.yes")!;
@@ -490,12 +493,12 @@ describe("地図から外れたカード・同じ鍵のノードも新しい版�
     expect(between.map((x) => [x.id, x.relation])).toEqual([[e.id, "condition"]]);
     expect(inMap(d, yes.id) && inMap(d, kid)).toBe(true);
     // 同じ版を当て直しても変わらない
-    const again = swapFutureDoc(d, mapOf(next, "next-version", futureRelease() + 1));
+    const again = swapFutureDoc(d, mapOf(next, "next-version", R6_RELEASE.release + 1));
     expect([again.updated, again.added, again.removed]).toEqual([0, 0, 0]);
   });
 
   it("前の版のアプリで選択肢だけを消した（その先は地図から外れたまま）: その先のカードは足し直さずに新しい版にし、消した選択肢は足し直してつなぐ", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const opt = byKey(store.doc, "r.sd_pilot")!;
     const kids = Object.values(store.doc.edges).filter((x) => x.source === opt.id).map((x) => x.target);
     expect(kids.length).toBeGreaterThan(1);
@@ -521,7 +524,7 @@ describe("地図から外れたカード・同じ鍵のノードも新しい版�
   });
 
   it("同梱の線を消して同じ向きに相乗効果の線を引き直した 2 枚: 自分の線を残し、同梱の線は足さない（同じ向きの線は 1 本）。外れたままのカードは足し直さず、位置も動かさない", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const e = edgeBetween(store.doc, "r.sd_pilot", "r.sd_pilot.no")!;
     cmd.deleteNodes([], [e.id]);
     const [own] = cmd.connect([e.source], e.target, "supports");
@@ -535,9 +538,9 @@ describe("地図から外れたカード・同じ鍵のノードも新しい版�
   });
 
   it("同じ鍵のノードが 2 つ（別の地図を足して、そのカードへ自分でつないだ）: 先に作った方だけをカードにし、もう 1 つは鍵を外した自分のノードとして残す", () => {
-    const a = buildFuture(TODAY).pv.doc;
+    const a = buildR6Future(TODAY).pv.doc;
     for (const [id, n] of Object.entries(a.nodes)) a.nodes[id] = { ...n, createdAt: "2026-01-01T00:00:00.000Z" };
-    const { store, cmd } = setup(mergeDocs(a, buildFuture(TODAY).pv.doc).doc);
+    const { store, cmd } = setup(mergeDocs(a, buildR6Future(TODAY).pv.doc).doc);
     const p = primaryImpactRoot(store.doc)!;
     const other = futureMaps(store.doc).find((m) => m.root !== p)!;
     const from = Object.values(store.doc.nodes).find((n) => n.meta.key === "r.fc_switch" && !other.nodes.has(n.id))!;
@@ -566,14 +569,14 @@ describe("地図から外れたカード・同じ鍵のノードも新しい版�
     ["前の版のアプリで選択肢だけを消した", "option"],
   ] as const)("前の版のアプリで新しい版にした地図（%s → 外れたカードと、足し直してつないだカードで同じ鍵が 2 つ）: つないだ方をカードにし、外れた方は鍵を外して外れたまま残す（同じカードを地図に 2 度出さない）", (_, cut) => {
     const T0 = "2026-11-01T00:00:00.000Z";
-    const first = buildFuture(TODAY).pv.doc;
+    const first = buildR6Future(TODAY).pv.doc;
     for (const [id, n] of Object.entries(first.nodes)) first.nodes[id] = { ...n, createdAt: T0 };
     const { store, cmd } = setup(first);
     const yes0 = byKey(store.doc, "r.sd_pilot.yes")!;
     if (cut === "edge") cutEdge(store, cmd);
     else cutOption(store);
     expect(inMap(store.doc, yes0.id)).toBe(false);
-    const old = oldAppUpgrade(store.doc, buildFuture(TODAY).pv.doc, "2026-12-01T00:00:00.000Z");
+    const old = oldAppUpgrade(store.doc, buildR6Future(TODAY).pv.doc, "2026-12-01T00:00:00.000Z");
     const copy = Object.values(old.nodes).find((n) => n.meta.key === "r.sd_pilot.yes" && n.id !== yes0.id)!;
     expect(inMap(old, copy.id)).toBe(true);
     expect(dupKeys(old).length).toBeGreaterThan(10);
@@ -588,14 +591,14 @@ describe("地図から外れたカード・同じ鍵のノードも新しい版�
     expect(mapSize(d)).toBe(mapSize(nextDoc()));
     expect(res.userKept).toBe(0);
     // 同じ版を当て直しても変わらない
-    const again = swapFutureDoc(d, mapOf(next, "next-version", futureRelease() + 1));
+    const again = swapFutureDoc(d, mapOf(next, "next-version", R6_RELEASE.release + 1));
     expect([again.updated, again.added, again.removed, again.userKept]).toEqual([0, 0, 0, 0]);
   });
 });
 
 describe("タグを新しい版にする", () => {
   it("月が変わった版では、前の版で付いた役割のタグ（3か月後）を外して新しい版のタグにし、自分で付けたタグは残す（新しい版のほかのカードで使うタグでも）", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const states = Object.values(store.doc.nodes).filter((n) => n.tags.includes("3か月後"));
     expect(states.length).toBeGreaterThan(5);
     const card = states[0]!;
@@ -604,7 +607,7 @@ describe("タグを新しい版にする", () => {
     const nb = nextBundle((b) => {
       for (const n of b.nodes) if (n[2] === "s" && n[3] === 3) n[3] = 4;
     });
-    const fresh = mapOf(nb, "tags-next", futureRelease() + 1);
+    const fresh = mapOf(nb, "tags-next", R6_RELEASE.release + 1);
     const res = swapFutureDoc(store.doc, fresh);
     const d = res.doc;
     expect(Object.values(d.nodes).filter((n) => n.tags.includes("3か月後")).length).toBe(0);
@@ -613,13 +616,13 @@ describe("タグを新しい版にする", () => {
     for (const n of Object.values(d.nodes)) if (n.id !== card.id) expect(n.tags, n.title).toEqual(fresh.nodes[n.id]!.tags);
     expect(res.updated).toBeGreaterThanOrEqual(states.length);
     // 同じ版を当て直しても変わらない
-    const again = swapFutureDoc(d, mapOf(nb, "tags-next", futureRelease() + 1));
+    const again = swapFutureDoc(d, mapOf(nb, "tags-next", R6_RELEASE.release + 1));
     expect(again.updated).toBe(0);
     expect(again.doc.nodes[card.id]!.tags).toEqual(d.nodes[card.id]!.tags);
   });
 
   it("カードの役割と月から、同梱データで付くタグが分かる（地図を作るときと同じ）", () => {
-    const doc = buildFuture(TODAY).pv.doc;
+    const doc = buildR6Future(TODAY).pv.doc;
     for (const n of Object.values(doc.nodes)) expect(impactTagsOf(n.meta), n.title).toEqual(n.tags);
     expect(impactTagsOf({ fork: "decision" })).toEqual(["未来の道筋", "3年"]);
   });
@@ -647,7 +650,7 @@ describe("やること（チェックリスト）を新しい版にする", () =
   };
 
   it("同梱のカードには、やることの項目ごとの指紋（k0）が付く", () => {
-    const doc = buildFuture(TODAY).pv.doc;
+    const doc = buildR6Future(TODAY).pv.doc;
     let withTodo = 0;
     for (const n of Object.values(doc.nodes)) {
       if (n.conditions.length) {
@@ -661,7 +664,7 @@ describe("やること（チェックリスト）を新しい版にする", () =
   });
 
   it("足した・書き換えた項目はチェックごと残り、消した項目は戻らない。新しい版で足された・書き換えられた項目は入る", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const card = () => byKey(store.doc, CARD)!;
     const [t0, t1, t2, t3, t4] = card().conditions.map((c) => c.text) as [string, string, string, string, string];
     cmd.updateCondition(card().id, card().conditions[0]!.id, { met: true });
@@ -677,7 +680,7 @@ describe("やること（チェックリスト）を新しい版にする", () =
     const nb = nextBundle((b) => {
       todoOf(b).todo = [t0, t1, t2, t3, `${t4}（次の版）`, "次の版で足したやること"];
     });
-    const res = swapFutureDoc(store.doc, mapOf(nb, "todo-next", futureRelease() + 1));
+    const res = swapFutureDoc(store.doc, mapOf(nb, "todo-next", R6_RELEASE.release + 1));
     const after = items(res.doc);
     expect(after.map((c) => [c.text, c.met])).toEqual([
       [t0, true],
@@ -696,13 +699,13 @@ describe("やること（チェックリスト）を新しい版にする", () =
     expect(byKey(res.doc, CARD)!.meta.k0).toEqual(todoOf(nb).todo.map((t) => fnv36(t)));
     expect(res.kept).toBeGreaterThan(0);
     // 同じ版を当て直しても変わらない
-    const again = swapFutureDoc(res.doc, mapOf(nb, "todo-next", futureRelease() + 1));
+    const again = swapFutureDoc(res.doc, mapOf(nb, "todo-next", R6_RELEASE.release + 1));
     expect(items(again.doc)).toEqual(after);
     expect(again.updated).toBe(0);
   });
 
   it("このカードを変えない版では、足した・書き換えた項目のあるカードを更新と数えず、項目も順番もそのまま", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const card = () => byKey(store.doc, CARD)!;
     cmd.addCondition(card().id, "自分で足したやること");
     const second = card().conditions[1]!;
@@ -711,13 +714,13 @@ describe("やること（チェックリスト）を新しい版にする", () =
     const nb = nextBundle((b) => {
       at(b, "r.keep").n[4] = "今のままにする（次の版）";
     });
-    const res = swapFutureDoc(store.doc, mapOf(nb, "todo-same", futureRelease() + 1));
+    const res = swapFutureDoc(store.doc, mapOf(nb, "todo-same", R6_RELEASE.release + 1));
     expect(items(res.doc)).toEqual(before);
     expect(res.updated).toBe(1);
   });
 
   it("やることを全部消したカードは、新しい版でも消したまま（新しい版で足された項目だけが入る）", () => {
-    const { store, cmd } = setup(buildFuture(TODAY).pv.doc);
+    const { store, cmd } = setup(buildR6Future(TODAY).pv.doc);
     const card = () => byKey(store.doc, CARD)!;
     const t = card().conditions.map((c) => c.text);
     for (const c of card().conditions) cmd.removeCondition(card().id, c.id);
@@ -726,14 +729,14 @@ describe("やること（チェックリスト）を新しい版にする", () =
     const nb = nextBundle((b) => {
       todoOf(b).todo = [...t, "次の版で足したやること"];
     });
-    expect(items(swapFutureDoc(store.doc, mapOf(nb, "todo-add", futureRelease() + 1)).doc).map((c) => c.text)).toEqual(["次の版で足したやること"]);
+    expect(items(swapFutureDoc(store.doc, mapOf(nb, "todo-add", R6_RELEASE.release + 1)).doc).map((c) => c.text)).toEqual(["次の版で足したやること"]);
   });
 
   it("項目の ID は、新しい版で項目が減った・並びが変わっても重ならない（新しい項目だけを消す・チェックできる）", () => {
     for (const legacy of [false, true]) {
       // 1) 2 つ目を消して最後に 1 つ足した版。利用者は最後の項目にチェック
       {
-        const { store, cmd } = setup(legacy ? withoutPrints(buildFuture(TODAY).pv.doc) : buildFuture(TODAY).pv.doc);
+        const { store, cmd } = setup(legacy ? withoutPrints(buildR6Future(TODAY).pv.doc) : buildR6Future(TODAY).pv.doc);
         const card = () => byKey(store.doc, CARD)!;
         const t = card().conditions.map((c) => c.text);
         const ticked = card().conditions[4]!;
@@ -741,7 +744,7 @@ describe("やること（チェックリスト）を新しい版にする", () =
         const nb = nextBundle((b) => {
           todoOf(b).todo = [t[0]!, t[2]!, t[3]!, t[4]!, "次の版で足したやること"];
         });
-        const res = swapFutureDoc(store.doc, mapOf(nb, "drop-append", futureRelease() + 1));
+        const res = swapFutureDoc(store.doc, mapOf(nb, "drop-append", R6_RELEASE.release + 1));
         uniqueIds(res.doc);
         const s2 = setup(res.doc);
         const c2 = byKey(s2.store.doc, CARD)!;
@@ -756,14 +759,14 @@ describe("やること（チェックリスト）を新しい版にする", () =
       }
       // 2) 2 つ目を先頭に移し、その後ろに 1 つ足した版。利用者は 2 つ目にチェック
       {
-        const { store, cmd } = setup(legacy ? withoutPrints(buildFuture(TODAY).pv.doc) : buildFuture(TODAY).pv.doc);
+        const { store, cmd } = setup(legacy ? withoutPrints(buildR6Future(TODAY).pv.doc) : buildR6Future(TODAY).pv.doc);
         const card = () => byKey(store.doc, CARD)!;
         const t = card().conditions.map((c) => c.text);
         cmd.updateCondition(card().id, card().conditions[1]!.id, { met: true });
         const nb = nextBundle((b) => {
           todoOf(b).todo = [t[1]!, "次の版で増えたやること", t[2]!, t[3]!, t[4]!];
         });
-        const res = swapFutureDoc(store.doc, mapOf(nb, "move-insert", futureRelease() + 1));
+        const res = swapFutureDoc(store.doc, mapOf(nb, "move-insert", R6_RELEASE.release + 1));
         uniqueIds(res.doc);
         const s2 = setup(res.doc);
         const c2 = byKey(s2.store.doc, CARD)!;
@@ -780,7 +783,7 @@ describe("やること（チェックリスト）を新しい版にする", () =
   });
 
   it("指紋の無い地図（前の版のアプリで読み込んだ物）: やることは新しい版の項目になり、同じ文の項目のチェックだけが残る", () => {
-    const { store, cmd } = setup(withoutPrints(buildFuture(TODAY).pv.doc));
+    const { store, cmd } = setup(withoutPrints(buildR6Future(TODAY).pv.doc));
     const card = () => byKey(store.doc, CARD)!;
     const t = card().conditions.map((c) => c.text);
     cmd.updateCondition(card().id, card().conditions[0]!.id, { met: true });
