@@ -36,9 +36,26 @@ export class NewerDocError extends DocFormatError {
   }
 }
 
-/** 版の印（ドキュメント・版の記録・バックアップの見出しの docVersion）が、このページより新しいか */
+/**
+ * このページが読める一番新しい保存の版。ふだんは SCHEMA_VERSION（版 2 の薄い形は新しい版のデータとして止まる: 今までと同じ）。
+ * 薄い形を読めるページ（ページに 3 か月ごとの地図を持つビルド）だけ、保存の口（src/persist/codec.ts の enableThinPage・setThinBaseline）が
+ * THIN_VERSION に上げる。版の記録・バックアップの見出し・マニフェストの docVersion の「新しい版か」は、この値で決める
+ */
+let readable: number = SCHEMA_VERSION;
+
+/** 読める一番新しい保存の版を決める（保存の口だけが呼ぶ。SCHEMA_VERSION より下げない） */
+export function setReadableVersion(v: number): void {
+  readable = Math.max(SCHEMA_VERSION, Math.floor(v));
+}
+
+/** このページが読める一番新しい保存の版 */
+export function readableVersion(): number {
+  return readable;
+}
+
+/** 版の印（ドキュメント・版の記録・バックアップの見出しの docVersion）が、このページより新しいか（このページが読める版より上か） */
 export function isNewerVersion(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v) && Math.floor(v) > SCHEMA_VERSION;
+  return typeof v === "number" && Number.isFinite(v) && Math.floor(v) > readable;
 }
 
 /**

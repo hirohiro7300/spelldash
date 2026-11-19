@@ -235,20 +235,35 @@ function contentSignature(doc: DocData): string {
 }
 
 let demoSignature: string | null = null;
+/** デモのノード・接続の数（指紋を作る前に数だけで見分ける） */
+let demoCounts: { nodes: number; edges: number } | null = null;
+
+/** 辞書の項目の数が n か（n より多ければ数え終わる前にやめる。7 万件の地図でも軽い） */
+function sizeIs(o: object, n: number): boolean {
+  let k = 0;
+  for (const _ in o) if (++k > n) return false;
+  return k === n;
+}
 
 /**
  * 捨ててよい中身か: 初回のデモに何も足していない（動かした・畳んだだけ）か、まっさらな空
  * （ノード・接続・プロジェクト・シナリオが無く、名前も付けていない）。
- * 初めての同期で、聞かずにもう一方を採ってよい。プロジェクトだけ作った・名前だけ付けた物は捨てない
+ * 初めての同期で、聞かずにもう一方を採ってよい。プロジェクトだけ作った・名前だけ付けた物は捨てない。
+ * ノード・接続の数がデモと違えば、指紋を作らずに違うと分かる（大きな地図で 0.5 秒かけない: R0 §10.1）
  */
 export function isDisposableDoc(doc: DocData): boolean {
   const blank =
-    Object.keys(doc.nodes).length === 0 &&
-    Object.keys(doc.edges).length === 0 &&
+    sizeIs(doc.nodes, 0) &&
+    sizeIs(doc.edges, 0) &&
     Object.keys(doc.projects).length === 0 &&
     Object.keys(doc.scenarios).length === 0 &&
     doc.title === DEFAULT_DOC_TITLE;
   if (blank) return true;
+  if (!demoCounts) {
+    const d = buildDemoDoc();
+    demoCounts = { nodes: Object.keys(d.nodes).length, edges: Object.keys(d.edges).length };
+  }
+  if (!sizeIs(doc.nodes, demoCounts.nodes) || !sizeIs(doc.edges, demoCounts.edges)) return false;
   demoSignature ??= contentSignature(buildDemoDoc());
   return contentSignature(doc) === demoSignature;
 }

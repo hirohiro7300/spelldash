@@ -147,6 +147,28 @@ kbd {
   border-radius: 11px;
   font-size: 14px;
 }
+/* そのまま書き出す・この版で開き直す（薄い形を読み書きするページだけ。押しやすい 44px・狭い幅では縦に並べる） */
+.newer-more {
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.btn.newer-raw,
+.btn.newer-reopen {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 11px;
+  font-size: 13.5px;
+}
+.newer-status:empty {
+  display: none;
+}
+.newer-copy {
+  width: 100%;
+  margin-top: 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
 /* 開き直しても同じ画面のときにすること（最新の版のページを開く）。読む人が探す文なので、薄くも小さくもしない（コントラスト 4.5:1 以上） */
 .newer-note {
   margin: 16px 0 0;
@@ -158,7 +180,9 @@ kbd {
   .newer-card {
     padding: 20px 16px 16px;
   }
-  .btn.newer-reload {
+  .btn.newer-reload,
+  .btn.newer-raw,
+  .btn.newer-reopen {
     width: 100%;
   }
 }

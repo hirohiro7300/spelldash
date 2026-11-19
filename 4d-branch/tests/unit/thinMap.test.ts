@@ -16,6 +16,7 @@ import type { DocData, GNode } from "../../src/model/types";
 import {
   checkStoredSize,
   decodeStored,
+  enableThinPage,
   encodeStored,
   fromStored,
   isBlockedError,
@@ -33,6 +34,7 @@ import {
   ThinWriteError,
   toStored,
   type StoredDoc,
+  type ThinDecodeOpts,
   type ThinSection,
 } from "../../src/persist/codec";
 import { THIN_BASELINE_VERSION, thinBaselineCore } from "../../src/persist/thinMap";
@@ -77,6 +79,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  enableThinPage(null);
   setThinBaseline(null);
   setCodecWarn(null);
 });
@@ -124,8 +127,12 @@ describe("地図の無い文書（今までと同じ）", () => {
     expect(toStored(r6)).toBe(r6);
   });
 
-  it("版 2 でも maps の無い文書は、ふつうの文書として読む（書き手は書かない）。版 3 は新しい版", () => {
+  it("版 2 でも maps の無い文書は、薄い形を読めるページではふつうの文書として読む（書き手は書かない）。版 3 は新しい版。薄い形を読めないページ（既定のビルド）では版 2 も新しい版", () => {
     const doc = createEmptyDoc();
+    // 薄い形を読めないページ（ページの地図が無く、読み込み方も決めていない: 今の公開版と同じ）: 版 2 は新しい版のデータ
+    expect(() => fromStored({ ...JSON.parse(JSON.stringify(doc)), version: 2 })).toThrow(NewerDocError);
+    expect(() => fromStored({ ...JSON.parse(JSON.stringify(doc)), version: 2, maps: [] })).toThrow(NewerDocError);
+    setThinBaseline(qMap);
     expect(fromStored({ ...JSON.parse(JSON.stringify(doc)), version: 2 })).toEqual({ ...normalizeDoc(JSON.parse(JSON.stringify(doc))).doc, updatedAt: doc.updatedAt, createdAt: doc.createdAt });
     expect(() => fromStored({ ...JSON.parse(JSON.stringify(doc)), version: 3 })).toThrow(NewerDocError);
     expect(() => fromStored({ ...JSON.parse(JSON.stringify(doc)), version: 3, maps: [] })).toThrow(NewerDocError);
@@ -350,10 +357,10 @@ describe("書いて読むと同じ文書", () => {
 });
 
 describe("閉じて失敗する（同じ版で合わない物は読まない: safety-4）", () => {
-  const blocked = (rec: unknown, code: string): void => {
+  const blocked = (rec: unknown, code: string, opts: ThinDecodeOpts = {}): void => {
     let err: unknown;
     try {
-      fromStored(rec);
+      fromStored(rec, opts);
     } catch (e) {
       err = e;
     }
@@ -452,14 +459,17 @@ describe("閉じて失敗する（同じ版で合わない物は読まない: sa
     blocked(r2, "mismatch");
   });
 
-  it("ページに地図が無い → unavailable、前の版 → older、新しい版 → ThinNewerError（NewerDocError の一種）", () => {
+  it("ページに地図が無い → unavailable、前の版 → older（当て直さないとき）、新しい版 → ThinNewerError（NewerDocError の一種）", () => {
     const rec = recordOf(freshDoc(qMap));
+    // 薄い形を読めるページで、地図を読めなかった（読み込み方が地図を返さない）
     setThinBaseline(null);
+    enableThinPage(async () => null);
     blocked(rec, "unavailable");
+    enableThinPage(null);
     setThinBaseline(qMap);
     const older = structuredClone(rec);
     older.maps[0]!.release = qMap.header.release - 1;
-    if (older.maps[0]!.release >= 0) blocked(older, "older");
+    if (older.maps[0]!.release >= 0) blocked(older, "older", { upgrade: "none" });
     const newer = structuredClone(rec);
     newer.maps[0]!.release = qMap.header.release + 1;
     expect(() => fromStored(newer)).toThrow(ThinNewerError);
@@ -470,7 +480,10 @@ describe("閉じて失敗する（同じ版で合わない物は読まない: sa
     // 前の版の印は、小さい木の版の順番を上げたページで確かめる（小さい木の版は 0）
     const up = fromDevTreeWithRelease(qMap.header.release + 1);
     setThinBaseline(up);
-    blocked(rec, "older");
+    blocked(rec, "older", { upgrade: "none" });
+    // 当て直す（既定）: 前の版の地図は、ページの地図に鍵で当て直して読む
+    const d = decodeStored(rec);
+    expect(d.upgrade).toMatchObject({ from: { release: qMap.header.release }, to: { release: qMap.header.release + 1 } });
   });
 
   it("形が読めない → corrupt（止める側。壊れたデータとは見なさない）", () => {

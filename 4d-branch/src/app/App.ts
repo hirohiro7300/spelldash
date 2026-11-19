@@ -7,16 +7,17 @@ import { Interaction } from "../canvas/interaction";
 import { Minimap } from "../canvas/minimap";
 import { buildDemoDoc } from "../demo/demo";
 import { APP_VERSION, NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
-import { NewerDocError, createEmptyDoc } from "../model/schema";
+import { createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
 import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
 import { isDisposableDoc } from "../demo/demo";
 import { CloudRepo, CloudSync, baseCovered, dbBackend, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
-import type { BackupKind, KeptAside, Persistence } from "../persist/persistence";
+import { holdsPageMap, pageRelease, thinReadable } from "../persist/codec";
+import type { BackupKind, BlockInfo, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
-import { chooseSyncSource, openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
+import { chooseReleaseSource, chooseSyncSource, openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
 import { openFutureDialog } from "../ui/futureDialog";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -277,7 +278,7 @@ export class App implements AppContext {
 
     this.persistence.on("remote", () => this.scheduleRemoteReload());
     // 開いている間に、別のタブの新しい版のページが保存した（保存の競合・引き継ぎ・読み直し・保存先の版が上がったことで気づく）: 編集をやめる
-    this.persistence.on("blocked", (e) => this.showNewer(e.kept));
+    this.persistence.on("blocked", (e) => this.showNewer(e.kept, e.why));
     this.bindKeys();
     this.bindLifecycle();
     this.bindDrop();
@@ -467,8 +468,9 @@ export class App implements AppContext {
       try {
         s = await this.persistence.readStored();
       } catch (e) {
-        // 別のタブの新しい版のページが保存した: 読めないのは壊れたからではない。このタブの編集をやめ、開き直してもらう
-        if (e instanceof NewerDocError) return this.persistence.blockNewer();
+        // 別のタブの新しい版のページが保存した・このページでは開けない地図を保存した: 読めないのは壊れたからではない。
+        // このタブの編集をやめ、開き直してもらう（薄い形の記録の読めない訳はどれも止める側: safety-3）
+        if (await this.persistence.blocksOnRead(e)) return;
         s = null;
       }
       if (s && !this.persistence.writer) this.store.load(s.doc, "remote");
@@ -480,7 +482,7 @@ export class App implements AppContext {
    * 保存は Persistence が止めている。ここでは同期を止め、編集と設定の保存をやめ、画面を開き直すよう伝える物に差し替える
    * （kept: このタブのまだどこにも無い変更を残した所。画面で伝える）。待っている自動の表示（未来の道筋を開くなど）も、以後は動かない
    */
-  private showNewer(kept: KeptAside): void {
+  private showNewer(kept: KeptAside, why?: BlockInfo): void {
     if (this.newerShown) return;
     this.newerShown = true;
     this.cloud?.stop();
@@ -490,7 +492,8 @@ export class App implements AppContext {
     if (this.cameraSaveTimer) clearTimeout(this.cameraSaveTimer);
     this.editor.cancel();
     closeMenus();
-    showNewerScreen(this.mount, { kept });
+    // 薄い形を読み書きするページは、保存されているデータをそのまま書き出せる（止めていても: safety-3）
+    showNewerScreen(this.mount, { kept, ...(why ? { why } : {}), ...(thinReadable() ? { rawExport: () => this.persistence.rawRecord() } : {}) });
   }
 
   /**
@@ -839,6 +842,16 @@ export class App implements AppContext {
       toast(`書き出せませんでした（${e instanceof Error ? e.message : String(e)}）`, { tone: "error", ms: 9000 });
       return false;
     }
+    return this.saveText(text, filename, mustSave);
+  }
+
+  /** 整えずにそのままの文字を書き出す（このページでは開けないバックアップなど: safety-3） */
+  exportRawText(text: string, filename: string): void {
+    void this.saveText(text, filename);
+  }
+
+  /** 文字をファイルとして保存してもらう（Artifact の中は downloads 機能、使えなければコピーの画面。外ではダウンロード） */
+  private async saveText(text: string, filename: string, mustSave = false): Promise<boolean> {
     const done = () => {
       try {
         localStorage.setItem("4d-branch:lastExport", new Date().toISOString());
@@ -946,14 +959,19 @@ export class App implements AppContext {
     if (mark) this.store.doc.meta = { ...this.store.doc.meta, ...mark };
     void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
     const before = new Set(Object.keys(this.store.doc.nodes));
-    const res = mergeDocs(this.store.doc, doc);
+    // ページの地図を足すときは同梱のカードの ID をそのまま（薄い形を小さく: gaps-1）。薄い形を読み書きするページでは、
+    // 今の地図と同じ鍵の今日を持つ地図は足さない（版によらず。足したカードと線だけを今の地図につなぐ: safety-9）
+    const res = mergeDocs(this.store.doc, doc, { ...(holdsPageMap(doc) ? { keepIds: true } : {}), ...(thinReadable() ? { skipSameMaps: true } : {}) });
     this.store.replaceDoc(res.doc, label);
     const added = Object.keys(this.store.doc.nodes).filter((id) => !before.has(id));
     this.ui.select(opts.select === false ? [] : added);
     this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, added) : added, { minZoom: opts.fitMinZoom });
     const n = (v: number) => v.toLocaleString("ja-JP");
     const reused = [res.reusedProjects ? `プロジェクト ${res.reusedProjects} 件` : "", res.reusedScenarios ? `シナリオ ${res.reusedScenarios} 件` : ""].filter(Boolean).join("・");
-    toast(`${opts.done ?? ""}ノード ${n(res.added.nodes)} 件・接続 ${n(res.added.edges)} 本を追加しました${reused ? `（同じ名前の${reused}はまとめました）` : ""}`, { tone: "ok", action: this.cmd.undoAction() });
+    const skipped = res.skippedMaps
+      ? `。同じ地図はもうあるので足さず、あなたが足したカードと線だけを今の地図につなぎました${res.droppedEdges ? `（つなぎ先の無い線 ${n(res.droppedEdges)} 本は足していません）` : ""}`
+      : "";
+    toast(`${opts.done ?? ""}ノード ${n(res.added.nodes)} 件・接続 ${n(res.added.edges)} 本を追加しました${reused ? `（同じ名前の${reused}はまとめました）` : ""}${skipped}`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
   }
 
@@ -1227,6 +1245,9 @@ export class App implements AppContext {
     const mine = pre.maps.find((m) => m.root === upRoot)?.nodes;
     const others = new Set<ID>();
     for (const m of pre.maps) if (m.root !== upRoot) for (const id of m.nodes) if (!mine?.has(id)) others.add(id);
+    // ページの地図の版（か、それより新しい版）の地図を「古い」とは呼ばない（safety-9）
+    const pageRel = pageRelease() ?? futureRelease();
+    const othersOld = pre.maps.every((m) => m.root === upRoot || (m.release !== null && m.release < pageRel));
     const { stats } = built;
     const kept = printed
       ? "あなたが足したカード・選んだ手・見送った手・やることのチェック・年収・自分で書き換えた見込み（%）や文章はそのまま残ります。"
@@ -1235,7 +1256,7 @@ export class App implements AppContext {
       inPlace
         ? {
             title: "未来の道筋を新しい版にしますか？",
-            body: `3 年の分かれ道の文章と数字を新しい版にします。${kept}${others.size ? `ほかの古い未来の道筋（ノード ${n(others.size)} 件）は消えます。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
+            body: `3 年の分かれ道の文章と数字を新しい版にします。${kept}${others.size ? `ほかの${othersOld ? "古い" : ""}未来の道筋（ノード ${n(others.size)} 件）は消えます。` : ""}直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。`,
             ok: "新しい版にする",
           }
         : {
@@ -1600,6 +1621,8 @@ export class App implements AppContext {
       },
       confirmWithoutBackup: (doc, what) => this.confirmWithoutBackup(doc, what),
       chooseFirst: (remote) => chooseSyncSource({ local: this.store.doc, remote: remote?.manifest ?? null, foreign }),
+      // アカウントの写しの地図が手元より新しい版で、手元にも変更がある: 黙って手元で上書きせず、どちらを使うか聞く（safety-2）
+      chooseAcrossRelease: (remote, local) => chooseReleaseSource({ local, remote: remote.manifest }),
       // 書けずにいる基準があれば、それが今の基準（保存してある古い基準で、自分が送った内容を重なりと取り違えない）
       readBase: async () => pendingBase ?? (await this.persistence.readKv<SyncBase>(baseKey)),
       writeBase: async (b) => {

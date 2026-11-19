@@ -16,13 +16,19 @@
 //   （それまでの手元の変更は送らず・捨てずに残す）。形が違う・壊れた写しは新しい版と分け、今までどおり
 // - マニフェストには中身のドキュメントの版（docVersion）も書く。それが新しければ、ほかの項目を見る前に新しい版と見分ける
 //   （次の版が写しの入れ物を変えても、空のアカウント・壊れた写しと取り違えて書き直さない。docs/DESIGN.md §3.10）
+// - 中身は保存の口（./codec.ts）を通す: ページの地図を持つ文書は薄い形（版 2）で送り、マニフェストの docVersion も 2 にする。
+//   入れ物（マニフェストの項目と型・分割・ハッシュ・符号化）は変えない（format は 1 のまま）。前の版のページ（v32・v33）は docVersion 2 で
+//   新しい版と見分けて止まる。このページで開けない薄い形の写し（地図が合わない など）は、形の違う写しとして止めて待つ（上書きも書き直しもしない）
+// - アカウントの写しの地図が、手元の地図より新しい版（前の版のページで止める前の編集が手元に残っている など）なら、黙って手元で上書きしない:
+//   どちらを使うか聞く（safety-2）
 
 import type { DbApi } from "../host/claude";
 import { errorCode } from "../host/claude";
 import { newId, nowISO } from "../model/ids";
-import { DocFormatError, NewerDocError, docCounts, isNewerVersion, normalizeDoc } from "../model/schema";
+import { DocFormatError, NewerDocError, docCounts, isNewerVersion } from "../model/schema";
 import type { DocData } from "../model/types";
 import { Emitter } from "../store/emitter";
+import { decodeStoredAsync, ensurePageMap, hasThinBaseline, needsPageMap, storedVersion, thinReadable, ThinMapError, toStored, guardStoredSize } from "./codec";
 
 // ------------------------------------------------------------ 保存先（db の薄い包み。テストでは差し替える）
 
@@ -156,19 +162,46 @@ export async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** JSON にしてから圧縮（呼んだ瞬間の内容を写す: 最初の await より前に文字列にする） */
-export async function encodeDoc(doc: DocData): Promise<{ enc: Manifest["enc"]; payload: string; bytes: number }> {
-  const json = JSON.stringify(doc);
+/**
+ * 写しの中身の読み書き（保存の口）。ふだんは pageCodec（ページの地図を持つ文書は薄い形）。テストは前の版のページの読み書きにも差し替える
+ */
+export interface CloudCodec {
+  /** 送る形（JSON にする物）と、その形の版（マニフェストの docVersion） */
+  encode(doc: DocData): { stored: unknown; docVersion: number };
+  /** 読んだ JSON を文書に（新しい版は NewerDocError、このページで開けない薄い形は ThinMapError、違う形は DocFormatError） */
+  decode(raw: unknown): Promise<DocData>;
+  /** マニフェストの docVersion が、このページより新しい版か */
+  isNewer(docVersion: unknown): boolean;
+}
+
+/** このページの読み書き（保存の口 ./codec.ts を通す） */
+export const pageCodec: CloudCodec = {
+  encode(doc) {
+    const stored = toStored(doc);
+    return { stored, docVersion: storedVersion(stored) };
+  },
+  async decode(raw) {
+    return (await decodeStoredAsync(raw)).doc;
+  },
+  isNewer: (v) => isNewerVersion(v),
+};
+
+/** JSON にしてから圧縮（呼んだ瞬間の内容を写す: 最初の await より前に文字列にする）。docVersion: 送る形の版（マニフェストに書く） */
+export async function encodeDoc(doc: DocData, codec: CloudCodec = pageCodec): Promise<{ enc: Manifest["enc"]; payload: string; bytes: number; docVersion: number }> {
+  const { stored, docVersion } = codec.encode(doc);
+  const json = JSON.stringify(stored);
+  // 薄い形が思ったより大きい（地図ごと書いている など）ときだけ知らせる（地図の無い文書・版 6 の地図は今までどおり大きくてよい）
+  if (stored !== doc) guardStoredSize(json.length, "cloud");
   if (typeof CompressionStream === "undefined") {
     // 圧縮できないブラウザ: UTF-8 のバイト列を base64 に（日本語が多くても分割が 256 KiB を超えない）
-    return { enc: "utf8-b64", payload: toB64(new TextEncoder().encode(json)), bytes: json.length };
+    return { enc: "utf8-b64", payload: toB64(new TextEncoder().encode(json)), bytes: json.length, docVersion };
   }
   const stream = new Blob([json]).stream().pipeThrough(new CompressionStream("gzip"));
   const gz = new Uint8Array(await new Response(stream).arrayBuffer());
-  return { enc: "gzip-b64", payload: toB64(gz), bytes: json.length };
+  return { enc: "gzip-b64", payload: toB64(gz), bytes: json.length, docVersion };
 }
 
-export async function decodeDoc(enc: Manifest["enc"], payload: string): Promise<DocData> {
+export async function decodeDoc(enc: Manifest["enc"], payload: string, codec: CloudCodec = pageCodec): Promise<DocData> {
   let json: string;
   if (enc === "gzip-b64") {
     if (typeof DecompressionStream === "undefined") throw new CloudError("unsupported", "このブラウザでは、アカウントの写し（圧縮）を読めません。新しいブラウザで開いてください");
@@ -183,12 +216,14 @@ export async function decodeDoc(enc: Manifest["enc"], payload: string): Promise<
     throw new CloudError("corrupt", "アカウントの写しが壊れています（JSON として読めない）");
   }
   try {
-    return normalizeDoc(raw).doc;
+    return await codec.decode(raw);
   } catch (e) {
     // 新しい版のアプリで保存された（このページが古い）・形が違う: 上書きせずに止める。
     // 壊れた写し（corrupt）とは分ける: corrupt は手元の内容で書き直すが、format は「同期をやり直す」でも書き直さない。
-    // 新しい版（NewerDocError も DocFormatError の一種）は、さらに形の違う写しと分ける（開き直すまで編集も止める）
+    // 新しい版（NewerDocError も DocFormatError の一種）は、さらに形の違う写しと分ける（開き直すまで編集も止める）。
+    // このページで開けない薄い形の写し（地図が合わない・地図を組み立てられない・読めない形）は、どの訳でも形の違う写し（書き直さない: safety-3）
     if (e instanceof NewerDocError) throw new CloudNewerError(e.message);
+    if (e instanceof ThinMapError) throw new CloudError("format", e.message);
     if (e instanceof DocFormatError) throw new CloudError("format", e.message);
     throw e;
   }
@@ -200,8 +235,8 @@ export async function decodeDoc(enc: Manifest["enc"], payload: string): Promise<
  * CloudNewerError、ほかの違う形なら format を投げる（どれも空と見なして上書きしない）。
  * この版の形で中身が壊れているときは null（読めない写しは手元で書き直す）
  */
-function parseManifest(d: Record<string, unknown> | undefined): Manifest | null {
-  if (d && isNewerVersion(d.docVersion)) throw new CloudNewerError(`アカウントの写しは新しい版のアプリで保存されています（中身の版 ${d.docVersion}）`);
+function parseManifest(d: Record<string, unknown> | undefined, isNewer: (v: unknown) => boolean = isNewerVersion): Manifest | null {
+  if (d && isNewer(d.docVersion)) throw new CloudNewerError(`アカウントの写しは新しい版のアプリで保存されています（中身の版 ${String(d.docVersion)}）`);
   if (d && typeof d.format === "number" && d.format !== 1) {
     if (d.format > 1) throw new CloudNewerError("アカウントの写しは新しい版のアプリで保存されています");
     throw new CloudError("format", "アカウントの写しの形が違います");
@@ -323,6 +358,8 @@ export class CloudRepo {
     readonly uid: string,
     readonly holder: string,
     private readonly now: () => number = () => Date.now(),
+    /** 写しの中身の読み書き（ふだんはこのページの物。テストは前の版のページの物にも） */
+    private readonly codec: CloudCodec = pageCodec,
   ) {}
 
   get manifestPath(): string {
@@ -340,7 +377,7 @@ export class CloudRepo {
 
   async readManifest(): Promise<Manifest | null> {
     const d = await this.be.get(this.manifestPath);
-    return d.exists ? parseManifest(d.data) : null;
+    return d.exists ? parseManifest(d.data, (v) => this.codec.isNewer(v)) : null;
   }
 
   /**
@@ -375,7 +412,7 @@ export class CloudRepo {
       const payload = chunks.join("");
       if ((await sha256Hex(payload)) !== m.hash) throw new CloudError("corrupt", "アカウントの写しが壊れています（ハッシュが合わない）", m.gen);
       try {
-        return { manifest: m, doc: await decodeDoc(m.enc, payload) };
+        return { manifest: m, doc: await decodeDoc(m.enc, payload, this.codec) };
       } catch (e) {
         if (e instanceof CloudError && e.code === "corrupt") throw new CloudError("corrupt", e.message, m.gen);
         throw e;
@@ -389,15 +426,16 @@ export class CloudRepo {
     return this.be.lease(this.lockPath, this.holder, ttlMs);
   }
 
-  /** 送る内容を固める（呼んだ瞬間の内容） */
+  /** 送る内容を固める（呼んだ瞬間の内容。ページの地図を持つ文書なのに地図をまだ読んでいなければ、先に読んでから） */
   async prepare(doc: DocData): Promise<Prepared> {
+    if (this.codec === pageCodec && thinReadable() && !hasThinBaseline() && needsPageMap(doc)) await ensurePageMap();
     const counts = docCounts(doc);
     const docId = doc.id;
     const docUpdatedAt = doc.updatedAt;
-    const docVersion = doc.version;
     // 題名はマニフェストでは表示に使うだけ。長すぎて 256 KiB を超えないよう切る（中身は分割の方に全部ある）
     const title = [...doc.title].slice(0, MANIFEST_TITLE_MAX).join("");
-    const { enc, payload, bytes } = await encodeDoc(doc);
+    // 中身の版は送る形の版（薄い形なら 2。入れ物は同じ: 前の版のページは docVersion で新しい版と見分ける）
+    const { enc, payload, bytes, docVersion } = await encodeDoc(doc, this.codec);
     const parts: string[] = [];
     for (let i = 0; i < payload.length; i += PART_CHARS) parts.push(payload.slice(i, i + PART_CHARS));
     if (parts.length === 0) parts.push("");
@@ -508,7 +546,7 @@ export class CloudRepo {
         if (!d.exists) return next(null);
         let m: Manifest | null;
         try {
-          m = parseManifest(d.data);
+          m = parseManifest(d.data, (v) => this.codec.isNewer(v));
         } catch {
           return unreadable?.();
         }
@@ -633,6 +671,11 @@ export interface CloudSyncDeps {
    * 初めての同期で、どちらを使うか聞く。remote が null なら「アカウントは空。別のアカウントの内容を送ってよいか」
    */
   chooseFirst(remote: { doc: DocData; manifest: Manifest } | null): Promise<"remote" | "local" | "later">;
+  /**
+   * アカウントの写しの地図が、手元の地図より新しい版で、手元にも変更がある（前の版のページで止める前の編集など: safety-2）とき、
+   * どちらを使うか聞く。無ければ聞かずに止めて待つ（黙って手元で上書きしない）
+   */
+  chooseAcrossRelease?(remote: { doc: DocData; manifest: Manifest }, local: DocData): Promise<"remote" | "local" | "later">;
   readBase(): Promise<SyncBase | null>;
   /** 突き合わせをやり直す前に、このブラウザの状態（どのアカウントの内容か など）を読み直す */
   refresh?(): Promise<void>;
@@ -652,6 +695,25 @@ export interface CloudSyncOptions {
 }
 
 type Reason = "start" | "push" | "remote" | "resync";
+
+/**
+ * 文書の地図の版の順番（未来の道筋の入口の futureRelease のうち一番大きい物。版の順番の無い・地図の無い文書は null）。
+ * アカウントの写しの地図が手元より新しい版かを見る（safety-2）
+ */
+export function mapReleaseOf(doc: DocData): number | null {
+  let best: number | null = null;
+  for (const id of Object.keys(doc.nodes)) {
+    const n = doc.nodes[id]!;
+    if (n.meta?.forecastRoot !== true) continue;
+    const r = n.meta.futureRelease;
+    if (typeof r === "number" && Number.isFinite(r) && (best === null || r > best)) best = r;
+  }
+  return best;
+}
+
+/** 新しい版の地図の写しと重なって「このブラウザの内容を使う」と答えたときの、アカウントの内容のバックアップと知らせ */
+const RELEASE_KEPT_LABEL = "このブラウザの内容で置き換える前のアカウントの内容（新しい版の地図）";
+const RELEASE_KEPT_NOTICE = "このブラウザの内容で同期しました。アカウントにあった新しい版の地図の内容はバックアップに残しています（メニュー →「バックアップと復元」）。";
 /** 初めての同期で「このブラウザの内容を使う」と答えたときの、アカウントの内容のバックアップと知らせ */
 const KEPT_LABEL = "このブラウザの内容で置き換える前のアカウントの内容";
 const KEPT_NOTICE = "このブラウザの内容で同期しました。アカウントにあった内容はバックアップに残しています（メニュー →「バックアップと復元」）。";
@@ -1359,6 +1421,8 @@ export class CloudSync {
       // 読み込む直前に入力が始まった（まだ手を付けていない）: 入力が終わってから読み直す。手を付けたなら、ふつうの重なり
       if (this.deps.yieldsOnConflict?.(this.deps.getDoc(), remote.doc)) return this.waitForEditing("入力が終わってから、別の端末の変更を読み込みます");
     }
+    // アカウントの写しの地図が、手元の地図より新しい版（前の版のページで止める前の編集が手元に残っている など）: 黙って手元で上書きしない（safety-2）
+    if (this.remoteMapAhead(remote.doc)) return this.decideAcrossRelease(remote);
     // この端末の基準の世代が、読めずに置き換えられていた: 置き換えた内容を残して、手元の内容で戻す
     if (remote.manifest.lost?.includes(this.base.gen)) {
       return this.keepLocal(remote, "conflict", "この端末の内容を含まずに書き直されていたアカウントの内容", "アカウントの写しが、この端末にある内容を含まずに書き直されていたため、この端末の内容で戻しました。書き直された内容はバックアップに残しています（メニュー →「バックアップと復元」）。", "warn");
@@ -1437,7 +1501,51 @@ export class CloudSync {
       // 読み込む直前に入力が始まった（手元はまだ古いまま）: 入力が終わってから読み込む
       if (this.localBehindBase()) return this.waitForEditing("入力が終わってから、アカウントの内容を読み込みます");
     }
+    // アカウントの写しの地図が、手元の地図より新しい版: 黙って手元で上書きしない（safety-2）
+    if (this.remoteMapAhead(remote.doc)) return this.decideAcrossRelease(remote);
     return this.keepLocal(remote, "conflict", "アカウントの内容（手元の古い内容と重なった）", "この端末の内容がアカウントの記録より古かったため、アカウントの内容をバックアップに残してから手元で同期しました。", "warn");
+  }
+
+  /** アカウントの写しの地図が、手元の地図より新しい版か（どちらにも版の順番のある地図があるときだけ） */
+  private remoteMapAhead(remote: DocData): boolean {
+    const r = mapReleaseOf(remote);
+    const l = mapReleaseOf(this.deps.getDoc());
+    return r !== null && l !== null && r > l;
+  }
+
+  /**
+   * アカウントの写しの地図が手元より新しい版で、手元にも変更がある（前の版のページで止める前に編集していた など）: 黙って手元で上書きしない。
+   * どちらを使うか聞く（新しい版の内容を使う → 手元は「選ばなかった内容」に残して読み込む / このブラウザの内容を使う → アカウントの内容を
+   * 残してから送る / 後で → 止めて待つ）。聞けないときは止めて待つ（safety-2）
+   */
+  private async decideAcrossRelease(remote: { manifest: Manifest; doc: DocData }): Promise<"done" | "push"> {
+    if (this.deps.isEditing()) return this.waitForEditing("入力が終わってから、アカウントの内容と突き合わせます");
+    // 前に「このブラウザの内容を使う」と答えた写しのまま（送れずにやり直した）: もう聞かずに送る
+    if (this.chosenLocalFor === remote.manifest.gen) return this.keepLocal(remote, "kept", RELEASE_KEPT_LABEL, RELEASE_KEPT_NOTICE, "info");
+    this.setState("pending", "どちらの内容を使うか、選んでください");
+    const choice = this.deps.chooseAcrossRelease ? await this.deps.chooseAcrossRelease(remote, this.deps.getDoc()) : "later";
+    if (this.stopped) return "done";
+    if (!this.deps.isWriter()) {
+      this.stillWriter();
+      this.deps.notice("別のタブで編集中のため、この選択は使いませんでした。編集中のタブで選んでください。", "warn");
+      return "done";
+    }
+    if (choice === "later") {
+      this.pause("アカウントに新しい版の地図で保存された内容があります。このブラウザの内容とどちらを使うか決めるまで、同期を止めています（「同期をやり直す」で選べます）");
+      return "done";
+    }
+    if (choice === "remote") {
+      const ident = await this.deps.adopt(remote.doc, "choice", () => this.deps.isWriter());
+      if (!ident) {
+        if (!this.stillWriter()) return "done";
+        this.pause("このブラウザの内容を残せなかったため、切り替えをやめました。「同期をやり直す」から、書き出してから続けられます");
+        return "done";
+      }
+      await this.adopted(remote.manifest, ident, "アカウントの内容（新しい版の地図）に切り替えました。このブラウザにあった内容はバックアップに残しています（メニュー →「バックアップと復元」）。");
+      return "done";
+    }
+    this.chosenLocalFor = remote.manifest.gen;
+    return this.keepLocal(remote, "kept", RELEASE_KEPT_LABEL, RELEASE_KEPT_NOTICE, "info");
   }
 
   /** この端末で初めての同期（基準が無い）で、アカウントに手元と違う中身がある */

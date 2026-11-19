@@ -6,9 +6,9 @@ import { DocFormatError } from "../model/schema";
 import type { DocData } from "../model/types";
 import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { buildWishlist } from "../demo/wishlistBundle";
-import { previewImport, type ImportPreview } from "../persist/io";
+import { previewImportAsync, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
-import { BACKUP_LABELS, isNewerBackup, type BackupMeta } from "../persist/persistence";
+import { BACKUP_LABELS, isBlockedBackup, isNewerBackup, type BackupMeta } from "../persist/persistence";
 import { MOD, clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { confirmDialog, openModal, toast } from "./overlays";
@@ -104,6 +104,11 @@ export function openBackupDialog(app: AppContext): void {
   void renderList();
 }
 
+/** このページでは開けない地図のバックアップの印・断るときの文（同じ版で地図が合わない・薄い形が読めない: safety-3） */
+const BACKUP_BLOCKED_MARK = "このページでは開けない地図";
+const BACKUP_BLOCKED_TEXT = "このバックアップの地図は、このページの地図と合わないため復元できません。保存したときの版のページで復元するか、そのまま書き出して残してください。";
+const BACKUP_BLOCKED_TITLE = "このページでは開けない地図のバックアップです（ダウンロードはそのままの形で書き出します）";
+
 /** このページより新しい版で作られたバックアップの印・断るときの文 */
 const BACKUP_NEWER_MARK = "このページより新しい版";
 const BACKUP_NEWER_TEXT = "このバックアップは、このページより新しい版で作られています。この版では復元できません。最新の版のページを開いて復元してください。";
@@ -131,10 +136,27 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
     markNewer();
     toast(text, { tone: "warn", ms: 8000 });
   };
+  /** このページでは開けない地図のバックアップ: 印を付けて復元を断る（ダウンロードはそのままの形で書き出す。消すのは、読めるページで） */
+  let blocked = false;
+  const markBlocked = () => {
+    blocked = true;
+    if (when.querySelector(".backup-newer")) return;
+    when.append(h("span", { class: "backup-newer", title: BACKUP_BLOCKED_TITLE }, BACKUP_BLOCKED_MARK));
+    restore.title = BACKUP_BLOCKED_TEXT;
+    del.disabled = true;
+    del.title = BACKUP_BLOCKED_TITLE;
+    dl.title = "そのままの形でダウンロード";
+  };
+  const refuseBlocked = (why?: string) => {
+    markBlocked();
+    toast(why ? `${BACKUP_BLOCKED_TEXT}（${why}）` : BACKUP_BLOCKED_TEXT, { tone: "warn", ms: 9000 });
+  };
   restore.addEventListener("click", async () => {
     if (isNewerBackup(b)) return refuseNewer();
-    const { doc, newer } = await per.readBackupChecked(b.id);
+    if (isBlockedBackup(b)) return refuseBlocked();
+    const { doc, newer, blocked: cannot, message } = await per.readBackupChecked(b.id);
     if (newer) return refuseNewer();
+    if (cannot) return refuseBlocked(message);
     if (!doc) return toast("このバックアップを読めませんでした", { tone: "error" });
     const ok = await confirmDialog({
       title: "このバックアップに戻しますか？",
@@ -146,9 +168,21 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
     closeDialog();
   });
   dl.addEventListener("click", async () => {
-    const { doc, newer } = await per.readBackupChecked(b.id);
+    const name = `4d-branch_backup_${b.createdAt.slice(0, 16).replace(/[:T]/g, "-")}.json`;
+    // このページでは開けない地図のバックアップは、整えずにそのままの形で書き出す（データがいつでもブラウザの外へ出せるように: safety-3）
+    const raw = async () => {
+      const rec = await per.readBackupRaw(b.id);
+      if (rec) app.exportRawText(rec.text, name.replace(/\.json$/, "_raw.json"));
+      else toast("このバックアップを読めませんでした", { tone: "error" });
+    };
+    if (blocked || isBlockedBackup(b)) return raw();
+    const { doc, newer, blocked: cannot } = await per.readBackupChecked(b.id);
     if (newer) return refuseNewer(BACKUP_NEWER_EXPORT);
-    if (doc) app.exportJson(doc, `4d-branch_backup_${b.createdAt.slice(0, 16).replace(/[:T]/g, "-")}.json`);
+    if (cannot) {
+      markBlocked();
+      return raw();
+    }
+    if (doc) app.exportJson(doc, name);
   });
   del.addEventListener("click", async () => {
     const ok = await confirmDialog({ title: "バックアップを削除", body: `${fmtWhen(b.createdAt)} のバックアップを削除します。この操作は元に戻せません。`, ok: "削除する", danger: true });
@@ -157,6 +191,7 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
     await refresh();
   });
   if (isNewerBackup(b)) markNewer();
+  else if (isBlockedBackup(b)) markBlocked();
   return h(
     "div",
     { class: "backup-row" },
@@ -172,7 +207,8 @@ function backupRow(app: AppContext, b: BackupMeta, closeDialog: () => void, refr
 export async function openImportDialog(app: AppContext, file: File): Promise<void> {
   let pv: ImportPreview;
   try {
-    pv = previewImport(await file.text());
+    // 薄い形のファイル（ページの地図の変更だけ）は、ページの地図を読み込んでから組み立て直す（前の版・違う組み立ての地図は当て直す。数は読んだ後の物）
+    pv = await previewImportAsync(await file.text());
   } catch (e) {
     const msg = e instanceof DocFormatError ? e.message : "ファイルを読めませんでした。";
     const m = openModal({ title: "読み込めませんでした", width: 460, icon: "alert" });
@@ -514,6 +550,45 @@ export function chooseSyncSource(o: { local: DocData; remote: { title: string; n
         { class: "sync-choice" },
         card("アカウント", remote.title, remote.nodes, remote.savedAt ? `保存 ${fmtWhen(remote.savedAt)}` : "保存日時不明"),
         card("このブラウザ", o.local.title, Object.keys(o.local.nodes).length, `更新 ${fmtWhen(o.local.updatedAt)}`),
+      ),
+    );
+    const pick = (r: "remote" | "local" | "later") => () => {
+      result = r;
+      m.close();
+    };
+    const useRemote = h("button", { class: "btn btn-primary", type: "button", onClick: pick("remote") }, "アカウントの内容を使う");
+    m.footer.append(
+      h("button", { class: "btn", type: "button", onClick: pick("later") }, "あとで決める"),
+      h("button", { class: "btn", type: "button", onClick: pick("local") }, "このブラウザの内容を使う"),
+      useRemote,
+    );
+    setTimeout(() => useRemote.focus());
+  });
+}
+
+/**
+ * アカウントの写しの地図が、このブラウザの地図より新しい版で、このブラウザにも同期していない変更がある（前の版のページで止める前に
+ * 編集していた など）: どちらを使うか聞く（黙ってこのブラウザの内容で上書きしない: safety-2）。使わなかった方はバックアップに残す
+ */
+export function chooseReleaseSource(o: { local: DocData; remote: { title: string; nodes: number; savedAt: string } }): Promise<"remote" | "local" | "later"> {
+  const remote = o.remote;
+  return new Promise((resolve) => {
+    let result: "remote" | "local" | "later" = "later";
+    const m = openModal({ title: "どちらの内容を使いますか？", subtitle: "アカウントには、新しい版の地図で保存された内容があります", width: 560, icon: "layers", onClose: () => resolve(result) });
+    const card = (head: string, title: string, nodes: number, when: string) =>
+      h("div", { class: "sync-choice-card" }, h("div", { class: "sync-choice-head" }, head), h("div", { class: "sync-choice-title" }, title || "（無題）"), h("div", { class: "muted small" }, `ノード ${nodes.toLocaleString("ja-JP")} 件 · ${when}`));
+    m.body.append(
+      h(
+        "p",
+        { class: "modal-text" },
+        "このブラウザには、前の版の地図で編集して、まだアカウントに送っていない変更があります。アカウントには、別の端末が新しい版の地図で保存した内容があります。",
+        "使わなかった方も消さずに、このブラウザのバックアップに残します（メニュー →「バックアップと復元」）。",
+      ),
+      h(
+        "div",
+        { class: "sync-choice" },
+        card("アカウント（新しい版の地図）", remote.title, remote.nodes, remote.savedAt ? `保存 ${fmtWhen(remote.savedAt)}` : "保存日時不明"),
+        card("このブラウザ（前の版の地図）", o.local.title, Object.keys(o.local.nodes).length, `更新 ${fmtWhen(o.local.updatedAt)}`),
       ),
     );
     const pick = (r: "remote" | "local" | "later") => () => {

@@ -10,6 +10,8 @@ import { isDisposableDoc } from "./demo";
 import { edgeTextPrint, fnv36, impactTagsOf } from "./impact";
 import type { Condition, DocData, GEdge, GNode, ID, Project, Scenario } from "../model/types";
 import { mergeDocs, nameKey } from "../persist/io";
+// ページの地図（3 か月ごとの地図）を足すときは、同梱のカードの ID をそのまま使う（薄い形の保存を小さく保つ: gaps-1）
+import { holdsPageMap } from "../persist/codec";
 // 同じ鍵のカードの選び方（入口からたどれる物 → 先に作った物 → 入口に近い物 → ID の順）は、薄い形の保存と同じ決まりを使う
 import { madeFirst } from "../persist/keyedCards";
 
@@ -263,7 +265,9 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
   const newRoot = Object.values(carried.nodes).find(isForecastRoot);
   const offset = oldRoot && newRoot ? { dx: oldRoot.x - newRoot.x, dy: oldRoot.y - newRoot.y } : undefined;
   const before = new Set(Object.keys(base.nodes));
-  const res = mergeDocs(base, carried, offset ? { offset } : {});
+  // ページの地図に入れ替えるときは、同梱のカード・線・やることの ID をそのまま（空いていれば）。ずらし方は整数（薄い形の保存がカードごとの読み替えにならない）
+  const keepIds = holdsPageMap(carried);
+  const res = mergeDocs(base, carried, { ...(offset ? { offset: keepIds ? { dx: Math.round(offset.dx), dy: Math.round(offset.dy) } : offset } : {}), ...(keepIds ? { keepIds } : {}) });
   const root = Object.values(res.doc.nodes).find((n) => !before.has(n.id) && isForecastRoot(n))?.id ?? null;
   return { doc: withFutureTitle(res.doc, incoming), removed: gone.size, added: res.added.nodes, root, kept, updated: 0, userKept: 0, inPlace: false };
 }
@@ -393,6 +397,8 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
   // 同じ 2 枚の間に同じ向きの線は 2 本にしない（文書の決まり）: 残した利用者の線（同梱の線を消して道でない線を引き直した など）と同じ向きなら足さない
   const linked = new Set<string>();
   for (const e of Object.values(out.edges)) linked.add(pairKey(e.source, e.target));
+  // ページの地図（3 か月ごとの地図）にするときは、増えた線も同梱の ID のまま（空いていれば）: 振り直すと、薄い形の保存が線ごとの読み替えで大きくなる（R0 §11.4）
+  const keepEdgeIds = holdsPageMap(incoming);
   const usedOld = new Set<ID>();
   for (const e of Object.values(incoming.edges)) {
     const source = idOf.get(e.source);
@@ -410,7 +416,7 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       if (r.kept) kept++;
       if (r.updated) updated.add(target);
     } else if (!linked.has(pairKey(source, target))) {
-      const id = newId("e");
+      const id = keepEdgeIds && !Object.hasOwn(out.edges, e.id) && !Object.hasOwn(doc.edges, e.id) ? e.id : newId("e");
       out.edges[id] = { ...next, id };
       linked.add(pairKey(source, target));
       // 新しい版で別のカードの下に移った

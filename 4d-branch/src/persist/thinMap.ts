@@ -32,12 +32,14 @@
 //     futureRelease・文書の version（1）と、保存したノードと線が normalizeDoc を通ること（アプリで作った文書では何も変わらない）だけ
 
 import type { MapData } from "../deepmap/mapData";
+import { fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf } from "../demo/impact";
 import { impactBaselineDigest } from "../demo/impactDigest";
 import { buildQuarterDoc, type QuarterLayout } from "../demo/quarterDoc";
-import { impactConfigOf } from "../model/forks";
-import { DocFormatError, NewerDocError, normalizeDoc, SCHEMA, THIN_VERSION, type NormalizeReport } from "../model/schema";
+import { NODE_TYPE_ORDER, STATUS_ORDER } from "../model/constants";
+import { impactConfigOf, setPreferredRelease } from "../model/forks";
+import { DocFormatError, NewerDocError, normalizeDoc, SCHEMA, SCHEMA_VERSION, setReadableVersion, THIN_VERSION, type NormalizeReport } from "../model/schema";
 import { normalizeText } from "../model/search";
-import type { Condition, DocData, GEdge, GNode, ID, Meta } from "../model/types";
+import type { Condition, DocData, GEdge, GNode, ID, Meta, NodeStatus, NodeType } from "../model/types";
 // 同じ鍵のカードの選び方（新しい版にするときと同じ決まり）
 import { madeFirst } from "./keyedCards";
 
@@ -81,13 +83,17 @@ export interface MapBase {
   smap: Record<ID, ID | null>;
 }
 
-/** 書き換えたカードの、元の題名・短い名前・月（次の版で鍵が無くなっても空のカードにしない: safety-7）。やることを丸ごと書いたときは元の番号と文の指紋も */
+/**
+ * 書き換えたカードの、元の題名・短い名前・月（次の版で鍵が無くなっても空のカードにしない: safety-7）。やることを丸ごと書いたときは元の番号と文の指紋も。
+ * チェックだけ書いたとき（k）は、チェックした項目の文（kt。次の版で鍵が無くなったカードに、チェックした項目を文ごと残す）
+ */
 export interface CardWas {
   t: string;
   s: string;
   m: number;
   c?: string[];
   k0?: string[];
+  kt?: string[];
 }
 
 /** カードの変えた所 */
@@ -320,17 +326,78 @@ let page: PageBaseline | null = null;
 const cores = new WeakMap<MapData, Core>();
 
 /**
+ * ページの地図の読み込み方（ページに 3 か月ごとの地図を入れたビルドだけ。main.ts が起動で決める）。地図は要るときに初めて読む
+ * （保存してあった物に地図がある・利用者が地図を開く: 見直し gaps-17）。読み込み方があるページは、薄い形（版 2）を読めるページ
+ */
+let source: { load: () => Promise<MapData | null>; digest?: string } | null = null;
+/** 読み込み（1 度だけ。読めなかったら、開き直すまで読めないまま: 薄い形の文書は止める） */
+let loading: Promise<boolean> | null = null;
+
+/** 読める保存の版と、入口を選ぶときに先にする版を、今のページの地図に合わせる */
+function syncPage(): void {
+  setReadableVersion(page !== null || source !== null ? THIN_VERSION : SCHEMA_VERSION);
+  setPreferredRelease(page ? page.release : null);
+}
+
+/**
  * ページの地図（基準）を入れる。null で外す。digest は版の記録の基準の文書の指紋（無ければ初めて使うときに数える）。
- * 版の順番・中身の指紋・地図の年月は地図の入口から取る
+ * 版の順番・中身の指紋・地図の年月は地図の入口から取る。入れている間は、このページは薄い形（版 2）を読める
  */
 export function setThinBaseline(map: MapData | null, opts: { digest?: string } = {}): void {
   if (!map) {
     page = null;
+    syncPage();
     return;
   }
   const h = map.header;
   if (!Number.isInteger(h.release) || h.release < 0 || typeof h.hash !== "string" || !h.hash || typeof h.anchor !== "string") throw new Error("ページの地図の入口（版の順番・中身の指紋・年月）が読めません");
   page = { map, release: h.release, hash: h.hash, anchor: h.anchor, digest: opts.digest ?? null };
+  syncPage();
+}
+
+/**
+ * ページの地図の読み込み方を決める（null で外す。外すと、入れてある地図も外す）。決めるだけで読まない: 読むのは ensurePageMap。
+ * 決めてからは、このページは薄い形（版 2）を読めるページ（版の記録・見出し・マニフェストの docVersion 2 を新しい版と見なさない）
+ */
+export function setPageMapSource(load: (() => Promise<MapData | null>) | null, opts: { digest?: string } = {}): void {
+  source = load ? { load, ...(opts.digest ? { digest: opts.digest } : {}) } : null;
+  loading = null;
+  if (!load) page = null;
+  syncPage();
+}
+
+/** このページが薄い形（版 2）を読めるか（ページの地図があるか、読み込み方が決まっている） */
+export function thinReadable(): boolean {
+  return page !== null || source !== null;
+}
+
+/**
+ * ページの地図を用意する（入れてあればすぐ true。読み込み方があれば 1 度だけ読んで入れる）。読めなければ false
+ * （薄い形の文書は unavailable で止まる。開き直すまで読み直さない）
+ */
+export function ensurePageMap(): Promise<boolean> {
+  if (page) return Promise.resolve(true);
+  const src = source;
+  if (!src) return Promise.resolve(false);
+  loading ??= src.load().then(
+    (map) => {
+      if (!map || source !== src) return false;
+      setThinBaseline(map, { digest: src.digest });
+      return true;
+    },
+    () => false,
+  );
+  return loading;
+}
+
+/** 入れてあるページの地図の版の順番（無ければ null。基準を組み立てずに分かる） */
+export function pageRelease(): number | null {
+  return page ? page.release : null;
+}
+
+/** 入れてあるページの地図の中身の指紋（無ければ null） */
+export function pageHash(): string | null {
+  return page ? page.hash : null;
 }
 
 /** ページの地図の基準の文書の指紋（版の記録の物。無ければ組み立てた基準から数える） */
@@ -571,6 +638,17 @@ function slotsOf(core: Core, i: number): readonly string[] {
 /** ページの地図の今日のカードか（鍵・地図の年月・3 年の分かれ道の入口） */
 function isPageRoot(core: Core, n: GNode): boolean {
   return n.meta?.forecastRoot === true && n.meta.key === core.keys[0] && n.meta.anchor === core.anchor && impactConfigOf(n) !== null;
+}
+
+/** 文書がページの地図（同じ鍵・年月の今日）を持つか（地図を足すときに ID をそのまま使う・書くと薄い形になる物か。基準を組み立てずに分かる） */
+export function holdsPageMap(doc: DocData): boolean {
+  if (!page) return false;
+  const key = page.map.key(0);
+  for (const id of Object.keys(doc.nodes)) {
+    const n = doc.nodes[id]!;
+    if (n.meta?.forecastRoot === true && n.meta.key === key && n.meta.anchor === page.anchor && impactConfigOf(n) !== null) return true;
+  }
+  return false;
 }
 
 /** 3 か月ごとの地図の今日のカード（どの版でも。地図の年月 anchor を持つ 3 年の分かれ道の入口） */
@@ -825,6 +903,8 @@ function withRelease(root: GNode, pb: PageBaseline): GNode {
 /** 文書を薄い形にする。ページの地図が無い文書は null（そのまま書く）。ページの地図はあるが基準が無ければ ThinBaselineMissingError */
 export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats } | null {
   const docNodes = doc.nodes;
+  // ノードの入れ物の無い物（文書の形でない物）は、そのまま書く（書き手は作らないが、壊さずに通す）
+  if (!docNodes || typeof docNodes !== "object") return null;
   if (!page) {
     for (const id of Object.keys(docNodes)) if (isQuarterRoot(docNodes[id])) throw new ThinBaselineMissingError();
     return null;
@@ -1045,7 +1125,10 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
       view.memoN.set(c, p);
     }
     if (p) {
-      nPatch[keys[i]!] = { ...p, was: wasOf(v, !!p.f && own(p.f, "conditions")) };
+      const was = wasOf(v, !!p.f && own(p.f, "conditions"));
+      // チェックだけ書くときは、チェックした項目の文も（次の版で鍵が無くなったカードに、チェックを文ごと残す）
+      if (p.k) was.kt = c.conditions.filter((x) => x.met).map((x) => x.text);
+      nPatch[keys[i]!] = { ...p, was };
       stats.patched++;
     }
   }
@@ -1174,7 +1257,7 @@ function parseSection(raw: unknown): ThinSection {
     if (node) {
       const w = p.was;
       if (!isObj(w) || typeof w.t !== "string" || typeof w.s !== "string" || typeof w.m !== "number") return false;
-      if ((w.c !== undefined && !strList(w.c)) || (w.k0 !== undefined && !strList(w.k0))) return false;
+      if ((w.c !== undefined && !strList(w.c)) || (w.k0 !== undefined && !strList(w.k0)) || (w.kt !== undefined && !strList(w.kt))) return false;
       if (p.k !== undefined && p.f !== undefined && own(p.f as Obj, "conditions")) return false;
     }
     return true;
@@ -1242,36 +1325,93 @@ function applyEdge(v: GEdge, p: EdgePatch | undefined, id: ID, source: ID, targe
 }
 
 /**
- * 薄い形の文書を読む（新しい入れ物の文書と、保存したノードと線を整えた報告）。読めなければ ThinMapError か ThinNewerError・NewerDocError
- * （どれも止める側の失敗）。読み手を通さない失敗も、ここで ThinMapError（corrupt）にまとめる
+ * 違う版・違う組み立ての地図の変更を、ページの地図に鍵で当て直すか（版をまたぐ読み方: SPEC §6・D10・D11、R0 §6.2）:
+ *   older 前の版の地図だけ当て直す（既定。地図はいつもページの版で開く）・any 同じ版で合わない物も（「この版で開き直す」・取り込み）・none しない
  */
-export function decodeThin(raw: unknown): { doc: DocData; report: NormalizeReport } {
+export type ThinUpgradeMode = "none" | "older" | "any";
+
+export interface ThinDecodeOpts {
+  upgrade?: ThinUpgradeMode;
+}
+
+/** 当て直したときの数（知らせに使う） */
+export interface ThinUpgradeInfo {
+  from: { release: number; hash: string };
+  to: { release: number; hash: string };
+  /** 鍵でページの地図のカードに当てた、書き換えたカード */
+  applied: number;
+  /** 消してあったカード（ページの地図のカードとして戻った。一番上だけ数える） */
+  restored: number;
+  /** ページの地図に無くなったカードで、利用者の物（選んだ・書き換えた・チェックした・線でつないだ）を持つ物（「前の版で決めたこと」に残した） */
+  detached: number;
+  /** 当てられなかったやることのチェック（ページの地図の同じカードに、同じ元の番号の項目が無い） */
+  lostTicks: number;
+  /** 当てられなかった同梱の線の変更（子の鍵がページの地図に無い） */
+  droppedEdges: number;
+}
+
+/** 読んだ結果（当て直したときは upgrade に数） */
+export interface ThinDecoded {
+  doc: DocData;
+  report: NormalizeReport;
+  upgrade?: ThinUpgradeInfo;
+}
+
+/**
+ * 薄い形の文書を読む（新しい入れ物の文書と、保存したノードと線を整えた報告）。読めなければ ThinMapError か ThinNewerError・NewerDocError
+ * （どれも止める側の失敗）。読み手を通さない失敗も、ここで ThinMapError（corrupt）にまとめる。
+ * 前の版の地図は、鍵でページの地図に当て直して読む（opts.upgrade。既定 older）。同じ版で合わない物は、any のときだけ当て直す
+ */
+export function decodeThin(raw: unknown, opts: ThinDecodeOpts = {}): ThinDecoded {
   try {
-    return decodeThinInner(raw);
+    return decodeThinInner(raw, opts.upgrade ?? "older");
   } catch (e) {
     if (e instanceof ThinMapError || e instanceof NewerDocError) throw e;
     throw new ThinMapError("corrupt", `保存されている地図を読めませんでした（${e instanceof Error ? e.message : String(e)}）。保存されているデータには触れていません。`, { cause: e });
   }
 }
 
-function decodeThinInner(raw: unknown): { doc: DocData; report: NormalizeReport } {
+/** 薄い形の記録の地図の変更（maps[0]）を、形だけ確かめて読む（無ければ null。2 つ以上・読めない形は ThinMapError） */
+export function sectionOf(raw: unknown): ThinSection | null {
+  if (!isObj(raw)) return null;
+  const maps = raw.maps;
+  if (maps === undefined || (Array.isArray(maps) && maps.length === 0)) return null;
+  if (!Array.isArray(maps)) throw corrupt("maps");
+  if (maps.length !== 1) throw new ThinMapError("corrupt", "保存されている地図の変更が 2 つ以上あります（このページは 1 つだけ読めます）。保存されているデータには触れていません。");
+  return parseSection(maps[0]);
+}
+
+function decodeThinInner(raw: unknown, mode: ThinUpgradeMode): ThinDecoded {
   if (!isObj(raw)) throw corrupt("文書");
   if (raw.schema !== SCHEMA) throw corrupt("schema");
   const v = typeof raw.version === "number" && Number.isFinite(raw.version) ? Math.floor(raw.version) : NaN;
   if (Number.isNaN(v)) throw corrupt("版");
   if (v > THIN_VERSION) throw new NewerDocError(v);
-  const { maps, ...rest } = raw;
-  if (maps === undefined || (Array.isArray(maps) && maps.length === 0)) {
+  const rest: Obj = { ...raw };
+  delete rest.maps;
+  const s = sectionOf(raw);
+  if (!s) {
     // 地図の無い版 2（書き手は書かないが、読めるので読む）
     return normalizeDoc({ ...rest, version: 1 });
   }
-  if (!Array.isArray(maps)) throw corrupt("maps");
-  if (maps.length !== 1) throw new ThinMapError("corrupt", "保存されている地図の変更が 2 つ以上あります（このページは 1 つだけ読めます）。保存されているデータには触れていません。");
-  const s = parseSection(maps[0]);
   const pb = page;
   if (!pb) throw new ThinMapError("unavailable", "このページでは、保存されている地図を組み立てられません（ページに地図の同梱データがありません）。ページを開き直してください。保存されているデータには触れていません。", { release: s.release });
   if (s.release > pb.release) throw new ThinNewerError(s.release);
-  if (s.release < pb.release) throw new ThinMapError("older", `保存されている地図は前の版（版 ${s.release}）の物です。このページ（版 ${pb.release}）で新しい版にして読む準備ができていません。保存されているデータには触れていません。`, { release: s.release });
+  if (s.release < pb.release) {
+    if (mode === "none") throw new ThinMapError("older", `保存されている地図は前の版（版 ${s.release}）の物です。このページ（版 ${pb.release}）では、そのままでは読めません。保存されているデータには触れていません。`, { release: s.release });
+    return rebaseThin(rest, s, pb);
+  }
+  try {
+    return decodeExact(rest, s, pb);
+  } catch (e) {
+    // 同じ版で合わない（違う組み立て・知らない鍵）: 頼まれたときだけ、鍵で当て直す（「この版で開き直す」・取り込み）
+    if (mode === "any" && e instanceof ThinMapError && e.code === "mismatch") return rebaseThin(rest, s, pb);
+    throw e;
+  }
+}
+
+/** 同じ版・同じ組み立ての地図の変更を、そのまま当てて読む（合わなければ ThinMapError mismatch: 閉じて失敗する） */
+function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   if (s.hash !== pb.hash) throw mismatch("中身の指紋", s.release);
   if (s.bv !== THIN_BASELINE_VERSION) throw mismatch("組み立ての版", s.release);
   if (s.anchor !== pb.anchor) throw mismatch("地図の年月", s.release);
@@ -1465,4 +1605,376 @@ function decodeThinInner(raw: unknown): { doc: DocData; report: NormalizeReport 
   for (const id of Object.keys(nd.edges)) if (!own(edges, id)) edges[id] = nd.edges[id]!;
   const doc: DocData = { ...nd, nodes, edges };
   return { doc, report: norm.report };
+}
+
+// ---------------------------------------------------------------- 版をまたいで読む（前の版・違う組み立ての地図の変更を、ページの地図に鍵で当て直す）
+//
+// 作業メモ SPEC v1 §6（D10・D11・safety-5・safety-7・safety-8）・R0 §6.2。保存した物とページの地図だけから決まる（乱数・今の時刻を使わない）。
+// 文書の id と updatedAt は変えない（どの端末も「新しい版にした」を変更として送らない）。
+//   - 鍵がページの地図にあるカード: ページの地図のカードに、利用者の物（状態・書き換えた題名と本文・やることのチェック（元の番号と枠で）・
+//     自分で直したやること・付けたタグ・期限・プロジェクトとシナリオ・折りたたみ・利用者の meta）を当てる。ID の読み替えは残す（利用者の線がつながったまま）
+//   - 同梱の線の変更: 子の鍵がページの地図にあれば、直した見込み（%）・書き換えた説明と条件・関係を当てる
+//   - 消したカード・線: 戻す（今までの「自分で消したカードは戻る」と同じ）。同じ 2 枚の間に利用者が引き直した線があれば、線は戻さない
+//   - 鍵がページの地図に無くなったカード: 利用者の物を持つ物（と、利用者の線・利用者のカードがつながる物）を、鍵の無い利用者のカードとして
+//     「前の版で決めたこと」の見出しの下（今日の左）に残す。題名・本文・状態・やること（チェックした項目は文ごと）・利用者の線はそのまま
+//   - 今日（丸ごと保存してある）: ページの地図の今日に、利用者の物（書き換えた題名と本文・状態・付けたタグ・位置・年収）を当てる
+
+/** 組み立てが作るカードの meta（版が変われば新しい版の物にする。利用者の meta とは分ける） */
+const BUILDER_NODE_META = new Set([
+  "forecastRoot",
+  "futureVersion",
+  "futureRelease",
+  "impact",
+  "anchor",
+  "textVersion",
+  "never",
+  "fams",
+  "fork",
+  "m",
+  "short",
+  "st",
+  "rr",
+  "key",
+  "t0",
+  "b0",
+  "k0",
+  "ak",
+  "fam",
+  "h",
+  "why",
+  "stub",
+  "base",
+  "cites",
+  "rank",
+  "q",
+  "band",
+  "end",
+  "sum",
+]);
+/** 組み立てが作る線の meta（直した見込み prob は利用者の物として当てる） */
+const BUILDER_EDGE_META = new Set(["r", "ln", "rv", "p0", "c0"]);
+
+const NODE_TYPES = new Set<string>(NODE_TYPE_ORDER);
+const NODE_STATUSES = new Set<string>(STATUS_ORDER);
+
+/** 「前の版で決めたこと」の見出し・カードを置く所（今日の左。列の幅と行の高さ） */
+const PREV_GROUP_DX = -1400;
+const PREV_ROW = 140;
+
+/** 書き換えたカードが利用者の物を持つか（鍵が無くなったときに残す物）。位置・折りたたみ・時刻だけの変更は持たない */
+function carriesUserState(p: NodePatch): boolean {
+  const f = (p.f ?? {}) as Obj;
+  if (typeof f.status === "string" && f.status !== "open") return true;
+  if ((p.k?.length ?? 0) > 0) return true;
+  if (typeof f.title === "string" || (typeof f.body === "string" && f.body !== "")) return true;
+  if (Array.isArray(f.conditions) || Array.isArray(f.tags)) return true;
+  return Object.keys(p.m ?? {}).some((k) => !BUILDER_NODE_META.has(k));
+}
+
+/** ページの地図のカードに、前の版の変更のうち利用者の物を当てる（位置は新しい地図の物のまま）。整える前の形を返す */
+function carryNode(v: GNode, p: NodePatch, id: ID, slots: readonly string[], info: ThinUpgradeInfo): Obj {
+  const f = (p.f ?? {}) as Obj;
+  const out: Obj = { ...v, id };
+  for (const k of ["type", "title", "body", "status", "time", "collapsed", "createdAt", "updatedAt", "projectIds", "scenarioIds"] as const) if (own(f, k)) out[k] = f[k];
+  // 新しい版の書き手が足した項目（知らない項目）は持ち越す
+  for (const k of Object.keys(f)) if (!NODE_KNOWN.has(k)) out[k] = f[k];
+  if (own(f, "conditions")) out.conditions = f.conditions;
+  else if (p.k) {
+    const on = new Set(p.k);
+    out.conditions = v.conditions.map((c, t) => (on.has(slots[t]!) && !c.met ? { ...c, met: true } : c));
+    for (const x of on) if (!slots.includes(x)) info.lostTicks++;
+  }
+  if (own(f, "tags") && Array.isArray(f.tags)) {
+    // 付けたタグ（前の版で役割と月から付いたタグでも、新しい版で付くタグでもない物）だけを、新しい版のタグの後ろに
+    const given = new Set([...impactTagsOf({ ...v.meta, m: p.was.m }), ...v.tags]);
+    const mine = (f.tags as unknown[]).filter((t): t is string => typeof t === "string" && !given.has(t));
+    out.tags = mine.length ? [...v.tags, ...mine] : v.tags;
+  }
+  if (p.m || p.md) {
+    const meta: Obj = { ...v.meta };
+    for (const k of Object.keys(p.m ?? {})) if (!BUILDER_NODE_META.has(k)) meta[k] = p.m![k];
+    for (const k of p.md ?? []) if (!BUILDER_NODE_META.has(k)) delete meta[k];
+    out.meta = meta;
+  }
+  return out;
+}
+
+/** ページの地図の同梱の線に、前の版の変更のうち利用者の物（直した見込み・説明・条件・関係・シナリオ・折りたたみ）を当てる */
+function carryEdge(v: GEdge, p: EdgePatch, id: ID, source: ID, target: ID): Obj {
+  const f = (p.f ?? {}) as Obj;
+  const out: Obj = { ...v, id, source, target };
+  for (const k of ["relation", "label", "condition", "scenarioIds", "collapsed", "createdAt", "updatedAt"] as const) if (own(f, k)) out[k] = f[k];
+  for (const k of Object.keys(f)) if (!EDGE_KNOWN.has(k)) out[k] = f[k];
+  if (p.m || p.md) {
+    const meta: Obj = { ...v.meta };
+    for (const k of Object.keys(p.m ?? {})) if (!BUILDER_EDGE_META.has(k)) meta[k] = p.m![k];
+    for (const k of p.md ?? []) if (!BUILDER_EDGE_META.has(k)) delete meta[k];
+    out.meta = meta;
+  }
+  return out;
+}
+
+/** 鍵が無くなったカードを、鍵の無い利用者のカードにする（題名・本文・状態・やること・タグ・時刻は利用者の物、無ければ元の題名） */
+function detachedCard(k: string, p: NodePatch | null, pin: CardPin | null, id: ID, x: number, y: number, s: ThinSection): Obj {
+  const f = (p?.f ?? {}) as Obj;
+  const w: { t: string; s: string } = p ? p.was : pin!;
+  let conditions: unknown = [];
+  if (Array.isArray(f.conditions)) conditions = f.conditions;
+  else if (p?.k?.length) {
+    // チェックした項目（文が無い古い書き方なら、元の番号）
+    const texts = p.was.kt ?? p.k;
+    conditions = texts.map((text, t) => ({ id: `c_${fnv64x36(k)}_${t}`, text, met: true }));
+  }
+  const meta: Obj = { prevKey: k, prevRelease: s.release };
+  if (w.s) meta.prevShort = w.s;
+  for (const mk of Object.keys(p?.m ?? {})) if (!BUILDER_NODE_META.has(mk)) meta[mk] = p!.m![mk];
+  return {
+    id,
+    type: typeof f.type === "string" && NODE_TYPES.has(f.type) ? (f.type as NodeType) : "action",
+    title: typeof f.title === "string" ? f.title : w.t,
+    body: typeof f.body === "string" ? f.body : "",
+    status: typeof f.status === "string" && NODE_STATUSES.has(f.status) ? (f.status as NodeStatus) : "open",
+    time: isObj(f.time) ? f.time : { due: null, start: null },
+    conditions,
+    tags: Array.isArray(f.tags) ? f.tags : [],
+    projectIds: Array.isArray(f.projectIds) ? f.projectIds : [],
+    scenarioIds: Array.isArray(f.scenarioIds) ? f.scenarioIds : [],
+    x,
+    y,
+    collapsed: false,
+    createdAt: typeof f.createdAt === "string" && isoOk(f.createdAt) ? f.createdAt : s.at,
+    updatedAt: typeof f.updatedAt === "string" && isoOk(f.updatedAt) ? f.updatedAt : s.at,
+    meta,
+  };
+}
+
+/** 今日: ページの地図の今日に、保存してあった今日の利用者の物を当てる（書き換えた題名と本文・状態・付けたタグ・位置・年収・利用者の meta） */
+function carryRoot(pr: GNode, sr: GNode): GNode {
+  const t0 = sr.meta.t0;
+  const b0 = sr.meta.b0;
+  const title = typeof t0 === "string" && fnv36(sr.title) !== t0 ? sr.title : pr.title;
+  const body = typeof b0 === "string" && fnv36(sr.body) !== b0 ? sr.body : pr.body;
+  const given = new Set([...impactTagsOf(sr.meta), ...pr.tags]);
+  const mine = sr.tags.filter((t) => !given.has(t));
+  const meta: Meta = { ...pr.meta };
+  for (const k of Object.keys(sr.meta)) if (!BUILDER_NODE_META.has(k)) meta[k] = sr.meta[k];
+  const si = sr.meta.impact;
+  const pi = pr.meta.impact;
+  if (isObj(si) && isObj(pi)) {
+    const imp: Obj = { ...pi };
+    if (si.annual !== undefined) imp.annual = si.annual;
+    if (si.tail !== undefined) imp.tail = si.tail;
+    meta.impact = imp;
+  }
+  return {
+    ...pr,
+    id: sr.id,
+    title,
+    body,
+    status: sr.status,
+    tags: mine.length ? [...pr.tags, ...mine] : pr.tags,
+    conditions: sr.conditions.length ? sr.conditions : pr.conditions,
+    projectIds: sr.projectIds,
+    scenarioIds: sr.scenarioIds,
+    x: sr.x,
+    y: sr.y,
+    collapsed: sr.collapsed,
+    createdAt: sr.createdAt,
+    updatedAt: sr.updatedAt,
+    meta,
+  };
+}
+
+/**
+ * 前の版・違う組み立ての地図の変更（s）を、ページの地図に鍵で当て直して読む。rest は maps を除いた保存した文書。
+ * 保存した物とページの地図だけから決まる（同じ物からは、どの端末でも同じ文書）
+ */
+function rebaseThin(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
+  const core = coreOf(pb.map, s.at);
+  if (s.key !== core.keys[0]) throw mismatch("今日の鍵（別の地図）", s.release);
+  const n = core.n;
+  const keys = core.keys;
+  const info: ThinUpgradeInfo = { from: { release: s.release, hash: s.hash }, to: { release: pb.release, hash: pb.hash }, applied: 0, restored: 0, detached: 0, lostTicks: 0, droppedEdges: 0 };
+  // プロジェクト・シナリオ: 保存した読み替えのうち、ページの地図にある物。無ければ同じ ID・同じ名前・無い（読み替えの先は文書にある物だけ）
+  const projects = isObj(rest.projects) ? rest.projects : {};
+  const scenarios = isObj(rest.scenarios) ? rest.scenarios : {};
+  const looseMap = (list: ReadonlyArray<{ id: ID; name: string }>, m: Record<ID, ID | null> | undefined, have: Obj): Record<ID, ID | null> => {
+    const byName = new Map<string, ID>();
+    for (const id of Object.keys(have)) {
+      const g = have[id];
+      const name = isObj(g) && typeof g.name === "string" ? nameKey(g.name) : null;
+      if (name !== null && !byName.has(name)) byName.set(name, id);
+    }
+    const out: Record<ID, ID | null> = {};
+    for (const g of list) {
+      let t: ID | null = m && own(m, g.id) ? m[g.id]! : own(have, g.id) ? g.id : (byName.get(nameKey(g.name)) ?? null);
+      if (t !== null && !own(have, t)) t = null;
+      out[g.id] = t;
+    }
+    return out;
+  };
+  const base: MapBase = { at: s.at, dx: Math.round(s.dx), dy: Math.round(s.dy), pmap: looseMap(core.projects, s.pmap, projects), smap: looseMap(core.scenarios, s.smap, scenarios) };
+  const view = viewOf(core, base);
+  const nPatch = s.n ?? {};
+  const ePatch = s.e ?? {};
+  const nidMap = s.nid ?? {};
+  const eidMap = s.eid ?? {};
+  const pins = s.pin ?? {};
+  // 保存したノードと線（今日・利用者の物）
+  const rawNodes = dict(rest.nodes ?? {}, "nodes");
+  const rawEdges = dict(rest.edges ?? {}, "edges");
+  const refOf = (key: string, value: unknown): string => (isObj(value) && (typeof value.id === "string" || typeof value.id === "number") ? String(value.id) : key);
+  let rootRaw: Obj | undefined;
+  const storedIds = new Set<ID>();
+  for (const k of Object.keys(rawNodes)) {
+    const x = rawNodes[k];
+    if (isObj(x) && x.id === s.root) rootRaw = x;
+    storedIds.add(refOf(k, x));
+  }
+  if (!rootRaw || !isObj(rootRaw.meta) || rootRaw.meta.key !== keys[0]) throw mismatch("今日のカードがありません", s.release);
+  const storedEdgeIds = new Set<ID>();
+  for (const k of Object.keys(rawEdges)) storedEdgeIds.add(refOf(k, rawEdges[k]));
+  // ページの地図のカードの ID: 読み替えがあればそれ（利用者の線がつながったまま）、無ければ基準の ID。保存したノードと重なれば、鍵から決まる別の ID
+  const used = new Set<ID>(storedIds);
+  const idOf = new Array<ID>(n);
+  idOf[0] = s.root;
+  for (let i = 1; i < n; i++) {
+    const k = keys[i]!;
+    let id = own(nidMap, k) ? nidMap[k]! : view.nodes[i]!.id;
+    if (used.has(id)) id = view.nodes[i]!.id;
+    if (used.has(id)) id = impactNodeId64(`${k}#2`);
+    if (used.has(id)) throw corrupt("カードの ID が重なっています", s.release);
+    used.add(id);
+    idOf[i] = id;
+  }
+  // 鍵が無くなったカード（利用者の物を持つ物・利用者の線や利用者のカードがつながる物）: 前の ID のまま、利用者のカードとして残す
+  const rx = typeof rootRaw.x === "number" && Number.isFinite(rootRaw.x) ? Math.round(rootRaw.x) : 0;
+  const ry = typeof rootRaw.y === "number" && Number.isFinite(rootRaw.y) ? Math.round(rootRaw.y) : 0;
+  const detached: Obj[] = [];
+  const detach = (k: string, p: NodePatch | null, pin: CardPin | null): void => {
+    let id = own(nidMap, k) ? nidMap[k]! : impactNodeId64(k);
+    if (used.has(id)) id = impactNodeId64(`${k}#prev`);
+    if (used.has(id)) return;
+    used.add(id);
+    detached.push(detachedCard(k, p, pin, id, rx + PREV_GROUP_DX, ry + PREV_ROW * (detached.length + 1), s));
+  };
+  const detachedKeys = new Set<string>();
+  for (const k of Object.keys(nPatch)) {
+    const p = nPatch[k]!;
+    if (core.keyIndex.has(k)) {
+      if (p === 0 || p === -1) info.restored++;
+      continue;
+    }
+    if (p === 0 || p === -1 || !carriesUserState(p)) continue;
+    detachedKeys.add(k);
+    detach(k, p, null);
+  }
+  for (const k of Object.keys(pins)) {
+    if (core.keyIndex.has(k) || detachedKeys.has(k)) continue;
+    detach(k, null, pins[k]!);
+  }
+  info.detached = detached.length;
+  // 書き換えたカード（ページの地図にある鍵）と、整える前のノード: 今日 → 書き換えたカード → 前の版で決めたこと → 利用者のノード
+  const nodesIn: Obj = { [s.root]: rootRaw };
+  const carried = new Uint8Array(n);
+  for (let i = 1; i < n; i++) {
+    const p = nPatch[keys[i]!];
+    if (p === undefined || p === 0 || p === -1) continue;
+    nodesIn[idOf[i]!] = carryNode(view.nodes[i]!, p, idOf[i]!, slotsOf(core, i), info);
+    carried[i] = 1;
+    info.applied++;
+  }
+  let groupId: ID | null = null;
+  if (detached.length) {
+    groupId = `n_prev_${fnv64x36(`${s.root}\u0000${s.release}\u0000${s.hash}`)}`;
+    if (used.has(groupId)) groupId = `n_prev_${fnv64x36(`${s.root}\u0000${s.release}\u0000${s.hash}#2`)}`;
+    used.add(groupId);
+    nodesIn[groupId] = {
+      id: groupId,
+      type: "goal",
+      title: "前の版で決めたこと",
+      body: `地図が新しい版（版 ${pb.release}）になり、前の版（版 ${s.release}）の地図から無くなったカードのうち、あなたが選んだ・書き換えた・チェックした・線でつないだカードです。`,
+      status: "open",
+      time: { due: null, start: null },
+      conditions: [],
+      tags: [],
+      projectIds: [],
+      scenarioIds: [],
+      x: rx + PREV_GROUP_DX,
+      y: ry,
+      collapsed: false,
+      createdAt: s.at,
+      updatedAt: s.at,
+      meta: { prevGroup: s.release },
+    };
+    for (const d of detached) nodesIn[d.id as string] = d;
+  }
+  for (const k of Object.keys(rawNodes)) if (rawNodes[k] !== rootRaw) nodesIn[k] = rawNodes[k];
+  // 同梱の線（ページの地図の物）: 変更を当てる。消してあった線は戻す（同じ 2 枚の間に利用者が引き直した線があれば戻さない）
+  const pairs = new Set<string>();
+  for (const k of Object.keys(rawEdges)) {
+    const e = rawEdges[k];
+    if (isObj(e)) pairs.add(`${String(e.source ?? e.from)}\u0000${String(e.target ?? e.to)}`);
+  }
+  const usedE = new Set<ID>(storedEdgeIds);
+  const edgeIdOf = new Array<ID>(n);
+  for (let i = 1; i < n; i++) {
+    const k = keys[i]!;
+    let id = own(eidMap, k) ? eidMap[k]! : view.edges[i]!.id;
+    if (usedE.has(id)) id = view.edges[i]!.id;
+    if (usedE.has(id)) id = impactEdgeId64(`${k}#2`);
+    usedE.add(id);
+    edgeIdOf[i] = id;
+  }
+  const edgesIn: Obj = {};
+  const carriedE = new Uint8Array(n);
+  const skipE = new Uint8Array(n);
+  for (const k of Object.keys(ePatch)) {
+    const i = core.keyIndex.get(k);
+    if (i === undefined || i === 0) {
+      info.droppedEdges++;
+      continue;
+    }
+    const p = ePatch[k]!;
+    if (p === 0) {
+      if (pairs.has(`${idOf[core.parent[i]!]!}\u0000${idOf[i]!}`)) skipE[i] = 1;
+      continue;
+    }
+    edgesIn[edgeIdOf[i]!] = carryEdge(view.edges[i]!, p, edgeIdOf[i]!, idOf[core.parent[i]!]!, idOf[i]!);
+    carriedE[i] = 1;
+  }
+  for (const k of Object.keys(rawEdges)) edgesIn[k] = rawEdges[k];
+  const pageIds = new Set<ID>(idOf);
+  const norm = normalizeDoc({ ...rest, version: 1, nodes: nodesIn, edges: edgesIn }, { externalNodeIds: (id) => pageIds.has(id) });
+  const nd = norm.doc;
+  const sr = nd.nodes[s.root];
+  if (!sr) throw corrupt("今日のカードを読めません", s.release);
+  // 新しい入れ物: 今日 → 地図のカード（番号の順）→ 前の版で決めたこと・利用者のノード、地図の線（番号の順）→ 利用者の線
+  const nodes: Record<ID, GNode> = {};
+  nodes[s.root] = withRelease(carryRoot(view.nodes[0]!, sr), pb);
+  for (let i = 1; i < n; i++) {
+    const id = idOf[i]!;
+    if (carried[i]) {
+      const x = nd.nodes[id];
+      if (!x) throw corrupt(`書き換えたカードを読めません: ${keys[i]!.slice(0, 60)}`, s.release);
+      nodes[id] = x;
+    } else {
+      const vn = view.nodes[i]!;
+      nodes[id] = id === vn.id ? vn : { ...vn, id };
+    }
+  }
+  for (const id of Object.keys(nd.nodes)) if (!own(nodes, id)) nodes[id] = nd.nodes[id]!;
+  const edges: Record<ID, GEdge> = {};
+  for (let i = 1; i < n; i++) {
+    if (skipE[i]) continue;
+    const id = edgeIdOf[i]!;
+    if (carriedE[i]) {
+      const x = nd.edges[id];
+      // 整えたら無くなった（関係が知らない物など）: 同梱の線のまま
+      edges[id] = x ?? applyEdge(view.edges[i]!, undefined, id, idOf[core.parent[i]!]!, idOf[i]!);
+    } else edges[id] = applyEdge(view.edges[i]!, undefined, id, idOf[core.parent[i]!]!, idOf[i]!);
+  }
+  for (const id of Object.keys(nd.edges)) if (!own(edges, id)) edges[id] = nd.edges[id]!;
+  const doc: DocData = { ...nd, nodes, edges };
+  return { doc, report: norm.report, upgrade: info };
 }
