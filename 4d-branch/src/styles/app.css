@@ -1143,6 +1143,17 @@ button.tag-chip:hover {
 .banner a.btn {
   text-decoration: none;
 }
+/* アカウントに新しい版の内容があるときの帯（開き直すまで出したまま）: 文は文節の切れ目で折り返す（スマホの幅で 1〜2 文字だけが次の行に残らない） */
+.banner-newer .banner-text {
+  word-break: auto-phrase;
+}
+/* その帯の「ページを開き直す」はこの状態のただ 1 つの出口なので、押しやすい 44px（.btn より後に書かれた .btn の寸法に負けないように、2 つの名前で指す） */
+.btn.banner-reload {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 11px;
+  font-size: 13px;
+}
 
 /* ------------------------------------------------------------ リスト */
 .list-view {

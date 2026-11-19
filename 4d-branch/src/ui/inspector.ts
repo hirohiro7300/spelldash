@@ -104,7 +104,8 @@ export function buildInspector(app: AppContext): HTMLElement {
   ui.on("visual", () => {
     for (const u of viewUpdaters) u();
   });
-  app.persistence.on("writer", () => render(true));
+  // 閲覧のみになった・編集できるようになった（別のタブに引き継がれた・引き継いだ・アカウントに新しい版の内容があった）: 欄を作り直す
+  store.on("readOnly", () => render(true));
   app.focusInspectorTitle = () => {
     const t = body.querySelector<HTMLTextAreaElement>(".insp-title");
     t?.focus();

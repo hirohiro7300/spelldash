@@ -1,6 +1,7 @@
-// このページより新しい版で保存されたデータに出会ったときの画面。設計: docs/DESIGN.md §5
-// 読まずに止めたこと（新しい版のデータには触れていない）・開き直すと新しい版で開くことを伝え、開き直すボタンだけを置く。
-// 編集の画面は組み立てない（組み立てた後に気づいたときは、画面ごと差し替える）
+// このページより新しい版で保存されたデータに出会ったときの画面と、アカウントの写しが新しい版のときの帯。設計: docs/DESIGN.md §5
+// 画面: 読まずに止めたこと（新しい版のデータには触れていない）・開き直すと新しい版で開くことを伝え、開き直すボタンだけを置く。
+// 編集の画面は組み立てない（組み立てた後に気づいたときは、画面ごと差し替える）。
+// 帯: アカウントの写しだけが新しい版なら、編集の画面の上に出したまま、新しい編集を止めたことと開き直すことを伝える
 
 import type { KeptAside } from "../persist/persistence";
 import { h } from "./dom";
@@ -9,6 +10,11 @@ import { haltOverlays } from "./overlays";
 
 /** 止めた画面の見出し（E2E でも確かめる） */
 export const NEWER_TITLE = "新しい版のページで保存されたデータです";
+
+/** アカウントの写しがこのページより新しい版のときの帯の文（開き直すまで出したまま。E2E でも確かめる） */
+export const ACCOUNT_NEWER_BANNER = "アカウントに新しい版の内容があります。このページは古い版なので、編集を止めました。ページを開き直してください";
+/** そのときに編集しようとした・未来の道筋を開こうとしたときのお知らせ（「このタブで編集する」では戻らない） */
+export const ACCOUNT_NEWER_BLOCKED = "アカウントに新しい版の内容があるため、このページでは編集を止めています。上の「ページを開き直す」で開き直してください。";
 
 /** 開いている間に気づいて止めたとき、このタブのまだどこにも無い変更を残した所（消えたと思わないように伝える） */
 const KEPT_TEXT: Record<Exclude<KeptAside, null>, string> = {
@@ -45,4 +51,18 @@ export function showNewerScreen(mount: HTMLElement, opts: { kept?: KeptAside } =
   );
   mount.replaceChildren(screen);
   requestAnimationFrame(() => reload.focus());
+}
+
+/**
+ * アカウントの写しがこのページより新しい版と分かったときの帯（編集の画面の上に、開き直すまで出したまま）。画面ごとは止めず、
+ * 新しい編集だけを止めている（見る・書き出すはできる）。「ページを開き直す」はこの状態のただ 1 つの出口なので、スマホの幅でも押しやすい 44px
+ */
+export function accountNewerBanner(): HTMLElement {
+  return h(
+    "div",
+    { class: "banner tone-warn banner-newer" },
+    icon("lock", 15),
+    h("span", { class: "banner-text" }, ACCOUNT_NEWER_BANNER),
+    h("button", { class: "btn btn-primary banner-reload", type: "button", onClick: () => location.reload() }, icon("reset", 15), "ページを開き直す"),
+  );
 }

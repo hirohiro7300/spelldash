@@ -27,6 +27,8 @@ export interface StoreEvents {
   /** 閲覧専用のときに編集しようとした */
   blocked: string;
   history: void;
+  /** 閲覧専用になった・編集できるようになった（画面の部品が描き直す。別のタブに引き継がれたときも、アカウントに新しい版の内容があったときも） */
+  readOnly: boolean;
 }
 
 function newInfo(source: ChangeSource, label: string, full = false): ChangeInfo {
@@ -297,15 +299,25 @@ export class Tx {
 export class Store {
   doc: DocData;
   readonly history = new History();
-  /** 閲覧専用（別のタブが編集中・一時表示など） */
-  readOnly = false;
   /** 変更のたびに増える（キャッシュの鍵に使う） */
   revision = 0;
   private readonly emitter = new Emitter<StoreEvents>();
   private current: Tx | null = null;
+  private ro = false;
 
   constructor(doc: DocData) {
     this.doc = doc;
+  }
+
+  /** 閲覧専用（別のタブが編集中・アカウントに新しい版の内容がある など）。変わったら "readOnly" で知らせる */
+  get readOnly(): boolean {
+    return this.ro;
+  }
+
+  set readOnly(v: boolean) {
+    if (this.ro === v) return;
+    this.ro = v;
+    this.emitter.emit("readOnly", v);
   }
 
   on<K extends keyof StoreEvents>(type: K, fn: (payload: StoreEvents[K]) => void): () => void {

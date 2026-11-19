@@ -80,9 +80,9 @@ export function openBackupDialog(app: AppContext): void {
     );
     if (app.cloudInfo) {
       const c = app.cloudInfo;
-      // 止めている・失敗している同期は、ここからやり直せる
+      // 止めている・失敗している同期は、ここからやり直せる（アカウントに新しい版の内容があって止めたときは、開き直すまで再開しないので出さない）
       const retry =
-        c.state === "paused" || c.state === "error" || c.state === "offline"
+        !app.accountNewer && (c.state === "paused" || c.state === "error" || c.state === "offline")
           ? h("button", { class: "btn btn-sm", type: "button", onClick: () => (app.resyncCloud(), toast("アカウントとの同期をやり直します")) }, "同期をやり直す")
           : null;
       info.append(h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "アカウント（claude.ai）"), h("span", null, cloudText(c)), retry));

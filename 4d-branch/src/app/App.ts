@@ -26,9 +26,10 @@ import { buildListView } from "../ui/listView";
 import { startTour } from "../ui/onboarding";
 import { closeMenus, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
-import { showNewerScreen } from "../ui/newerScreen";
+import { ACCOUNT_NEWER_BLOCKED, accountNewerBanner, showNewerScreen } from "../ui/newerScreen";
 import { Commands } from "./commands";
 import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
+import { editLocked } from "./editLock";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
 import { buildFuture, futureRelease, futureVersion } from "../demo/futureBundle";
@@ -139,6 +140,13 @@ export class App implements AppContext {
   private readonly mount: HTMLElement;
   /** このページより新しい版で保存されたデータに気づいて、編集をやめた（画面は開き直すよう伝える物に差し替えた） */
   private newerShown = false;
+  /**
+   * アカウントの写しがこのページより新しい版と分かって、新しい編集を受けなくなった（開き直すまで。書き手に戻っても・
+   * 「このタブで編集する」でも・後の同期でも戻さない）。それまでの編集は手元に保存したまま（送らない・捨てない）
+   */
+  private heldByAccount = false;
+  /** そのときの帯（開き直すまで同じ物を出し続ける。描き直しで「ページを開き直す」のフォーカスを外さない） */
+  private newerBanner: HTMLElement | null = null;
   private readonly shell: HTMLElement;
   private readonly banner: HTMLElement;
   private readonly listEl: HTMLElement;
@@ -237,9 +245,7 @@ export class App implements AppContext {
         this.cloud?.markDirty();
       }
     });
-    this.persistence.on("writer", (w) => {
-      this.store.readOnly = !w && !this.ephemeral;
-    });
+    this.persistence.on("writer", () => this.applyReadOnly());
 
     this.shell = h("div", { class: "app-shell" }, buildTopbar(this), buildLeftSidebar(this), center, buildInspector(this), buildBottomBar(this));
     opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
@@ -253,7 +259,7 @@ export class App implements AppContext {
       this.renderBanner();
       if (!w) this.cloud?.writerLost();
     });
-    this.store.on("blocked", () => toast("このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。", { tone: "warn" }));
+    this.store.on("blocked", () => toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : "このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。", { tone: "warn" }));
     this.ui.on("prefs", (p) => this.applyPrefs(p));
     this.view.onCamera(() => this.onCamera());
     this.persistence.on("status", () => this.renderBanner());
@@ -295,6 +301,19 @@ export class App implements AppContext {
   }
 
   // ------------------------------------------------------------ 表示
+
+  /** アカウントの写しがこのページより新しい版と分かって、編集を止めている（開き直すまで） */
+  get accountNewer(): boolean {
+    return this.heldByAccount;
+  }
+
+  /**
+   * 閲覧のみかを決め直す（書き手が変わった・引き継いだ・新しい版と分かった）。新しい版の訳は開き直すまで消えないので、
+   * 書き手に戻っても編集できる状態には戻らない
+   */
+  private applyReadOnly(): void {
+    this.store.readOnly = editLocked({ writer: this.persistence.writer, ephemeral: this.ephemeral, accountNewer: this.heldByAccount, localNewer: this.newerShown });
+  }
 
   private applyPrefs(p: Partial<UiState["prefs"]>): void {
     const prefs = this.ui.prefs;
@@ -357,7 +376,11 @@ export class App implements AppContext {
 
   private renderBanner(): void {
     const b = this.banner;
-    b.replaceChildren();
+    // アカウントに新しい版の内容があるときの帯は、開き直すまで同じ物を先頭に出したまま（保存の状態が変わるたびに描き直しても、
+    // 「ページを開き直す」のフォーカスを外さない）
+    const held = this.heldByAccount ? (this.newerBanner ??= accountNewerBanner()) : null;
+    for (const c of [...b.children]) if (c !== held) c.remove();
+    if (held && held.parentElement !== b) b.prepend(held);
     const per = this.persistence;
     const add = (tone: string, iconName: string, text: string, ...actions: HTMLElement[]) => b.append(h("div", { class: `banner tone-${tone}` }, icon(iconName, 15), h("span", { class: "banner-text" }, text), ...actions));
     if (this.ephemeral) {
@@ -370,12 +393,14 @@ export class App implements AppContext {
       return;
     }
     if (!per.writer) {
-      add(
-        "warn",
-        "lock",
-        "別のタブで編集中のため、このタブは閲覧のみです。",
-        h("button", { class: "btn btn-sm btn-primary", type: "button", onClick: () => void this.takeOver() }, "このタブで編集する"),
-      );
+      // アカウントに新しい版の内容があるときは、引き継いでも編集できないので「このタブで編集する」は出さない（上の帯だけ）
+      if (!held)
+        add(
+          "warn",
+          "lock",
+          "別のタブで編集中のため、このタブは閲覧のみです。",
+          h("button", { class: "btn btn-sm btn-primary", type: "button", onClick: () => void this.takeOver() }, "このタブで編集する"),
+        );
     } else if (per.status === "conflict") {
       add(
         "danger",
@@ -390,14 +415,17 @@ export class App implements AppContext {
   }
 
   private async takeOver(): Promise<void> {
+    // アカウントに新しい版の内容がある: 引き継いでも編集できない（開き直すまで）。別のタブのロックも奪わない
+    if (this.heldByAccount) return;
     const doc = await this.persistence.takeOver();
     // 保存されているのがこのページより新しい版だった: 引き継がずに止めた（画面は "blocked" の知らせで差し替わる）
     if (this.persistence.blocked) return;
     if (doc) this.store.load(doc, "load");
-    this.store.readOnly = false;
+    // 引き継ぐ間にアカウントの新しい版に気づいていたら、閲覧のみのまま（決まりは applyReadOnly の 1 か所）
+    this.applyReadOnly();
     this.cloud?.resync();
     this.renderBanner();
-    toast("このタブで編集できるようになりました", { tone: "ok" });
+    if (!this.store.readOnly) toast("このタブで編集できるようになりました", { tone: "ok" });
   }
 
   private async resolveConflict(choice: "reload" | "overwrite"): Promise<void> {
@@ -445,13 +473,31 @@ export class App implements AppContext {
     if (this.newerShown) return;
     this.newerShown = true;
     this.cloud?.stop();
-    this.store.readOnly = true;
+    this.applyReadOnly();
     this.ui.persistPrefs = false;
     if (this.remoteTimer) clearTimeout(this.remoteTimer);
     if (this.cameraSaveTimer) clearTimeout(this.cameraSaveTimer);
     this.editor.cancel();
     closeMenus();
     showNewerScreen(this.mount, { kept });
+  }
+
+  /**
+   * アカウントの写しが、このページより新しい版のアプリで保存されていると分かった（同期はもう止めてあり、開き直すまで再開しない）。
+   * 新しい編集を受けない: その場の入力は確定してから（打った文字も手元に残る）ストアを閲覧のみにし、開き直すよう伝える帯を出す。
+   * それまでの編集は手元に保存したまま（送らない・捨てない。次の版が扱う）。以後は書き手に戻っても・「このタブで編集する」でも・
+   * 後の同期でも編集できる状態に戻さない。開いていたメニュー（開いたときの状態で項目を作ってある）と、
+   * 突き合わせを待って未来の道筋を開く頼みもやめる。形が違う・壊れた写しでは呼ばれない（今までどおり編集できる）。設計: docs/DESIGN.md §5・§5.1
+   */
+  private holdForAccountNewer(): void {
+    if (this.heldByAccount || this.newerShown) return;
+    this.editor.commit();
+    this.heldByAccount = true;
+    this.applyReadOnly();
+    if (this.futureWait) closeWaitToast();
+    this.futureWait = 0;
+    closeMenus();
+    this.renderBanner();
   }
 
   // ------------------------------------------------------------ メニュー
@@ -964,7 +1010,7 @@ export class App implements AppContext {
       return;
     }
     if (this.store.readOnly) {
-      toast(READ_ONLY_FUTURE, { tone: "warn" });
+      toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : READ_ONLY_FUTURE, { tone: "warn" });
       return;
     }
     if (!isDisposableDoc(this.store.doc)) return this.loadFuture();
@@ -1015,7 +1061,7 @@ export class App implements AppContext {
       this.futureWait = 0;
       closeWaitToast();
       if (ready) void this.showFuture();
-      else if (this.store.readOnly) toast(READ_ONLY_FUTURE, { tone: "warn" });
+      else if (this.store.readOnly) toast(this.heldByAccount ? ACCOUNT_NEWER_BLOCKED : READ_ONLY_FUTURE, { tone: "warn" });
       else if (!busy) this.loadFuture();
       else toast("未来の道筋は、入力や開いている画面を閉じてから、地図の右下の「未来の道筋」で開けます", { ms: 6000 });
     };
@@ -1094,8 +1140,9 @@ export class App implements AppContext {
     const started = Date.now();
     let toldReadOnly = false;
     const tick = (): void => {
-      // 新しい版のデータで止めた: 閲覧のみの訳などを知らせ続けない（止める画面と食い違う）
-      if (this.newerShown) return;
+      // 新しい版のデータで止めた・アカウントに新しい版の内容があって編集を止めた: 閲覧のみの訳などを知らせ続けない
+      // （止める画面・帯と食い違う。開き直すまで編集できないので、待ち続けもしない）
+      if (this.newerShown || this.heldByAccount) return;
       if (this.futureAutoDeclined || this.ui.prefs.futureAutoOpened || this.ui.storedPrefs().futureAutoOpened === true) return;
       if (this.store.doc.meta?.[NO_AUTO_FUTURE] === true) return;
       if (hasFutureRoot(this.store.doc)) return;
@@ -1564,6 +1611,8 @@ export class App implements AppContext {
     });
     this.cloud = sync;
     sync.on((st) => this.setCloudInfo(st, sync.message));
+    // アカウントの写しがこのページより新しい版: 開き直すまで新しい編集を受けない（形が違う・壊れた写しでは来ない）
+    sync.onNewer(() => this.holdForAccountNewer());
     await sync.start();
   }
 
