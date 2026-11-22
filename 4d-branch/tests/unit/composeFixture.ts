@@ -180,17 +180,18 @@ const sInd = st({ j: "i", pm: "a", pro: 1, mau: 50, pu: 1, cl: 1, fee: 7 });
 export const MIX_SURE: MapMix = { j: { e: 0.95, p: 0, i: 0.05 }, pm: { "?": 0.02, a: 0.93, s: 0.05, n: 0 }, pro: 0.97, switched: 0.04, school: 0, cl: [1, 2, 2], pu: [22.4, 35, 48.6], mau: [610.2, 880, 1210.7], sal: [1.03, 1.07, 1.12] };
 /** 中身の幅: そろわない（会社員と独立・答えも分かれる。顧客の幅は端数） */
 export const MIX_SPLIT: MapMix = { j: { e: 0.6, p: 0.05, i: 0.35 }, pm: { "?": 0.3, a: 0.3, s: 0.25, n: 0.15 }, pro: 0.55, switched: 0.3, school: 0.2, cl: [0, 1, 2.6], pu: [0, 12, 40.2], mau: [300, 700, 1500], sal: [1, 1.1, 1.25] };
-/** 標準の続き: 今のまま 3 期 → 転職活動 → 続き（転職）→ 昇格狙い（昇格）→ 今のまま → 副業（1 社目）→ 今のまま… */
+/** 標準の続き: 今のまま 3 期 → 転職活動 → 続き（転職）→ 今のまま 2 期 → 副業（1 社目）→ 昇格狙い（4 月に昇格）→ 今のまま… */
 export const CONT_A: MapContStep[] = [
   { m: 3, kind: "keep" },
   { m: 6, kind: "keep" },
   { m: 9, kind: "keep" },
   { m: 12, kind: "fc_switch" },
   { m: 15, kind: "fc_switch2", ev: "SWITCH_HIGH" },
-  { m: 18, kind: "fc_push", ev: "PROMO" },
+  { m: 18, kind: "keep" },
   { m: 21, kind: "keep" },
   { m: 24, kind: "ad_side", ev: "FIRST_CLIENT" },
-  { m: 27, kind: "keep" },
+  // 昇格を狙えるのは 4 月を含む 3 か月だけ（0.7 で、この後の目安に昇格の月を添えるので、モデルと同じ 4 月の期にした）
+  { m: 27, kind: "fc_push", ev: "PROMO" },
   { m: 30, kind: "keep" },
   { m: 33, kind: "keep" },
 ];

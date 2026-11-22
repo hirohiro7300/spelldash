@@ -38,7 +38,7 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
   });
 
   it("点検の名前は SPEC §4.6 の C1〜C10 と C4b・T4、見直しで足した C11（手が言う額と数）・C12（道の歩み）・C13（本文のおすすめ）。D はデータの指摘で止めない", () => {
-    expect(TEXT_CHECKS.map((c) => c.id)).toEqual(["C1", "C1b", "C2", "C3", "C4", "C4b", "C5", "C5b", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "T4", "D1", "D2"]);
+    expect(TEXT_CHECKS.map((c) => c.id)).toEqual(["C1", "C1b", "C2", "C3", "C4", "C4b", "C5", "C5b", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "C14", "T4", "D1", "D2"]);
     expect(TEXT_CHECKS.filter((c) => !c.block).map((c) => c.id)).toEqual(["D1", "D2"]);
     expect(TEXT_GATES).toEqual({ pathRepeats: 4, siblingSame: 0, decisionRepeats: 1 });
   });
@@ -71,9 +71,11 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
   });
 
   it("C6: 道の繰り返しの門は、道の画面と同じまとめ方で数える（門を 0 にすると、手で作った地図でも止まる。code-2）", () => {
-    // TREE は今のままが 12 期続く道（結果が 1 つの同じ手が続く）で、まとめない数は多いが、まとめると 0
+    // TREE は今のままが 12 期続く道（結果が 1 つの同じ手が続く）で、まとめない数はあるが、まとめると 0
+    // （0.7 で今のままの書き出しを何期目かで分けたので、まとめない数も門の 4 までに減った。rep-5）
     const tree = runTextChecks(fromDevTree(TREE), { annuals: [360] }).runs[0]!.pathRepeats;
-    expect(tree.raw.max).toBeGreaterThan(TEXT_GATES.pathRepeats);
+    expect(tree.raw.max).toBeGreaterThan(tree.dist.max);
+    expect(tree.raw.max).toBeLessThanOrEqual(TEXT_GATES.pathRepeats);
     expect(tree.dist.max).toBe(0);
     const rep = runTextChecks(fromDevTree(RULES), { annuals: [360], gates: { pathRepeats: 0 } });
     const pr = rep.runs[0]!.pathRepeats;
@@ -87,7 +89,7 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     expect(mask("2028 年 5 月、顧客が 2 社離れた")).toBe("# 年 # 月、顧客が # 社離れた");
     expect(skeleton("2028 年 5 月、顧客が 2 社離れた")).toBe("顧客が # 社離れた");
     expect(skeleton("『顧客 1 社以上』を受けて、2028 年 2 月〜4 月も顧客探しを続ける")).toBe("# 年 # 月〜# 月も顧客探しを続ける");
-    for (const x of ["次の 3 か月は、転職で給与を上げるか、今のままか", "2028 年 5 月の見込みは、月に遊ぶ人は 300 人から 400 人ほど", "分かれ目は 2028 年 4 月の給与", "前の 3 か月は集客", "『顧客 2 社以上』なら売上 月 10 万円ほど、『顧客 1 社以下』なら売上 月 5 万円ほど", "2028 年 5 月"])
+    for (const x of ["2027 年 5 月までの手は 4 つで、おすすめは『4 月の評価で昇格を狙う』（昇格の見込み 3 割）", "今日からの 3 年の見込みは 1,228 万円（ここまで 89 万円＋この先 1,139 万円）で、今日『転職活動をする』を選んだ時の見込み 1,256 万円より 28 万円下がった", "3 年の見込みは、ここまでの 180 万円とこの先の 1,036 万円で 1,216 万円になり、3 か月前に選んだ『今のまま』の見込み 1,216 万円とほぼ同じ（おすすめの手なら 25 万円多かった）", "何も変えずに 3 年続ける（ずっと今のまま）と 1,124 万円", "今日からこの道の 3 年の稼ぎは 1,200 万円で、ずっと今のままより 76 万円多い", "ほかの手は、『今のまま』が 21.1 万円少ない", "2028 年 5 月の見込みは、月に遊ぶ人は 300 人から 400 人ほど", "分かれ目は 2028 年 4 月の給与", "前の 3 か月は集客", "『顧客 2 社以上』なら売上 月 10 万円ほど、『顧客 1 社以下』なら売上 月 5 万円ほど", "2028 年 5 月"])
       expect(skeleton(x), x).toBeNull();
     expect(sentencesOf("短い。これは九文字を超える文。")).toEqual(["これは九文字を超える文"]);
   });
@@ -204,10 +206,12 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
       expect(r.decisionRepeats.pairs).toBe(1);
       expect(r.decisionRepeats.hist).toEqual({ 0: 1 });
     }
-    // 0.4 の束（初めての書き出しの言い換えが 1 つ）: 同じ 2 文を言い、門（1 文まで）で止まる
+    // 0.4 の束（初めての書き出しの言い換えが 1 つ）: 同じ 2 文を言い、門（1 文まで）で止まる（続けて探す期の組は 0.7 で何組かに分けた）
     const old = editBanks((b) => {
       const g = b.lead.back_emp!;
-      b.lead.back_emp = [g[0]!, { if: "clr>=1", v: [g[1]!.v[0]!] }, { v: [g[2]!.v[0]!] }];
+      const first = g.find((x) => x.if === "clr>=1")!;
+      const plain = g.find((x) => !x.if)!;
+      b.lead.back_emp = [...g.filter((x) => (x.if ?? "").startsWith("n>=1")), { if: "clr>=1", v: [first.v[0]!] }, { v: [plain.v[0]!] }];
     });
     const rep = runTextChecks(map, { banks: old, annuals: [360] });
     expect(rep.runs[0]!.decisionRepeats.overGate).toBe(1);

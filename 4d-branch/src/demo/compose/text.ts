@@ -34,15 +34,22 @@ export function n0(x: number): string {
 /** 小数 2 桁（給与の倍率） */
 export const f2 = (x: number): string => (Math.round(x * 100) / 100).toFixed(2);
 
-/** 見込み（0〜1）を割と分で言う（「3 割」「1 割 5 分」。% を書かない地図の決まり C4）。数は差し込みの印で包む */
+/**
+ * 見込み（0〜1）を割と分で言う（「3 割」「1 割 5 分」。% を書かない地図の決まり C4）。数は差し込みの印で包む。
+ * 0.9（R7）: 1 割に満たない見込みを「8 分」とだけ書かない（「8 分」は 8 分間とも、八分（8 割）とも読める）。1 割の手前（7〜9 分）は
+ * 「1 割弱」、それより下は「1 割未満」（点検 C10 が、割の後でない「N 分」を止める）
+ */
 export function wari(p: number): string {
   const t = Math.round(p * 100);
   const w = Math.floor(t / 10);
   const b = t % 10;
+  if (!w) return b >= 7 ? `${slot(1)} 割弱` : `${slot(1)} 割未満`;
   if (!b) return `${slot(w)} 割`;
-  if (!w) return `${slot(b)} 分`;
   return `${slot(w)} 割 ${slot(b)} 分`;
 }
+
+/** 割合（0〜1）を「N 人に 1 人」で言う（有料になる割合など。1 割に満たない割合を「4 分」と書かない。R7）。数は差し込みの印で包む */
+export const oneIn = (p: number): string => `${slot(Math.max(1, Math.round(1 / p)))} 人に ${slot(1)} 人`;
 
 /** 形容詞で終わる述語をつなぐ形にする（「多い」→「多く」。2 つの差を「、」で並べるとき。reader-10） */
 export const renyo = (s: string): string => s.replace(/い$/, "く");
@@ -67,9 +74,12 @@ export function clPhrase(cl: number, ln?: ImpactLine | null): string {
   return `${slot(lo)}〜${slot(hi)} 社`;
 }
 
-/** 小さい額は円（1 万円より下）、大きい額は万円 */
+/**
+ * 小さい額は円（1 万円より下。10 円まで書く）、大きい額は万円。0.7: 数の行の有料の稼ぎを人数から出せるように、円の額を 100 円に丸めない
+ * （3 人 × 940 円 − 3,000 円 = 180 円の持ち出しを「200 円」と書かない。fact-4）
+ */
 export function yenTxt(x: number): string {
-  if (Math.abs(x) < 1) return `${slot(n0(Math.round(Math.abs(x) * 100) * 100))} 円`;
+  if (Math.abs(x) < 1) return `${slot(n0(Math.round(Math.abs(x) * 1000) * 10))} 円`;
   return `${slot(man(Math.abs(x)))} 万円`;
 }
 

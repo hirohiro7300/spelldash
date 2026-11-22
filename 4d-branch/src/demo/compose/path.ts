@@ -219,6 +219,8 @@ interface PerMap {
   /** 暦（初めて組み立てるときに作る。数え上げだけなら要らない） */
   cal: Calendar | null;
   counts: Counts | null;
+  /** ずっと今のままの 3 年の稼ぎ（年収ごと。今のままの手の先だけをたどって 1 回。null は出せない地図） */
+  keep: Map<number, number | null> | null;
   links: WeakMap<Banks, Map<number, Link>>;
   /** 兄弟の題（親の番号 → 子の並びの題と、その題に使った文の型）。題は年収で変わらないので、束ごとに 1 回 */
   titles: WeakMap<Banks, Map<number, readonly TitleEntry[]>>;
@@ -229,7 +231,7 @@ const MEMO = new WeakMap<MapData, PerMap>();
 function perMap(map: MapData): PerMap {
   let pm = MEMO.get(map);
   if (!pm) {
-    pm = { cal: null, counts: null, links: new WeakMap(), titles: new WeakMap() };
+    pm = { cal: null, counts: null, keep: null, links: new WeakMap(), titles: new WeakMap() };
     MEMO.set(map, pm);
   }
   return pm;
@@ -362,14 +364,31 @@ export function countKindHere(link: Link, kind: string): number {
 }
 
 /**
+ * 道の上で一番新しく勤め先が変わった月（転職して移った月・会社員に戻った月。採用の有無をまとめた結果はその 3 か月の終わり）。
+ * 道の上で勤め先が変わっていなければ null（今日の会社のまま。入社してすぐの評価の一言に使う。fact-5）
+ */
+export function joinedAt(c: Ctx, link: Link): number | null {
+  for (let l: Link | null = link; l && l.up; l = l.up) {
+    if (!l.newEmp) continue;
+    const e = l.evs.find((x) => x.code.startsWith("SWITCH_") || x.code === "BACK_EMP" || x.code === "BACK_MIX");
+    return e ? e.m : c.map.month(l.move) + 3;
+  }
+  return null;
+}
+
+/**
  * 手を選ぶ判断の道から決まる条件の値（手の書き出し・手引きの条件に使う。reader-6）:
  * emp6 その判断と 1 つ前の判断で会社員か週 4 日（過去 6 か月の月次報告がある）・prevSearch 前の 3 か月が転職活動・
- * search 今の会社での転職活動の期の数（この手を除く）・f5 次に増える副業の顧客が上の月額か
+ * search 今の会社での転職活動の期の数（この手を除く）・f5 次に増える副業の顧客が上の月額か・
+ * joined 道の上で勤め先が変わった（今の会社は地図の途中で入った会社。fact-5）
  */
 export function pathEnv(c: Ctx, link: Link): Env {
   const js = jobsUp(c, link, 2);
-  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0 };
+  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0, joined: joinedAt(c, link) !== null ? 1 : 0 };
 }
+
+/** 独立してからの月の数（m か月目の時点。その月を含む。独立していなければ 0）。行き先の「独立して N か月目」と同じ数え方（rep-5） */
+export const indMonthsAt = (link: Link, m: number, j: ImpactSt["j"]): number => (j === "i" && link.indFrom !== null ? m - link.indFrom + 1 : 0);
 
 /** 次に増える副業の顧客の月額（万円）: 独立なら独立の月額、会社員・週 4 日は顧客が raiseAt 社に届いた後なら上の月額（SPEC §2.3 #6・facts-2） */
 export const newFeeOf = (C: Consts, j: ImpactSt["j"], f5: boolean): number => (j === "i" ? C.indFee : f5 ? C.feeRaised : C.feeFirst);
@@ -452,6 +471,74 @@ function makeLink(c: Ctx, up: Link, n: number): Link {
     opts: optKinds(map, n),
     newEmp: evs.some((x) => x.code.startsWith("SWITCH_") || x.code === "BACK_EMP") || (map.st(up.i).j === "i" && map.st(n).j !== "i"),
   };
+}
+
+/**
+ * 今日からその覚えのカードまでの稼ぎ（万円。0.8・con-7: 状態の 3 年の見込みの「ここまで」）。計算の芯の money.acc と同じ順に足す
+ * （今日から順に、カードごとの月の万円 w(e) を足す。端数の .5 で画面の「ここまでの稼ぎ」と 1 万円ずれないように、成分ごとに足してから
+ * 月の万円にしない）
+ */
+export function accOf(c: Ctx, link: Link): number {
+  const ls: Link[] = [];
+  for (let l: Link | null = link; l && l.up; l = l.up) ls.push(l);
+  let acc = 0;
+  for (let k = ls.length - 1; k >= 0; k--) acc += wOf(c.annual, c.map.e(ls[k]!.i));
+  return acc;
+}
+
+/**
+ * ずっと今のまま（12 回とも今のまま）の、今日から 36 か月目までの稼ぎ（万円）。計算の芯の「ずっと今のまま」（keep の選び方）と同じ決まり:
+ * 判断では今のままの手、手は結果の見込みの重み（重みが 0 なら同じ重み）で結果の稼ぎ（e）とその先を足し、行き先はその月の月の稼ぎ × 残りの月。
+ * 今のままの無い判断に当たれば null（比べる文を書かない）。地図と年収ごとに 1 回だけ（今のままの手の先だけをたどる。L4・L7）
+ */
+export function keepTotalOf(c: Ctx): number | null {
+  const pm = perMap(c.map);
+  const memo = (pm.keep ??= new Map());
+  const hit = memo.get(c.annual);
+  if (hit !== undefined) return hit;
+  const v = keepValue(c, 0);
+  if (memo.size >= 8) memo.clear();
+  memo.set(c.annual, v);
+  return v;
+}
+
+function keepValue(c: Ctx, i: number): number | null {
+  const { map, annual, cal } = c;
+  const k = map.childCount(i);
+  if (!k) return wOf(annual, map.rr(i)) * Math.max(0, cal.horizon - map.month(i));
+  if (map.role(i) !== "a") {
+    for (let j = 0; j < k; j++) {
+      const a = map.child(i, j);
+      if (map.isBase(a)) return keepValue(c, a);
+    }
+    return null;
+  }
+  // 計算の芯と同じ順と式で足す（結果の割合 = 0〜100 に収めた見込み ÷ 合計。数の出せる結果だけで割り直す。画面の数と端数までそろえる）
+  let total = 0;
+  for (let j = 0; j < k; j++) total += Math.max(0, Math.min(100, map.p(map.child(i, j))));
+  const vs: Array<number | null> = [];
+  let sw = 0;
+  let cnt = 0;
+  for (let j = 0; j < k; j++) {
+    const o = map.child(i, j);
+    const x = keepValue(c, o);
+    vs.push(x);
+    if (x === null) continue;
+    sw += total > 0 ? Math.max(0, Math.min(100, map.p(o))) / total : 1 / k;
+    cnt++;
+  }
+  if (!cnt) return null;
+  const equal = sw <= 0;
+  const norm = equal ? cnt : sw;
+  let v = 0;
+  for (let j = 0; j < k; j++) {
+    const x = vs[j];
+    if (x === null || x === undefined) continue;
+    const o = map.child(i, j);
+    const w = total > 0 ? Math.max(0, Math.min(100, map.p(o))) / total : 1 / k;
+    v += ((equal ? 1 : w) / norm) * (wOf(annual, map.e(o)) + x);
+  }
+  return v;
 }
 
 /** 判断（今日・状態）の覚え。無ければ、覚えのある判断まで道を上ってから作る */

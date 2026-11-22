@@ -88,7 +88,7 @@ describe("生成 v2 の見直しの直し（文章）", () => {
         if (map.isBase(f)) continue;
         const body = composeCard(map, f, { annual, rt }).body;
         const c = countsOf(a, f, a.pi.reachIn);
-        expect(body).toContain(`地図にある行き先は ${n0(c.ends)}（うち標準の続きの見積もり ${n0(c.sumEnds)}）で、一番良い選び方で着くのは ${n0(c.reachEnds)}（そのうち見込み 1 分以上は ${n0(c.reachEnds1)}）`);
+        expect(body).toContain(`地図にある行き先は ${n0(c.ends)}（うち標準の続きの見積もり ${n0(c.sumEnds)}）で、一番良い選び方で着くのは ${n0(c.reachEnds)}（そのうち見込みが 100 回に 1 回以上の物は ${n0(c.reachEnds1)}）`);
         const d = moveDetailVM(a, f);
         expect(d.facts).toContain(`2029 年 11 月の行き先: 地図にある ${num(c.ends)}（うち標準の続きの見積もり ${num(c.sumEnds)}）・一番良い選び方で着く ${num(c.reachEnds)}（見込み 1% 以上 ${num(c.reachEnds1)}）`);
         // 3 年の合計: 本文は見積もり方を言い、一番良い選び方の平均は手の詳しい画面と同じ数
@@ -203,20 +203,30 @@ describe("生成 v2 の見直しの直し（文章）", () => {
     expect(ordinalIssues(map, banded, "『届け出て副業の 1 社目を探す』とほぼ同じ。")).toEqual([]);
   });
 
-  it("truth-6: 次の 3 か月の問いは、並ぶ手を全部言う（5 つの手の判断でも落とさない）", async () => {
+  it("truth-6: 次の判断は、並ぶ手の数を言い、おすすめの手とほかの手を全部言う（5 つの手の判断でも落とさない。0.8 からは差つき）", async () => {
     const { map, a } = await qs(360);
     const rt = textRuntime(a);
     let wide = 0;
     for (const i of all(map)) {
       if (map.role(i) !== "s" || !map.childCount(i)) continue;
-      const kinds = new Set<string>();
-      for (let k = 0; k < map.childCount(i); k++) if (map.kind(map.child(i, k)) !== "keep") kinds.add(map.kind(map.child(i, k))!);
-      if (!kinds.size) continue;
+      const kids = Array.from({ length: map.childCount(i) }, (_, k) => map.child(i, k));
+      if (!kids.some((x) => map.kind(x) !== "keep")) continue;
       const body = composeCard(map, i, { annual: 360, rt }).body;
-      const q = body.split("。").find((x) => /^(?:次の 3 か月は、|[0-9]+ 年 [0-9]+ 月までの手は、|ここからは、)/.test(x))!;
-      expect(q, `${map.key(i)}: ${body}`).toBeDefined();
-      expect(q.split("、").length - 2, q).toBe(kinds.size);
-      if (kinds.size >= 4) wide++;
+      const sents = body.split("。");
+      const head = sents.findIndex((x) => /^(?:[0-9]+ 年 [0-9]+ 月までの手は [0-9]+ つで|次の 3 か月に選べる [0-9]+ つの手のうち|ここで選べる手は [0-9]+ つあり)/.test(x));
+      expect(head, `${map.key(i)}: ${body}`).toBeGreaterThanOrEqual(0);
+      expect(Number(/([0-9]+) つ/.exec(sents[head]!)![1]), sents[head]).toBe(kids.length);
+      // おすすめは画面のおすすめと同じ手で、ほかの手は次の文が全部言う（名前は地図の名前か短い名前）
+      const rec = rt.recommended(i);
+      expect(sents[head], `${map.key(i)}`).toContain(`『${rec >= 0 && map.isBase(rec) ? "この 3 か月は今のまま" : (map.header.kinds[map.kind(rec)!]?.[0] ?? "")}』`);
+      // 0.9: おすすめの手のカードの数の訳（F8）が間に入ることがある
+      const rest = sents.slice(head + 1).find((x) => /^(?:ほかの手は|おすすめとの差は|残りの手は|ほかに選べるのは)/.test(x)) ?? "";
+      for (const x of kids) {
+        if (x === rec) continue;
+        const names = map.isBase(x) ? ["今のまま"] : [map.header.kinds[map.kind(x)!]![0], BANKS.short[map.kind(x)!]!];
+        expect(names.some((nm) => rest.includes(`『${nm}』`)), `${map.key(i)} ${map.kind(x)}: ${rest}`).toBe(true);
+      }
+      if (kids.length >= 4) wide++;
     }
     expect(wide).toBeGreaterThan(0);
   });
@@ -323,6 +333,6 @@ describe("生成 v2 の見直しの直し（試し版の文章の版。code-1）
     expect(textSkew(map.header.textVersion)).toBeNull();
     expect(textSkew("dev")).toBeNull();
     expect(textSkew("")).toBeNull();
-    expect(textSkew("0.5")).toMatch(/0\.5.*0\.6|0\.6.*0\.5/);
+    expect(textSkew("0.5")).toContain(`0.5 が、組み立ての版 ${BANKS.version} と違う`);
   });
 });

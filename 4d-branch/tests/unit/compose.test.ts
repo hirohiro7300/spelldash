@@ -3,12 +3,17 @@ import world from "../../scripts/impact/world.json";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { MapData } from "../../src/deepmap/mapData";
 import { SENTENCES } from "../../src/demo/compose/banks/sentences";
-import { adviceIn, adviceMatchers, asciiIds, checkBanks, checkCard, checkPaths, digitsOutside, numberWording, TWO_IF, TWO_LASTS, wishIndex } from "../../src/demo/compose/checks";
+import { adviceIn, adviceMatchers, asciiIds, bareBuIssues, checkBanks, checkCard, checkPaths, claimIssues, digitsOutside, eventMonthIssues, FIRST_STATE_MAX, LIMITS, listNameOf, numberWording, OVERCLAIMS, stateRecommendIssues, TWO_IF, TWO_LASTS, wishIndex } from "../../src/demo/compose/checks";
+import { cmpFrameOf, frameOf, FRAME_SOFT, sentencesOf, shownTotal, tieIssues } from "../../scripts/impact/textChecks";
+import { analyze, compileMap, textRuntime, type Analysis } from "../../src/deepmap/core";
 import { BANKS, composeCard, composeCont, composeMarkedCard, materializeBody, ripple, type Banks, type Card } from "../../src/demo/compose/index";
-import { calendarOf, weekday } from "../../src/demo/compose/path";
+import { allowedKind, FIRST_STATE_BUDGET, STATE_BUDGET } from "../../src/demo/compose/compose";
+import { calendarOf, ctxOf, eventMonth, joinedAt, keepTotalOf, linkOf, weekday } from "../../src/demo/compose/path";
+import { oneIn, strip, wari } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
 import wishData from "../../src/demo/wishlist-data.json";
 import { F_ENDS, F_PORTFOLIO, F_PROMO2, F_SCOPE, F_STILL, header, MIX_SPLIT, MIX_SURE, RULES, TREE } from "./composeFixture";
+import { loadQSmall } from "./helpers/qSmall";
 
 // 手で作った小さな地図は ./composeFixture.ts（TREE: R2 の組み立てを移したときの地図・RULES: SPEC §4.2 の決まりごとの地図）
 
@@ -123,8 +128,16 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
     const c = world.constants;
     const k = world.kinds;
     // 3 か月ごとの世界（scripts/impact/q/world.ts）があればその値で、まだ無ければ SPEC §2.3 #6 の値で確かめる（W-gen と合わさると、違えばここで落ちる。facts-2）
-    const qw = Object.values(import.meta.glob("../../scripts/impact/q/world.ts", { eager: true }))[0] as { quarterWorld?: (w: unknown) => { q: { feeFirst: number; feeRaised: number; raiseAt: number } } } | undefined;
-    const tier = qw?.quarterWorld ? qw.quarterWorld(world).q : { feeFirst: 3, feeRaised: 5, raiseAt: 4 };
+    const qw = Object.values(import.meta.glob("../../scripts/impact/q/world.ts", { eager: true }))[0] as
+      | { quarterWorld?: (w: unknown) => { q: { feeFirst: number; feeRaised: number; raiseAt: number; searchMax: number; searchRun: number; churnQ: number }; qSwitch2: { pHigh: number; pMid: number } } }
+      | undefined;
+    const qr = Object.values(import.meta.glob("../../scripts/impact/q/quarter.ts", { eager: true }))[0] as { LIMITS?: { sd_grow: number; sd_ads: number; sd_retain: number } } | undefined;
+    const W = qw?.quarterWorld ? qw.quarterWorld(world) : null;
+    const tier = W ? W.q : { feeFirst: 3, feeRaised: 5, raiseAt: 4, searchMax: 4, searchRun: 2, churnQ: 1 - Math.pow(1 - c.churn, 3) };
+    const sw2 = W ? W.qSwitch2 : { pHigh: 0.074, pMid: 0.052 };
+    const lim = qr?.LIMITS ?? { sd_grow: 4, sd_ads: 4, sd_retain: 1 };
+    // 和や 3 か月分の割合は、文が言う桁（割・分）より細かい所で丸めて比べる
+    const r6 = (x: number): number => Math.round(x * 1e6) / 1e6;
     expect(BANKS.C).toEqual({
       feeFirst: tier.feeFirst,
       feeRaised: tier.feeRaised,
@@ -154,7 +167,33 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
       partFactor: c.partFactor,
       schoolSeats: c.schoolSeats,
       baseHours: c.baseHours,
+      // 0.7（fact-12）: 届け出の答え・転職・週 4 日・会社員に戻る・試用の見込み、転職活動の上限、移る月の賞与の取り逃し、Pro の円の額、
+      //   顧客が離れる見込み、遊ぶ人の伸びと有料になる割合、集客の手の上限（3 か月ごとの世界と、その手の決まり q/quarter.ts の LIMITS）
+      permA: c.perm.a,
+      permS: c.perm.s,
+      permN: c.perm.n,
+      switchP1: r6(k.fc_switch.p.pHigh3 + k.fc_switch.p.pMid3),
+      switchP2: r6(sw2.pHigh + sw2.pMid),
+      searchMax: tier.searchMax,
+      searchRun: tier.searchRun,
+      switchCost: c.switchCost,
+      partP: k.part.p.p,
+      backP: k.back_emp.p.p,
+      pilotP: k.sd_pilot.p.p,
+      netYen: Math.round(c.net * 10000),
+      infraYen: Math.round(c.infra * 10000),
+      churnQ: r6(tier.churnQ),
+      growth: c.g0,
+      conv: c.conv,
+      growMax: lim.sd_grow,
+      adsMax: lim.sd_ads,
+      retainMax: lim.sd_retain,
     });
+    // 3 か月ごとの世界が無い環境でも上の値で確かめたことにならないよう、世界と手の決まりがあることも確かめる
+    expect(W, "scripts/impact/q/world.ts の quarterWorld").not.toBeNull();
+    expect(qr?.LIMITS, "scripts/impact/q/quarter.ts の LIMITS").toBeDefined();
+    // 文の見込みの言い方（割・分）は、丸める前の世界の数と同じ（2 割・4 割 5 分・3 割 5 分・2 割 8 分・1 割 3 分・3 割 5 分・6 割・3 割・1 割 2 分）
+    expect([BANKS.C.permA, BANKS.C.permS, BANKS.C.permN, BANKS.C.switchP1, BANKS.C.switchP2, BANKS.C.partP, BANKS.C.backP, BANKS.C.pilotP, BANKS.C.churnQ].map((p) => strip(wari(p)))).toEqual(["2 割", "4 割 5 分", "3 割 5 分", "2 割 8 分", "1 割 3 分", "3 割 5 分", "6 割", "3 割", "1 割 2 分"]);
   });
 
   it("今日の手は、この手の先の分かれ道（判断・出来事の分かれ・結果ごと）と行き先（まとめた見積もりを分けて）を書く", () => {
@@ -217,23 +256,28 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
     expect(again).toBeLessThanOrEqual(5);
   });
 
-  it("道の覚えは地図ごと: 深いカードの初めの 1 枚は道の上だけを読み、近くのカードは覚えから引く", () => {
+  it("道の覚えは地図ごと: 深いカードの初めの 1 枚は道の上と、その状態の兄弟（3 年の見込みで比べる）だけを読み、近くのカードは覚えから引く", () => {
     const counted = counting(fromDevTree(TREE));
-    const deep = counted.map.indexOfKey("r.keep.all.1k.all.2k.all.3k.all.4k.all.5k.all.6k.all.7k.all.8k.all.9k.all.10k.all");
-    counted.touched.clear();
-    composeCard(counted.map, deep, { annual: 360 });
-    // 読んだのは、今日からそのカードまでの道と、道の上の判断に並ぶ手、そのカードの子と孫だけ
     const m = counted.map;
+    const deep = m.indexOfKey("r.keep.all.1k.all.2k.all.3k.all.4k.all.5k.all.6k.all.7k.all.8k.all.9k.all.10k.all");
+    // 地図ごとに 1 回だけ下から数える物（先の分かれ道の数）と、年収ごとに 1 回だけの物（ずっと今のままの 3 年）は先に済ませる（L7）
+    ripple(m, 0);
+    keepTotalOf(ctxOf(m, BANKS, 360));
+    counted.touched.clear();
+    composeCard(m, deep, { annual: 360 });
+    // 読んだのは、今日からそのカードまでの道と、道の上の判断に並ぶ手とその結果（手の見積もり）、そのカードの兄弟とその手と結果
+    // （3 年の見込みで比べる。0.8・W2）、そのカードの子と孫だけ（どこかの先を丸ごとたどらない）
     const allowed = new Set<number>([deep]);
+    const withKids = (x: number, depth: number): void => {
+      allowed.add(x);
+      if (depth > 0) for (let k = 0; k < m.childCount(x); k++) withKids(m.child(x, k), depth - 1);
+    };
     for (let x = deep; x >= 0; x = m.parent(x)) {
       allowed.add(x);
-      if (m.role(x) !== "a") for (let k = 0; k < m.childCount(x); k++) allowed.add(m.child(x, k));
+      if (m.role(x) !== "a") withKids(x, 2);
     }
-    for (let k = 0; k < m.childCount(deep); k++) {
-      const a = m.child(deep, k);
-      allowed.add(a);
-      for (let j = 0; j < m.childCount(a); j++) allowed.add(m.child(a, j));
-    }
+    const mv = m.parent(deep);
+    for (let k = 0; k < m.childCount(mv); k++) withKids(m.child(mv, k), 2);
     expect([...counted.touched].filter((x) => !allowed.has(x))).toEqual([]);
     expect(counted.touched.size).toBeLessThan(m.n / 3);
     // 同じ道の 1 つ先の手は、新しく読むカードがわずか（判断ごとの手の種類は覚えから引く。先の分かれ道の数は地図ごとに 1 回だけ下から数える）
@@ -263,10 +307,12 @@ describe("SPEC §4.2: 数の行と数の言い方", () => {
     // Pro の前もサーバー代はかかる（本文の月の稼ぎと合わせる。reader-4）
     expect(composeCard(map, 0, { annual: 360 }).numbers).toEqual(["年収 360 万円（月にならして 30 万円）", "広告運用の顧客なし", "Pro はまだ出していない（サーバー代 月 3,000 円の持ち出し）", "月に遊んだ人 40 人", "週 52 時間"]);
     const s = composeCard(map, byKey(map, "r.ad_permside.a0_a1.1ad.cl2"), { annual: 360 });
-    expect(s.numbers).toEqual(["年収 360 万円（月にならして 30 万円）", "広告運用 2 社（売上 月 10 万円）", "有料 3 人（手数料とサーバー代を引いて月 200 円の持ち出し）", "月に遊んだ人 70 人（3 か月前より +19 人）", "週 57 時間（今日より +5 時間）"]);
+    // 有料の稼ぎは書いた人数から出せる（3 人 × 940 円 − 3,000 円 = 180 円の持ち出し。fact-4）
+    expect(s.numbers).toEqual(["年収 360 万円（月にならして 30 万円）", "広告運用 2 社（売上 月 10 万円）", "有料 3 人（手数料とサーバー代を引いて月 180 円の持ち出し）", "月に遊んだ人 70 人（3 か月前より +19 人）", "週 57 時間（今日より +5 時間）"]);
     expect(composeCard(map, byKey(map, "r.ind_quit.cl0"), { annual: 360 }).numbers.slice(0, 2)).toEqual(["給与なし（独立）", "広告運用の顧客なし"]);
     // 学校の席は有料の人数に入っている（別に足さない。truth-5）
-    expect(composeCard(map, byKey(map, "r.sd_pilot.yes.1ss.yes"), { annual: 360 }).numbers[2]).toBe("有料 40 人（うち学校の席 40・手数料とサーバー代を引いて月 1.2 万円）");
+    // 稼ぎは席の額から（40 席 × 300 円 − サーバー代 3,000 円。fact-4）
+    expect(composeCard(map, byKey(map, "r.sd_pilot.yes.1ss.yes"), { annual: 360 }).numbers[2]).toBe("有料 40 人（うち学校の席 40・手数料とサーバー代を引いて月 9,000 円）");
     // 本当の行き先は 5 つ（3 か月前との差と週の時間）
     const real = composeCard(map, byKey(map, "r.keep.all.1k.all.2k.all.3k.all.4k.all.5k.all.6k.all.7k.all.8k.all.9k.all.10k.all.11k.all"), { annual: 360 });
     expect(real.numbers).toHaveLength(5);
@@ -399,15 +445,17 @@ describe("SPEC §4.2: まとめた行き先（truth-5）", () => {
   });
 
   it("標準の続きがあれば「この後の目安」を書く（同じ手が続く期はまとめ、5 つを超える分は「ほか N 期」。仕事・届け出の期と出来事のある期を残す。名前の無い手と出来事は英数字を出さない）", () => {
-    expect(body(rules, sure)).toContain("この後の目安: 2027 年 2 月 今のまま（3 期） → 11 月 転職活動 → 2028 年 2 月 転職活動の続き（移る） → 5 月 昇格狙い（昇格） → ほか 1 期 → 11 月 副業の 1 社目探し（決まる） → ほか 3 期 → 2029 年 11 月（平均 月 43.1 万円）。");
+    // 移る・昇格する期は、その出来事の月を添える（期の手の月とは違う。fact-1）
+    expect(body(rules, sure)).toContain("この後の目安: 2027 年 2 月 今のまま（3 期） → 11 月 転職活動 → 2028 年 2 月 転職活動の続き（5 月に移る） → ほか 2 期 → 11 月 副業の 1 社目探し（決まる） → 2029 年 2 月 昇格狙い（4 月に昇格） → ほか 2 期 → 11 月（平均 月 43.1 万円）。");
     // 月の稼ぎは今の年収で決まる（給与 1.07 倍 × 月 45 万円 + 広告運用 8 + SpellDash 3）。中身の道の平均で、1 本の道の数ではない（facts-9）
-    expect(body(rules, sure, 540)).toContain("→ 2029 年 11 月（平均 月 59.2 万円）。");
+    expect(body(rules, sure, 540)).toContain("→ 11 月（平均 月 59.2 万円）。");
     expect(body(rules, split)).toContain("この後の目安: 2027 年 2 月 集客 → 5 月 別の手 → 8 月 今のまま → 2029 年 11 月（平均 月 30 万円）。");
     expect(body(rules, avg)).toContain("この後の目安: 2027 年 2 月 今のまま（3 期）");
     // 短くしても会社員に戻る期は残す（facts-9）。同じことを 2 回言わない（「会社員に戻ること（会社員に戻る）」としない。reader-5）
+    // 会社員に戻るのはその期の 3 か月目なので、期の月（5 月）と戻る月（8 月）を分けて言う（fact-1・点検 C11）
     const back = body(rules, byKey(rules, "r.contback.all"));
-    expect(back).toContain("→ 2029 年 5 月 会社員に戻る →");
-    expect(back).not.toMatch(/会社員に戻ること|（会社員に戻る）/);
+    expect(back).toContain("→ 2029 年 5 月 会社員に戻る仕事探し（8 月に戻る） →");
+    expect(back).not.toMatch(/会社員に戻ること|（会社員に戻る）|5 月 会社員に戻る →/);
   });
 
   it("まとめた手とまとめた行き先は「標準の選び方で続けた見積もり」と書く", () => {
@@ -437,7 +485,9 @@ describe("SPEC §4.2: 確定申告と住民税（truth-10）", () => {
     expect(ind).not.toContain("2026 年分");
     expect(body(rules, find(rules, "r.ind", "s", 12))).toContain("2027 年分の確定申告は 2028 年 2 月 16 日〜3 月 15 日。独立してからの売上と経費を申告する。");
     // 独立して最初の年の住民税は、会社員だった前の年の所得で決まる
-    expect(body(rules, find(rules, "r.ind", "s", 6))).toContain("6 月に届く住民税は、会社員だった前の年の所得で決まる。");
+    // 住民税は前の年の所得で決まり、独立した後は自分で納める（高くなるとは言わない。fact-6）
+    expect(body(rules, find(rules, "r.ind", "s", 6))).toContain("6 月に届く住民税は、会社員だった前の年の所得で決まり、独立した後は給与から引かれずに自分で納める。");
+    expect(body(rules, find(rules, "r.ind", "s", 6))).not.toContain("高くなりやすい");
     // 2027 年 4 月に独立: 辞めるまでの給与と、独立してからの売上と経費
     expect(body(rules, find(rules, "r.quit", "s", 12))).toContain("2027 年分は辞めた年で、確定申告は 2028 年 2 月 16 日〜3 月 15 日。辞めるまでの給与（会社の源泉徴収票）と、独立してからの売上と経費を一緒に申告する。");
     // 2027 年 8 月に会社員へ戻った: 会社員の間の給与と、独立していた間の売上と経費
@@ -484,9 +534,12 @@ describe("SPEC §4.2: 移った会社・戻った会社（truth-11）", () => {
   const REFILE = /副業の届け出は、新しい会社で出し直す。|移った会社では、副業の届け出をあらためて出す。|届け出の答えは前の会社の物なので、この会社でもう一度届け出る。/;
 
   it("届け出の範囲を持っていける・出し直す・初めて出す・SpellDash だけを認める会社に戻る。顧客は引き継ぎ先に渡す", () => {
-    expect(at("r.carry", 6)).toContain("移る先は今の届け出の範囲を認める会社に絞ったので、広告運用の副業も SpellDash もそのまま続けられる。");
+    // 移った会社で届け出が要らないとは言わない。面接で確かめた会社を選んだ、この地図の見方として言う（fact-3）
+    expect(at("r.carry", 6)).toContain("移る先は、広告運用の副業と SpellDash を続けてよいと面接で確かめた会社に絞り、この地図では答えを『全部可』のまま数える。");
     expect(at("r.carry", 6)).not.toContain("出し直す");
-    expect(at("r.keeps", 6)).toContain("移る先は SpellDash を認める会社に絞ったので、SpellDash はそのまま続けられる。");
+    expect(at("r.keeps", 6)).toContain("移る先は、SpellDash を続けてよいと面接で確かめた会社に絞り、この地図では答えを『SpellDash だけ可』のまま数える。");
+    // 移った月の賞与は、この地図の数え方として言う（給与が減ると言い切らない。fact-2）
+    expect(at("r.keeps", 6)).toContain("移った月は、前の会社の賞与の取り逃しとして給与の半月分を引いて数えている（実際は賞与の支給日と在籍の条件で変わる）。");
     expect(at("r.refile", 6)).toMatch(REFILE);
     expect(body(rules, byKey(rules, "r.first.0fc_switch.high_mid"))).toContain("副業の届け出はまだ出していない。出すなら新しい会社の就業規則を読んでから。");
     // 顧客は引き継ぎ先に渡した（離れた顧客とは言わない）
@@ -495,7 +548,7 @@ describe("SPEC §4.2: 移った会社・戻った会社（truth-11）", () => {
     const sonly = at("r.sonly", 6);
     expect(sonly).toContain("独立をやめて会社員に戻った。");
     expect(sonly).toContain("広告運用の顧客 2 社は、引き継ぎ先に渡して手放した。");
-    expect(sonly).toContain("戻る先は SpellDash を認める会社に絞ったので、届け出をし直さずに SpellDash を続けられる。");
+    expect(sonly).toContain("戻る先は、SpellDash を続けてよいと面接で確かめた会社に絞った。この地図では新しく届け出る手は使わず、『SpellDash だけ可』として数える。");
     expect(at("r.backrefile", 6)).toMatch(REFILE);
   });
 
@@ -654,7 +707,8 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     expect(stubA).toMatch(/3 年後の顧客は/);
     expect(stubA).not.toContain("まだ無い");
     // 結果の中身が同じなら、まとめて言う
-    expect(body(rules, byKey(rules, "r.twins"))).toContain("『顧客 0 社』でも『顧客 1 社』でも、多くの道で 2029 年 5 月に会社員に戻り");
+    // 戻るのは標準の続きの会社員に戻る期（2029 年 5 月に選ぶ）の 3 か月目（fact-1）
+    expect(body(rules, byKey(rules, "r.twins"))).toContain("『顧客 0 社』でも『顧客 1 社』でも、多くの道で 2029 年 8 月に会社員に戻り");
     // 中身の同じまとめた行き先は、同じだと言う
     expect(body(rules, byKey(rules, "r.twins.cl0"))).toContain("『顧客 1 社』の後と、標準の続きも 3 年後の姿も同じ。");
   });
@@ -688,7 +742,7 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     const rows = Array.from({ length: (rules.cont(i) ?? []).length }, (_, k) => composeCont(rules, i, k, { annual: 360 })!);
     expect(rows).toHaveLength(11);
     expect(rows[0]!.body).toMatch(/^2027 年 3 月〜5 月は、標準の選び方では『今のまま』の 3 か月。/);
-    expect(rows[4]!.title).toBe("転職活動の続き（移る）");
+    expect(rows[4]!.title).toBe("転職活動の続き（5 月に移る）");
     expect(rows[4]!.body).toContain("この期に一番ありそうな出来事は『転職』。");
     const cites = rows.flatMap((r) => r.todo.map((t) => t.cite));
     expect(new Set(cites).size).toBe(cites.length);
@@ -702,6 +756,10 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
 /** 使った文の型の名前（節.種類#組.言い換え）が束にあるか。文の型を使わない節の名前も認める */
 function resolves(banks: Banks, tag: string): boolean {
   if (["watch:single", "watch:num", "watch:sum", "watch:sums", "watch:mix", "watch:scope", "ripple", "root", "sum:avg", "sum:mix", "sum:same", "cont", "value", "value:stub"].includes(tag)) return true;
+  // 0.8（W2）: 状態の数の枠（組み立て側の決まった枠。束の型は使わない）
+  if (/^state:(?:quarter|total|contrast|menu|forks|next|thread|then|then:share|then:cap|then:keep|(?:short|drop):\w+)$/.test(tag)) return true;
+  // 0.9: 並びの違いを言った手（決まりで変わった手。R2）と、おすすめの手のカードの数の訳（F8）
+  if (/^state:menu:[a-z_0-9+]*\/[a-z_0-9+]*$/.test(tag) || tag === "state:next:basis") return true;
   const m = /^(\w+)(?:\.([^#]+))?#(\d+)\.(\d+)$/.exec(tag);
   if (!m) return false;
   let cell: unknown = (banks as unknown as Record<string, unknown>)[m[1]!];
@@ -806,8 +864,10 @@ describe("最後の点検の指摘（F2〜F6）", () => {
       expect(cm.body).not.toMatch(/担当を広げ続け|もう一段広げる/);
       expect(cm.body).toContain("今の会社で");
       const cp = composeCard(m, push, { annual });
-      expect(used(cp, "lead.fc_push")).toEqual([group("fc_push", "n>=1")]);
+      expect(used(cp, "lead.fc_push")).toEqual([group("fc_push", "joined=1")]);
       expect(cp.body).not.toMatch(/前の評価で足りなかった|評価の資料にまとめ直す/);
+      // 入社して 1 年に満たない会社の評価は、対象になるかを先に人事に確かめる（移ったのは 2027 年 8 月、評価は 2028 年 4 月。fact-5）
+      expect(cp.body).toMatch(/入社(?:して)? 8 か月で[^。]*。[^。]*人事に/);
       expect(used(composeCard(m, same, { annual }), "lead.fc_scope")).toEqual([group("fc_scope", "here>=1")]);
     }
   });
@@ -829,5 +889,613 @@ describe("最後の点検の指摘（F2〜F6）", () => {
     // 昇格を狙う手の結果の意味: 昇格の方と据え置きの方のどの組み合わせでも、1 年後の機会を言うのは 1 回まで
     for (const up of texts(BANKS.branch.fc_push!.up!)) for (const same of texts(BANKS.branch.fc_push!.same!)) expect(`${up}。${same}`.split("1 年後").length - 1).toBeLessThanOrEqual(1);
     expect(texts(Object.values(BANKS.eventTitle).flat()).filter((v) => /回目のまとめ/.test(v))).toEqual([]);
+  });
+});
+
+describe("文章の波 1 の W1（事実と余白: text-w1/audit の fact-*・rep-5・rep-7）", () => {
+  const rules = fromDevTree(RULES);
+  const map = fromDevTree(TREE);
+
+  it("fact-1・C11: まとめた手が言う会社員に戻る月は、標準の続きの会社員に戻る期の 3 か月目（前は期の月で、1 期早かった）", () => {
+    // 標準の続きの会社員に戻る期は 2029 年 5 月に選ぶ（CONT_BACK の m 30）。戻るのはその 3 か月目の 8 月（eventMonth・back_emp は +3）
+    for (const k of ["r.twins", "r.contback"]) {
+      const i = byKey(rules, k);
+      for (const annual of [360, 540]) {
+        const b = body(rules, i, annual);
+        if (k === "r.twins") expect(b).toContain("2029 年 8 月に会社員に戻り");
+        expect(b).not.toContain("5 月に会社員に戻り");
+        expect(eventMonthIssues(rules, i, b), `${k} ${annual}`).toEqual([]);
+      }
+    }
+    // 前の言い方（期の月で戻ると言う）は C11 で止まる
+    const twins = byKey(rules, "r.twins");
+    const old = body(rules, twins).replace("2029 年 8 月に会社員に戻り", "2029 年 5 月に会社員に戻り");
+    expect(eventMonthIssues(rules, twins, old)).toHaveLength(1);
+    expect(checkCard(rules, twins, { ...composeMarkedCard(rules, twins, { annual: 360 }), body: old }, BANKS, wish).filter((x) => x.startsWith("C11"))).toHaveLength(1);
+    // この後の目安も、会社員に戻る期に戻る月を添える（期の月と戻る月を分けて言う）
+    const end = byKey(rules, "r.contback.all");
+    const eb = body(rules, end);
+    expect(eb).toContain("2029 年 5 月 会社員に戻る仕事探し（8 月に戻る）");
+    expect(eventMonthIssues(rules, end, eb)).toEqual([]);
+    expect(eventMonthIssues(rules, end, eb.replace("（8 月に戻る）", "（5 月に戻る）"))).toHaveLength(1);
+    // 標準の続きの 1 期の題も同じ月
+    const rows = Array.from({ length: (rules.cont(end) ?? []).length }, (_, k) => composeCont(rules, end, k, { annual: 360 })!);
+    expect(rows.find((r) => r.kind === "back_emp")!.title).toBe("会社員に戻る仕事探し（8 月に戻る）");
+  });
+
+  it("fact-4: 数の行の有料の稼ぎは、書いた人数から出せる（人数 × 940 円 − サーバー代 3,000 円、学校の席は 1 席 300 円）。端数が大きければ人数の幅と平均", () => {
+    const yen = (t: string): number => {
+      const m = /月 ([\d,.]+) ?(万円|円)(の持ち出し)?/.exec(t)!;
+      const v = Number(m[1]!.replace(/,/g, "")) * (m[2] === "万円" ? 10000 : 1);
+      return m[3] ? -v : v;
+    };
+    let exact = 0;
+    let band = 0;
+    for (const m of [map, rules])
+      for (const i of all(m)) {
+        if (m.role(i) === "a" || (m.role(i) === "e" && m.sum(i))) continue;
+        const row = composeCard(m, i, { annual: 360 }).numbers.find((x) => x.startsWith("有料"));
+        if (!row) continue;
+        const one = /^有料 ([\d,]+) 人（(?:うち学校の席 ([\d,]+)・)?手数料とサーバー代を引いて月 /.exec(row);
+        const two = /^有料 ([\d,]+) 人か ([\d,]+) 人（手数料とサーバー代を引いて平均 月 /.exec(row);
+        if (one) {
+          exact++;
+          const n = Number(one[1]!.replace(/,/g, ""));
+          const seats = Number((one[2] ?? "0").replace(/,/g, ""));
+          const want = (n - seats) * BANKS.C.netYen + seats * BANKS.C.seatYen - BANKS.C.infraYen;
+          // 1 万円より下は 10 円まで、上は万円の小数 1 桁（1,000 円）まで
+          expect(Math.abs(yen(row) - want), `${m.key(i)} ${row}`).toBeLessThanOrEqual(Math.abs(want) >= 10000 ? 500 : 0);
+        } else if (two) {
+          band++;
+          const lo = Number(two[1]) * BANKS.C.netYen - BANKS.C.infraYen;
+          const hi = Number(two[2]) * BANKS.C.netYen - BANKS.C.infraYen;
+          expect(yen(row), `${m.key(i)} ${row}`).toBeGreaterThanOrEqual(lo - 500);
+          expect(yen(row), `${m.key(i)} ${row}`).toBeLessThanOrEqual(hi + 500);
+        } else expect(row, m.key(i)).toMatch(/^有料 平均 /);
+      }
+    expect(exact).toBeGreaterThan(10);
+    // 端数のある人数（見込みの平均）は「N 人か M 人」と書き、その数の言い方も点検する（C10）
+    expect(numberWording("有料 3 人か 4 人（手数料とサーバー代を引いて平均 月 200 円）")).toEqual([]);
+    expect(numberWording("有料 3 人か 4 人（平均 月 200 円）")).toHaveLength(1);
+    expect(band + exact).toBeGreaterThan(10);
+  });
+
+  it("fact-2〜11・fact-23（C2）: 束の文は、この地図の前提を事実や会社の決まりとして言い過ぎない", () => {
+    const strings: string[] = [];
+    const walk = (x: unknown): void => {
+      if (typeof x === "string") strings.push(x);
+      else if (Array.isArray(x)) x.forEach(walk);
+      else if (x && typeof x === "object") Object.values(x).forEach(walk);
+    };
+    walk(SENTENCES);
+    for (const t of strings) for (const [re, why] of OVERCLAIMS) expect(re.test(t), `${why}: ${t}`).toBe(false);
+    // 前の言い方は止まる
+    for (const t of ["移る月は給与の半月分が減る。", "届け出をし直さずに SpellDash を続けられる。", "広告運用は競業として認められず", "独立して最初の年は高くなりやすいので", "書類で落ちる先が多く、面接に進めなかった。", "この会社でもう一度は聞けないので", "給与（年収 360 万円）が 2028 年 1 月で止まる。"]) expect(OVERCLAIMS.some(([re]) => re.test(t)), t).toBe(true);
+    // 前提の言い方: 4 月の昇給と評価・届け出の答えの時期・聞き直さないは「この地図では」
+    expect(SENTENCES.cal.APRIL!.flatMap((g) => g.v).every((v) => v.startsWith("この地図"))).toBe(true);
+    expect(SENTENCES.hint.flatMap((g) => g.v).filter((v) => v.includes("1 か月ほど")).every((v) => v.includes("この地図では"))).toBe(true);
+    // 独立の訳: 給与が止まる月は「…から入らなくなる」「…から止まり」で言う（fact-11）
+    expect(SENTENCES.avoid.ind_quit!.flatMap((g) => g.v).filter((v) => /で止まる/.test(v))).toEqual([]);
+    // 広告運用を足す道は転職だけと言わない（fact-10）
+    expect(SENTENCES.after.flatMap((g) => g.v).filter((v) => /広告運用を足すには、副業を認める会社への転職が要る/.test(v))).toEqual([]);
+  });
+
+  it("fact-12: 文の型が差し込みなしで書ける数は、文の型が使う数だけ（前提に無い数は C1 で止まる）", () => {
+    expect(digitsOutside("資金が 6 か月分を切る前に")).toEqual(["6"]);
+    expect(digitsOutside("在籍 2 年を過ぎた")).toEqual(["2"]);
+    expect(digitsOutside("面接は 5 日で終わる")).toEqual(["5"]);
+    expect(digitsOutside("1 人 940 円")).toEqual(["940"]);
+    // 使う数は通る
+    expect(digitsOutside("Pro（月 980 円）。週 10 時間と週 4 日・週 5 日。1 校。4 月と 6 月。3 か月。1 か月ほど。1 年後と 3 年後。1 社目と 2 社目。1 回。1 つと 2 つ。1 件。1 本。1 期。1 日。1 人")).toEqual([]);
+  });
+
+  it("rep-7: 届け出の結果の意味は結果ごとに 1 文で、結果の名前を言い直さない。「転職か独立」は、どちらも不可の言い換えのうち 1 つだけで言う", () => {
+    for (const kind of ["ad_permside", "sd_permpro", "ad_perm"]) {
+      const cells = BANKS.branch[kind]!;
+      for (const [cls, groups] of Object.entries(cells))
+        for (const g of groups)
+          for (const v of g.v) {
+            expect(v, `${kind}.${cls}`).not.toContain("。");
+            expect(v, `${kind}.${cls}`).not.toMatch(/^全部可で|^全部可だが/);
+          }
+      expect(cells.n!.flatMap((g) => g.v).filter((v) => v.includes("転職か独立")).length, kind).toBeLessThanOrEqual(1);
+    }
+    expect([...SENTENCES.event.PERM_N!, ...SENTENCES.hint].flatMap((g) => g.v).filter((v) => v.includes("転職か独立"))).toEqual([]);
+  });
+});
+
+
+describe("文章の波 1 の W2（状態のカード: text-w1/audit の con-1・con-2・rep-3・rep-4・rep-8・rep-10・rep-12・rep-14・L1〜L5）", () => {
+  type Rt = ReturnType<typeof textRuntime>;
+  const memo = new Map<number, { map: MapData; a: Analysis; rt: Rt }>();
+  /** 小さい木（tests/fixtures/q-small）と、その年収の計算の芯の答え（画面と同じおすすめと数） */
+  const qs = async (annual: number): Promise<{ map: MapData; a: Analysis; rt: Rt }> => {
+    let hit = memo.get(annual);
+    if (!hit) {
+      const map = await loadQSmall();
+      const a = analyze(compileMap(map), annual);
+      memo.set(annual, (hit = { map, a, rt: textRuntime(a) }));
+    }
+    return hit;
+  };
+  const num = (x: string): number => Number(x.replace(/,/g, "").replace("−", "-"));
+  /** 道の最初の状態（今日の手の結果） */
+  const stateAt3 = (m: MapData, i: number): number => {
+    let x = i;
+    while (m.month(x) > 3) x = m.parent(m.parent(x));
+    return x;
+  };
+
+  it("どの状態も、今日からの 3 年の見込み（ここまで + この先）と次の判断のおすすめの手を言い、数は画面と同じ（L1・con-7・con-1 の S2・S5）", async () => {
+    for (const annual of [360, 540]) {
+      const { map, a, rt } = await qs(annual);
+      // ずっと今のままの 3 年は、計算の芯の「ずっと今のまま」と同じ（L4）
+      expect(keepTotalOf(ctxOf(map, BANKS, annual))).toBeCloseTo(a.vSQ!, 6);
+      let firsts = 0;
+      let totals = 0;
+      for (const i of all(map)) {
+        if (map.role(i) !== "s") continue;
+        const b = composeCard(map, i, { annual, rt }).body;
+        // おすすめは画面のおすすめと同じ手（C13）。どの状態も言う
+        expect(stateRecommendIssues(map, i, b, rt.recommended), `${map.key(i)}: ${b}`).toEqual([]);
+        expect(b, `${map.key(i)}: ${b}`).toContain(`『${listNameOf(map, rt.recommended(i))}』`);
+        expect(b, map.key(i)).toMatch(/3 年の見込み/);
+        expect([...b].length, map.key(i)).toBeLessThanOrEqual(map.month(i) === 3 ? FIRST_STATE_MAX : LIMITS.s.max);
+        // 合わせて = 道の画面の「ここから一番良い選び方で進んだ 3 年の合計の見込み」（ここまでの稼ぎ + その先の一番良い選び方の値）
+        const m = /今日からの 3 年の見込みは ([0-9,]+) 万円（ここまで (−?[0-9,.]+) 万円＋この先 (−?[0-9,.]+) 万円）/.exec(b);
+        if (m) {
+          totals++;
+          expect(num(m[1]!), map.key(i)).toBe(Math.round(a.money.acc[i]! + a.pi.V[i]!));
+          if (Math.abs(a.money.acc[i]!) >= 10) expect(num(m[2]!), map.key(i)).toBe(Math.round(a.money.acc[i]!));
+          // 見せる数で足し算が合う
+          expect(Math.abs(num(m[2]!) + num(m[3]!) - num(m[1]!)), map.key(i)).toBeLessThanOrEqual(0.5);
+        }
+        if (map.month(i) === 3) {
+          firsts++;
+          // 0.9（R10）: 見積もり方の文と、ずっと今のままの 3 年の文は分ける
+          const k = /何も変えずに 3 年続ける（ずっと今のまま）と ([0-9,]+) 万円/.exec(b);
+          expect(k, `${map.key(i)}: ${b}`).not.toBeNull();
+          expect(num(k![1]!)).toBe(Math.round(a.vSQ!));
+          // 0.9（R1）: 比べる元は今日の手を選んだ時の見込み（その手のカードの「平均」と同じ数）
+          const mv = map.parent(i);
+          const base = /今日『([^』]*)』を選んだ時の見込み ([0-9,]+) 万円/.exec(b);
+          expect(base, `${map.key(i)}: ${b}`).not.toBeNull();
+          expect(num(base![2]!), map.key(i)).toBe(Math.round(rt.treeValue(mv)!));
+          expect(composeCard(map, mv, { annual, rt }).body, map.key(mv)).toContain(`平均 ${base![2]} 万円`);
+        } else expect(b, map.key(i)).not.toMatch(/何も変えずに 3 年続ける|この先は、毎回おすすめの手を選んだ場合/);
+      }
+      expect(firsts).toBeGreaterThan(0);
+      expect(totals).toBeGreaterThan(firsts);
+    }
+  });
+
+  it("q-small の状態のカードは、計算の芯つきで 1 枚の点検（C1・C2・C3・C4・C10 など。数の行の数を本文に書かない L5）を通る", async () => {
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      for (const i of all(map)) {
+        if (map.role(i) !== "s") continue;
+        const issues = checkCard(map, i, composeMarkedCard(map, i, { annual, rt }), BANKS, wish, annual).filter((x) => !ignorable(x));
+        expect(issues, `${map.key(i)} ${annual}`).toEqual([]);
+      }
+    }
+    expect(STATE_BUDGET).toBeLessThan(LIMITS.s.max);
+    expect(FIRST_STATE_BUDGET).toBeLessThan(FIRST_STATE_MAX);
+  });
+
+  it("数の枠の言い方は道の上の位置で 3 つを回し（L2: 位置で。ハッシュでない）、道 1 本の状態で同じ枠は目安の 4 回まで", async () => {
+    const { map, rt } = await qs(360);
+    let leaf = -1;
+    for (const i of all(map)) if (map.role(i) === "e" && !map.sum(i) && pathTo(map, i).filter((x) => map.role(x) === "s").length === 11) leaf = i;
+    expect(leaf).toBeGreaterThanOrEqual(0);
+    const states = pathTo(map, leaf).filter((i) => map.role(i) === "s");
+    const uses = new Map<string, number>();
+    const total = [/^今日からの 3 年の見込みは/, /^3 年の見込みは、ここまでの/, /^ここまでの .+ 万円にこの先の/];
+    for (const i of states) {
+      const sents = sentencesOf(composeCard(map, i, { annual: 360, rt }).body);
+      for (const f of new Set(sents.map(frameOf).filter((x): x is string => !!x && x.startsWith("構造")))) uses.set(f, (uses.get(f) ?? 0) + 1);
+      const p = map.month(i) / 3 - 1;
+      expect(sents.some((x) => total[p % 3]!.test(x)), `${map.key(i)} p${p}: ${sents.join("。")}`).toBe(true);
+    }
+    expect(Math.max(...uses.values())).toBeLessThanOrEqual(FRAME_SOFT);
+  });
+
+  it("結果の兄弟は、3 年の見込みで比べる文の言い方を兄弟の並びでずらし、比べる相手を 3 年の見込みの隣にする（rep-4）", async () => {
+    const { map, rt } = await qs(360);
+    let groups = 0;
+    for (const a of all(map)) {
+      if (map.role(a) !== "a") continue;
+      const kids = Array.from({ length: map.childCount(a) }, (_, k) => map.child(a, k)).filter((o) => map.role(o) === "s");
+      if (kids.length < 3) continue;
+      const cmp = kids.map((o) => sentencesOf(composeCard(map, o, { annual: 360, rt }).body).find((x) => /3 年の見込み/.test(x) && /『/.test(x) && !/^今日/.test(x)) ?? null);
+      if (cmp.some((x) => x === null)) continue;
+      groups++;
+      expect(new Set(cmp.map((x) => frameOf(x!))).size, `${map.key(a)}: ${cmp.join(" / ")}`).toBe(kids.length);
+      // 比べる相手は兄弟で同じ 1 つにならない
+      expect(new Set(cmp.map((x) => /『([^』]*)』/.exec(x!)![1])).size, `${map.key(a)}: ${cmp.join(" / ")}`).toBeGreaterThan(1);
+    }
+    expect(groups).toBeGreaterThan(0);
+  });
+
+  it("今日の手とその答えが効いている間は、状態がそれを言う。勤め先が変わったり独立したりした後は言わない（L4・rep-14）。0.9（R3）: 同じ道では 12 か月ごとに 1 回", async () => {
+    const { map, rt } = await qs(360);
+    const thread = /の結果が『SpellDash だけ』だったから|が『SpellDash だけ』だったので|『SpellDash だけ』（今日の/;
+    const has = new Map<number, [boolean, boolean]>();
+    /** [本文が言う, 段取りで言うと決めた（長さの目安で落としたときも）] */
+    const look = (i: number): [boolean, boolean] => {
+      if (!has.has(i)) {
+        const c = composeCard(map, i, { annual: 360, rt });
+        has.set(i, [thread.test(c.body), c.trace.includes("state:thread")]);
+      }
+      return has.get(i)!;
+    };
+    const said = (i: number): boolean => look(i)[0];
+    const planned = (i: number): boolean => look(i)[1];
+    /** 3 か月目から、ずっと同じ会社の会社員で答えが『SpellDash だけ可』のまま */
+    const governed = (i: number): boolean => {
+      const fo = stateAt3(map, i);
+      if (map.month(i) < 6 || map.kind(map.parent(fo)) !== "ad_permside" || map.outId(fo) !== "s") return false;
+      for (let x = i; x !== fo; x = map.parent(map.parent(x))) if (map.st(x).j !== "e" || map.st(x).pm !== "s" || map.st(x).fl.includes("switched")) return false;
+      return true;
+    };
+    let paths = 0;
+    for (const e of all(map)) {
+      if (map.role(e) !== "e") continue;
+      const states: number[] = [];
+      for (let x = map.parent(map.parent(e)); x > 0; x = map.parent(map.parent(x))) if (map.role(x) === "s") states.unshift(x);
+      const gov = states.filter(governed);
+      for (const x of states) if (!governed(x)) expect(said(x), map.key(x)).toBe(false);
+      for (const x of gov) if (said(x)) expect(planned(x), map.key(x)).toBe(true);
+      const months = gov.filter(planned).map((x) => map.month(x));
+      for (let k = 1; k < months.length; k++) expect(months[k]! - months[k - 1]!, map.key(e)).toBeGreaterThanOrEqual(12);
+      // 効いている期が 1 年続く道は、どこかで言うと決める（節目からの月の文と同じ状態では言わない。長さの目安で落とすことはある）
+      if (gov.length >= 4) {
+        paths++;
+        expect(months.length, map.key(e)).toBeGreaterThan(0);
+      }
+    }
+    expect(paths).toBeGreaterThan(0);
+  });
+
+  it("出来事の後の一言（con-2・rep-3・rep-12）: 据え置きの後は残る評価、担当を広げた後は 4 月の昇格の見込みの動きを言う。今のままの 2 期目からは期の数と残る判断", async () => {
+    const { map, rt } = await qs(360);
+    let promoNo = 0;
+    let keepRun = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "s") continue;
+      const mv = map.parent(i);
+      const b = composeCard(map, i, { annual: 360, rt }).body;
+      if (map.kind(mv) === "fc_push" && map.outId(i) === "same" && /残る評価|昇格する機会は残っていない|次に狙えるのは|次の機会は/.test(b)) promoNo++;
+      if (map.kind(mv) === "keep" && /今のままを選んだのは [0-9]+ 回目|何も足さない期はこれで [0-9]+ 期目|今のままはこれが [0-9]+ 期目/.test(b)) keepRun++;
+    }
+    expect(promoNo).toBeGreaterThan(0);
+    expect(keepRun).toBeGreaterThan(0);
+    // 担当を広げた 3 か月の後（手で作った地図）: 昇格の見込みが上がったと言い、「大きな変化は無かった」と言わない
+    const scope = fromDevTree(F_SCOPE);
+    const st = all(scope).find((i) => scope.role(i) === "s" && scope.kind(scope.parent(i)) === "fc_scope")!;
+    const sb = body(scope, st);
+    expect(sb).toMatch(/昇格する見込みは 3 割から 4 割に上がった|昇格の見込みが 3 割から 4 割になった|広げた分はこの地図の数には出ない/);
+    expect(sb).not.toMatch(/大きな変化は無かった/);
+    // 据え置きの言い方は、3 年の終わりまでに残る評価の数で選ぶ（rep-12）
+    expect(BANKS.branch.fc_push!.same!.map((g) => g.if ?? "")).toEqual(["al>=2", "al=1", ""]);
+  });
+
+  it("状態の本文は、ほとんどがほかのカードと違う（rep-3: 同じになるのは数も同じ状態だけを目安に。小さい木で 1 割未満）", async () => {
+    const { map, rt } = await qs(360);
+    const bodies = new Map<string, number>();
+    const states: number[] = [];
+    for (const i of all(map)) {
+      if (i === 0) continue;
+      const b = composeCard(map, i, { annual: 360, rt }).body;
+      bodies.set(b, (bodies.get(b) ?? 0) + 1);
+      if (map.role(i) === "s") states.push(i);
+    }
+    const same = states.filter((i) => bodies.get(composeCard(map, i, { annual: 360, rt }).body)! > 1).length;
+    expect(same / states.length).toBeLessThan(0.1);
+  });
+
+  it("状態の点検 C13: おすすめの手を言わない・画面と違う手を言う本文を見つける", async () => {
+    const { map: rules } = await qs(360);
+    // 画面のおすすめが今のまま（名前は「この 3 か月は今のまま」）の判断
+    const st = all(rules).find((i) => rules.role(i) === "s" && rules.childCount(i) >= 2 && Array.from({ length: rules.childCount(i) }, (_, k) => rules.child(i, k)).some((x) => rules.isBase(x)))!;
+    const base = Array.from({ length: rules.childCount(st) }, (_, k) => rules.child(st, k)).find((x) => rules.isBase(x))!;
+    const pi = (): number => base;
+    expect(stateRecommendIssues(rules, st, "2027 年 5 月、変化は無かった。", pi)).toEqual(["状態の本文が次の判断のおすすめの手を言わない"]);
+    expect(stateRecommendIssues(rules, st, `おすすめは『${listNameOf(rules, pi())}』。`, pi)).toEqual([]);
+    expect(stateRecommendIssues(rules, st, "おすすめは『別の手』。", pi)[0]).toMatch(/画面のおすすめ/);
+    expect(stateRecommendIssues(rules, st, "次の 3 か月に選べる手は今のままだけ（この地図では、ここから先の手を分けていない）。", pi)).toEqual([]);
+  });
+});
+
+describe("文章の波 1 の見直しの直し（text-w1/review の R*・F*・code-*。文の型 0.9）", () => {
+  type Rt = ReturnType<typeof textRuntime>;
+  const memo = new Map<number, { map: MapData; a: Analysis; rt: Rt }>();
+  const qs = async (annual: number): Promise<{ map: MapData; a: Analysis; rt: Rt }> => {
+    let hit = memo.get(annual);
+    if (!hit) {
+      const map = await loadQSmall();
+      const a = analyze(compileMap(map), annual);
+      memo.set(annual, (hit = { map, a, rt: textRuntime(a) }));
+    }
+    return hit;
+  };
+  const num = (x: string): number => Number(x.replace(/,/g, "").replace("−", "-"));
+  const kids = (m: MapData, i: number): number[] => Array.from({ length: m.childCount(i) }, (_, k) => m.child(i, k));
+  /** 状態の本文が言う 3 年の見込みの動き（比べる元からの差。上がった・多いは正） */
+  const changeOf = (b: string): number | null => {
+    const m = /(?:今日『[^』]*』を選んだ時の見込み [0-9,]+ 万円|3 か月前に選んだ(?:『[^』]*』|手)の見込み [0-9,]+ 万円|3 か月前の見込み)(?:より ([0-9,.]+) 万円(上がった|下がった)|(とほぼ同じ))/.exec(b);
+    if (!m) return null;
+    return m[3] ? 0 : (m[2] === "上がった" ? 1 : -1) * num(m[1]!);
+  };
+
+  it("R1・F1・code-2: 状態の 3 年の見込みの動きは、この道の手を選んだ時の見込みから測る（手の結果の見込みの重みで足すと 0。結果が 1 つなら変わらない）", async () => {
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      let moves = 0;
+      let single = 0;
+      let zero = 0;
+      for (const a of all(map)) {
+        if (map.role(a) !== "a") continue;
+        const os = kids(map, a).filter((o) => map.role(o) === "s");
+        if (!os.length || os.length !== map.childCount(a)) continue;
+        const ds = os.map((o) => changeOf(composeCard(map, o, { annual, rt }).body));
+        if (ds.some((d) => d === null)) continue;
+        moves++;
+        const sum = os.reduce((acc, o, k) => acc + (map.p(o) / 100) * ds[k]!, 0);
+        // 見せる数（整数の万円）どうしの差なので、丸めの分だけずれる
+        expect(Math.abs(sum), `${map.key(a)} ${annual}: ${ds.join(",")}`).toBeLessThanOrEqual(1);
+        if (os.length === 1) {
+          // 結果が 1 つなら動かない（見せる数の丸めの境目で、2 つの合計が 1 万円違って見えるときだけ 1）
+          single++;
+          expect(Math.abs(ds[0]!), map.key(os[0]!)).toBeLessThanOrEqual(1);
+          if (ds[0] === 0) zero++;
+        }
+      }
+      expect(moves).toBeGreaterThan(100);
+      expect(single).toBeGreaterThan(0);
+      expect(zero / single).toBeGreaterThan(0.95);
+    }
+  });
+
+  it("R4: 状態と行き先が言う差は、画面に出る合計どうしの差（点検 C14）。合わない数を書けば見つける", async () => {
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      const fin = all(map).map((i) => composeCard(map, i, { annual, rt }));
+      expect(tieIssues(map, fin), `${annual}`).toEqual([]);
+      // 3 か月前の見込みとの差を 1 万円ずらすと見つける
+      const i = all(map).find((x) => map.role(x) === "s" && /3 か月前の見込みより [0-9]+ 万円/.test(fin[x]!.body))!;
+      const bad = fin.slice();
+      bad[i] = { ...fin[i]!, body: fin[i]!.body.replace(/3 か月前の見込みより ([0-9]+) 万円/, (_m, n: string) => `3 か月前の見込みより ${Number(n) + 1} 万円`) };
+      expect(tieIssues(map, bad).map((x) => x.i)).toEqual([i]);
+    }
+    expect(shownTotal("今日からの 3 年の見込みは 1,228 万円（ここまで 89 万円＋この先 1,139 万円）で、")).toBe(1228);
+  });
+
+  it("R6: どの行き先も、今日からこの道の 3 年の稼ぎ（計算の芯の ここまで + 残り と同じ）とずっと今のままとの差を言う", async () => {
+    const { map, a, rt } = await qs(360);
+    let ends = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "e") continue;
+      const b = composeCard(map, i, { annual: 360, rt }).body;
+      const m = /(?:今日からこの道の|標準の続きを入れた今日からの) 3 年の稼ぎは ([0-9,]+) 万円で、ずっと今のまま(?:より [0-9,.]+ 万円(?:多い|少ない)|とほぼ同じ)/.exec(b);
+      expect(m, `${map.key(i)}: ${b}`).not.toBeNull();
+      expect(num(m![1]!), map.key(i)).toBe(Math.round(a.money.acc[i]! + a.pi.V[i]!));
+      ends++;
+    }
+    expect(ends).toBeGreaterThan(100);
+  });
+
+  it("R2: 次の手の並びの違いは、状態の決まりで変わった手だけを言う（決まりは生成の feasibleQ と同じ。地図が並べなかっただけの手を「選べず」と言わない）", async () => {
+    const qr = Object.values(import.meta.glob("../../scripts/impact/q/quarter.ts", { eager: true }))[0] as { feasibleQ?: (w: unknown, s: unknown, kind: string, m0: number) => boolean } | undefined;
+    const qw = Object.values(import.meta.glob("../../scripts/impact/q/world.ts", { eager: true }))[0] as { quarterWorld?: (w: unknown, anchor?: string) => unknown } | undefined;
+    expect(qr?.feasibleQ, "scripts/impact/q/quarter.ts の feasibleQ").toBeDefined();
+    const { map, rt } = await qs(360);
+    const W = qw!.quarterWorld!(world, map.header.anchor);
+    const c = ctxOf(map, BANKS, 360, rt);
+    const KINDS = Object.keys(map.header.kinds);
+    let falses = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "s" && map.role(i) !== "r") continue;
+      const st = map.st(i);
+      const m = map.month(i);
+      for (const k of KINDS) {
+        const v = allowedKind(c, st, k, m);
+        // 選べないと言い切る手は、生成の決まりでも選べない。並んでいる手は選べる
+        if (v === false) {
+          falses++;
+          expect(qr!.feasibleQ!(W, st, k, m), `${map.key(i)} ${k}`).toBe(false);
+        }
+      }
+      for (const x of kids(map, i)) if (map.role(x) === "a") expect(allowedKind(c, st, map.kind(x)!, m), `${map.key(i)} に並ぶ ${map.kind(x)}`).not.toBe(false);
+    }
+    expect(falses).toBeGreaterThan(1000);
+    // 同じ仕事・届け出の答え・Pro・印の兄弟どうしでは、昇格・担当・集客・続ける工夫を並びの違いとして言わない（印も見るのは、移った結果は
+    // 担当を広げた印が外れて、移った会社でまた担当を広げられるから。これは決まりの違い）
+    let menus = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "s") continue;
+      const tr = composeCard(map, i, { annual: 360, rt }).trace.find((t) => t.startsWith("state:menu:"));
+      if (!tr) continue;
+      menus++;
+      const [closed, opened] = tr.slice("state:menu:".length).split("/").map((x) => x.split("+").filter((y) => y));
+      // 集客の回数は兄弟で同じ（同じ手の結果）なので、集客の有無が並びの違いになることは無い
+      for (const k of [...closed!, ...opened!]) expect(k, `${map.key(i)} ${tr}`).not.toBe("sd_grow");
+      const sibs = kids(map, map.parent(i)).filter((x) => x !== i);
+      const s0 = map.st(i);
+      if (sibs.every((x) => map.st(x).j === s0.j && map.st(x).pm === s0.pm && map.st(x).pro === s0.pro && map.st(x).fl.join() === s0.fl.join())) for (const k of [...closed!, ...opened!]) expect(["fc_push", "fc_scope", "sd_grow", "sd_retain"].includes(k), `${map.key(i)} ${tr}`).toBe(false);
+    }
+    expect(menus).toBeGreaterThan(0);
+  });
+
+  it("R3・code-7: 今日の手の効き目の一言は、同じ道で同じ文にならず、言い直すのは 12 か月あけてから", async () => {
+    const { map, rt } = await qs(360);
+    const said = new Map<number, string | null>();
+    const threadOf = (i: number): string | null => {
+      if (!said.has(i)) {
+        const c = composeCard(map, i, { annual: 360, rt });
+        said.set(i, c.trace.includes("state:thread") ? (sentencesOf(c.body).find((x) => /今日の『/.test(x) && /のは、今日の|だったので、|がまだ効いていて、|』で、/.test(x) && !/分かれ道/.test(x)) ?? null) : null);
+      }
+      return said.get(i)!;
+    };
+    let paths = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "e") continue;
+      const seen: Array<[number, string]> = [];
+      for (let x = map.parent(map.parent(i)); x > 0; x = map.parent(map.parent(x))) {
+        const t = threadOf(x);
+        if (t) seen.push([map.month(x), t]);
+      }
+      if (seen.length) paths++;
+      expect(new Set(seen.map(([, t]) => t)).size, map.key(i)).toBe(seen.length);
+      for (let k = 1; k < seen.length; k++) expect(seen[k - 1]![0] - seen[k]![0], map.key(i)).toBeGreaterThanOrEqual(12);
+    }
+    expect(paths).toBeGreaterThan(0);
+  });
+
+  it("R7: 1 割に満たない見込みは「1 割弱・1 割未満」、有料になる割合は「N 人に 1 人」（割の後でない「N 分」は点検 C10 が止める）", () => {
+    expect([0.08, 0.04, 0.0, 0.15, 0.3].map((p) => strip(wari(p)))).toEqual(["1 割弱", "1 割未満", "1 割未満", "1 割 5 分", "3 割"]);
+    expect(strip(oneIn(BANKS.C.conv))).toBe("25 人に 1 人");
+    expect(strip(oneIn(BANKS.C.conv * 1.3))).toBe("19 人に 1 人");
+    expect(bareBuIssues("移れる見込み 8 分。遊ぶ人は月 8 分ほど増える。")).toHaveLength(2);
+    expect(bareBuIssues("見込み 3 割 5 分。移れる見込み 1 割弱。有料になるのは 25 人に 1 人ほど。")).toEqual([]);
+    // 束の有料になる割合の文は状態の数で言う（{conv} を使わない）。遊ぶ人の伸びの前提は、伸びが前提どおりの 3 か月（baseG）だけ
+    const mau = BANKS.then.MAU_MILE!;
+    expect(mau.flatMap((g) => g.v).filter((v) => v.includes("{conv}"))).toEqual([]);
+    expect(mau.filter((g) => g.v.some((v) => v.includes("{growth}"))).map((g) => g.if)).toEqual(["baseG=1"]);
+  });
+
+  it("F3・F5・code-1: 状態と次の判断の並びが支えない言い方・前の期でない顧客探しの見込み・無償の広告運用の手伝いの一言を、点検 C2 が見つける", async () => {
+    const { map, rt } = await qs(360);
+    const st = all(map).find((i) => map.role(i) === "s" && map.st(i).cl < 0.5 && map.month(i) >= 6)!;
+    expect(claimIssues(map, st, "今日の『届け出て副業の 1 社目を探す』が『全部可（1 社目あり）』だったので、広告運用の顧客と Pro の両方から稼げる。")[0]).toMatch(/両方から稼げる/);
+    const noSide = all(map).find((i) => map.role(i) === "s" && map.childCount(i) > 0 && !kids(map, i).some((x) => map.kind(x) === "ad_side" || map.kind(x) === "ad_more"))!;
+    expect(claimIssues(map, noSide, "顧客探しの手と Pro の手がこの会社でどちらも並ぶ。")[0]).toMatch(/どちらも並ぶ/);
+    // 1 つ前の期が 2 社目を探した期（顧客 1〜2 社の幅）でなければ、2 社目の見込みの動きは言えない
+    const s2 = all(map).find((i) => map.role(i) === "s" && map.month(i) >= 6 && (() => { const up = map.parent(map.parent(i)); const b = map.band(up)?.cl; return !(b && b[0] === 1 && b[1] === 2); })())!;
+    expect(claimIssues(map, s2, "2 社目が決まる見込みは、前の期の 9 割から 3 割 5 分に動いた。")[0]).toMatch(/前の期/);
+    // 道の上の本当の文には出ない
+    for (const i of all(map)) if (map.role(i) === "s" || map.role(i) === "a") expect(claimIssues(map, i, composeCard(map, i, { annual: 360, rt }).body), map.key(i)).toEqual([]);
+    // 知人の店の広告を無償で手伝う手（届け出の答えがまだか SpellDash だけ可）は、確かめる一言を言う
+    let pf = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "a" || map.kind(i) !== "ad_portfolio") continue;
+      const s0 = map.st(map.parent(i));
+      if (s0.j === "i" || (s0.pm !== "?" && s0.pm !== "s")) continue;
+      pf++;
+      expect(composeCard(map, i, { annual: 360, rt }).body, map.key(i)).toMatch(/就業規則の副業と競業|会社に確かめ/);
+    }
+    expect(BANKS.cost.ad_portfolio!.map((g) => g.if)).toEqual(["j!=i & pm=?", "j!=i & pm=s"]);
+    expect(pf + 1).toBeGreaterThan(0);
+  });
+
+  it("code-6: まとめた手の会社員に戻る月は、文が名前を言う結果の標準の続きの月で見る（別の結果の月を言えば見つける）", async () => {
+    const { map } = await qs(360);
+    let tried = 0;
+    for (const a of all(map)) {
+      if (map.role(a) !== "a" || !map.stub(a)) continue;
+      const b = composeCard(map, a, { annual: 360 }).body;
+      expect(eventMonthIssues(map, a, b), map.key(a)).toEqual([]);
+      const cal = calendarOf(map.header);
+      // 結果ごとの戻る月
+      const backs = kids(map, a).map((o) => (map.cont(o) ?? []).find((st) => st.ev === "BACK_EMP")).map((st) => (st ? st.m + 3 : null));
+      for (const m of b.matchAll(/『([^』]*)』[^。『]*?([0-9]{4}) 年 ([0-9]{1,2}) 月に会社員に戻り/g)) {
+        const mine = cal.monthOf(Number(m[2]), Number(m[3]));
+        const other = backs.find((x) => x !== null && x !== mine);
+        if (other === undefined || other === null) continue;
+        const [y, mo] = cal.parts(other);
+        const bad = b.replace(m[0], m[0].replace(`${m[2]} 年 ${m[3]} 月に`, `${y} 年 ${mo} 月に`));
+        tried++;
+        expect(eventMonthIssues(map, a, bad).length, `${map.key(a)}: ${m[0]} → ${y} 年 ${mo} 月`).toBeGreaterThan(0);
+      }
+    }
+    expect(tried).toBeGreaterThanOrEqual(0);
+  });
+
+  it("R9・R10・F6・F9・code-8: 『』の中は画面の手の名前・読みにくい言い方を使わない・転職の手が並ばないのは移った会社の間・届け出か独立・続ける工夫の回数は C から", async () => {
+    const { map, rt } = await qs(360);
+    const shortOnly = Object.entries(BANKS.short).filter(([k, v]) => map.header.kinds[k] && map.header.kinds[k]![0] !== v).map(([, v]) => `『${v}』`);
+    for (const i of all(map)) {
+      if (map.role(i) !== "s") continue;
+      const b = composeCard(map, i, { annual: 360, rt }).body;
+      for (const x of shortOnly) expect(b.includes(x), `${map.key(i)} ${x}`).toBe(false);
+      expect(b, map.key(i)).not.toMatch(/おすすめより『[^』]*』はほぼ同じ|Pro の受付は、有料|の場合と比べた 3 年の見込みは|この先は、毎回おすすめの手を選んだ場合で|線を越えた分の有料会員で|間は[^。]*のは、今日の/);
+    }
+    const all0 = JSON.stringify(SENTENCES);
+    expect(all0).not.toMatch(/転職は 3 年で 1 回まで|3 年で 1 回だけ。|届け出をしない限り/);
+    expect(all0).toContain("{retainMax}");
+    expect(SENTENCES.then.SWITCH_HIGH![0]!.v[0]).toMatch(/移った会社にいる間.*独立して会社員に戻れば、また選べる/);
+    expect(SENTENCES.thread.fc_switch![0]!.v.every((v) => /移った|この会社にいる間|移った先/.test(v))).toBe(true);
+    // 状態の文の節は「は」を含まない（「…のは、今日の…だったから」の枠に入る。R10）
+    for (const [kind, gs] of Object.entries(SENTENCES.thread)) for (const g of gs) for (const v of g.v) expect(v, kind).not.toMatch(/では|間は|手は|相談は|活動は/);
+  });
+
+  it("F7・F8・R5: 入社して 1 年に満たない会社の昇格狙いは但し書きつき。おすすめより見積もりの多い手があれば「一番多いのは」と言わない", async () => {
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      for (const i of all(map)) {
+        if (map.role(i) !== "s") continue;
+        const b = composeCard(map, i, { annual, rt }).body;
+        if (/一番多いのは『/.test(b)) expect(b, map.key(i)).not.toMatch(/見積もりでは [0-9.,]+ 万円多いが/);
+        const rec = rt.recommended(i);
+        if (rec >= 0 && map.kind(rec) === "fc_push" && /昇格の見込み [0-9]/.test(b)) {
+          // 道で勤め先が変わった月から 12 か月に満たない 4 月の評価は、対象になるかの但し書きをつける（fact-5・fact-16）
+          const c = ctxOf(map, BANKS, annual, rt);
+          const join = joinedAt(c, linkOf(c, i));
+          const fresh = join !== null && eventMonth(c.cal, "fc_push", map.month(i)) - join < 12;
+          expect(/入社 [0-9]+ か月で迎える評価で、対象なら昇格の見込み/.test(b), `${map.key(i)}: ${b}`).toBe(fresh);
+        }
+      }
+    }
+  });
+
+  it("F2・R8: 有料になる割合はその状態の割合（地図の割合 × 続ける人を増やす工夫の倍率）。別の結果と比べる差に添える月の稼ぎの違いは、差と同じ向き", async () => {
+    const seen = { conv: 0, notes: 0 };
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      let conv = 0;
+      let notes = 0;
+      for (const i of all(map)) {
+        if (map.role(i) !== "s") continue;
+        const b = composeCard(map, i, { annual, rt }).body;
+        const s = map.st(i);
+        for (const m of b.matchAll(/有料になる(?:のは|とみる)?[^。]*?([0-9]+) 人に 1 人|遊ぶ人の ([0-9]+) 人に 1 人ほどが有料/g)) {
+          conv++;
+          expect(Number(m[1] ?? m[2]), `${map.key(i)} cv ${s.cv}: ${m[0]}`).toBe(Math.round(1 / (BANKS.C.conv * (s.cv || 1))));
+          if (Math.abs((s.cv || 1) - 1) > 0.005) expect(b, map.key(i)).toContain("続ける人を増やす工夫の分を入れて");
+        }
+        // 「（有料会員で N 人の差）」は、この結果の方が有料会員が多いなら 3 年の見込みも多い（逆の向きなら添えない）
+        for (const sent of b.split("。")) {
+          const m = /^(?:同じ手で|3 年の見込みを|この結果の 3 年の見込みは、|3 年の見込みで見ると、この結果は)?[^。]*?『([^』]*)』[^。]*?([0-9,.]+) 万円(多い|少ない|多かった|少なかった)（有料会員で ([0-9]+) 人の差）/.exec(sent);
+          if (!m) continue;
+          const sib = Array.from({ length: map.childCount(map.parent(i)) }, (_, k) => map.child(map.parent(i), k)).find((x) => x !== i && map.label(x) === m[1]);
+          if (sib === undefined) continue;
+          notes++;
+          // 「『X』の場合なら、3 年の見込みは N 万円少なかった」は、この結果の方が多い
+          const moreTotal = /の場合なら/.test(sent) ? m[3] === "少なかった" : m[3] === "多い";
+          const morePu = Math.round(s.pu) > Math.round(map.st(sib).pu);
+          expect(morePu, `${map.key(i)}: ${sent}`).toBe(moreTotal);
+        }
+      }
+      seen.conv += conv;
+      seen.notes += notes;
+    }
+    expect(seen.conv).toBeGreaterThan(0);
+    expect(seen.notes).toBeGreaterThan(0);
+    expect(BANKS.cmpWhy.map((g) => g.if)).toEqual(["pm=s", "pm=a"]);
+  });
+
+  it("code-3: 兄弟の比べる文の枠の報告は、3 年の見込みで比べる 7 つの枠を見分け、この 3 か月の月の稼ぎの文を拾わない", () => {
+    const frames = [
+      "同じ手で『昇格』だった場合より、3 年の見込みが 44 万円多い。",
+      "3 年の見込みを『昇格』の場合と比べると、44 万円多い。",
+      "『昇格』だった道と比べて、3 年の見込みは 44 万円多い。",
+      "この結果の 3 年の見込みは、『昇格』の場合より 44 万円多い。",
+      "『昇格』の場合なら、3 年の見込みは 44 万円少なかった。",
+      "『昇格』の場合と比べると、この結果の 3 年の見込みは 44 万円多い。",
+      "3 年の見込みで見ると、この結果は『昇格』の場合より 44 万円多い。",
+    ];
+    const got = frames.map((f) => cmpFrameOf(`2028 年 5 月、昇格した。4 割の見込みで起きた結果で、3 か月前と比べた月の稼ぎは +3.9 万円。${f}`));
+    expect(new Set(got).size).toBe(7);
+    expect(got.every((x) => x !== null && x.startsWith("枠 "))).toBe(true);
+    expect(cmpFrameOf("2028 年 5 月、昇格した。4 割の見込みで起きた結果で、3 か月前と比べた月の稼ぎは +3.9 万円。")).toBeNull();
   });
 });

@@ -73,6 +73,38 @@ export interface Consts {
   schoolSeats: number;
   /** 今日の週の時間（本業と SpellDash 週 10 時間） */
   baseHours: number;
+  // 0.7（fact-12）: 文が言う前提の数はどれもここから差し込む（scripts/impact/world.json・3 か月ごとの世界 quarterWorld・q/quarter.ts の上限と同じ値。
+  //   tests/unit/compose.test.ts で確かめる）。ここに無い数は、文に書かない（引いたやりたいことリストの項目にある数を除く。点検 C1・C1b）
+  /** 届け出の答えの見込み: 全部可・SpellDash だけ可・どちらも不可 */
+  permA: number;
+  permS: number;
+  permN: number;
+  /** 転職活動の最初の 3 か月で移れる見込み（1 つの会社で 1 回）・続けた 3 か月ごとの見込み */
+  switchP1: number;
+  switchP2: number;
+  /** 転職活動は 1 つの会社で何期まで・続けて決まらないのは何期まで */
+  searchMax: number;
+  searchRun: number;
+  /** 移る月に、前の会社の賞与の取り逃しとして引く給与（月の何か月分） */
+  switchCost: number;
+  /** 週 4 日勤務が認められる見込み */
+  partP: number;
+  /** 会社員に戻れる見込み（3 か月ごと） */
+  backP: number;
+  /** 学校・塾の無料の試用が決まる見込み（3 か月ごと） */
+  pilotP: number;
+  /** Pro 1 人の手数料を引いた月額・サーバー代（円/月。net・infra を円で） */
+  netYen: number;
+  infraYen: number;
+  /** 顧客 1 社がその 3 か月に離れる見込み（毎月 4% の 3 か月分） */
+  churnQ: number;
+  /** 遊ぶ人（月）が続けている開発で増える割合（月）・そのうち有料になる割合 */
+  growth: number;
+  conv: number;
+  /** 遊ぶ人を増やす・広告で集めるを使える期の数（3 年で）・続ける人を増やす工夫が効く回数 */
+  growMax: number;
+  adsMax: number;
+  retainMax: number;
 }
 
 /** 文の型の束。節ごとに、手の種類・出来事・結果の分類から言い換えの組を引く */
@@ -94,6 +126,21 @@ export interface Banks {
   branch: Record<string, Record<string, Variant[]>>;
   /** 状態の出来事の文（できごとだけ。同じ出来事が道で何回も起きるときは、何回目かで言い換えを選ぶ） */
   event: Record<string, Variant[]>;
+  /**
+   * 0.8: 出来事の後の一言（その出来事でこの先の何が変わったか。数は状態・地図・C から差し込む。con-2・rep-3・rep-4・rep-10）。
+   * 鍵は出来事の名前（無ければ種類を落とした名前）。同じ出来事が道で何回も起きるときは、何回目か（evn）と進み具合の条件で言い換えを選ぶ
+   */
+  then: Record<string, Variant[]>;
+  /**
+   * 0.8: 今日の手とその答えが、この状態をまだ決めているときの一言の中身（L4・rep-14）。鍵は今日の手の種類。
+   * 中身は「…のは、今日の『手』の結果が『答え』だったから」などの決まった枠（組み立て側）に入る、述語で終わる 1 節
+   */
+  thread: Record<string, Variant[]>;
+  /**
+   * 0.9（R8）: 別の結果と比べた 3 年の見込みの差が、月の稼ぎの一番の違いと逆の向きになる訳（この地図の前提）。条件はこの結果の届け出の答え（pm）。
+   * 括弧の中に入る、名詞で終わる 1 節
+   */
+  cmpWhy: Variant[];
   /** 出来事に添える助言（組ごとに道で 1 回だけ） */
   tip: Record<string, Variant[]>;
   /** 出来事の短い名前（節目・短い名前） */
@@ -106,7 +153,7 @@ export interface Banks {
   eventShortAgain: Record<string, string>;
   /** 状態の題 */
   eventTitle: Record<string, Variant[]>;
-  /** 次の手を問う言い方 */
+  /** 次の手を問う言い方（0.8 からは状態の文では使わない。手の名前の言い換えは nextNoun・short・地図の手の名前） */
   nextPhrase: Record<string, string[]>;
   /** 暦の文（確定申告・住民税・4 月・辞める前）。どれも道で 1 回だけ（確定申告はその年分ごとに 1 回） */
   cal: Record<string, Variant[]>;

@@ -2,7 +2,8 @@
 //   DEEPMAP_SLOW=1 と、全部の木の場所の環境変数を決めて、tests/unit の *Slow.test.ts・*Full.test.ts だけを動かす（ふだんの npm test では飛ぶ物）:
 //   IMPACT_Q_FULL: 3 か月ごとの地図の生成の書き出し（q-tree.json.gz と impact-q.b64。impactBundleQFull.test.ts が読む）の場所。作り方（4d-branch で）:
 //       node scripts/impact/q/run.mjs --out <場所>/q-tree.json --bundle <場所>/impact-q.b64 --runs 1 --spread 1
-//     渡さなければ、作業メモの書き出し（deepmap/gen/r7・deepmap/gen/verify）のうち、あるもの。どれも無ければ止める
+//     渡さなければ、作業メモの書き出し（版 7 の候補 deepmap/gen/r7c、前の候補 deepmap/gen/r7b・deepmap/gen/r7、deepmap/gen/verify の順）のうち、
+//     最初にあるもの。どれも無ければ止める
 //     （遅いテストが、木が無いせいで何も確かめずに通らないように）
 //   DEEPMAP_QTREE: 前提を直した木（.json か .json.gz）。渡さなければ <IMPACT_Q_FULL>/q-tree.json
 //   DEEPMAP_TREE: R1 の木。渡さなければテストの既定（作業メモ deepmap/dev/r1-tree.json）。無ければ R1 の木の確かめは飛ぶ
@@ -18,7 +19,7 @@ const hasFull = (dir) => fs.existsSync(path.join(dir, "impact-q.b64")) && fs.exi
 
 const env = { ...process.env, DEEPMAP_SLOW: "1" };
 if (!env.IMPACT_Q_FULL) {
-  const found = [path.join(SCRATCH, "gen", "r7"), path.join(SCRATCH, "gen", "verify")].find(hasFull);
+  const found = ["r7c", "r7b", "r7", "verify"].map((d) => path.join(SCRATCH, "gen", d)).find(hasFull);
   if (!found) {
     console.error("全部の木の書き出しがありません。IMPACT_Q_FULL に場所を渡してください（作り方は scripts/test-slow.mjs の先頭）");
     process.exit(1);
