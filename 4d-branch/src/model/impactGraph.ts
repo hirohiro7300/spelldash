@@ -14,7 +14,7 @@
 //                              作業メモ SPEC D6・perf-1: 文書を読み直さない）。並べる順は地図の深さ優先の順（地図・計算の芯と同じ番号）。
 //                              同じ値の行き先の並びは computeImpact と同じ（幅優先の順で数える: bfs）
 
-import { compileMap, F_BASE, ROLE_A, ROLE_E, ROLE_R, type CompiledMap } from "../deepmap/core/compile";
+import { compileMap, F_BASE, F_STUB, ROLE_A, ROLE_E, ROLE_R, type CompiledMap } from "../deepmap/core/compile";
 import type { MapData } from "../deepmap/mapData";
 import { dayNumber, isDateStr } from "./dates";
 import { flowOuts, impactConfigOf, isFlowEdge, isImpactRoot } from "./forks";
@@ -73,6 +73,8 @@ export interface Nums {
   readonly rvKey: Array<string | null>;
   readonly rvCat: Array<string | null>;
   readonly q: Float64Array;
+  /** まとめた手（meta.stub。画面に出す差では、その値が比べ方をそろえた値） */
+  readonly stub: Uint8Array;
   readonly likeBasis: boolean;
   /** まとめた行き先（meta.sum。先の数の「標準の続きの見積もり」） */
   readonly sum: Uint8Array;
@@ -320,6 +322,7 @@ export function fillNums(topo: Topo, seen: Seen): Nums {
   const rvKey = new Array<string | null>(slots).fill(null);
   const rvCat = new Array<string | null>(slots).fill(null);
   const q = new Float64Array(n * 3).fill(NaN);
+  const stub = new Uint8Array(n);
   const sum = new Uint8Array(n);
   let likeBasis = false;
   const tFloor = new Float64Array(n);
@@ -365,6 +368,7 @@ export function fillNums(topo: Topo, seen: Seen): Nums {
     noData[i] = deg === 0 && !ownRR && typeof meta?.ak !== "string" && meta?.end !== true && !meta?.forecastRoot ? 1 : 0;
     fam[i] = typeof meta?.fam === "string" ? (meta.fam as string) : typeof meta?.ak === "string" ? (meta.ak as string) : "";
     if (read3(meta?.q, q, i * 3)) likeBasis = true;
+    if (meta?.stub === true) stub[i] = 1;
     if (meta?.sum === true) sum[i] = 1;
     const fp = firstParent[i]!;
     const m = meta?.m;
@@ -432,7 +436,7 @@ export function fillNums(topo: Topo, seen: Seen): Nums {
       }
     }
   }
-  return { H, kind, t, rr, w, er, base, rank, isBase, noData, fam, rvKey, rvCat, q, likeBasis, sum };
+  return { H, kind, t, rr, w, er, base, rank, isBase, noData, fam, rvKey, rvCat, q, stub, likeBasis, sum };
 }
 
 /** 状態を文書の物から全部入れる */
@@ -484,6 +488,7 @@ export function assemble(topo: Topo, nums: Nums, stat: Uint8Array, allowed: Uint
     incSlot: topo.incSlot,
     src: topo.src,
     q: nums.q,
+    stub: nums.stub,
     likeBasis: nums.likeBasis,
   };
 }
@@ -711,6 +716,7 @@ export function compileMapDoc(map: MapData, doc: DocData, cm0?: CompiledMap): { 
   const rvKey = new Array<string | null>(slots).fill(null);
   const rvCat = new Array<string | null>(slots).fill(null);
   const sum = new Uint8Array(n);
+  const stub = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     const a = off[i]!;
     const b = off[i + 1]!;
@@ -719,6 +725,7 @@ export function compileMapDoc(map: MapData, doc: DocData, cm0?: CompiledMap): { 
     rank[i] = i === 0 ? 1e9 : cm.rank[i]!;
     const f = cm.flags[i]!;
     isBase[i] = f & F_BASE ? 1 : 0;
+    if (r === ROLE_A && f & F_STUB) stub[i] = 1;
     fam[i] = r === ROLE_A ? cm.famNames[cm.fam[i]!]! : "";
     if (r === ROLE_E && map.sum(i)) sum[i] = 1;
     for (let s = a; s < b; s++) {
@@ -745,7 +752,7 @@ export function compileMapDoc(map: MapData, doc: DocData, cm0?: CompiledMap): { 
     }
   }
   if (role[0] !== ROLE_R) return null;
-  const nums: Nums = { H, kind, t: cm.month, rr: cm.rr, w, er, base, rank, isBase, noData: new Uint8Array(n), fam, rvKey, rvCat, q: cm.q, likeBasis: cm.has.q > 0, sum };
+  const nums: Nums = { H, kind, t: cm.month, rr: cm.rr, w, er, base, rank, isBase, noData: new Uint8Array(n), fam, rvKey, rvCat, q: cm.q, stub, likeBasis: cm.has.q > 0, sum };
   return { topo, nums, seen: { nodeObj, edgeObj } };
 }
 

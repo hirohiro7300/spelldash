@@ -71,6 +71,7 @@ export function buildInspector(app: AppContext): HTMLElement {
     // その部品が無くなっていたら（別の端末でその欄が消えた など）、パネルの中の決まった所へ
     const held = k === key ? heldFocus() : null;
     const back = k === key ? holdFocus(body) : null;
+    const moved = k !== key;
     key = k;
     updaters = [];
     viewUpdaters = [];
@@ -95,6 +96,8 @@ export function buildInspector(app: AppContext): HTMLElement {
     headTitle.textContent = k === "none" ? "概要" : k.startsWith("deep:") ? "3 年の分かれ道" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
     for (const u of updaters) u();
+    // 別の物を出した（道の画面を閉じてカードの詳細へ戻った など）: 前の画面の送った位置のまま、詳細の途中から見せない（見直し user-15）
+    if (moved) body.scrollTop = 0;
     back?.();
     settleFocus(held);
     // パネルに入れた後で、道を切り替えた行を同じ位置に（入れる前は位置を測れない）
@@ -325,8 +328,13 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
   const projLine = h("div", { class: "insp-projline" });
   wrap.append(h("div", { class: "insp-meta" }, status, projLine));
-  // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）
-  const impact = buildImpactNodeBlock(app, id);
+  // 文章（3 か月ごとの地図のカードは、組み立てた本文を読むだけで上に出し、下の欄は自分のメモ: 作業メモ SPEC v1 §4.4・safety-10）
+  const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", dataset: { fk: "body" }, attrs: { rows: "3", "aria-label": "文章" } });
+  bindText(app, bodyTa, (v) => cmd.updateNode(id, { body: v }, { label: "文章を編集", coalesce: `body:${id}` }));
+  const composed = buildComposedBody(app, id, () => bodyTa.focus());
+  // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）。組み立てた本文は、その数のすぐ後に
+  // （狭い画面でも、具体的な文章を 2 画面より下へ押しやらない: 見直し user-11）
+  const impact = buildImpactNodeBlock(app, id, composed?.el ?? null);
   if (impact) wrap.append(impact.el);
   // 3 か月ごとの地図のカード: この先の道を読む・時間で区切って開く（作業メモ SPEC v1 §5.4・§5.5・§5.8）
   const deepBlock = buildDeepNodeBlock(app, id);
@@ -340,12 +348,9 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   forecastLine.hidden = true;
   wrap.append(forecastLine);
 
-  // 文章（3 か月ごとの地図のカードは、組み立てた本文を読むだけで上に出し、ここは自分のメモ: 作業メモ SPEC v1 §4.4・safety-10）
-  const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", dataset: { fk: "body" }, attrs: { rows: "3", "aria-label": "文章" } });
-  bindText(app, bodyTa, (v) => cmd.updateNode(id, { body: v }, { label: "文章を編集", coalesce: `body:${id}` }));
-  const composed = buildComposedBody(app, id, () => bodyTa.focus());
   if (composed) {
-    wrap.append(composed.el);
+    // 3 年の影響の欄の中に入らなかった（範囲の外など）ときだけ、ここに
+    if (!impact) wrap.append(composed.el);
     push(() => composed.update());
     bodyTa.placeholder = "自分のメモ（地図の文章とは別に残る）";
     bodyTa.setAttribute("aria-label", "自分のメモ");

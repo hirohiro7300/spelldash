@@ -6,7 +6,9 @@ import { dayNumber } from "../../src/model/dates";
 import { DocIndex } from "../../src/model/docIndex";
 import { isImpactRoot } from "../../src/model/forks";
 import { buildIndex } from "../../src/model/graph";
-import { makeEdge, makeNode, makeProject, makeScenario } from "../../src/model/schema";
+import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
+import { ViewModel } from "../../src/app/viewModel";
+import { createEmptyDoc, makeEdge, makeNode, makeProject, makeScenario } from "../../src/model/schema";
 import type { DocData, GEdge, GNode, ID, NodeType, Relation } from "../../src/model/types";
 import { Store } from "../../src/store/store";
 import { pick, rng, synthMap } from "./helpers/synthMap";
@@ -67,9 +69,11 @@ function randomEdit(rand: () => number, store: Store, k: number): string {
   if (!pids.length) pids.push("p_missing");
   const u = rand();
   if (u < 0.1) {
+    // ID は数の形（"12"。読み込みが受ける形で、オブジェクトの順の前に入る: 見直し equiv-7）のときもある
+    const numeric = rand() < 0.35;
     store.transact("足す", (tx) => {
-      const n = tx.addNode(makeNode({ id: `x${k}`, title: `足した ${k}`, tags: rand() < 0.5 ? ["仕事", "Shigoto"] : ["shigoto"], projectIds: rand() < 0.5 ? [pick(rand, pids)] : [], time: { due: rand() < 0.5 ? "2031-01-01" : null, start: null } }));
-      if (ids.length) tx.addEdge(makeEdge({ id: `xe${k}`, source: pick(rand, ids), target: n.id, relation: pick(rand, RELS), scenarioIds: rand() < 0.3 ? [pick(rand, sids)] : [] }));
+      const n = tx.addNode(makeNode({ id: numeric ? String(k) : `x${k}`, title: `足した ${k}`, tags: rand() < 0.5 ? ["仕事", "Shigoto"] : ["shigoto"], projectIds: rand() < 0.5 ? [pick(rand, pids)] : [], time: { due: rand() < 0.5 ? "2031-01-01" : null, start: null } }));
+      if (ids.length) tx.addEdge(makeEdge({ id: numeric ? String(5000 + k) : `xe${k}`, source: pick(rand, ids), target: n.id, relation: pick(rand, RELS), scenarioIds: rand() < 0.3 ? [pick(rand, sids)] : [] }));
     });
     return "足す";
   }
@@ -158,6 +162,29 @@ describe("文書の索引: 変わった物だけ直しても、いちから作�
       }
     });
   }
+
+  it("数の形の ID（1・2・3）のノードを消して元に戻しても、並び（出る線・描く順）は文書の順と同じ（見直し equiv-7）", () => {
+    const doc = createEmptyDoc();
+    for (const id of ["1", "2", "3", "4"]) doc.nodes[id] = makeNode({ id, title: `n${id}` });
+    for (const [id, a, b] of [["1", "1", "2"], ["2", "1", "3"], ["3", "3", "4"]] as const) doc.edges[id] = makeEdge({ id, source: a, target: b, relation: "leads" });
+    doc.edges["10"] = makeEdge({ id: "10", source: "1", target: "4", relation: "leads" });
+    const store = new Store(doc);
+    const ui = new UiState(structuredClone(DEFAULT_PREFS));
+    ui.persistPrefs = false;
+    const vm = new ViewModel(store, ui);
+    store.transact("消す", (tx) => tx.deleteNode("2"));
+    store.undo();
+    expect(indexDiff(vm.index, store.doc)).toEqual([]);
+    expect(vm.index.out.get("1")).toEqual(buildIndex(store.doc).out.get("1"));
+    vm.ensure();
+    expect(vm.drawNodes).toEqual(["1", "2", "3", "4"]);
+    // 線だけを消して戻す
+    store.transact("線を消す", (tx) => tx.deleteEdge("1"));
+    store.undo();
+    expect(indexDiff(vm.index, store.doc)).toEqual([]);
+    vm.ensure();
+    expect(vm.drawEdges).toEqual(Object.keys(store.doc.edges).filter((e) => vm.drawEdges.includes(e)));
+  });
 
   it("題名・本文・位置だけの編集では、形・道の線・所属の版は進まない（中身の版だけ）", () => {
     const syn = synthMap(5, { cards: 300, users: 10, links: 20 });

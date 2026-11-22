@@ -12,6 +12,7 @@
 // どれも読まれたときに作り、材料（地図・形と数の版・年収・選んだ手の版）が同じなら前の物を返す（変更のたびには作らない: 作業メモ perf-4）
 
 import { analyze, overview, type Analysis, type CompiledMap, type Overview, type TextSource } from "../deepmap/core";
+import { ym } from "../deepmap/views/format";
 import { F_STUB, ROLE_A } from "../deepmap/core/compile";
 import type { MapData } from "../deepmap/mapData";
 import { composeCard, materializeBody, type Card } from "../demo/compose";
@@ -63,7 +64,13 @@ export interface DeepCtx {
   /** 計算（選んだ手・見送った手を入れた、おすすめの選び方とずっと今のまま） */
   analysis(): Analysis;
   overview(): Overview;
+  /**
+   * 文章（道の画面・行き先の名前）。題名と短い名前は文書のカードの物（キャンバス・詳細・検索と同じ名前。書き換えればそれが出る）。
+   * 地図の題名を書いていない「—」・空の物だけ、組み立てた名前（作業メモ SPEC v1 §4.3・見直し equiv-4）。本文と数の行は組み立てた物
+   */
   text(): DeepText;
+  /** 地図の番号 i のカードの年月（「2027 年 2 月」）と親のカードの番号（今日は −1）。パネルの行・検索の行に使う（見直し user-6・gaps-11） */
+  place(i: number): { ym: string; parent: number };
   /** 文書のカードの地図の番号（地図のカードでなければ −1） */
   indexOf(id: ID): number;
   /** 地図の番号のカードの ID */
@@ -100,17 +107,29 @@ function idsOf(map: MapData): ID[] {
 }
 
 /** ノードの ID → 地図の番号（地図ごとに 1 回作る。カードを選ぶたび・見えるカードごとに鍵から地図をたどらない） */
-const revMemo = new WeakMap<MapData, Map<ID, number>>();
-function revOf(map: MapData): Map<ID, number> {
+const revMemo = new WeakMap<MapData, ReadonlyMap<ID, number>>();
+function revOf(map: MapData): ReadonlyMap<ID, number> {
   let rev = revMemo.get(map);
   if (!rev) {
     const ids = idsOf(map);
-    rev = new Map();
-    for (let i = 0; i < ids.length; i++) rev.set(ids[i]!, i);
-    revMemo.set(map, rev);
+    const m = new Map<ID, number>();
+    for (let i = 0; i < ids.length; i++) m.set(ids[i]!, i);
+    revMemo.set(map, (rev = m));
   }
   return rev;
 }
+
+/**
+ * 3 年の影響のエンジンが地図の列から形を作ったとき、その ID の並びと表（番号は地図と同じ）を、ここの表として覚える
+ * （起動のときに 7.2 万の鍵の指紋と表をもう 1 つ作らない: 見直し perf-7）。どちらも書き換えない
+ */
+function adoptIds(map: MapData, ids: ID[], idx: ReadonlyMap<ID, number>): void {
+  if (!idsMemo.has(map) && ids.length === map.n) idsMemo.set(map, ids);
+  if (!revMemo.has(map) && idx.size === map.n) revMemo.set(map, idx);
+}
+
+/** 題名が仮の物（地図の題名を書いていない行き先の「—」・空）か */
+const placeholderTitle = (t: string | undefined): boolean => !t || !t.trim() || /^[—―\-－]+$/.test(t.trim());
 
 /**
  * 選んだ手も見送った手も無いときの計算（地図と年収ごとに 1 つ。起動の前に見取り図だけ先に描いたとき（src/ui/deepSplash.ts）の物を、
@@ -184,10 +203,11 @@ export class DeepState {
     );
   }
 
-  /** 文書の 3 年の分かれ道の入口が、その地図の今日か（ID と版の指紋） */
+  /** 文書の 3 年の分かれ道の入口が、その地図の今日か（ID と版の指紋。今日の ID だけを鍵から作る: 全部の指紋は作らない） */
   private matches(map: MapData, doc: DocData, root: ID): boolean {
     const n = doc.nodes[root];
-    return !!n && root === idsOf(map)[0] && n.meta?.futureVersion === map.header.hash && n.meta?.futureRelease === map.header.release;
+    if (!n || n.meta?.futureVersion !== map.header.hash || n.meta?.futureRelease !== map.header.release) return false;
+    return root === (idsMemo.get(map)?.[0] ?? impactNodeId64(map.key(0)));
   }
 
   /** 文書の地図（無ければ null）。ページに入っていれば読み込みを始める */
@@ -211,7 +231,11 @@ export class DeepState {
   /** 計算の芯（地図ごとに 1 回だけ。3 年の影響のエンジンが地図の列から形を作るときと同じ物: compiledMapOf） */
   private cmOf(map: MapData): CompiledMap {
     const t = this.vm.engine.graph.topo;
-    return t && t.map === map && t.cm ? t.cm : compiledMapOf(map);
+    if (t && t.map === map && t.cm) {
+      adoptIds(map, t.ids, t.idx);
+      return t.cm;
+    }
+    return compiledMapOf(map);
   }
 
   /** 今の文書の地図の画面に渡す物（3 か月ごとの地図でなければ null） */
@@ -239,11 +263,14 @@ export class DeepState {
     const b = this.built;
     if (b && b.key === key && b.ctx.map === map) return b.ctx;
     const annual = imp.annual;
-    const ids = idsOf(map);
+    // ID の並び（エンジンが地図の列から作っていればその物。なければ要るときに作る）
+    const ids: ID[] = idsMemo.get(map) ?? new Array<ID>(map.n);
     // 見取り図と道の計算は方針（シナリオ）にも編集の有無にも依らない: 同じ計算なら前の物を使う（シナリオを変えても数え直さない）
     const calc: Calc = this.calc && this.calc.key === calcKey ? this.calc : { key: calcKey, a: null, ov: null };
     this.calc = calc;
     let picked: boolean | null = null;
+    let docText: DeepText | null = null;
+    const store = this.store;
     const ctx: DeepCtx = {
       map,
       cm,
@@ -267,7 +294,29 @@ export class DeepState {
         this.timings.overview = performance.now() - t0;
         return calc.ov;
       },
-      text: () => deepText(map, annual),
+      text: () => {
+        if (docText) return docText;
+        const base = deepText(map, annual);
+        const nodeOf = (i: number) => {
+          const id = ids[i] ?? (i >= 0 && i < map.n ? (ids[i] = impactNodeId64(map.key(i))) : undefined);
+          return id ? store.doc.nodes[id] : undefined;
+        };
+        docText = {
+          ...base,
+          title: (i) => {
+            const t = nodeOf(i)?.title;
+            return placeholderTitle(t) ? base.title(i) : t!.trim();
+          },
+          short: (i) => {
+            const n = nodeOf(i);
+            const sh = n?.meta?.short;
+            if (typeof sh === "string" && !placeholderTitle(sh)) return sh.trim();
+            return placeholderTitle(n?.title) ? base.short(i) : n!.title.trim();
+          },
+        };
+        return docText;
+      },
+      place: (i) => ({ ym: ym(map, cm.month[i] ?? 0), parent: i > 0 ? (cm.parent[i] ?? -1) : -1 }),
       indexOf: (id) => {
         // 今の文書で読む（ストアは文書の物を保ったまま中身を入れ替える。全部の入れ替えでは計算し直す）。
         // 地図のカードの ID は鍵から決まる（impactNodeId64）ので、ID から番号を引き、鍵が同じかを確かめる
@@ -276,7 +325,7 @@ export class DeepState {
         const i = revOf(map).get(id);
         return i !== undefined && map.key(i) === k ? i : -1;
       },
-      idOf: (i) => ids[i]!,
+      idOf: (i) => ids[i] ?? (ids[i] = impactNodeId64(map.key(i))),
       pickedSummary: () => {
         if (picked !== null) return picked;
         const reach = ctx.analysis().pi.reach;

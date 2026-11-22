@@ -8,6 +8,7 @@ import { overviewVM, ym } from "../deepmap/views";
 import { buildFuture } from "../demo/futureBundle";
 import { formatMan } from "../model/impactFormat";
 import { deltaTable, todayDeltasOf } from "../model/releaseNotes";
+import { showDeepOverview } from "./deepPanel";
 import { h } from "./dom";
 import { openModal } from "./overlays";
 
@@ -84,13 +85,7 @@ export function openReleaseSheet(app: AppContext, ctx: DeepCtx, onClose: () => v
   const goPath = vm.chain ? h("button", { class: "btn", type: "button", dataset: { fk: "rel-path" } }, "一番ありそうな道を読む") : null;
   goMap.addEventListener("click", () => {
     m.close();
-    app.ui.closeDeep();
-    app.ui.holdDeep(() => app.ui.clearSelection());
-    if (!app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: true });
-    requestAnimationFrame(() => {
-      const sc = document.querySelector<HTMLElement>(".sidebar-right .insp-body-scroll");
-      if (sc) sc.scrollTop = 0;
-    });
+    showDeepOverview(app);
   });
   goPath?.addEventListener("click", () => {
     m.close();

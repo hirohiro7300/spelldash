@@ -32,9 +32,12 @@ import {
   KIND_NAMES,
   LEAF,
   likeOf,
+  likeVecOf,
+  newPass,
   optionMark,
   PASS,
   salaryFlipSteps,
+  shownDelta,
   sumV,
   validAnnual,
   type AltInfo,
@@ -75,7 +78,7 @@ const C_PRESENT = 16;
 /** 計算に使わない・どれにも当たらないノードの所（変わっても何もしない） */
 const NODE_SKIP: ReadonlySet<string> = new Set(["id", "title", "body", "tags", "conditions", "x", "y", "updatedAt", "collapsed", "createdAt", "status", "type", "meta", "time", "projectIds", "scenarioIds"]);
 /** 数に使う meta の名前（変わったら数を入れ直す。forecastRoot は数字なしの手の見分けにも使う） */
-const NODE_NUM_META: readonly string[] = ["fork", "m", "rr", "rank", "base", "fam", "ak", "end", "q", "sum", "forecastRoot"];
+const NODE_NUM_META: readonly string[] = ["fork", "m", "rr", "rank", "base", "fam", "ak", "end", "q", "stub", "sum", "forecastRoot"];
 const EDGE_SKIP: ReadonlySet<string> = new Set(["id", "label", "condition", "updatedAt", "collapsed", "createdAt", "source", "target", "relation", "scenarioIds", "meta"]);
 const EDGE_NUM_META: readonly string[] = ["prob", "r", "rv"];
 
@@ -166,7 +169,6 @@ interface Run {
   readonly nums: Nums;
   readonly c: Compiled;
   readonly annual: number;
-  readonly annualSet: boolean;
   readonly S: number;
   readonly tail: number;
   readonly H: number;
@@ -190,6 +192,10 @@ interface NumsInfo {
   counts: { nodes: number; decisions: number; options: number; forks: number; ends: number };
   /** 判断の番号（並べる順） */
   decisions: number[];
+  /** 選択肢の ID（線の順。初めて読まれたときに作る。結果ごとには作らない: 見直し perf-8） */
+  altIds: ID[] | null;
+  /** 手の種類（基準を除く。初めて読まれたときに） */
+  families: string[] | null;
 }
 
 const numsInfo = new WeakMap<Nums, NumsInfo>();
@@ -220,7 +226,7 @@ function infoOf(topo: Topo, nums: Nums): NumsInfo {
     const j = tgt[s]!;
     if (j >= 0 && owner[j] === -1 && kind[src[s]!] === DECISION) owner[j] = s;
   }
-  x = { owner, counts: { nodes: topo.scopeSize, decisions, options, forks, ends }, decisions: dl };
+  x = { owner, counts: { nodes: topo.scopeSize, decisions, options, forks, ends }, decisions: dl, altIds: null, families: null };
   numsInfo.set(nums, x);
   return x;
 }
@@ -416,6 +422,8 @@ class EngineResult implements ImpactResult {
   constructor(
     private readonly r: Run,
     private readonly flips: (r: Run) => FlipsTask,
+    annualSet: boolean,
+    private readonly scratch: () => Pass,
   ) {
     const { topo, nums, main, P, A, Adef } = r;
     const { t } = nums;
@@ -423,7 +431,8 @@ class EngineResult implements ImpactResult {
     this.root = topo.rootIds[0]!;
     this.scope = new ScopeView(topo);
     this.annual = r.annual;
-    this.annualSet = r.annualSet;
+    // 年収が入っているか: 計算（Run）は年収の値ごとなので、仮の 360 と入れた 360 で同じ物を使う。印は結果ごとに今の物を（見直し equiv-2）
+    this.annualSet = annualSet;
     this.S = r.S;
     this.tail = r.tail;
     this.horizon = r.H;
@@ -521,23 +530,50 @@ class EngineResult implements ImpactResult {
     return optionMark(m, s, value, c.allowed[s] === 1 && c.stat[j] !== 2);
   }
 
+  /** 画面に出す差（q のある地図は比べ方をそろえた値どうし: computeImpact と同じ shownDelta）。数が出なければ null */
+  private shown(s: number, bs: number): ReturnType<typeof shownDelta> {
+    const { c, main, S } = this.r;
+    const j = c.tgt[s]!;
+    if (bs < 0 || c.noData[j]) return null;
+    return shownDelta(c, S, c.likeBasis, j, this.Q(main, s), c.tgt[bs]!, this.Q(main, bs));
+  }
+
   /** 手ごとの今のままとの差（computeImpact の AltInfo.delta。持ち主の判断で。数が出なければ NaN）。順位のために 1 度だけ */
   private deltaArray(): Float64Array {
     if (this.deltas) return this.deltas;
-    const { c, main } = this.r;
+    const { c } = this.r;
     const { owner } = this.info;
     const out = new Float64Array(c.ids.length).fill(NaN);
     for (let j = 0; j < out.length; j++) {
       const s = owner[j]!;
       if (s < 0 || c.noData[j]) continue;
-      const bs = c.base[c.src[s]!]!;
-      if (bs < 0) continue;
-      const qs = this.Q(main, s);
-      const qb = this.Q(main, bs);
-      if (qs !== null && qb !== null) out[j] = qs - qb;
+      const sd = this.shown(s, c.base[c.src[s]!]!);
+      if (sd) out[j] = sd.d;
     }
     this.deltas = out;
     return out;
+  }
+
+  /** 判断 d の差（DecisionInfo.stakes。q のある地図は選べる手の画面に出す差の一番大きい物、無い地図は一番良い手 − 今のまま） */
+  private stakesAt(d: number): number | null {
+    const { c, main } = this.r;
+    const bs = c.base[d]!;
+    const qBase = bs >= 0 ? this.Q(main, bs) : null;
+    if (c.likeBasis) {
+      let best: number | null = null;
+      for (let s = c.off[d]!; s < c.off[d + 1]!; s++) {
+        const j = c.tgt[s]!;
+        if (j < 0) continue;
+        // 候補（★ の候補と同じ: 方針に入り・見送りでなく・数が出る手）
+        if (this.Q(main, s) === null || !c.allowed[s] || c.stat[j] === 2 || (c.noData[j] && c.stat[j] !== 1)) continue;
+        const sd = this.shown(s, bs);
+        if (sd && (best === null || sd.d > best)) best = sd.d;
+      }
+      if (best !== null) return best;
+    }
+    const bestS = main.best[d]!;
+    const qBest = bestS >= 0 ? this.Q(main, bestS) : null;
+    return qBest !== null && qBase !== null ? qBest - qBase : null;
   }
 
   /**
@@ -619,11 +655,16 @@ class EngineResult implements ImpactResult {
     const qBase = bs >= 0 ? this.Q(main, bs) : null;
     const jBase = bs >= 0 ? c.tgt[bs]! : -1;
     const qs = this.Q(main, s);
-    const delta = qs !== null && qBase !== null && !c.noData[j] ? qs - qBase : null;
+    const sd = this.shown(s, bs);
+    const delta = sd ? sd.d : null;
     let deltaV: Vec3 | null = null;
     const S = this.r.S;
-    if (delta !== null && jBase >= 0) {
-      const er = c.er;
+    const er = c.er;
+    if (sd && sd.basis === "q") {
+      const vj = likeVecOf(c, j, S, [S * er[s * 3]! + main.V[j * 3]!, er[s * 3 + 1]! + main.V[j * 3 + 1]!, er[s * 3 + 2]! + main.V[j * 3 + 2]!])!;
+      const vb = likeVecOf(c, jBase, S, [S * er[bs * 3]! + main.V[jBase * 3]!, er[bs * 3 + 1]! + main.V[jBase * 3 + 1]!, er[bs * 3 + 2]! + main.V[jBase * 3 + 2]!])!;
+      deltaV = [vj[0] - vb[0], vj[1] - vb[1], vj[2] - vb[2]];
+    } else if (delta !== null && jBase >= 0) {
       deltaV = [
         S * er[s * 3]! + main.V[j * 3]! - S * er[bs * 3]! - main.V[jBase * 3]!,
         er[s * 3 + 1]! + main.V[j * 3 + 1]! - er[bs * 3 + 1]! - main.V[jBase * 3 + 1]!,
@@ -691,6 +732,7 @@ class EngineResult implements ImpactResult {
       picked: c.stat[j] === 1,
       dropped: c.stat[j] === 2,
       delta,
+      deltaBasis: sd ? sd.basis : null,
       deltaV,
       dR,
       pBad,
@@ -709,7 +751,6 @@ class EngineResult implements ImpactResult {
     if (d === undefined || c.kind[d] !== DECISION) return null;
     const { owner } = this.info;
     const bs = c.base[d]!;
-    const qBase = bs >= 0 ? this.Q(main, bs) : null;
     const jBase = bs >= 0 ? c.tgt[bs]! : -1;
     const alts: Array<{ id: ID; rank: number; delta: number | null }> = [];
     let minD = Infinity;
@@ -718,21 +759,20 @@ class EngineResult implements ImpactResult {
       const j = c.tgt[s]!;
       if (j < 0 || owner[j] !== s) continue;
       // その判断の手だけ（全部の手の差 deltaArray は順位のときだけ）。数の出し方は deltaArray と同じ
-      const qs = this.Q(main, s);
-      const delta = qs !== null && qBase !== null && !c.noData[j] ? qs - qBase : null;
+      const sd = this.shown(s, bs);
+      const delta = sd ? sd.d : null;
       if (delta !== null) (minD = Math.min(minD, delta)), (maxD = Math.max(maxD, delta));
       alts.push({ id: c.ids[j]!, rank: c.rank[j]!, delta });
     }
     alts.sort((x, y) => x.rank - y.rank || (y.delta ?? -Infinity) - (x.delta ?? -Infinity));
     const bestS = main.best[d]!;
     const piS = main.pi[d]!;
-    const qBest = bestS >= 0 ? this.Q(main, bestS) : null;
     return {
       alts: alts.map((x) => x.id),
       base: jBase >= 0 ? c.ids[jBase]! : null,
       best: bestS >= 0 ? c.ids[c.tgt[bestS]!]! : null,
       chosen: piS >= 0 ? c.ids[c.tgt[piS]!]! : null,
-      stakes: qBest !== null && qBase !== null ? qBest - qBase : null,
+      stakes: this.stakesAt(d),
       spread: minD <= maxD ? [minD, maxD] : null,
     };
   }
@@ -868,17 +908,28 @@ class EngineResult implements ImpactResult {
     const hit = this.neverMemo.get(f);
     if (hit) return hit;
     const { c, main, topo, S, tail, H } = this.r;
-    let full: Pass | null = null;
-    const fullPass = (): Pass => (full ??= backward(c, S, tail, H, 2, f));
     // 深さ優先の順の木（同梱の地図から作った形）なら、判断の先だけを数える（選んだカードの 1 行のために全部を数えない）。
-    // 判断の値はその先だけで決まるので、全部を数えた値と同じ
+    // 判断の値はその先だけで決まるので、全部を数えた値と同じ。数えた後は数だけを覚え、計算はエンジンの入れ物 1 つに書いて捨てる
+    // （カードを開くたびに地図の大きさの配列を残さない: 見直し perf-2・perf-3）
     const size = topo.cm ? topo.cm.size : null;
-    const sub = new Map<number, Pass>();
-    const passFor = (d: number): Pass => {
-      if (full || !size) return fullPass();
-      let p = sub.get(d);
-      if (!p) sub.set(d, (p = backward(c, S, tail, H, 2, f, d, d + size[d]!)));
-      return p;
+    const vals = new Map<number, number | null>();
+    let whole = false;
+    const valueAt = (i: number): number | null => {
+      const v = vals.get(i);
+      if (v !== undefined) return v;
+      if (whole) return null;
+      if (size) {
+        const p = backward(c, S, tail, H, 2, f, i, i + size[i]!, this.scratch());
+        const x = p.def[i] ? sumV(p.V, i) : null;
+        vals.set(i, x);
+        return x;
+      }
+      // 木でない形（文書から作った形）: 全部を 1 回数え、判断と入口の値を全部覚える
+      const p = backward(c, S, tail, H, 2, f, 0, c.ids.length, this.scratch());
+      for (const d of this.info.decisions) vals.set(d, p.def[d] ? sumV(p.V, d) : null);
+      for (const r of topo.roots) vals.set(r, p.def[r] ? sumV(p.V, r) : null);
+      whole = true;
+      return vals.get(i) ?? null;
     };
     // 手ごとの差: computeImpact と同じく、並べる順で最初の（数の出る）判断の線から
     const cardOf = (id: ID): number | null => {
@@ -888,10 +939,10 @@ class EngineResult implements ImpactResult {
         const s = c.incSlot[x]!;
         const d = c.src[s]!;
         if (c.kind[d] !== DECISION) continue;
-        const p2 = passFor(d);
-        if (!p2.def[d]) continue;
+        const vd = valueAt(d);
+        if (vd === null) continue;
         const qs = this.Q(main, s);
-        if (qs !== null) return qs - sumV(p2.V, d);
+        if (qs !== null) return qs - vd;
       }
       return null;
     };
@@ -902,12 +953,12 @@ class EngineResult implements ImpactResult {
     });
     const r0 = topo.roots[0];
     let k: { v: number | null } | null = null;
-    // 今日の値の差（やる価値の順位）だけが全部を数える
+    // 今日の値の差（やる価値の順位）だけが全部を数える（入口の先 = 地図の全部）
     const res: NeverResult = {
       get k(): number | null {
         if (!k) {
-          const p2 = fullPass();
-          k = { v: r0 !== undefined && main.def[r0] && p2.def[r0] ? sumV(main.V, r0) - sumV(p2.V, r0) : null };
+          const v = r0 !== undefined && main.def[r0] ? valueAt(r0) : null;
+          k = { v: v !== null ? sumV(main.V, r0!) - v : null };
         }
         return k.v;
       },
@@ -918,14 +969,18 @@ class EngineResult implements ImpactResult {
   }
 
   families(): string[] {
-    const { c } = this.r;
-    const set = new Set<string>();
-    for (const id of this.altIds()) {
-      const j = c.idx.get(id)!;
-      if (c.isBase[j]) continue;
-      if (c.fam[j]) set.add(c.fam[j]!);
+    const info = this.info;
+    if (!info.families) {
+      const { c } = this.r;
+      const set = new Set<string>();
+      for (const id of this.altIds()) {
+        const j = c.idx.get(id)!;
+        if (c.isBase[j]) continue;
+        if (c.fam[j]) set.add(c.fam[j]!);
+      }
+      info.families = [...set];
     }
-    return [...set];
+    return info.families;
   }
 
   recommended(): number | null {
@@ -942,14 +997,18 @@ class EngineResult implements ImpactResult {
   }
 
   altIds(): readonly ID[] {
-    const { c } = this.r;
-    const { owner } = this.info;
-    const out: ID[] = [];
-    for (let s = 0; s < c.tgt.length; s++) {
-      const j = c.tgt[s]!;
-      if (j >= 0 && owner[j] === s) out.push(c.ids[j]!);
+    const info = this.info;
+    if (!info.altIds) {
+      const { c } = this.r;
+      const { owner } = info;
+      const out: ID[] = [];
+      for (let s = 0; s < c.tgt.length; s++) {
+        const j = c.tgt[s]!;
+        if (j >= 0 && owner[j] === s) out.push(c.ids[j]!);
+      }
+      info.altIds = out;
     }
-    return out;
+    return info.altIds;
   }
 
   deltaOf(id: ID): number | null {
@@ -977,14 +1036,10 @@ class EngineResult implements ImpactResult {
   }
 
   stakesOf(id: ID): number | null {
-    const { c, main, topo } = this.r;
+    const { c, topo } = this.r;
     const d = topo.idx.get(id);
     if (d === undefined || c.kind[d] !== DECISION) return null;
-    const bs = c.base[d]!;
-    const bestS = main.best[d]!;
-    const qBase = bs >= 0 ? this.Q(main, bs) : null;
-    const qBest = bestS >= 0 ? this.Q(main, bestS) : null;
-    return qBest !== null && qBase !== null ? qBest - qBase : null;
+    return this.stakesAt(d);
   }
 
   bestOf(id: ID): ID | null {
@@ -1037,6 +1092,13 @@ export class ImpactEngine {
   private pristine: MapDoc | null = null;
   private readonly flipTasks = new Map<string, FlipsTask>();
   private accCache: { key: string; A: Float64Array; Adef: Uint8Array } | null = null;
+  /** 数だけを取り出す計算（やらない場合）の入れ物。ノードの数の大きさで 1 つだけ（使うときに作る: 見直し perf-2） */
+  private scratchPass: Pass | null = null;
+  private readonly scratch = (): Pass => {
+    const n = this.topo?.n ?? 0;
+    if (!this.scratchPass || this.scratchPass.def.length !== n) this.scratchPass = newPass(n);
+    return this.scratchPass;
+  };
   /** 形を作った道（確かめ用）: "map" 同梱の地図の列から / "doc" 文書から */
   lastCompile: "map" | "doc" | null = null;
   /** 形・数・計算にかかった時間（確かめ用。ms） */
@@ -1164,14 +1226,15 @@ export class ImpactEngine {
     const reach = topo.merges ? inp.reach() : null;
     const v = this.version;
     const runKey = `${v.topology}|${v.numbers}|${v.statuses}|${v.scenario}|${annual}|${tail}|${reach ? reach.version : ""}`;
-    const key = `${runKey}|${v.present}`;
+    // 年収が仮か（同じ 360 でも、入れたか仮かで結果の物を分ける。計算は同じ物を使う: 見直し equiv-2）
+    const key = `${runKey}|${v.present}|${annualSet ? 1 : 0}`;
     if (key === this.resKey) return this.res;
     if (!this.run || this.run.key !== runKey) {
       const t0 = performance.now();
-      this.run = this.compute(topo, nums, this.stat, this.allowed, this.shown, { annual, annualSet, tail, sid, reach, key: runKey });
+      this.run = this.compute(topo, nums, this.stat, this.allowed, this.shown, { annual, tail, sid, reach, key: runKey });
       this.timings.passes = performance.now() - t0;
     }
-    this.res = new EngineResult(this.run, (r) => this.flipsTask(r));
+    this.res = new EngineResult(this.run, (r) => this.flipsTask(r), annualSet, this.scratch);
     this.resKey = key;
     return this.res;
   }
@@ -1213,7 +1276,7 @@ export class ImpactEngine {
   }
 
   /** 計算（逆にたどる・前へ流す・そこまでの稼ぎ） */
-  private compute(topo: Topo, nums: Nums, stat: Uint8Array, allowed: Uint8Array, shown: Uint8Array | null, o: { annual: number; annualSet: boolean; tail: number; sid: ID | null; reach: { version: number; of: (id: ID) => number } | null; key: string }): Run {
+  private compute(topo: Topo, nums: Nums, stat: Uint8Array, allowed: Uint8Array, shown: Uint8Array | null, o: { annual: number; tail: number; sid: ID | null; reach: { version: number; of: (id: ID) => number } | null; key: string }): Run {
     const c = assemble(topo, nums, stat, allowed);
     const S = o.annual / 12;
     const H = nums.H;
@@ -1223,7 +1286,7 @@ export class ImpactEngine {
     const Psq = forward(c, sq);
     const { A, Adef } = this.accOf(topo, nums, S, o.reach);
     const flipsKey = `${this.version.topology}|${this.version.numbers}|${this.version.statuses}|${this.version.scenario}|${o.annual}|${o.tail}`;
-    return { key: o.key, topo, nums, c, annual: o.annual, annualSet: o.annualSet, S, tail: o.tail, H, sid: o.sid, shown, main, P, sq, Psq, A, Adef, flipsKey };
+    return { key: o.key, topo, nums, c, annual: o.annual, S, tail: o.tail, H, sid: o.sid, shown, main, P, sq, Psq, A, Adef, flipsKey };
   }
 
   /**

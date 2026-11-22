@@ -602,6 +602,14 @@ kbd {
 .search-due {
   margin-left: 4px;
 }
+/* 3 か月ごとの地図のカードの居場所（年月・親の手。題名の前に控えめに: 見直し user-6） */
+.search-where {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.search-group {
+  white-space: nowrap;
+}
 .search-hidden {
   flex: none;
   display: inline-flex;

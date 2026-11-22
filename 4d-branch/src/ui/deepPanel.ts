@@ -95,6 +95,31 @@ function interceptLinks(el: HTMLElement, go: (href: string) => boolean): void {
   });
 }
 
+/**
+ * 概要の見取り図を見せる（3 か月ごとの地図の画面を閉じ・選択を外し・パネルを開き、見取り図の見出しまで送ってフォーカス）。
+ * 概要がもう出ていても、下の方を見ていたら見取り図の頭へ（見直し user-10）
+ */
+export function showDeepOverview(app: AppContext): void {
+  app.ui.closeDeep();
+  app.ui.holdDeep(() => app.ui.clearSelection());
+  if (!app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: true });
+  requestAnimationFrame(() => {
+    const ov = document.querySelector<HTMLElement>(".sidebar-right .deep-ov");
+    const sc = document.querySelector<HTMLElement>(".sidebar-right .insp-body-scroll");
+    if (!sc) return;
+    if (!ov || ov.hidden) {
+      sc.scrollTop = 0;
+      return;
+    }
+    sc.scrollTop += ov.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+    const head = ov.querySelector<HTMLElement>(".dm-h2, h2, h3");
+    if (head) {
+      if (!head.hasAttribute("tabindex")) head.setAttribute("tabindex", "-1");
+      head.focus({ preventScroll: true });
+    }
+  });
+}
+
 /** 地図の元の数で出している・方針で絞らない、の注記（どちらも無ければ null） */
 function ctxNotes(app: AppContext, ctx: DeepCtx): HTMLElement | null {
   const lines: string[] = [];
@@ -110,9 +135,31 @@ function ctxNotes(app: AppContext, ctx: DeepCtx): HTMLElement | null {
 
 /**
  * 描いた見取り図の中身（概要を作り直すたびに描き直さない。カードを選んで閉じたときは、同じ物を戻す）。
- * 計算（Analysis と Overview）が同じなら同じ中身（シナリオ・編集の有無で変わるのは上の注記だけ）
+ * 計算（Analysis と Overview）が同じなら同じ中身（シナリオ・編集の有無で変わるのは上の注記と、方針の外の手の薄さだけ）
  */
-const overviewCache = new WeakMap<AppContext, { a: Analysis; ov: Overview; nodes: Node[]; hrefs: HrefMap }>();
+const overviewCache = new WeakMap<AppContext, { a: Analysis; ov: Overview; nodes: Node[]; hrefs: HrefMap; moves: Map<string, number> }>();
+
+/**
+ * 方針の外の今日の手の行を薄くする（ひと目の行と手のカード。見取り図の数は方針で絞らないので、行は残して薄くするだけ:
+ * 作業メモ SPEC v1 §5.11・見直し user-13）。moves は行の行き先（#move-…）→ 今日の手の地図の番号
+ */
+function dimOffScenario(app: AppContext, ctx: DeepCtx, root: HTMLElement, moves: Map<string, number>): void {
+  const imp = app.vm.impact;
+  const off = new Set<string>();
+  if (ctx.scenario) {
+    for (const [href, node] of moves) {
+      const a = imp.alt.get(ctx.idOf(node));
+      if (a && !a.allowed) off.add(href);
+    }
+  }
+  for (const el of root.querySelectorAll<HTMLAnchorElement>("a.dm-glance-row, a.dm-row")) {
+    const href = el.getAttribute("href") ?? "";
+    const isOff = off.has(href);
+    el.classList.toggle("is-off", isOff);
+    if (isOff) el.setAttribute("data-off", "方針の外");
+    else el.removeAttribute("data-off");
+  }
+}
 
 /**
  * 概要の先頭の「3 年の見取り図」。3 か月ごとの地図が無ければ隠し、update は false を返す。
@@ -148,6 +195,7 @@ export function buildDeepOverview(app: AppContext): { el: HTMLElement; update():
         hrefs = kept.hrefs;
         clear(el);
         el.append(...(head ? [head] : []), ...kept.nodes);
+        dimOffScenario(app, ctx, el, kept.moves);
         return true;
       }
       hrefs = new Map();
@@ -158,7 +206,10 @@ export function buildDeepOverview(app: AppContext): { el: HTMLElement; update():
       const notes = notesVM(a, ov.basis.delta, ov.basis.worth, { worthNoise: ov.worthNoise });
       const nodes = [renderOverview(vm), h("details", { class: "deep-notes" }, h("summary", null, "見取り図の見方"), notesSection(notes))];
       el.append(...(head ? [head] : []), ...nodes);
-      overviewCache.set(app, { a, ov, nodes, hrefs });
+      const moves = new Map<string, number>();
+      for (const r of vm.rows) moves.set(r.href, r.node);
+      overviewCache.set(app, { a, ov, nodes, hrefs, moves });
+      dimOffScenario(app, ctx, el, moves);
       app.vm.deep.timings.overviewView = performance.now() - t0;
       return true;
     },
@@ -277,15 +328,34 @@ export function buildDeepPage(app: AppContext, page: DeepPage): DeepPageHandle |
   };
   render(null);
 
+  /** 道の画面を描いたときの文書の中身の版（道の行の名前は文書のカードの題名。書き換えたら描き直す: 見直し equiv-4） */
+  let contentV = app.vm.index.version.content;
+  let redraw = 0;
+  const rerender = () => {
+    const sc = scroller(el);
+    render({ open: pathHandle ? pathHandle.openKeys() : [], scroll: sc?.scrollTop ?? 0 });
+  };
   return {
     el,
     update() {
       const now = app.vm.deep.get();
       if (!now) return;
-      if (now === ctx) return;
+      const cv = app.vm.index.version.content;
+      if (now === ctx) {
+        // 計算は同じで題名だけが変わった: 道の画面は次の画面で 1 回だけ描き直す（続けて打っても 1 回）
+        if (page.kind === "path" && cv !== contentV && !redraw) {
+          redraw = requestAnimationFrame(() => {
+            redraw = 0;
+            if (!el.isConnected || app.vm.deep.get() !== ctx) return;
+            contentV = app.vm.index.version.content;
+            rerender();
+          });
+        }
+        return;
+      }
       ctx = now;
-      const sc = scroller(el);
-      render({ open: pathHandle ? pathHandle.openKeys() : [], scroll: sc?.scrollTop ?? 0 });
+      contentV = cv;
+      rerender();
     },
     settle() {
       if (page.kind !== "path") {
@@ -382,11 +452,7 @@ function openActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElem
           title: `${label(over)}は ${num(over.count)} 枚（キャンバスに出せるのは全体で ${num(DEEP_OPEN_CAP)} 枚まで）`,
           onClick: () => {
             if (f >= 0) app.ui.openDeep({ kind: "move", f });
-            else {
-              app.ui.closeDeep();
-              app.ui.holdDeep(() => app.ui.clearSelection());
-              if (!app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: true });
-            }
+            else showDeepOverview(app);
           },
         },
         icon("layers", 14),
@@ -431,10 +497,7 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
               class: "btn btn-sm",
               type: "button",
               dataset: { fk: `deep-overview:${id}` },
-              onClick: () => {
-                app.ui.closeDeep();
-                app.ui.holdDeep(() => app.ui.clearSelection());
-              },
+              onClick: () => showDeepOverview(app),
             },
             icon("layers", 14),
             "3 年の見取り図",
@@ -457,9 +520,28 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
 
 // ------------------------------------------------------------ 組み立てた本文（読むだけ）と自分のメモ（作業メモ SPEC §4.4・safety-10）
 
+/** カードごとの、自分のメモに写した地図の文章（写したときの物。このタブの間だけ覚える。年収を変えた後も、写した物を見分ける） */
+const copiedBlocks = new Map<ID, string>();
+
+/**
+ * 自分のメモの頭にある、写した地図の文章（覚えている写しか、今の年収で組み立てた文章。どちらでもなければ null）。
+ * 写した後に書き換えた所があれば、もう写しではない（自分の文章として残す）
+ */
+export function copiedPrefix(note: string, id: ID, composed: string): string | null {
+  for (const b of [copiedBlocks.get(id), composed]) if (b && note.startsWith(b)) return b;
+  return null;
+}
+
+/** 写した文章を外した残り（写しと自分のメモの間の空行も外す） */
+export function withoutCopy(note: string, prefix: string): string {
+  return note.slice(prefix.length).replace(/^\s*\n/, "").replace(/^\n+/, "");
+}
+
 /**
  * 3 か月ごとの地図のカードの、組み立てた本文（今の年収で。読むだけ）。地図のカードでなければ null。
- * 「この文章をもとに書き換える」は本文を自分のメモに写す（メモが空でなければ、その前に足す）。「元の文章に戻す」はメモを空にする。
+ * 「この文章をもとに書き換える」は本文を自分のメモの頭に写す（メモが空でなければ、その前に足す）。
+ * 「元の文章に戻す」は、メモの頭に写した文章が書き換えずに残っているときだけ出し、その写しだけを外す（自分で書いた所は残す。
+ * 元に戻せるお知らせを出す: 見直し user-3）。写した後は、上の読むだけの文章を最初の数行にたたむ（同じ文章を 2 度並べない）。
  * 年収が変わったら組み立て直す（カードを開いたときに 1 枚だけ組み立てる）
  */
 export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void): { el: HTMLElement; update(): void } | null {
@@ -467,23 +549,38 @@ export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void
   if (!ctx0 || ctx0.indexOf(id) < 0) return null;
   const nums = h("ul", { class: "dm-numbers deep-nums" });
   const text = h("p", { class: "deep-body-text" });
-  const copy = h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `body-copy:${id}` }, title: "この文章を下の自分のメモに写して書き換える（地図の文章はそのまま）" }, icon("tag", 14), "この文章をもとに書き換える");
-  const reset = h("button", { class: "btn btn-sm btn-ghost", type: "button", dataset: { fk: `body-reset:${id}` }, title: "自分のメモを空にして、地図の文章だけにする" }, icon("undo", 14), "元の文章に戻す");
+  const unfold = h("button", { class: "imp-link deep-body-unfold", type: "button", dataset: { fk: `body-unfold:${id}` } }, "元の文章を見る");
+  const copy = h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `body-copy:${id}` }, title: "この文章を下の自分のメモの頭に写して書き換える（地図の文章はそのまま）" }, icon("tag", 14), "この文章をもとに書き換える");
+  const reset = h("button", { class: "btn btn-sm btn-ghost", type: "button", dataset: { fk: `body-reset:${id}` }, title: "自分のメモの頭に写した地図の文章だけを外す（自分で書いた所は残す）" }, icon("undo", 14), "元の文章に戻す");
   const note = h("p", { class: "deep-body-note" });
-  const el = h("section", { class: "insp-section deep-body" }, h("h3", { class: "insp-label" }, "地図の文章", h("span", { class: "insp-count" }, "読むだけ")), nums, text, h("div", { class: "btn-row" }, copy, reset), note);
+  const el = h("section", { class: "insp-section deep-body" }, h("h3", { class: "insp-label" }, "地図の文章", h("span", { class: "insp-count" }, "読むだけ")), nums, text, unfold, h("div", { class: "btn-row" }, copy, reset), note);
   let shownKey = "";
   let composed = "";
+  /** 写した後でも、読むだけの文章を全部見せる（押して開いた） */
+  let unfolded = false;
   copy.addEventListener("click", () => {
     const n = app.store.doc.nodes[id];
     if (!n || app.store.readOnly || !composed) return;
     const next = n.body.trim() ? `${composed}\n\n${n.body}` : composed;
+    copiedBlocks.set(id, composed);
+    unfolded = false;
     app.cmd.updateNode(id, { body: next }, { label: "地図の文章をもとに書き換える" });
     requestAnimationFrame(focusNote);
   });
   reset.addEventListener("click", () => {
     const n = app.store.doc.nodes[id];
-    if (!n || app.store.readOnly || !n.body) return;
-    app.cmd.updateNode(id, { body: "" }, { label: "元の文章に戻す" });
+    if (!n || app.store.readOnly) return;
+    const prefix = copiedPrefix(n.body, id, composed);
+    if (!prefix) return;
+    const rest = withoutCopy(n.body, prefix);
+    app.cmd.updateNode(id, { body: rest }, { label: "写した地図の文章を外す" });
+    copiedBlocks.delete(id);
+    toast(rest ? "写した地図の文章を外した（自分で書いた所は残した）" : "写した地図の文章を外した", { tone: "ok", action: app.cmd.undoAction() });
+  });
+  unfold.addEventListener("click", () => {
+    unfolded = !unfolded;
+    text.classList.toggle("is-folded", !unfolded);
+    unfold.textContent = unfolded ? "たたむ" : "元の文章を見る";
   });
   return {
     el,
@@ -493,23 +590,34 @@ export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void
       el.hidden = !ctx || i < 0;
       const n = app.store.doc.nodes[id];
       if (!ctx || i < 0 || !n) return;
+      const k = `${ctx.map.header.hash}|${ctx.annual}|${i}`;
+      if (k !== shownKey) {
+        shownKey = k;
+        const t0 = performance.now();
+        const t = ctx.text();
+        clear(nums);
+        const row = t.numbers(i);
+        for (const x of row) nums.append(h("li", null, x));
+        nums.hidden = !row.length;
+        composed = [row.join("・"), t.body(i)].filter((x) => x.length > 0).join("\n");
+        text.textContent = t.body(i) || "（このカードには組み立てた本文が無い）";
+        app.vm.deep.timings.composed = performance.now() - t0;
+      }
       const ro = app.store.readOnly;
+      const copied = copiedPrefix(n.body, id, composed) !== null;
       copy.disabled = ro;
       reset.disabled = ro;
-      reset.hidden = !n.body;
-      note.textContent = n.body ? "下の自分のメモは、地図の文章とは別に残る（年収を変えても書き換わらない）" : "書き足したいことは下の自分のメモへ（地図の文章は年収に合わせて組み立て直す）";
-      const k = `${ctx.map.header.hash}|${ctx.annual}|${i}`;
-      if (k === shownKey) return;
-      shownKey = k;
-      const t0 = performance.now();
-      const t = ctx.text();
-      clear(nums);
-      const row = t.numbers(i);
-      for (const x of row) nums.append(h("li", null, x));
-      nums.hidden = !row.length;
-      composed = [row.join("・"), t.body(i)].filter((x) => x.length > 0).join("\n");
-      text.textContent = t.body(i) || "（このカードには組み立てた本文が無い）";
-      app.vm.deep.timings.composed = performance.now() - t0;
+      // 写しが書き換えずに頭にあるときだけ（自分で書いたメモだけのときは出さない）
+      reset.hidden = !copied;
+      // 写した後は、読むだけの文章を最初の数行に（メモに同じ文章がある）
+      text.classList.toggle("is-folded", copied && !unfolded);
+      unfold.hidden = !copied;
+      unfold.textContent = unfolded ? "たたむ" : "元の文章を見る";
+      note.textContent = copied
+        ? "自分のメモの頭に、この文章を写してある。「元の文章に戻す」で写した所だけを外す（自分で書いた所は残る）"
+        : n.body
+          ? "下の自分のメモは、地図の文章とは別に残る（年収を変えても書き換わらない）"
+          : "書き足したいことは下の自分のメモへ（地図の文章は年収に合わせて組み立て直す）";
     },
   };
 }

@@ -7,10 +7,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { buildImpactDoc } from "../../src/demo/impact";
 import { buildQuarterDoc } from "../../src/demo/quarterDoc";
+import { analyze, compileMap, overview } from "../../src/deepmap/core";
 import type { MapData } from "../../src/deepmap/mapData";
 import { computeForecast } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
-import { IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, type ImpactResult } from "../../src/model/impact";
+import { computeImpact, IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, type ImpactResult } from "../../src/model/impact";
 import { ImpactEngine } from "../../src/model/impactEngine";
 import { createEmptyDoc, makeEdge, makeNode } from "../../src/model/schema";
 import type { DocData, GEdge, GNode, ID, NodeStatus, NodeType } from "../../src/model/types";
@@ -218,7 +219,32 @@ const HAND: Array<[string, () => DocData]> = [
       return doc;
     },
   ],
+  ["q のある判断（大きく悪い手・まとめた手・q の無い手）", () => wideQDoc()],
 ];
+
+/**
+ * 版 7 の今日に似た判断: 一番の手 A（q +16）・B（q +9.9。木の値では今のままより下）・大きく悪い手 W（q −242）・
+ * まとめた手 St（q の代わりに木の値 +5）・自分で足した q の無い手 U（木の値 +3）。比べる元は K
+ */
+function wideQDoc(): DocData {
+  const { doc, node, edge } = tree({ annual: 360 });
+  doc.nodes.A!.meta = { ...doc.nodes.A!.meta, q: [36, 16, 0] };
+  doc.nodes.K!.meta = { ...doc.nodes.K!.meta, q: [36, 0, 0] };
+  doc.nodes.B!.meta = { ...doc.nodes.B!.meta, q: [36, 9.9, 0] };
+  node("W", "action", { fork: "chance", m: 0, ak: "quit", fam: "quit", rank: 5, q: [36, -242, 0] });
+  node("W1", "result", { m: 36, rr: [0, 1, 0] });
+  edge("R", "W");
+  edge("W", "W1", { prob: 100, r: [0, 300, 0] });
+  node("St", "action", { fork: "chance", m: 0, ak: "grow", fam: "grow", rank: 6, stub: true });
+  node("St1", "result", { m: 36, rr: [1, 0, 0] });
+  edge("R", "St");
+  edge("St", "St1", { prob: 100, r: [36, 5, 0] });
+  node("U", "action", { fork: "chance", m: 0, ak: "mine", fam: "mine", rank: 7 });
+  node("U1", "result", { m: 36, rr: [1, 0, 0] });
+  edge("R", "U");
+  edge("U", "U1", { prob: 100, r: [36, 3, 0] });
+  return doc;
+}
 
 describe("エンジン: 手で作った文書で基準の作りと同じ答え", () => {
   for (const [name, make] of HAND) {
@@ -233,17 +259,26 @@ describe("エンジン: 手で作った文書で基準の作りと同じ答え",
     }
   }
 
-  it("q のある地図の ★: 一番の手の q の差が max(10, 幅の 3 割) より小さければ ★ にせず、その幅の内を ≒。どの判断も一番の手におすすめの印", () => {
+  it("q のある地図の ★: 一番の手の q の差が max(10, 幅の 3 割) より小さければ ★ にしない。≒ は一番の手から 10 万円未満（一番の手には付けない）。どの判断も一番の手におすすめの印", () => {
     const doc = HAND.find((x) => x[0].startsWith("q のある"))![1]();
     const { ref } = refRun(doc);
     const { eng } = engRun(doc);
     expect(ref.likeBasis).toBe(true);
-    // 木の値では A が 18 万円良い（前の決まりなら ★）
+    // 一番の手は木の値で決める（A が今のままより 18 万円良い）。画面に出す差は q どうし（A 1086 − K 1080 = 6: 見直し user-1）
     expect(ref.decision.get("R")!.best).toBe("A");
-    expect(ref.alt.get("A")!.delta).toBeCloseTo(18);
-    // q: A 1086・K 1080・B 960。幅 126 の 3 割 = 37.8 > 10。A の差 6 < 37.8 なので ★ でなく、37.8 の内の A・K が ≒
     for (const r of [ref, eng]) {
-      expect(r.alt.get("A")!.mark).toBe("tie");
+      expect(r.alt.get("A")!.delta).toBeCloseTo(6);
+      expect(r.alt.get("A")!.deltaBasis).toBe("q");
+      expect(r.alt.get("A")!.deltaV).toEqual([0, 6, 0]);
+      expect(r.alt.get("B")!.delta).toBeCloseTo(960 - 1080);
+      expect(r.deltaOf("A")).toBeCloseTo(6);
+      // 判断の差は、選べる手の画面に出す差の一番大きい物
+      expect(r.decision.get("R")!.stakes).toBeCloseTo(6);
+      expect(r.stakesOf("R")).toBeCloseTo(6);
+    }
+    // q: A 1086・K 1080・B 960。幅 126 の 3 割 = 37.8 > 10。A の差 6 < 37.8 なので ★ でない。≒ は A から 10 万円未満の K だけ
+    for (const r of [ref, eng]) {
+      expect(r.alt.get("A")!.mark).toBeNull();
       expect(r.alt.get("K")!.mark).toBe("tie");
       expect(r.alt.get("B")!.mark).toBeNull();
       expect(r.alt.get("A")!.rec).toBe(true);
@@ -256,13 +291,50 @@ describe("エンジン: 手で作った文書で基準の作りと同じ答え",
     expect(r2.alt.get("A")!.mark).toBe("star");
     expect(r2.alt.get("K")!.mark).toBeNull();
     sameImpact(engRun(doc).eng, r2);
-    // q の無い地図（版 6）は前の決まり（2 位より 10 万円以上で ★）・おすすめの印なし
+    // q の無い地図（版 6）は前の決まり（2 位より 10 万円以上で ★）・おすすめの印なし・差は木の値どうし
     const plain = tree({ annual: 360 }).doc;
     const r3 = refRun(plain).ref;
     expect(r3.likeBasis).toBe(false);
     expect(r3.alt.get("A")!.mark).toBe("star");
+    expect(r3.alt.get("A")!.delta).toBeCloseTo(18);
+    expect(r3.alt.get("A")!.deltaBasis).toBe("tree");
     expect([...r3.alt.values()].some((a) => a.rec)).toBe(false);
     expect(IMPACT_STAR_LEAD).toBe(10);
+  });
+
+  it("版 7 の今日のような判断: 大きく悪い手があっても ≒ は一番の手から 10 万円未満だけ。差は q どうし（まとめた手はその値・q の無い手は木の値どうし）", () => {
+    const doc = wideQDoc();
+    const { ref } = refRun(doc);
+    const { eng } = engRun(doc);
+    for (const r of [ref, eng]) {
+      expect(r.decision.get("R")!.best).toBe("A");
+      const d = (id: string) => r.alt.get(id)!;
+      // 画面に出す差と出し方
+      expect(d("A").delta).toBeCloseTo(16);
+      expect(d("B").delta).toBeCloseTo(9.9);
+      expect(d("W").delta).toBeCloseTo(-242);
+      expect(d("St").delta).toBeCloseTo(5);
+      expect(d("U").delta).toBeCloseTo(3);
+      expect(d("K").delta).toBe(0);
+      expect([d("A").deltaBasis, d("B").deltaBasis, d("W").deltaBasis, d("St").deltaBasis, d("U").deltaBasis, d("K").deltaBasis]).toEqual(["q", "q", "q", "q", "tree", "q"]);
+      // 内訳は差に合う
+      for (const id of ["A", "B", "W", "St", "U"]) {
+        const v = d(id).deltaV!;
+        expect(v[0] + v[1] + v[2]).toBeCloseTo(d(id).delta!);
+      }
+      // 木の値では B は今のままより下（−60）でも、画面には q の差 +9.9（見取り図と同じ数）
+      expect(r.value.get("B")! - r.value.get("K")!).toBeLessThan(0);
+      // ≒: 一番の手 A（q 1096）から 10 万円未満は B（6.1）だけ。幅 258 の 3 割（77）ではない。A そのものには付けない
+      expect(d("A").mark).toBeNull();
+      expect(d("A").rec).toBe(true);
+      expect(d("B").mark).toBe("tie");
+      for (const id of ["K", "W", "St", "U"]) expect([id, d(id).mark]).toEqual([id, null]);
+      // 並べる順（画面に出す差の順）: A・B・St・U・K・W
+      expect(r.decision.get("R")!.spread![0]).toBeCloseTo(-242);
+      expect(r.decision.get("R")!.spread![1]).toBeCloseTo(16);
+      expect(r.decision.get("R")!.stakes).toBeCloseTo(16);
+    }
+    sameImpact(eng, ref, {}, doc);
   });
 });
 
@@ -335,6 +407,31 @@ describe("エンジン: 3 か月ごとの小さい地図（q-small）で基準�
       sameImpact(fromDoc.eng, ref);
     });
   }
+
+  it("今日の手の差（キャンバスの札・今決めること・カードの見出し）は、見取り図の「今やる vs 3 か月待つ」（計算の芯の overview）と同じ数（見直し user-1・equiv-1）", () => {
+    const cm = compileMap(map);
+    for (const annual of [360, 540]) {
+      const doc = build();
+      withAnnual(doc, annual);
+      const ov = overview(analyze(cm, annual, {}));
+      const { eng } = engRun(doc, null, { map });
+      const { ref } = refRun(doc);
+      expect(ov.moves.length).toBeGreaterThanOrEqual(3);
+      const rootAlts = eng.decision.get(eng.root!)!.alts;
+      expect(rootAlts.length).toBe(ov.moves.length);
+      for (const mv of ov.moves) {
+        const id = engRun(doc, null, { map }).engine.graph.topo!.ids[mv.node]!;
+        expect(rootAlts).toContain(id);
+        for (const r of [eng, ref]) {
+          const a = r.alt.get(id)!;
+          expect(mv.delta).not.toBeNull();
+          expect([annual, id, a.deltaBasis]).toEqual([annual, id, mv.delta!.basis]);
+          expect(Math.abs(a.delta! - mv.delta!.d)).toBeLessThan(1e-9 * Math.max(1, Math.abs(mv.delta!.d)));
+          expect(Math.abs(r.deltaOf(id)! - mv.delta!.d)).toBeLessThan(1e-9 * Math.max(1, Math.abs(mv.delta!.d)));
+        }
+      }
+    }
+  });
 
   it("同梱の地図の列から作った形と数は、文書から作った物と同じ（並べる順だけ違う）", () => {
     const doc = build();
@@ -600,6 +697,87 @@ describe("エンジン: 計算し直す時", () => {
     res();
     expect(engine.lastCompile).toBe("doc");
     expect(engine.version.topology).toBe(v0.topology + 1);
+  });
+
+  it("年収を仮から 360（仮と同じ値）に入れると「入れた」になり、入れた 360 を外すと仮に戻る（計算は同じ物を使う: 見直し equiv-2）", () => {
+    const doc = buildImpactDoc(r6Bundle(), new Date(2026, 10, 19), "test");
+    const store = new Store(doc);
+    const engine = new ImpactEngine();
+    store.on("change", (info) => engine.note(store.doc, info));
+    const res = () => engine.result({ doc: store.doc, sid: null, out: () => buildIndex(store.doc).out, reach: () => ({ version: 0, of: () => 0 }) });
+    const setAnnual = (a: number | null) => {
+      const root = store.doc.nodes[res().root!]!;
+      const impact = { ...(root.meta.impact as Record<string, unknown>) };
+      if (a === null) delete impact.annual;
+      else impact.annual = a;
+      store.transact("年収", (tx) => tx.updateNode(root.id, { meta: { ...root.meta, impact } }));
+    };
+    const check = (want: boolean) => {
+      const r = res();
+      expect(r.annualSet).toBe(want);
+      expect(r.annual).toBe(360);
+      const out = buildIndex(store.doc).out;
+      const base = computeImpact(store.doc, out, computeForecast(store.doc, out));
+      expect(r.annualSet).toBe(base.annualSet);
+      return r;
+    };
+    setAnnual(null);
+    const a0 = check(false);
+    const passes = engine.timings.passes;
+    setAnnual(360);
+    const a1 = check(true);
+    expect(a1).not.toBe(a0);
+    expect(a1.vRoot).toBe(a0.vRoot);
+    setAnnual(null);
+    check(false);
+    setAnnual(360);
+    check(true);
+    // 新しいエンジンで入れた 360 から外す
+    const engine2 = new ImpactEngine();
+    const r2 = () => engine2.result({ doc: store.doc, sid: null, out: () => buildIndex(store.doc).out, reach: () => ({ version: 0, of: () => 0 }) });
+    expect(r2().annualSet).toBe(true);
+    store.on("change", (info) => engine2.note(store.doc, info));
+    setAnnual(null);
+    expect(r2().annualSet).toBe(false);
+    expect(passes).toBeGreaterThanOrEqual(0);
+  });
+
+  it("やらない場合の差は数だけを覚え、計算の入れ物はエンジンに 1 つ（カードを開くたびに地図の大きさの配列を残さない: 見直し perf-2・perf-3）", async () => {
+    const map = await loadQSmall();
+    const doc = buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: Date.UTC(2026, 10, 1) });
+    withAnnual(doc, 360);
+    const { ref } = refRun(doc);
+    const fromMap = engRun(doc, null, { map });
+    const eng = fromMap.eng;
+    // 同じ答え（判断の先だけの計算・全部の計算とも）
+    for (const f of ref.families()) {
+      const a = eng.never(f);
+      const b = ref.never(f);
+      expect(Math.abs((a.k ?? NaN) - (b.k ?? NaN))).toBeLessThan(1e-9 * Math.max(1, Math.abs(b.k ?? 0)));
+      for (const [id, v] of b.card) expect(Math.abs(a.card.get(id)! - v)).toBeLessThan(1e-9 * Math.max(1, Math.abs(v)));
+    }
+    // 結果は計算（Pass）を持たない: 覚えているのは数だけ
+    const kept = (x: unknown, seen = new Set<unknown>(), depth = 0): number => {
+      if (!x || typeof x !== "object" || seen.has(x) || depth > 4) return 0;
+      seen.add(x);
+      if (ArrayBuffer.isView(x)) return 0;
+      let n = 0;
+      for (const v of Object.values(x as Record<string, unknown>)) {
+        if (v && typeof v === "object" && "V" in (v as object) && "pi" in (v as object) && "def" in (v as object)) n++;
+        else n += kept(v, seen, depth + 1);
+      }
+      if (x instanceof Map) for (const v of x.values()) n += v && typeof v === "object" && "V" in (v as object) && "pi" in (v as object) ? 1 : kept(v, seen, depth + 1);
+      return n;
+    };
+    const res = eng as unknown as { neverMemo: Map<string, unknown> };
+    expect(kept(res.neverMemo)).toBe(0);
+    // 同じ入れ物を使い回す（家族ごと・判断ごとに作らない）
+    const engine = fromMap.engine as unknown as { scratchPass: { def: Uint8Array } | null };
+    const sp = engine.scratchPass;
+    expect(sp).not.toBeNull();
+    expect(sp!.def.length).toBe(ref.counts.nodes);
+    for (const f of ref.families()) for (const id of [...ref.never(f).card.keys()].slice(0, 5)) eng.never(f).card.get(id);
+    expect(engine.scratchPass).toBe(sp);
   });
 
   it("年収の境目は 1 回の計算ずつ進められ、同じ版なら覚えた答えを使う", () => {

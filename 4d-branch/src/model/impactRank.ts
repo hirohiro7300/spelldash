@@ -114,8 +114,11 @@ function avoidRows(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): 
   return avoid.slice(0, 3);
 }
 
-/** 「3 年でやる価値が大きい手」と「避けたい手」 */
-export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): WorthRanking {
+/**
+ * 「3 年でやる価値が大きい手」と「避けたい手」。kOf を渡すと、種類ごとの差はその値（3 か月ごとの地図: 生成の見積もりの k(fam)。
+ * 逆にたどる計算をしない: 見直し user-2・perf-3）。渡さなければ never(fam).k
+ */
+export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null, kOf?: (fam: string) => number | null): WorthRanking {
   if (!imp.active) return { worth: [], avoid: [] };
   const by = cachedByFam(doc, imp, fc);
   const worth: WorthRow[] = [];
@@ -123,7 +126,7 @@ export function worthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult
     const list = by.get(fam);
     if (!list?.length) continue;
     const ids = list.map((x) => x.id);
-    const k = imp.never(fam).k;
+    const k = kOf ? kOf(fam) : imp.never(fam).k;
     if (k !== null && Number.isFinite(k)) worth.push({ fam, k, instances: ids, project: projectOf(doc, ids) });
   }
   worth.sort((a, b) => b.k - a.k || (a.fam < b.fam ? -1 : 1));
@@ -169,14 +172,18 @@ export function worthStep(imp: ImpactResult): boolean {
  * 使う物（手の種類・プロジェクト・つなぎ方・見込み %・方針）が変わると imp が新しくなるので、imp が同じなら結果も同じ。
  * doc・fc は imp を計算したときの物（題名だけの変更で新しくなった物でもよい）を渡す
  */
-export function cachedWorthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null): WorthRanking {
-  let hit = worthCache.get(imp);
+export function cachedWorthRanking(doc: DocData, imp: ImpactResult, fc: ForecastResult | null, kOf?: (fam: string) => number | null): WorthRanking {
+  const cache = kOf ? worthCacheK : worthCache;
+  let hit = cache.get(imp);
   if (!hit) {
-    hit = worthRanking(doc, imp, fc);
-    worthCache.set(imp, hit);
+    hit = worthRanking(doc, imp, fc, kOf);
+    cache.set(imp, hit);
   }
   return hit;
 }
+
+/** kOf（生成の見積もりの k）で作った順位（結果ごと） */
+const worthCacheK = new WeakMap<ImpactResult, WorthRanking>();
 
 /** 入口の meta.fams（手の種類 → 名前）。無ければ空 */
 function famLabelsOf(doc: DocData, rootId: ID | null): Record<string, unknown> {

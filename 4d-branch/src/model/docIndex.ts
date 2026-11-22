@@ -90,6 +90,11 @@ function sameList(a: readonly unknown[], b: readonly unknown[]): boolean {
 
 const isRootNode = (n: GNode | undefined): boolean => !!n && n.meta?.forecastRoot === true;
 
+/** オブジェクトの鍵として数の順に並ぶ ID（配列の番号の形: 0〜2^32−2 の数の文字） */
+export function isIndexKey(id: string): boolean {
+  return /^(0|[1-9]\d{0,9})$/.test(id) && Number(id) < 4294967295;
+}
+
 export class DocIndex implements GraphIndex {
   out = new Map<ID, ID[]>();
   inc = new Map<ID, ID[]>();
@@ -347,6 +352,9 @@ export class DocIndex implements GraphIndex {
       this.rebuild(doc);
       return;
     }
+    // 数の形の ID（"1"・"2"。読み込みが受ける）は、足すとオブジェクトの順の前の方（数の順）に入る。後ろに足す並びとは違うので、
+    // 変わった所を直した後（visit は呼ぶ）、並びを作り直す（見直し equiv-7）
+    let reorder = false;
     const v = this.version;
     let topo = false;
     let flow = false;
@@ -379,6 +387,7 @@ export class DocIndex implements GraphIndex {
       if (isRootNode(before) || isRootNode(after)) roots = true;
       if (!before) {
         // 足した
+        if (isIndexKey(id)) reorder = true;
         this.nodeSeq.set(id, this.nodeAt.length);
         this.nodeAt.push(after!);
         this.out.set(id, []);
@@ -490,6 +499,7 @@ export class DocIndex implements GraphIndex {
         if (before.scenarioIds.length) scen = true;
       }
       if (!before && after) {
+        if (isIndexKey(id)) reorder = true;
         this.edgeSeq.set(id, this.edgeAt.length);
         this.edgeAt.push(after);
         this.edgeLinked.push(false);
@@ -540,6 +550,7 @@ export class DocIndex implements GraphIndex {
     if (scen) v.scen++;
     if (collapse) v.collapse++;
     if (content) v.content++;
+    if (reorder) this.rebuild(doc);
   }
 
   /** 前に見たノード（変わったかを比べる元。索引を直した後は今の物） */
