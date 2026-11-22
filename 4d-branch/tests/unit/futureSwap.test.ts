@@ -138,7 +138,9 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     const d = res.doc;
     expect(res.inPlace).toBe(true);
     expect(res.root).toBe(u.root);
-    expect(res.removed).toBe(1);
+    // 無くなった鍵のカードは、利用者の線（その下に足したメモへの線）があるので消さずに「前の版で決めたこと」に残す（safety-1・gaps-14）
+    expect(res.removed).toBe(0);
+    expect(res.detached).toBe(1);
     expect(res.added).toBe(1);
 
     // 鍵の残るカードは ID と作った時刻がそのまま。カードどうしの線も ID がそのまま
@@ -155,25 +157,33 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
       expect(d.edges[e.id], e.id).toBeDefined();
       expect([d.edges[e.id]!.source, d.edges[e.id]!.target]).toEqual([e.source, e.target]);
     }
-    // 無くなった鍵のカードは線ごと消え、増えた鍵のカードが足される（同梱の決まった ID）
+    // 無くなった鍵のカードは地図から外れ（同梱の線は消える）、鍵の無いカードとして「前の版で決めたこと」（今日の左）に残る。
+    // 増えた鍵のカードが足される（同梱の決まった ID）
     expect(byKey(d, GONE)).toBeUndefined();
+    const goneId = byKey(old, GONE)!.id;
+    const gone = d.nodes[goneId]!;
+    expect(gone.meta.prevKey).toBe(GONE);
+    expect(gone.title).toBe(old.nodes[goneId]!.title);
+    expect(edgeBetween(old, GONE_PARENT, GONE)).toBeDefined();
+    expect(Object.values(d.edges).some((e) => e.target === goneId && d.nodes[e.source]?.meta.key === GONE_PARENT)).toBe(false);
+    const group = Object.values(d.nodes).find((n) => n.meta.prevGroup !== undefined)!;
+    expect(group.title).toBe("前の版で決めたこと");
+    expect([gone.x, gone.x < d.nodes[u.root]!.x, gone.y > group.y]).toEqual([group.x, true, true]);
     const added = byKey(d, NEW)!;
     expect(added.title).toBe("次の版で増えた行き先");
     expect(edgeBetween(d, GONE_PARENT, NEW)).toBeDefined();
     expect(Object.keys(incoming.nodes)).toContain(added.id);
 
-    // 利用者が足したノードと線は残る（消えたカードの下のノードは、つながりの無いノードとして残る）
+    // 利用者が足したノードと線は残る（無くなったカードの下のノードは、残したカードにつながったまま）
     for (const id of [u.mine, u.mineKid, u.note, u.own, u.own2, u.orphan]) expect(d.nodes[id], old.nodes[id]!.title).toEqual(old.nodes[id]);
-    for (const id of [u.sup, u.l1, u.l2]) expect(d.edges[id]).toEqual(old.edges[id]);
+    for (const id of [u.sup, u.l1, u.l2, u.l3]) expect(d.edges[id]).toEqual(old.edges[id]);
     expect(Object.values(d.edges).some((e) => e.source === u.root && e.target === u.mine)).toBe(true);
     expect(Object.values(d.edges).some((e) => e.source === u.mine && e.target === u.mineKid)).toBe(true);
-    expect(d.edges[u.l3]).toBeUndefined();
-    expect(Object.values(d.edges).some((e) => e.target === u.orphan)).toBe(false);
-    // 地図につながったまま残ったのは、自分の手・その先・行き先の先の 2 つ（消えたカードの下の物は数えない）
+    // 地図につながったまま残ったのは、自分の手・その先・行き先の先の 2 つ（無くなったカードの下の物は数えない）
     expect(res.userKept).toBe(4);
-    // ほかのノードは 1 つも消えない（消えたのは無くなった鍵のカードだけ）
-    for (const id of Object.keys(old.nodes)) if (old.nodes[id]!.meta.key !== GONE) expect(d.nodes[id], id).toBeDefined();
-    expect(Object.keys(d.nodes).length).toBe(Object.keys(old.nodes).length);
+    // ノードは 1 つも消えない（無くなった鍵のカードも、利用者の線があるので残る）。足したのは増えた鍵のカードと「前の版で決めたこと」の見出し
+    for (const id of Object.keys(old.nodes)) expect(d.nodes[id], id).toBeDefined();
+    expect(Object.keys(d.nodes).length).toBe(Object.keys(old.nodes).length + 2);
     for (const e of Object.values(d.edges)) expect(!!d.nodes[e.source] && !!d.nodes[e.target], e.id).toBe(true);
 
     // 決めたこと: 選んだ手・チェック・見送り・年収
@@ -249,8 +259,10 @@ describe("3 年の分かれ道を新しい版にする（同じ地図のまま�
     for (const id of Object.keys(demo.nodes)) expect(res.doc.nodes[id], demo.nodes[id]!.title).toEqual(store.doc.nodes[id]);
     for (const e of Object.values(store.doc.edges)) if (demo.nodes[e.source] && demo.nodes[e.target]) expect(res.doc.edges[e.id]).toEqual(e);
     for (const l of links) expect(res.doc.edges[l]).toEqual(store.doc.edges[l]);
-    // 無くなったカードからの線だけが消える（つないだ先のノードは残る）
-    expect(res.doc.edges[goneLink]).toBeUndefined();
+    // 無くなったカードも、自分のノードへの線があるので消さずに「前の版で決めたこと」に残し、線もつながったまま（safety-1）
+    expect(res.doc.edges[goneLink]).toEqual(store.doc.edges[goneLink]);
+    expect(res.doc.nodes[byKey(store.doc, GONE)!.id]!.meta.prevKey).toBe(GONE);
+    expect(res.detached).toBe(1);
     expect(res.inPlace).toBe(true);
   });
 

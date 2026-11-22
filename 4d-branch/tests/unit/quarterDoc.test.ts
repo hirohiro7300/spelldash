@@ -1,5 +1,5 @@
 // 3 か月ごとの地図の軽い組み立て（src/demo/quarterDoc.ts の buildQuarterDoc。作業メモ SPEC v1 §3.4・D9・§6、見直し perf-6・perf-7・safety-6・safety-14・gaps-2）。
-// 本物の生成で作った小さい木（tests/fixtures/q-small。4,333 枚）と、手で作った地図・種から作る地図で確かめる:
+// 本物の生成で作った小さい木（tests/fixtures/q-small。8,306 枚）と、手で作った地図・種から作る地図で確かめる:
 //   形と meta（アプリの src/model/** が読む名前）・アプリの計算と計算の芯が同じ答え（年収 360・540）・normalizeDoc を通しても変わらない（整数のずらしも）・
 //   時差に依らない・同じ入力なら同じ文書・ID の重なりと食い違いで止まる・共有する部品は凍っている（テストの組み立て）・やること。
 // 基準の文書の指紋は quarterDigest.test.ts、8 万枚の木（時間とメモリ）は quarterDocFull.test.ts（環境変数があるときだけ）

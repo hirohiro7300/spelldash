@@ -7,7 +7,14 @@ import { newId, nowISO } from "./ids";
 import type { Condition, DocData, GEdge, GNode, ID, Meta, NodeStatus, NodeType, Project, Relation, Scenario } from "./types";
 
 export const SCHEMA = "4d-branch" as const;
+/** 手元で持つ文書の版（地図の本体ごと持つ「太い」形もこの版。地図を持たない文書は、保存しても今までどおりこの版） */
 export const SCHEMA_VERSION = 1;
+/**
+ * ページの地図（同梱の 3 か月ごとの地図）の本体を省き、利用者の変更だけを持つ「薄い」形の保存の版（src/persist/thinMap.ts）。
+ * 読めるのは薄い形の読み手（src/persist/codec.ts の fromStored）だけ。normalizeDoc は今までどおり断る（NewerDocError）ので、
+ * 薄い形を読めない前の版のページ（v32・v33）は、新しい版のデータとして読まずに止まる。設計: 作業メモ SPEC v1 §6・R0 §5
+ */
+export const THIN_VERSION = 2;
 
 /** 読み込めないファイル（理由は日本語で利用者に見せる） */
 export class DocFormatError extends Error {
@@ -29,9 +36,26 @@ export class NewerDocError extends DocFormatError {
   }
 }
 
-/** 版の印（ドキュメント・版の記録・バックアップの見出しの docVersion）が、このページより新しいか */
+/**
+ * このページが読める一番新しい保存の版。ふだんは SCHEMA_VERSION（版 2 の薄い形は新しい版のデータとして止まる: 今までと同じ）。
+ * 薄い形を読めるページ（ページに 3 か月ごとの地図を持つビルド）だけ、保存の口（src/persist/codec.ts の enableThinPage・setThinBaseline）が
+ * THIN_VERSION に上げる。版の記録・バックアップの見出し・マニフェストの docVersion の「新しい版か」は、この値で決める
+ */
+let readable: number = SCHEMA_VERSION;
+
+/** 読める一番新しい保存の版を決める（保存の口だけが呼ぶ。SCHEMA_VERSION より下げない） */
+export function setReadableVersion(v: number): void {
+  readable = Math.max(SCHEMA_VERSION, Math.floor(v));
+}
+
+/** このページが読める一番新しい保存の版 */
+export function readableVersion(): number {
+  return readable;
+}
+
+/** 版の印（ドキュメント・版の記録・バックアップの見出しの docVersion）が、このページより新しいか（このページが読める版より上か） */
 export function isNewerVersion(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v) && Math.floor(v) > SCHEMA_VERSION;
+  return typeof v === "number" && Number.isFinite(v) && Math.floor(v) > readable;
 }
 
 /**
@@ -315,7 +339,15 @@ export function migrate(raw: Obj): Obj {
 
 // ---------------------------------------------------------------- 正規化
 
-export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeReport } {
+export interface NormalizeOpts {
+  /**
+   * 文書の外にあるノードの ID（薄い形の保存で省いた地図のカード）。接続の端がここにあれば、つながる先のノードがあると見なして残す
+   * （無いと「つながる先のノードが無い接続」として捨ててしまう。R0 §11.7）。渡さなければ今までどおり
+   */
+  externalNodeIds?: (id: ID) => boolean;
+}
+
+export function normalizeDoc(input: unknown, opts: NormalizeOpts = {}): { doc: DocData; report: NormalizeReport } {
   if (!isObj(input)) throw new DocFormatError("4D Branch のデータの形ではありません（オブジェクトではない）。");
   const warnings: string[] = [];
   const dropped = { nodes: 0, edges: 0, projects: 0, scenarios: 0 };
@@ -447,7 +479,9 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
   if (renamed) warnings.push(`使えない形の ID（空白入りなど）を持つノード ${renamed} 件に新しい ID を振りました（接続はそのままつなぎました）。`);
   if (badDates) warnings.push(`日付として読めない期限・開始日 ${badDates} 件を外しました（例: ${badDateExample}）。`);
 
-  // 接続
+  // 接続（端は文書のノードか、外にあると渡されたノード）
+  const ext = opts.externalNodeIds;
+  const known = (id: string): boolean => has(nodes, id) || (ext !== undefined && id !== "" && ext(id));
   const edges: Record<ID, GEdge> = {};
   const pairs = new Set<string>();
   let badEnds = 0;
@@ -464,7 +498,7 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
     };
     const source = end(value.source ?? value.from);
     const target = end(value.target ?? value.to);
-    if (!has(nodes, source) || !has(nodes, target) || source === target) {
+    if (!known(source) || !known(target) || source === target) {
       badEnds++;
       dropped.edges++;
       continue;

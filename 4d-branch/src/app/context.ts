@@ -63,6 +63,8 @@ export interface AppContext {
   openHelp(): void;
   startTour(): void;
   exportJson(doc?: DocData, filename?: string): void;
+  /** 整えずにそのままの文字を書き出す（このページでは開けない記録など: safety-3） */
+  exportRawText(text: string, filename: string): void;
   pickImport(): void;
   backupNow(): Promise<void>;
   loadDemo(): Promise<void>;

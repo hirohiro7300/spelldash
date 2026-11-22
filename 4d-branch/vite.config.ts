@@ -10,7 +10,12 @@ export function impactQAlias(): Array<{ find: RegExp; replacement: string }> {
   // このリポジトリは Node の型を入れていないので、process はここだけ型を付けて読む
   const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
   const file = env.VITE_IMPACT_Q === "1" && env.IMPACT_Q_BUNDLE ? env.IMPACT_Q_BUNDLE : decodeURIComponent(new URL("./src/demo/impact-q-none.b64", import.meta.url).pathname);
-  return [{ find: /^@impact-q-bundle(\?raw)?$/, replacement: `${file}$1` }];
+  // その地図の版の記録 {release, hash, digest, anchor}（IMPACT_Q_RELEASE。無ければ空の記録: 基準の文書の指紋は、初めて使うときに数える）
+  const rel = env.VITE_IMPACT_Q === "1" && env.IMPACT_Q_RELEASE ? env.IMPACT_Q_RELEASE : decodeURIComponent(new URL("./src/demo/impact-q-none.json", import.meta.url).pathname);
+  return [
+    { find: /^@impact-q-bundle(\?raw)?$/, replacement: `${file}$1` },
+    { find: /^@impact-q-release(\?raw)?$/, replacement: `${rel}$1` },
+  ];
 }
 
 // 本番（vercel.json）と同じセキュリティのヘッダーを、確かめ用のサーバー（vite preview）にも付ける。

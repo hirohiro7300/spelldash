@@ -90,9 +90,13 @@ describe("アカウントの形をした版 6 の文書（tests/fixtures/account
     for (const c of conds) expect(c.id).toMatch(RANDOM_ID("c"));
     expect(new Set(conds.map((c) => c.id)).size).toBe(conds.length);
     expect(doc.id).toMatch(RANDOM_ID("d"));
-    // 地図のカードのプロジェクトは、同梱の地図と同じ名前の物（ID はアカウントの物）
+    // 地図のカードのプロジェクトは、同梱の地図と同じ名前の物（ID はアカウントの物）。利用者が自分のプロジェクトを足したカード（1 枚: loss-3）は、その分だけ多い
     const names = (d: DocData, ids: ID[]) => ids.map((p) => d.projects[p]!.name);
-    for (const n of keyed) expect(names(doc, n.projectIds), keyOf(n)!).toEqual(names(ref, refByKey.get(keyOf(n)!)!.projectIds));
+    const ownProjectCard = "r.sd_grow.all.fc_switch.high.plan_side";
+    for (const n of keyed) {
+      const want = names(ref, refByKey.get(keyOf(n)!)!.projectIds);
+      expect(names(doc, n.projectIds), keyOf(n)!).toEqual(keyOf(n) === ownProjectCard ? [...want, "資格の勉強"] : want);
+    }
     const idOfName = (d: DocData) => new Map(Object.values(d.projects).map((p) => [p.name, p.id]));
     const mine = idOfName(doc);
     const theirs = idOfName(ref);
@@ -121,6 +125,12 @@ describe("アカウントの形をした版 6 の文書（tests/fixtures/account
     if (n.body !== r.body) mark(key, "body");
     if (n.tags.some((t) => !impactTagsOf(n.meta).includes(t))) mark(key, "tag");
     if (key === "r" && (n.meta.impact as { annual?: number }).annual !== undefined) mark(key, "annual");
+    // 期限・開始・種類・プロジェクト・シナリオの書き換え（loss-3）
+    if (n.time.due !== r.time.due) mark(key, "due");
+    if (n.time.start !== r.time.start) mark(key, "start");
+    if (n.type !== r.type) mark(key, "type");
+    if (n.projectIds.length !== r.projectIds.length) mark(key, "project");
+    if (n.scenarioIds.length) mark(key, "scenario");
   }
   for (const e of mapEdges) {
     const r = refEdge.get(`${keyOf(doc.nodes[e.source])}>${keyOf(doc.nodes[e.target])}`)!;
@@ -151,7 +161,7 @@ describe("アカウントの形をした版 6 の文書（tests/fixtures/account
 
   it("選んだ手と見送り・やることのチェック・題名と本文の書き換え（元の指紋は残る）・77% の見込み・自分のタグ・自分で足したやること・年収", () => {
     const all = new Set([...stateOf.values()].flatMap((s) => [...s]));
-    for (const kind of ["active", "dropped", "tick", "own-todo", "title", "body", "tag", "prob", "edge-text", "own-edge", "own-child", "annual"]) expect([kind, all.has(kind)]).toEqual([kind, true]);
+    for (const kind of ["active", "dropped", "tick", "own-todo", "title", "body", "tag", "prob", "edge-text", "own-edge", "own-child", "annual", "due", "start", "type", "project", "scenario"]) expect([kind, all.has(kind)]).toEqual([kind, true]);
     // 書き換えた題名・本文には元の文の指紋が残る（アプリはこれで書き換えたと分かる）
     for (const n of keyed) {
       const r = refByKey.get(keyOf(n)!)!;

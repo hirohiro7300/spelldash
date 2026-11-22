@@ -1,5 +1,7 @@
 // 未来の道筋の差し替え。3 年の分かれ道（v2）どうしは、同じ地図を新しい版にする: 同梱のカード（meta.key のあるノード）だけを
-// 鍵で合わせて文章と数字を新しくし、ID・利用者が決めたこと・書き換えた所・足したノードと線は残す。
+// 鍵で合わせて文章と数字を新しくし、ID・利用者が決めたこと・書き換えた所・足したノードと線は残す。新しい版に無くなったカードで
+// 利用者の物を持つ物は、消さずに「前の版で決めたこと」に別のカードとして残す（safety-1・gaps-14）。
+// 版 6 までの地図をページの 3 か月ごとの地図にするときは、読むときの引き上げ（src/persist/legacyMap.ts）と同じ物にする（鍵の読み替えつき）。
 // それより前の未来の道筋（v1）は、入口から「進む」「条件付き」でたどれるノードを消し、新しい版を同じ場所（入口の位置をそろえる）に入れる。
 // どちらも、ほかのノード・プロジェクト・シナリオはそのまま（同じ名前はまとめる）
 
@@ -7,9 +9,16 @@ import { isForecastRoot } from "../model/forecast";
 import { isFlowEdge, isImpactRoot, primaryImpactRoot } from "../model/forks";
 import { newId } from "../model/ids";
 import { isDisposableDoc } from "./demo";
-import { edgeTextPrint, fnv36, impactTagsOf } from "./impact";
+import { edgeTextPrint, fnv36, fnv64x36, impactTagsOf } from "./impact";
 import type { Condition, DocData, GEdge, GNode, ID, Project, Scenario } from "../model/types";
 import { mergeDocs, nameKey } from "../persist/io";
+// ページの地図（3 か月ごとの地図）を足すときは、同梱のカードの ID をそのまま使う（薄い形の保存を小さく保つ: gaps-1）
+import { holdsPageMap, upgradeLegacyMap, type ThinUpgradeInfo } from "../persist/codec";
+// 同じ鍵のカードの選び方（入口からたどれる物 → 先に作った物 → 入口に近い物 → ID の順）は、薄い形の保存と同じ決まりを使う
+import { madeFirst } from "../persist/keyedCards";
+// 新しい版に無くなったカードの利用者の物と、「前の版で決めたこと」の置き方は、読むときの引き上げと同じ決まりを使う
+import { detachFatCard, fatCardState, type FatCardState } from "../persist/legacyMap";
+import { prevColumnX, prevGroupCard, PREV_ROW } from "../persist/thinMap";
 
 export interface FutureMap {
   /** 予測の入口（「今日」）のノード */
@@ -162,6 +171,10 @@ export interface FutureSwap {
   userKept: number;
   /** 同じ地図を新しい版にした（false: 古い地図を消して入れ替えた・地図が無いので足した） */
   inPlace: boolean;
+  /** 新しい版に無くなったカードのうち、利用者の物を持つので「前の版で決めたこと」に残したカード（消したカードの数 removed には入れない） */
+  detached: number;
+  /** 版 6 までの地図をページの 3 か月ごとの地図にした（読むときの引き上げと同じ。知らせの文に使う内訳） */
+  legacy?: ThinUpgradeInfo;
 }
 
 /** 版が変わっても同じカードを指す鍵（同梱のカードだけが持つ） */
@@ -199,9 +212,24 @@ export function hasEditPrints(doc: DocData, root: ID): boolean {
  * 未来の道筋が無ければ、ふつうの追加と同じく右側に足す
  */
 export function swapFutureDoc(doc: DocData, incoming: DocData): FutureSwap {
+  // 版 6 までの地図をページの 3 か月ごとの地図にする: 読むときの引き上げと同じ文書（鍵の読み替え・前の版で決めたこと。どの道から来ても同じ）
+  if (holdsPageMap(incoming)) {
+    const up = upgradeLegacyMap(doc);
+    if (up) return legacySwap(doc, up.doc, up.info);
+  }
   const maps = futureMaps(doc);
   const root = inPlaceRoot(doc, incoming);
   return root !== null ? upgradeFuture(doc, incoming, maps, root) : replaceFuture(doc, incoming, maps);
+}
+
+/** 版 6 までの地図の引き上げを、差し替えの結果の形に（消したのは利用者の物を持たない前の版のカード、足したのはページの地図のカード） */
+function legacySwap(doc: DocData, out: DocData, info: ThinUpgradeInfo): FutureSwap {
+  let removed = 0;
+  for (const id of Object.keys(doc.nodes)) if (!Object.hasOwn(out.nodes, id)) removed++;
+  let added = 0;
+  for (const id of Object.keys(out.nodes)) if (!Object.hasOwn(doc.nodes, id)) added++;
+  const root = Object.values(out.nodes).find(isForecastRoot)?.id ?? null;
+  return { doc: out, removed, added, root, kept: info.applied, updated: 0, userKept: 0, inPlace: true, detached: info.detached, legacy: info };
 }
 
 type Salary = { annual?: unknown; tail?: unknown };
@@ -261,9 +289,11 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
   const newRoot = Object.values(carried.nodes).find(isForecastRoot);
   const offset = oldRoot && newRoot ? { dx: oldRoot.x - newRoot.x, dy: oldRoot.y - newRoot.y } : undefined;
   const before = new Set(Object.keys(base.nodes));
-  const res = mergeDocs(base, carried, offset ? { offset } : {});
+  // ページの地図に入れ替えるときは、同梱のカード・線・やることの ID をそのまま（空いていれば）。ずらし方は整数（薄い形の保存がカードごとの読み替えにならない）
+  const keepIds = holdsPageMap(carried);
+  const res = mergeDocs(base, carried, { ...(offset ? { offset: keepIds ? { dx: Math.round(offset.dx), dy: Math.round(offset.dy) } : offset } : {}), ...(keepIds ? { keepIds } : {}) });
   const root = Object.values(res.doc.nodes).find((n) => !before.has(n.id) && isForecastRoot(n))?.id ?? null;
-  return { doc: withFutureTitle(res.doc, incoming), removed: gone.size, added: res.added.nodes, root, kept, updated: 0, userKept: 0, inPlace: false };
+  return { doc: withFutureTitle(res.doc, incoming), removed: gone.size, added: res.added.nodes, root, kept, updated: 0, userKept: 0, inPlace: false, detached: 0 };
 }
 
 /**
@@ -326,7 +356,7 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
     const k = keyOf(n);
     if (k !== null) inByKey.set(k, n);
   }
-  // 消す物: 新しい版に無くなったカードと、ほかの地図
+  // 消す物: 新しい版に無くなったカードと、ほかの地図（無くなったカードで利用者の物を持つ物は、下で「前の版で決めたこと」に残す）
   const gone = new Set<ID>(others);
   for (const [k, n] of oldByKey) if (!inByKey.has(k)) gone.add(n.id);
 
@@ -349,11 +379,45 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
     if (!cur || r < rank(cur)) oldEdge.set(pk, e);
   }
 
+  // 新しい版に無くなったカードで、利用者の物（選んだ・見送った・チェックした・書き換えた・タグ・直した見込み・利用者の線）を持つ物:
+  // 消さずに、鍵の無い利用者のカードにして「前の版で決めたこと」（今日の左）に残す。利用者の線はつながったまま（safety-1・gaps-14）
+  const links = new Map<ID, number>();
+  for (const e of Object.values(doc.edges)) {
+    if (bundleEdges.has(e.id)) continue;
+    links.set(e.source, (links.get(e.source) ?? 0) + 1);
+    links.set(e.target, (links.get(e.target) ?? 0) + 1);
+  }
+  const detach: Array<{ key: string; card: GNode; st: FatCardState; inEdge: GEdge | undefined }> = [];
+  for (const k of [...oldByKey.keys()].sort()) {
+    const n = oldByKey.get(k)!;
+    if (inByKey.has(k) || others.has(n.id)) continue;
+    const pe = oldEdge.get(pairKey(k.slice(0, k.lastIndexOf(".")), k));
+    const inEdge = pe && bundleEdges.has(pe.id) ? pe : undefined;
+    const st = fatCardState(n, inEdge, links.get(n.id) ?? 0);
+    if (!st) continue;
+    detach.push({ key: k, card: n, st, inEdge });
+    gone.delete(n.id);
+  }
+
   // 残す物: 同梱のカードと消す物を除いたノード（鍵が残っていれば外す）、それにつながる線（同梱の線は除く）。利用者の線は、合うカードを
   // 指したまま残す（合うカードはもとの ID のまま入れ直すので、つながりは切れない）
   const out: DocData = { ...doc, projects: { ...doc.projects }, scenarios: { ...doc.scenarios }, projectOrder: [...doc.projectOrder], scenarioOrder: [...doc.scenarioOrder], nodes: {}, edges: {}, meta: { ...doc.meta } };
   for (const [id, n] of Object.entries(doc.nodes)) if (!gone.has(id) && !cards.has(id)) out.nodes[id] = keyOf(n) === null ? n : withoutKey(n);
   for (const [id, e] of Object.entries(doc.edges)) if (!gone.has(e.source) && !gone.has(e.target) && !bundleEdges.has(id)) out.edges[id] = e;
+  if (detach.length) {
+    const rx = Math.round(oldRoot.x);
+    const ry = Math.round(oldRoot.y);
+    const gx = prevColumnX(rx, ry, detach.length, [oldRoot, ...Object.values(out.nodes)]);
+    const inRoot = Object.values(incoming.nodes).find(isForecastRoot);
+    const from = releaseOf(oldRoot) ?? 0;
+    const to = (inRoot && releaseOf(inRoot)) ?? from + 1;
+    let gid = `n_prev_${fnv64x36(`${rootId}\u0000${from}\u0000${versionOf(oldRoot) ?? ""}`)}`;
+    for (let t = 2; doc.nodes[gid] || out.nodes[gid]; t++) gid = `n_prev_${fnv64x36(`${rootId}\u0000${from}\u0000${versionOf(oldRoot) ?? ""}#${t}`)}`;
+    out.nodes[gid] = prevGroupCard(gid, from, to, gx, ry, inRoot?.createdAt ?? oldRoot.updatedAt);
+    detach.forEach(({ key, card, st, inEdge }, j) => {
+      out.nodes[card.id] = detachFatCard(card, key, st, inEdge, from, gx, ry + PREV_ROW * (j + 1));
+    });
+  }
   // 新しい版を入れる: プロジェクト・シナリオは同じ名前の物にまとめ（mergeDocs と同じ）、入口の位置をそろえる。
   // カードは、合う物はもとの ID、増えた物は同梱の決まった ID（文書に同じ ID があれば振り直す）
   const pMap = adoptByName(out, incoming, "projects");
@@ -391,6 +455,8 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
   // 同じ 2 枚の間に同じ向きの線は 2 本にしない（文書の決まり）: 残した利用者の線（同梱の線を消して道でない線を引き直した など）と同じ向きなら足さない
   const linked = new Set<string>();
   for (const e of Object.values(out.edges)) linked.add(pairKey(e.source, e.target));
+  // ページの地図（3 か月ごとの地図）にするときは、増えた線も同梱の ID のまま（空いていれば）: 振り直すと、薄い形の保存が線ごとの読み替えで大きくなる（R0 §11.4）
+  const keepEdgeIds = holdsPageMap(incoming);
   const usedOld = new Set<ID>();
   for (const e of Object.values(incoming.edges)) {
     const source = idOf.get(e.source);
@@ -408,7 +474,7 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       if (r.kept) kept++;
       if (r.updated) updated.add(target);
     } else if (!linked.has(pairKey(source, target))) {
-      const id = newId("e");
+      const id = keepEdgeIds && !Object.hasOwn(out.edges, e.id) && !Object.hasOwn(doc.edges, e.id) ? e.id : newId("e");
       out.edges[id] = { ...next, id };
       linked.add(pairKey(source, target));
       // 新しい版で別のカードの下に移った
@@ -419,23 +485,11 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
   const after = flowReach(out, rootId);
   let userKept = 0;
   for (const id of order) if (!cards.has(id) && after.has(id)) userKept++;
-  return { doc: withFutureTitle(out, incoming), removed: gone.size, added: fresh, root: rootId, kept, updated: updated.size, userKept, inPlace: true };
+  return { doc: withFutureTitle(out, incoming), removed: gone.size, added: fresh, root: rootId, kept, updated: updated.size, userKept, inPlace: true, detached: detach.length };
 }
 
 /** 線の（元・先）。鍵どうしでも ID どうしでも使う */
 const pairKey = (source: string, target: string): string => `${source}\u0000${target}`;
-
-/**
- * 同じ鍵のカードのうち、a を b より先の物（同梱のカード）とみるか: 入口からたどれる物（地図から外れた物は、たどれる物が無いときだけ。
- * 作った時刻より先に見る）、その中で先に作った物、同じ時刻なら入口に近い物、それも同じなら ID の順
- */
-function madeFirst(a: GNode, b: GNode, depth: Map<ID, number>): boolean {
-  const da = depth.get(a.id) ?? Infinity;
-  const db = depth.get(b.id) ?? Infinity;
-  if ((da === Infinity) !== (db === Infinity)) return da !== Infinity;
-  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt;
-  return da !== db ? da < db : a.id < b.id;
-}
 
 /** 鍵を外したノード（同じ鍵の 2 つ目を利用者のノードとして残すとき。新しい版でも同梱のカードと取り違えない） */
 function withoutKey(n: GNode): GNode {

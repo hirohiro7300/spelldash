@@ -7,7 +7,8 @@ import { FRESH_FUTURE, NO_AUTO_FUTURE, isFreshFuture, yieldsToRemote } from "../
 import { nextStamp } from "../../src/model/ids";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
-import { CloudError, CloudNewerError, CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
+import { CloudError, CloudNewerError, CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, mapReleaseOf, nextBootDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
+import { storedMapReleaseOf } from "../../src/persist/codec";
 import { editLocked } from "../../src/app/editLock";
 import { mergeDocs } from "../../src/persist/io";
 import { Store } from "../../src/store/store";
@@ -177,8 +178,6 @@ interface DeviceOpts {
   yields?: (local: DocData, remote: DocData) => boolean;
 }
 
-const onOf = (b: SyncBase | null): BootDoc["on"] => (b ? { gen: b.gen, docId: b.docId, docUpdatedAt: b.docUpdatedAt } : null);
-const sameOn = (a: BootDoc["on"], b: BootDoc["on"]) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null) && (a === undefined) === (b === undefined);
 
 /** 1 つの端末（App と同じつなぎ方: 本物の Store。取り込み中は markDirty しない。初回・選択の取り込みは Undo の対象外） */
 function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts = {}) {
@@ -209,10 +208,12 @@ function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts =
     saveFails: false,
     pendingBase: null as SyncBase | null,
   };
-  // 起動したときの手元を記録する（App と同じ: 編集できるタブだけ。前の記録が同じ基準のままならそれを残し、
+  // 起動したときの手元を記録する（App と同じ決まり nextBootDoc: 編集できるタブだけ。前の記録が同じ基準のままならそれを残し、
   // 基準が書き換わっていた・代わりの内容で始めたなら書き換える）
-  const on = onOf(idb.base);
-  if (local.writer && (!idb.boot || opts.fallback || !sameOn(idb.boot.on, on))) idb.boot = { id: doc.id, updatedAt: doc.updatedAt, fallback: !!opts.fallback, on };
+  if (local.writer) {
+    const next = nextBootDoc(idb.boot, { id: doc.id, updatedAt: doc.updatedAt, fallback: !!opts.fallback }, storedMapReleaseOf(doc) ?? mapReleaseOf(doc), idb.base, true);
+    if (next) idb.boot = next;
+  }
   const repo = new CloudRepo(be, opts.uid ?? "user1", name);
   const sync = new CloudSync(
     repo,

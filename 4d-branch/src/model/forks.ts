@@ -38,8 +38,23 @@ export function impactConfigOf(n: GNode | undefined): ImpactConfig | null {
 export const isImpactRoot = (n: GNode | undefined): boolean => !!n && n.meta?.forecastRoot === true && impactConfigOf(n) !== null;
 
 /**
+ * ページの地図の版の順番（入口が 2 つ以上あるとき、この版の入口を先に選ぶ）。ページに 3 か月ごとの地図を入れたときだけ、
+ * 保存の口（src/persist/thinMap.ts の setThinBaseline）が決める。無ければ今までどおり（見直し safety-9）
+ */
+let preferredRelease: number | null = null;
+
+/** 入口を選ぶときに先にする版の順番（null で外す） */
+export function setPreferredRelease(release: number | null): void {
+  preferredRelease = release;
+}
+
+/** 入口がページの地図の版か（先にする版が決まっていないときは、どれも同じ扱い） */
+const pageRelease = (n: GNode): boolean => preferredRelease !== null && n.meta?.futureRelease === preferredRelease;
+
+/**
  * 数字と概要を出す入口を 1 つに決める（今日の複製や、別の地図の追加の読み込みで入口が 2 つ以上あるとき）。
- * 先へ進む線のある入口 → 早く作った物 → ID の順。入口が無ければ null。out が無ければ線をなめて調べる
+ * ページの地図の版の入口（決まっているときだけ）→ 先へ進む線のある入口 → 早く作った物 → ID の順。入口が無ければ null。
+ * out が無ければ線をなめて調べる
  */
 export function primaryImpactRoot(doc: DocData, out?: Map<ID, ID[]>): ID | null {
   let flowFrom: Set<ID> | null = null;
@@ -63,7 +78,8 @@ export function primaryImpactRoot(doc: DocData, out?: Map<ID, ID[]>): ID | null 
       continue;
     }
     const b = doc.nodes[best]!;
-    const better = f !== bestFlow ? f : n.createdAt !== b.createdAt ? n.createdAt < b.createdAt : id < best;
+    const pn = pageRelease(n);
+    const better = pn !== pageRelease(b) ? pn : f !== bestFlow ? f : n.createdAt !== b.createdAt ? n.createdAt < b.createdAt : id < best;
     if (better) {
       best = id;
       bestFlow = f;
