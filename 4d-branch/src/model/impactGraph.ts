@@ -120,6 +120,8 @@ export function compileDocTopo(doc: DocData, out: Map<ID, ID[]>, rootOrder?: rea
   // 入口（impactScope と同じく文書の順に。rootOrder を渡されたらその物: 索引が文書の順で持っている）と範囲（入口から進む線で深さ優先にたどった順。番号はたどった順）
   const tmp = new Map<ID, number>();
   const tid: ID[] = [];
+  /** たどった順の番号 → ノードの物（見つけたときに 1 度だけ文書から引く。8 万の鍵の入れ物を 2 度引かない: P4） */
+  const tobj: GNode[] = [];
   const stack: number[] = [];
   const rootList: ID[] = [];
   const addRoot = (id: ID): void => {
@@ -127,6 +129,7 @@ export function compileDocTopo(doc: DocData, out: Map<ID, ID[]>, rootOrder?: rea
     tmp.set(id, tid.length);
     stack.push(tid.length);
     tid.push(id);
+    tobj.push(doc.nodes[id]!);
   };
   if (rootOrder) {
     for (const id of rootOrder) if (isImpactRoot(doc.nodes[id])) addRoot(id);
@@ -144,13 +147,17 @@ export function compileDocTopo(doc: DocData, out: Map<ID, ID[]>, rootOrder?: rea
     outA[u] = outE.length;
     for (const eid of out.get(tid[u]!) ?? []) {
       const e = doc.edges[eid];
-      if (!e || !isFlowEdge(e) || e.source === e.target || !doc.nodes[e.target]) continue;
+      if (!e || !isFlowEdge(e) || e.source === e.target) continue;
       let v = tmp.get(e.target);
       if (v === undefined) {
+        // 先のノードが文書に無い線は数えない（見つけたノードは文書にある: 引き直さない）
+        const t = doc.nodes[e.target];
+        if (!t) continue;
         v = tid.length;
         tmp.set(e.target, v);
         stack.push(v);
         tid.push(e.target);
+        tobj.push(t);
       }
       outE.push(e);
       outT.push(v);
@@ -211,7 +218,7 @@ export function compileDocTopo(doc: DocData, out: Map<ID, ID[]>, rootOrder?: rea
   const incCount = new Int32Array(n + 1);
   for (let i = 0; i < n; i++) {
     const u = queue[i]!;
-    nodeObj[i] = doc.nodes[ids[i]!];
+    nodeObj[i] = tobj[u];
     const a = outA[u]!;
     const cnt = outN[u]!;
     for (let k = 0; k < cnt; k++) {
