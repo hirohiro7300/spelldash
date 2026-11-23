@@ -623,6 +623,7 @@ export class ViewModel {
       doc,
       sid,
       out: () => this.index.out,
+      inc: () => this.index.inc,
       roots: () => {
         const idx = this.index;
         return [...idx.impactRoots].sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));

@@ -930,6 +930,98 @@ async function main() {
     await page.evaluate(() => window.__fourD.ui.clearSelection());
   });
 
+  await check("題名の変換中に別のカードを選んでも、決めた文字は変換を始めたカードに入り、次のカードの題名は変わらない（compositionend が blur の中で来る・後で来るどちらでも: 見直し data-3）", async () => {
+    const imp = await impactOf(page);
+    const alts = imp.alts.filter((x) => !x.isBase).map((x) => x.id);
+    assert(alts.length >= 2, "手が 2 つない（確かめの前提）");
+    for (const late of [false, true]) {
+      const [a, b] = late ? [alts[1], alts[0]] : [alts[0], alts[1]];
+      await page.evaluate((id) => window.__fourD.ui.select([id]), a);
+      await page.waitForTimeout(150);
+      const r = await page.evaluate(async ({ a, b, late }) => {
+        const f = window.__fourD;
+        const frame = () => new Promise((res) => requestAnimationFrame(() => setTimeout(res, 0)));
+        const el = document.querySelector(".insp-title");
+        const baseA = f.store.doc.nodes[a].title;
+        const baseB = f.store.doc.nodes[b].title;
+        el.focus();
+        el.dispatchEvent(new CompositionEvent("compositionstart", { data: "", bubbles: true }));
+        el.value = `${baseA}てん`;
+        el.dispatchEvent(new InputEvent("input", { data: "てん", inputType: "insertCompositionText", isComposing: true, bubbles: true }));
+        await frame();
+        // Chrome は blur の中で変換を決める（compositionend をすぐ送る）。後で送るブラウザもある
+        const end = () => {
+          el.value = `${baseA}転`;
+          el.dispatchEvent(new CompositionEvent("compositionend", { data: "転", bubbles: true }));
+        };
+        if (!late) el.addEventListener("blur", end, { once: true });
+        f.ui.select([b]);
+        const shownB = document.querySelector(".insp-title");
+        const mid = { same: shownB === el, value: shownB?.value, titleA: f.store.doc.nodes[a].title, titleB: f.store.doc.nodes[b].title };
+        if (late) end();
+        await frame();
+        const now = document.querySelector(".insp-title");
+        return { baseA, baseB, mid, titleA: f.store.doc.nodes[a].title, titleB: f.store.doc.nodes[b].title, shown: now?.value, selected: [...f.ui.selection.nodes] };
+      }, { a, b, late });
+      const what = late ? "後で来る" : "blur の中で来る";
+      assert(r.titleA === `${r.baseA}転`, `${what}: 決めた文字が変換を始めたカードに入らない ${JSON.stringify(r)}`);
+      assert(r.titleB === r.baseB, `${what}: 次のカードの題名が変わった ${JSON.stringify(r)}`);
+      assert(r.shown === r.baseB && r.mid.value === r.baseB, `${what}: 詳細の題名の欄が次のカードの題名でない ${JSON.stringify(r)}`);
+      assert(r.selected.length === 1 && r.selected[0] === b, `${what}: 選んだカード ${JSON.stringify(r.selected)}`);
+      // 決まらないまま選び替えたら、欄は使い回さない（後で来た決めた文字を、次のカードの欄に入れない）
+      if (late) assert(!r.mid.same, `${what}: 変換中のまま欄を次のカードに使い回した`);
+      await page.evaluate(() => window.__fourD.app.cmd.undo());
+      await page.waitForTimeout(150);
+      const back = await page.evaluate(({ a, b }) => [window.__fourD.store.doc.nodes[a].title, window.__fourD.store.doc.nodes[b].title], { a, b });
+      assert(back[0] === r.baseA && back[1] === r.baseB, `${what}: 元に戻した題名 ${JSON.stringify(back)}`);
+    }
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("題名の欄で続けて打つ間は 3 年の影響の欄を作り直さず（行の名前だけその場で）、打つのが止まってから 1 度だけ作り直す（見直し speed-plain-typing）", async () => {
+    const imp = await impactOf(page);
+    const alt = imp.alts.find((x) => !x.isBase && x.delta !== null).id;
+    await page.evaluate((id) => window.__fourD.ui.select([id]), alt);
+    await page.waitForTimeout(200);
+    await page.evaluate(() => {
+      const body = document.querySelector(".imp-node .imp-node-body");
+      window.__rebuilds = 0;
+      // 1 回の作り直し（子を全部外して入れ直す）は、1 回の知らせにまとまる
+      window.__mo = new MutationObserver((ms) => {
+        if (ms.some((m) => m.target === body && m.type === "childList" && m.removedNodes.length)) window.__rebuilds++;
+      });
+      window.__mo.observe(body, { childList: true });
+    });
+    await page.locator(".insp-title").focus();
+    await page.keyboard.press("End");
+    await page.keyboard.type("あいうえお", { delay: 30 });
+    const during = await page.evaluate((id) => ({
+      rebuilds: window.__rebuilds,
+      title: window.__fourD.store.doc.nodes[id].title,
+      row: document.querySelector(`.imp-node .imp-sibs .imp-alt-row[data-id="${id}"] .imp-alt-name`)?.textContent,
+    }), alt);
+    await page.waitForTimeout(700);
+    const after = await page.evaluate((id) => {
+      window.__mo.disconnect();
+      return {
+        rebuilds: window.__rebuilds,
+        title: window.__fourD.store.doc.nodes[id].title,
+        row: document.querySelector(`.imp-node .imp-sibs .imp-alt-row[data-id="${id}"] .imp-alt-name`)?.textContent,
+        focus: document.activeElement?.classList.contains("insp-title"),
+      };
+    }, alt);
+    try {
+      assert(during.title.endsWith("あいうえお") && during.row === during.title, `打っている間の行の名前 ${JSON.stringify(during)}`);
+      assert(during.rebuilds === 0, `打つたびに 3 年の影響の欄を作り直した（${during.rebuilds} 回）`);
+      assert(after.rebuilds === 1 && after.row === after.title && after.focus, `止まった後の作り直し ${JSON.stringify(after)}`);
+    } finally {
+      await page.evaluate(() => document.activeElement?.blur());
+      await page.evaluate(() => window.__fourD.app.cmd.undo());
+      await page.waitForTimeout(150);
+      await page.evaluate(() => window.__fourD.ui.clearSelection());
+    }
+  });
+
   await check("詳細で題名を書き換えると、3 年の影響は計算し直さず、パネルの行の題名はすぐ変わる", async () => {
     const u0 = await undoCount(page);
     try {

@@ -5,7 +5,9 @@
 //   幅優先の順では、入口ごとのかたまりの中で、ノードは「たどった親の番号・親の出る線の中の、たどった線の場所」の順に並ぶ。
 //   葉 v を親 u の線 e で足すと、v は u の子のうち e より前の線でたどった子の後ろに入り、ほかの並びは変わらない。消すときはその逆。
 //   先の大きさ・木か（treeAt）は、変わったノードと、そのたどった親を上へ、値が変わらなくなるまで入れ直す（値はたどった子だけで決まる）。
-// 入口・合流・葉でないカード・ほかの線の付け替えなどに関わる変更はここでは扱わない（null を返し、呼び手が最初から作る）。
+//   枝（森）をまとめて足す・消すとき（枝ごと消す・その元に戻す）は、1 枚ずつ入れ直さずに 1 回で詰める（removeMarked）・たどった親子の木から
+//   幅優先の順を作り直す（insertForest）。どちらも O(範囲) を 1 回（1 枚ずつだと O(枚数 × 範囲)。見直し speed-del-subtree-quadratic）。
+// 入口・合流・枝でないカード・ほかの線の付け替えなどに関わる変更はここでは扱わない（null を返し、呼び手が最初から作る）。
 
 import { isFlowEdge, isImpactRoot } from "../model/forks";
 import type { DocData, GEdge, GNode, ID } from "../model/types";
@@ -161,21 +163,228 @@ function insertAt(w: Work, q: number, id: ID, pu: number, eid: ID): void {
   }
 }
 
-/** 番号 j（子の無い葉）を除く */
-function removeAt(w: Work, j: number): void {
-  w.order.splice(j, 1);
-  w.parentEdge.splice(j, 1);
-  const I32 = (n: number) => new Int32Array(n);
-  const U8 = (n: number) => new Uint8Array(n);
-  w.rootOf = splice(I32, w.rootOf, j, false);
-  w.depth = splice(I32, w.depth, j, false);
-  const parent = splice(I32, w.parent, j, false);
-  for (let i = j; i < parent.length; i++) if (parent[i]! > j) parent[i]!--;
+/**
+ * 印の付いた番号（drop[j] = 1）をまとめて除く（1 回の詰め直し: O(範囲)。1 つずつ除くと O(消す数 × 範囲) になり、8 千枚の枝を消すと
+ * 机で 10 秒を超えた: 見直し speed-del-subtree-quadratic）。除く番号のたどった子は、どれも除く番号であること（呼び手が確かめる）
+ */
+function removeMarked(w: Work, drop: Uint8Array, k: number): void {
+  const n = w.order.length;
+  const n2 = n - k;
+  /** 前の番号 → 新しい番号（除く番号は −1） */
+  const map = new Int32Array(n);
+  const order = new Array<ID>(n2);
+  const parentEdge = new Array<ID>(n2);
+  const rootOf = new Int32Array(n2);
+  const depth = new Int32Array(n2);
+  const parent = new Int32Array(n2);
+  const size = w.size ? new Int32Array(n2) : null;
+  const clean = w.clean ? new Uint8Array(n2) : null;
+  const regular = w.regular ? new Uint8Array(n2) : null;
+  let q = 0;
+  for (let i = 0; i < n; i++) {
+    if (drop[i]) {
+      map[i] = -1;
+      continue;
+    }
+    map[i] = q;
+    order[q] = w.order[i]!;
+    parentEdge[q] = w.parentEdge[i]!;
+    rootOf[q] = w.rootOf[i]!;
+    depth[q] = w.depth[i]!;
+    // たどった親は前の番号（もう新しい番号がある）
+    const pi = w.parent[i]!;
+    parent[q] = pi < 0 ? -1 : map[pi]!;
+    if (size) {
+      size[q] = w.size![i]!;
+      clean![q] = w.clean![i]!;
+      regular![q] = w.regular![i]!;
+    }
+    q++;
+  }
+  w.order = order;
+  w.parentEdge = parentEdge;
+  w.rootOf = rootOf;
+  w.depth = depth;
   w.parent = parent;
-  if (w.size) {
-    w.size = splice(I32, w.size, j, false);
-    w.clean = splice(U8, w.clean!, j, false);
-    w.regular = splice(U8, w.regular!, j, false);
+  if (size) {
+    w.size = size;
+    w.clean = clean;
+    w.regular = regular;
+  }
+}
+
+/** 1 回の変更で、葉を 1 枚ずつ足して直す上限（これより多い・葉でないカードを足すときは、まとめて足す: insertForest） */
+const LEAF_ADD_MAX = 8;
+
+/**
+ * 足した線 adds（範囲のノードか足したノードから、足したノードへ。足したノードには 1 本だけ入る）の森を、範囲の並びにまとめて入れる。
+ * 幅優先の順は、入口ごとに、たどった親子の木を幅優先にたどった順と同じ（ノードの子は、親の出る線の並びの順）。前からあるノードの
+ * たどった親は変わらない（足したノードから前のノードへの線は無い）ので、前の木に足したノードをつないで、その順を作り直す。O(範囲)。
+ * 前からあるノードの順が前と違えば（出る線の並びが変わった など）false
+ */
+function insertForest(w: Work, pos: ReadonlyMap<ID, number>, idx: IndexLinks, adds: readonly GEdge[]): boolean {
+  const n = w.order.length;
+  const m = adds.length;
+  const N = n + m;
+  // 足したノードの仮の番号 n..N-1
+  const tmp = new Map<ID, number>();
+  for (let k = 0; k < m; k++) tmp.set(adds[k]!.target, n + k);
+  const ref = (id: ID): number => tmp.get(id) ?? pos.get(id) ?? -1;
+  // 前の木の子の範囲（幅優先の順では、たどった親の番号は前から順に並ぶ: 親ごとの子はひと続き）
+  const cA = new Int32Array(n).fill(-1);
+  const cB = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const p = w.parent[i]!;
+    if (p < 0) continue;
+    if (cA[p]! < 0) cA[p] = i;
+    cB[p] = i + 1;
+  }
+  // 足した子（親の仮の番号 → 足した線の位置）
+  const extra = new Map<number, number[]>();
+  const srcOf = new Int32Array(m);
+  for (let k = 0; k < m; k++) {
+    const u = ref(adds[k]!.source);
+    if (u < 0) return false;
+    srcOf[k] = u;
+    let l = extra.get(u);
+    if (!l) extra.set(u, (l = []));
+    l.push(k);
+  }
+  const order: number[] = [];
+  const parent = new Int32Array(N).fill(-1);
+  const edgeOf = new Array<ID>(N);
+  for (let i = 0; i < n; i++) edgeOf[i] = w.parentEdge[i]!;
+  for (let k = 0; k < m; k++) edgeOf[n + k] = adds[k]!.id;
+  /** ノード x の子（線の並びの順）。子の線が親の出る線に無ければ false */
+  const childrenOf = (x: number, push: (c: number) => void): boolean => {
+    const add = extra.get(x);
+    if (!add) {
+      if (x < n && cA[x]! >= 0) for (let i = cA[x]!; i < cB[x]!; i++) push(i);
+      return true;
+    }
+    const xid = x < n ? w.order[x]! : adds[x - n]!.target;
+    const outs = idx.out.get(xid) ?? [];
+    const at = new Map<ID, number>();
+    for (let k = 0; k < outs.length; k++) at.set(outs[k]!, k);
+    const kids: number[] = [];
+    if (x < n && cA[x]! >= 0) for (let i = cA[x]!; i < cB[x]!; i++) kids.push(i);
+    for (const k of add) kids.push(n + k);
+    const key = kids.map((c) => at.get(edgeOf[c]!) ?? -1);
+    if (key.some((v) => v < 0)) return false;
+    const idxs = kids.map((_c, i) => i).sort((a, b) => key[a]! - key[b]!);
+    for (const i of idxs) push(kids[i]!);
+    return true;
+  };
+  for (let i = 0; i < n; i++) {
+    if (w.parent[i]! >= 0) continue;
+    // 入口: そのかたまりを幅優先に
+    const start = order.length;
+    order.push(i);
+    for (let q = start; q < order.length; q++) {
+      const x = order[q]!;
+      const ok = childrenOf(x, (c) => {
+        parent[c] = x;
+        order.push(c);
+      });
+      if (!ok) return false;
+    }
+  }
+  if (order.length !== N) return false;
+  // 前のノードは前の順のまま
+  let last = -1;
+  for (const x of order) {
+    if (x >= n) continue;
+    if (x < last) return false;
+    last = x;
+  }
+  const pm = new Int32Array(N);
+  for (let i = 0; i < N; i++) pm[order[i]!] = i;
+  const ord2 = new Array<ID>(N);
+  const pe2 = new Array<ID>(N);
+  const rootOf = new Int32Array(N);
+  const depth = new Int32Array(N);
+  const par2 = new Int32Array(N);
+  const size = w.size ? new Int32Array(N) : null;
+  const clean = w.clean ? new Uint8Array(N) : null;
+  const regular = w.regular ? new Uint8Array(N) : null;
+  for (let i = 0; i < N; i++) {
+    const x = order[i]!;
+    const p = parent[x]!;
+    ord2[i] = x < n ? w.order[x]! : adds[x - n]!.target;
+    pe2[i] = x < n ? w.parentEdge[x]! : adds[x - n]!.id;
+    par2[i] = p < 0 ? -1 : pm[p]!;
+    if (x < n) {
+      rootOf[i] = w.rootOf[x]!;
+      depth[i] = w.depth[x]!;
+      if (size) {
+        size[i] = w.size![x]!;
+        clean![i] = w.clean![x]!;
+        regular![i] = w.regular![x]!;
+      }
+    } else {
+      // 親は前の番号（もう入れてある）
+      const pi = par2[i]!;
+      rootOf[i] = rootOf[pi]!;
+      depth[i] = depth[pi]! + 1;
+      if (size) {
+        size[i] = 1;
+        clean![i] = 1;
+        regular![i] = 0;
+      }
+    }
+  }
+  w.order = ord2;
+  w.parentEdge = pe2;
+  w.rootOf = rootOf;
+  w.depth = depth;
+  w.parent = par2;
+  if (size) {
+    w.size = size;
+    w.clean = clean;
+    w.regular = regular;
+  }
+  return true;
+}
+
+/** 大きい順に取り出す、同じ数を 2 度入れない山 */
+class MaxQueue {
+  private readonly h: number[] = [];
+  private readonly in = new Set<number>();
+  get size(): number {
+    return this.h.length;
+  }
+  push(x: number): void {
+    if (this.in.has(x)) return;
+    this.in.add(x);
+    const h = this.h;
+    let i = h.push(x) - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (h[p]! >= x) break;
+      h[i] = h[p]!;
+      i = p;
+    }
+    h[i] = x;
+  }
+  pop(): number {
+    const h = this.h;
+    const top = h[0]!;
+    const last = h.pop()!;
+    if (h.length) {
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1;
+        if (l >= h.length) break;
+        const r = l + 1;
+        const c = r < h.length && h[r]! > h[l]! ? r : l;
+        if (h[c]! <= last) break;
+        h[i] = h[c]!;
+        i = c;
+      }
+      h[i] = last;
+    }
+    this.in.delete(top);
+    return top;
   }
 }
 
@@ -209,50 +418,65 @@ export function patchScope(doc: DocData, idx: IndexLinks, info: ImpactScopeInfo,
   let usersSame = true;
   if (adding) {
     const newIds = new Set(d.addN.map((n) => n.id));
-    // 足した線は、範囲のノードから足したノードへの道の線だけ（足したノードには、その線 1 本だけが入る）
-    for (const e of d.addE) if (!flowTo(e, e.source) || !newIds.has(e.target) || newIds.has(e.source) || info.pos.has(e.target)) return null;
+    // 足した線は、範囲のノードか足したノードから、足したノードへの道の線だけ（足したノードには、その線 1 本だけが入る）
+    for (const e of d.addE) if (!flowTo(e, e.source) || !newIds.has(e.target) || info.pos.has(e.target) || (!newIds.has(e.source) && !info.pos.has(e.source))) return null;
+    let leaves = true;
+    /** 足したノードへ入る、足した線の数 */
+    const insOf = new Map<ID, number>();
+    for (const e of d.addE) insOf.set(e.target, (insOf.get(e.target) ?? 0) + 1);
     for (const n of d.addN) {
       if (isImpactRoot(n)) return null;
       const inc = idx.inc.get(n.id) ?? [];
-      const ins = d.addE.filter((e) => e.target === n.id).length;
+      const ins = insOf.get(n.id) ?? 0;
       // 範囲の外に足したノード（線の無い自分のノード）: 範囲は変わらないが、自分のノードは変わる
       if (!ins) {
         if (inc.length || (idx.out.get(n.id) ?? []).length) return null;
         usersSame = false;
         continue;
       }
-      // 葉: 入る線はその 1 本、出る線は無い（足したノードから先へ線を出すのは、最初から作る）
-      if (ins !== 1 || inc.length !== 1 || (idx.out.get(n.id) ?? []).length) return null;
+      // 入る線はその 1 本。出る線（足したノードの線はどれも足した線）は、足したノードへの道の線（上で確かめた）
+      if (ins !== 1 || inc.length !== 1) return null;
+      if ((idx.out.get(n.id) ?? []).length) leaves = false;
     }
-    /** 足した番号（足した順）。前からあるノードの今の番号 = 前の番号 + その前に足した数 */
-    const at: number[] = [];
-    const posNow = (p0: number): number => {
-      let p = p0;
-      for (const q of at) if (p >= q) p++;
-      return p;
-    };
-    for (const e of d.addE) {
-      const p0 = info.pos.get(e.source);
-      if (p0 === undefined) return null;
-      const pu = posNow(p0);
-      // u の子（u がたどった子）のうち、e より前の線でたどった物の後ろ
-      const outs = idx.out.get(e.source) ?? [];
-      const k = outs.indexOf(e.id);
-      if (k < 0) return null;
-      const end = segEnd(w.rootOf, pu);
-      const c0 = firstTrue(pu + 1, end, (i) => w.parent[i]! >= pu);
-      const c1 = firstTrue(c0, end, (i) => w.parent[i]! > pu);
-      let q = c0;
-      for (let i = c0; i < c1; i++) {
-        const ki = outs.indexOf(w.parentEdge[i]!);
-        if (ki < 0) return null;
-        if (ki < k) q = i + 1;
-        else break;
+    if (leaves && d.addE.length <= LEAF_ADD_MAX) {
+      // 葉だけを少し（Tab・分岐を 2 つ）: 1 枚ずつ入れる
+      /** 足した番号（足した順）。前からあるノードの今の番号 = 前の番号 + その前に足した数 */
+      const at: number[] = [];
+      const posNow = (p0: number): number => {
+        let p = p0;
+        for (const q of at) if (p >= q) p++;
+        return p;
+      };
+      for (const e of d.addE) {
+        const p0 = info.pos.get(e.source);
+        if (p0 === undefined) return null;
+        const pu = posNow(p0);
+        // u の子（u がたどった子）のうち、e より前の線でたどった物の後ろ
+        const outs = idx.out.get(e.source) ?? [];
+        const k = outs.indexOf(e.id);
+        if (k < 0) return null;
+        const end = segEnd(w.rootOf, pu);
+        const c0 = firstTrue(pu + 1, end, (i) => w.parent[i]! >= pu);
+        const c1 = firstTrue(c0, end, (i) => w.parent[i]! > pu);
+        let q = c0;
+        for (let i = c0; i < c1; i++) {
+          const ki = outs.indexOf(w.parentEdge[i]!);
+          if (ki < 0) return null;
+          if (ki < k) q = i + 1;
+          else break;
+        }
+        insertAt(w, q, e.target, pu, e.id);
+        at.push(q);
+        dirty.add(e.source);
+        dirty.add(e.target);
       }
-      insertAt(w, q, e.target, pu, e.id);
-      at.push(q);
-      dirty.add(e.source);
-      dirty.add(e.target);
+    } else if (d.addE.length) {
+      // 枝（森）をまとめて: たどった親子の木から幅優先の順を作り直す（枝ごと消したのを元に戻す: 見直し speed-del-mid-undo）
+      if (!insertForest(w, info.pos, idx, d.addE)) return null;
+      for (const e of d.addE) {
+        dirty.add(e.source);
+        dirty.add(e.target);
+      }
     }
   } else {
     const gone = new Set<ID>();
@@ -287,15 +511,24 @@ export function patchScope(doc: DocData, idx: IndexLinks, info: ImpactScopeInfo,
       dirty.add(e.source);
       usersSame = false;
     }
-    // 範囲を出るノードは、入口でない・たどった子の無い葉。後ろの番号から除く（前の番号はずれない）
-    const list = [...gone].map((id) => info.pos.get(id)!).sort((a, b) => b - a);
-    for (const j of list) {
-      if (w.parent[j]! < 0) return null;
-      const end = segEnd(w.rootOf, j);
-      const c = firstTrue(j + 1, end, (i) => w.parent[i]! >= j);
-      if (c < end && w.parent[c] === j) return null;
-      dirty.add(w.order[w.parent[j]!]!);
-      removeAt(w, j);
+    // 範囲を出るノードは、入口でなく、たどった子もどれも範囲を出る（枝ごと消した）。まとめて 1 回で除く
+    if (gone.size) {
+      const n = w.order.length;
+      const drop = new Uint8Array(n);
+      for (const id of gone) {
+        const j = info.pos.get(id)!;
+        if (w.parent[j]! < 0) return null;
+        drop[j] = 1;
+      }
+      // 残るノードのたどった親が除くノードなら直せない（その子は範囲に残るかもしれない・幅優先の番号が変わる）
+      for (let i = 0; i < n; i++) {
+        const pi = w.parent[i]!;
+        if (pi < 0) continue;
+        if (drop[pi] && !drop[i]) return null;
+        // 除くノードのたどった親で残る物を入れ直す（先の大きさ・木かが変わる）
+        if (drop[i] && !drop[pi]) dirty.add(w.order[pi]!);
+      }
+      removeMarked(w, drop, gone.size);
     }
     for (const id of gone) dirty.delete(id);
   }
@@ -317,17 +550,17 @@ export function patchScope(doc: DocData, idx: IndexLinks, info: ImpactScopeInfo,
       const p = cur.pos.get(id);
       if (p !== undefined) first.add(p);
     }
-    const pending = new Set(first);
+    // 後ろの番号から（大きい順に取り出す山。枝ごと足す・消すと数千になる: 1 つずつ一番大きい物を探すと O(数²)）
+    const pending = new MaxQueue();
+    for (const x of first) pending.push(x);
     while (pending.size) {
-      let p = -1;
-      for (const x of pending) if (x > p) p = x;
-      pending.delete(p);
+      const p = pending.pop();
       const s = t.size[p];
       const c = t.clean[p];
       const r = t.regular[p];
       treeAt(doc, idx, cur, t, p);
       const up = cur.parent[p]!;
-      if (up >= 0 && (first.has(p) || s !== t.size[p] || c !== t.clean[p] || r !== t.regular[p])) pending.add(up);
+      if (up >= 0 && (first.has(p) || s !== t.size[p] || c !== t.clean[p] || r !== t.regular[p])) pending.push(up);
     }
     tree2 = { key: treeKey, ...t };
   }

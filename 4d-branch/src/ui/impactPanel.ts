@@ -170,6 +170,17 @@ class Seen {
     return e;
   }
 
+  /** 書いた後に題名だけが変わったノード（線の文が変わった・何も変わっていなければ null） */
+  retitled(doc: DocData): Array<[ID, string, string]> | null {
+    for (const [id, t] of this.edges) if (edgeText(doc.edges[id]) !== t) return null;
+    const out: Array<[ID, string, string]> = [];
+    for (const [id, t] of this.nodes) {
+      const now = doc.nodes[id]?.title ?? "";
+      if (now !== t) out.push([id, t, now]);
+    }
+    return out.length ? out : null;
+  }
+
   /** 書いた後に、題名・線の文が変わったか */
   changed(doc: DocData): boolean {
     for (const [id, t] of this.nodes) if ((doc.nodes[id]?.title ?? "") !== t) return true;
@@ -1512,7 +1523,32 @@ export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement 
   let seen = new Seen();
   /** 後で中身を入れる欄（lazy で作り直したとき） */
   let later: Array<() => void> = [];
-  return {
+  /** 題名を打っている間に待たせた作り直し */
+  let rebuildTimer = 0;
+  let lastKey = 0;
+  const cancelRebuild = () => {
+    if (rebuildTimer) clearTimeout(rebuildTimer);
+    rebuildTimer = 0;
+  };
+  /** 作り直し（下の update。待たせた作り直しから呼ぶ: 打っている最中でも作り直す） */
+  let rebuild: () => void = () => undefined;
+  let forced = false;
+  /** 打つのが止まってから（最後の題名の変更から TITLE_REBUILD_MS）作り直す */
+  const laterRebuild = () => {
+    lastKey = performance.now();
+    if (rebuildTimer) return;
+    const tick = () => {
+      const wait = lastKey + TITLE_REBUILD_MS - performance.now();
+      if (wait > 0 && typingTitle()) {
+        rebuildTimer = window.setTimeout(tick, wait);
+        return;
+      }
+      rebuildTimer = 0;
+      if (el.isConnected) rebuild();
+    };
+    rebuildTimer = window.setTimeout(tick, TITLE_REBUILD_MS);
+  };
+  const block = {
     el,
     isAlt,
     fillLater() {
@@ -1531,6 +1567,17 @@ export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement 
       head?.update(imp);
       // 数が変わった・書いた題名や線の文が変わった（題名の入力）ときだけ作り直す
       if (imp === last && !seen.changed(app.store.doc)) return;
+      // 詳細の題名の欄で打っている間の題名だけの変更: 手の行の名前だけをその場で書き換え、作り直しは打つのが止まってから（1 文字ごとに
+      // 欄を作り直して配置し直すと、4 倍遅いスマホで 1 文字 0.3 秒ほどかかり、打った文字が遅れて出ていた: 見直し speed-plain-typing）
+      if (imp === last && typingTitle() && !forced) {
+        const re = seen.retitled(app.store.doc);
+        if (re && re.every(([, a, b]) => a !== "今のまま" && b !== "今のまま" && !!b === !!a)) {
+          for (const [nid, , now] of re) for (const x of body.querySelectorAll<HTMLElement>(`[data-id="${CSS.escape(nid)}"] .imp-alt-name`)) x.textContent = now;
+          laterRebuild();
+          return;
+        }
+      }
+      cancelRebuild();
       last = imp;
       seen = new Seen();
       const fk = focusKeyIn(body);
@@ -1547,7 +1594,25 @@ export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement 
       if (fk !== null) refocus(body, fk);
     },
   };
+  rebuild = () => {
+    forced = true;
+    try {
+      block.update();
+    } finally {
+      forced = false;
+    }
+  };
+  return block;
 }
+
+/** 題名を打っている間は手の行の作り直しを待たせる長さ（打つのが止まってから） */
+const TITLE_REBUILD_MS = 400;
+
+/** 詳細の題名の欄で打っているか */
+const typingTitle = (): boolean => {
+  const a = typeof document !== "undefined" ? document.activeElement : null;
+  return !!a && a.classList.contains("insp-title");
+};
 
 /**
  * 接続の詳細の見込み（%）の扱い（3 年の分かれ道の中の線だけ）。

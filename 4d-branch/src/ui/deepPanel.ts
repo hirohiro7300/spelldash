@@ -497,7 +497,10 @@ function openButton(app: AppContext, ctx: DeepCtx, k: number, x: DeepHorizon, wh
         const n = app.store.doc.nodes[kid];
         const name = k === 0 ? "今日" : `「${(n?.title ?? "").trim() || "（無題）"}」`;
         const f = ctx.cm.first[k] ?? -1;
-        toast(`${name}から${what}の判断と手を開いた（${num(x.count)} 枚）`, {
+        // 「1 年」「383 枚」は 1 かたまりで折り返す（390 の幅で「から1」と「年先まで…」に割れていた: 見直し reader-4。F4 と同じ）。
+        // 数で始まる区切りの前は、ボタンと同じく空ける
+        const keep = (t: string) => t.replace(/(\d) /g, "$1\u00a0");
+        toast(`${name}から${/^\d/.test(what) ? " " : ""}${keep(what)}の判断と手を開いた（${num(x.count)}\u00a0枚）`, {
           tone: "ok",
           action: { label: "見取り図で見る", run: () => (f >= 0 ? app.ui.openDeep({ kind: "move", f }) : showDeepOverview(app)) },
         });
@@ -598,7 +601,10 @@ export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void
   const copy = h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `body-copy:${id}` }, title: "この文章を下の自分のメモの頭に写して書き換える（地図の文章はそのまま）" }, icon("tag", 14), "この文章をもとに書き換える");
   const reset = h("button", { class: "btn btn-sm btn-ghost", type: "button", dataset: { fk: `body-reset:${id}` }, title: "自分のメモの頭に写した地図の文章だけを外す（自分で書いた所は残す）" }, icon("undo", 14), "元の文章に戻す");
   const note = h("p", { class: "deep-body-note" });
-  const el = h("section", { class: "insp-section deep-body" }, h("h3", { class: "insp-label" }, "地図の文章", h("span", { class: "insp-count" }, "読むだけ")), nums, text, unfold, h("div", { class: "btn-row" }, copy, reset), note);
+  // 書き換えた見込みで組み立てた本文の注記（見込みは書き換えた数・お金の数は地図の元の見込みのまま: 見直し reader-2）
+  const oddsNote = h("p", { class: "deep-body-note deep-odds-note", attrs: { role: "note" } }, "この文章の見込み（割・分）は書き換えた見込みで数えている。お金の数（3 年の稼ぎ・差・値打ち）と手の札は、地図の元の見込みで数えたまま");
+  oddsNote.hidden = true;
+  const el = h("section", { class: "insp-section deep-body" }, h("h3", { class: "insp-label" }, "地図の文章", h("span", { class: "insp-count" }, "読むだけ")), nums, text, oddsNote, unfold, h("div", { class: "btn-row" }, copy, reset), note);
   let shownKey = "";
   let composed = "";
   /** 写した後でも、読むだけの文章を全部見せる（押して開いた） */
@@ -650,6 +656,7 @@ export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void
         nums.hidden = !row.length;
         composed = [row.join("・"), bodyText].filter((x) => x.length > 0).join("\n");
         text.textContent = bodyText || "（このカードには組み立てた本文が無い）";
+        oddsNote.hidden = !own;
         app.vm.deep.timings.composed = performance.now() - t0;
       }
       const ro = app.store.readOnly;

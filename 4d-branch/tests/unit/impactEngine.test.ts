@@ -833,7 +833,7 @@ function driveSplice(doc0: DocData, opts: { map?: MapData; seed: number; steps: 
     const idx = buildIndex(doc);
     const roots = Object.keys(doc.nodes).filter((id) => doc.nodes[id]!.meta.forecastRoot === true && doc.nodes[id]!.meta.impact);
     const fc = computeForecast(doc, idx.out, null);
-    const eng = engine.result({ doc, sid: null, out: () => idx.out, roots: () => roots, reach: () => ({ version: k, of: (id) => fc.reach.get(id)?.p ?? 0 }) });
+    const eng = engine.result({ doc, sid: null, out: () => idx.out, inc: () => idx.inc, roots: () => roots, reach: () => ({ version: k, of: (id) => fc.reach.get(id)?.p ?? 0 }) });
     // 同梱の地図の列から作った形（組み立てたまま）は並べる順が違う（別のテストで比べる）。形を変えた後は文書から作った物と同じ
     const diff = engine.graph.topo?.map ? [] : engineGraphDiff(engine, doc, idx.out, roots);
     if (diff.length) throw new Error(`${what} の後で形・数が最初から作った物と違う: ${diff.slice(0, 3).join(" / ")}`);

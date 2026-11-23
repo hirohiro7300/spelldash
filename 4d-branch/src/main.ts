@@ -7,6 +7,7 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 import { App } from "./app/App";
 import { UiState } from "./app/uiState";
+import { whenIdle } from "./app/idle";
 import { mapForDoc, pageMapDoc, rememberMapDoc } from "./app/futureCache";
 import { buildDemoDoc } from "./demo/demo";
 import { loadImpactBundle } from "./demo/futureBundle";
@@ -15,7 +16,7 @@ import { buildStressDoc } from "./demo/stress";
 import type { MapData } from "./deepmap/mapData";
 import { statusCode } from "./model/impactGraph";
 import type { DocData, GNode } from "./model/types";
-import { decodeStored, enableThinPage, setBeforeMapDecode, thinReadable, toStored, watchThinWrites } from "./persist/codec";
+import { decodeStored, enableThinPage, primeThin, setBeforeMapDecode, thinReadable, toStored, watchThinWrites } from "./persist/codec";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
 import { isNarrowScreen } from "./ui/breakpoints";
@@ -115,6 +116,9 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
   store.readOnly = !persistence.writer;
   const app = new App({ store, ui, persistence, ephemeral, firstRun, bootFallback, notices, mount });
   persistence.attach(() => store.doc);
+  // 自動保存の覚えを、起動の後の空いた時間に先に作る（開き直した後の最初の保存が、打っている最中の全部を見る保存にならないように:
+  // 見直し speed-autosave-first）。書けるタブだけ
+  if (PAGE_Q && !ephemeral && !store.readOnly) whenIdle(() => void primeThin(store.doc), 8000);
   if (!ephemeral) {
     if (firstRun) persistence.markDirty();
     void persistence.ensureDailyBackup(store.doc).catch(() => undefined);

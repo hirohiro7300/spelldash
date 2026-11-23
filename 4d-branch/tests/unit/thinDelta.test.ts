@@ -6,7 +6,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { MapData } from "../../src/deepmap/mapData";
 import type { DocData } from "../../src/model/types";
-import { decodeStored, encodeStored, setThinBaseline, thinBaselineDoc, watchThinWrites } from "../../src/persist/codec";
+import { decodeStored, encodeStored, primeThin, setThinBaseline, thinBaselineDoc, watchThinWrites } from "../../src/persist/codec";
 import { encodeThinFull } from "../../src/persist/thinMap";
 import { Store } from "../../src/store/store";
 import { loadQSmall } from "./helpers/qSmall";
@@ -90,6 +90,28 @@ describe("変わった所だけ書く自動保存", () => {
       const R = seeded(seed);
       const doc = accountShape(thinBaselineDoc({ at: AT }), R, { rate: 0.05, rootReId: true, dx: 120, dy: -40 });
       expect(run(decodeStored(JSON.parse(JSON.stringify(encodeThinFull(doc)!.stored))).doc, seed, 50).delta).toBeGreaterThan(20);
+    }
+  });
+
+  it("開き直した後の最初の自動保存も、先に覚えを作っておけば変わった所だけで書く（起動の後の空いた時間に primeThin: 見直し speed-autosave-first）。書く物は同じ", () => {
+    setThinBaseline(qMap);
+    // 保存してあった記録を読み直した文書（開き直した後）
+    const doc = decodeStored(JSON.parse(JSON.stringify(encodeThinFull(thinBaselineDoc({ at: AT }))!.stored))).doc;
+    const store = new Store(doc);
+    // 書いた所を知らせない文書には作らない
+    expect(primeThin(store.doc)).toBe(false);
+    const off = watchThinWrites(store);
+    try {
+      expect(primeThin(store.doc)).toBe(true);
+      // もうあれば作り直さない
+      expect(primeThin(store.doc)).toBe(false);
+      const R = seeded(31);
+      applyEdit(store, R, "status", new Set());
+      expect(same(store).compared).toBeLessThanOrEqual(4);
+      applyEdit(store, R, "title", new Set());
+      expect(same(store).compared).toBeLessThanOrEqual(4);
+    } finally {
+      off();
     }
   });
 });

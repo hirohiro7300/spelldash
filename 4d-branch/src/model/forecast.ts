@@ -303,6 +303,9 @@ export interface PlanSteps {
   readonly plan: ForecastPlan | null;
 }
 
+/** 使っていない行がこれと全体の 1/16 の大きい方を超えたら、patch は直さずに作り直させる */
+const PLAN_DEAD_MIN = 256;
+
 export class ForecastPlan {
   /** 番号（方針なしで入口から届いた順） → ノード */
   private readonly ids: ID[];
@@ -317,6 +320,8 @@ export class ForecastPlan {
   private split: Float64Array;
   private readonly rootIdx: number[];
   private scope: ReadonlySet<ID>;
+  /** 消したノードの行（ID の表に残し、出る線は空: patch を見る） */
+  private readonly dead = new Set<number>();
   constructor(
     private doc: DocData,
     out: Map<ID, ID[]>,
@@ -387,30 +392,44 @@ export class ForecastPlan {
   patch(doc: DocData, out: Map<ID, ID[]>, scope: ReadonlySet<ID>, touched: Iterable<ID>, gone: Iterable<ID>): boolean {
     const idx = this.idx;
     const ids = this.ids;
+    const dead = this.dead;
+    // 消したノードの番号と ID の表は消さずに残し、その行を空にする（「使っていない行」）。前に返した答え（ReachMap）は同じ ID の表を
+    // 読むので、表から消すと、前の答えの keys() にあるのに has() が false になる（見直し data-2）。新しく届くノードは後ろに足すだけなので、
+    // 前の答えからは番号が配列の外になり「届いていない」と読める。同じ ID がまた来たら（元に戻す）、その行を使い直す
+    const goneIdx = new Set<number>();
     for (const id of gone) {
       const i = idx.get(id);
       if (i === undefined) continue;
       if (this.rootIdx.includes(i)) return false;
-      // 消したノードの番号は使わない（そこへの線は、線の元を読み直して外す）
-      idx.delete(id);
+      goneIdx.add(i);
     }
+    // 使っていない行が増えすぎたら作り直す（Tab と元に戻すを続けると 1 行ずつ増える・大きな枝を消したときも作り直す方が軽い）
+    let deadNext = dead.size;
+    for (const i of goneIdx) if (!dead.has(i)) deadNext++;
+    if (deadNext > Math.max(PLAN_DEAD_MIN, ids.length >> 4)) return false;
     this.doc = doc;
     this.scope = scope;
     const lists = new Map<number, { edges: GEdge[]; tgt: number[]; kind: ForkKind | null; split: number[] }>();
+    for (const i of goneIdx) {
+      dead.add(i);
+      lists.set(i, { edges: [], tgt: [], kind: null, split: [] });
+    }
     const queue: number[] = [];
     for (const id of touched) {
       const i = idx.get(id);
-      if (i !== undefined && !lists.has(i)) {
+      // 前に消したまま（使っていない行）のノードは読まない
+      if (i !== undefined && !lists.has(i) && !(dead.has(i) && !doc.nodes[id])) {
         lists.set(i, { edges: [], tgt: [], kind: null, split: [] });
         queue.push(i);
       }
     }
-    if (!queue.length) return true;
+    if (!lists.size) return true;
     for (let k = 0; k < queue.length; k++) {
       const i = queue[k]!;
       const id = ids[i]!;
       const n = doc.nodes[id];
       if (!n) return false;
+      dead.delete(i);
       const x = lists.get(i)!;
       for (const eid of out.get(id) ?? []) {
         const e = doc.edges[eid];
@@ -422,6 +441,10 @@ export class ForecastPlan {
           j = ids.length;
           idx.set(e.target, j);
           ids.push(e.target);
+          lists.set(j, { edges: [], tgt: [], kind: null, split: [] });
+          queue.push(j);
+        } else if (dead.has(j) && !lists.has(j)) {
+          // 使っていない行のノードがまた届く: 出る線を読み直す
           lists.set(j, { edges: [], tgt: [], kind: null, split: [] });
           queue.push(j);
         }

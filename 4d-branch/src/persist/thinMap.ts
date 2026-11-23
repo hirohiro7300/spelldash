@@ -1389,6 +1389,22 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
   return encodeFull(doc, isWatched(doc));
 }
 
+/**
+ * 自動保存の覚えを先に作っておく（起動の後の空いた時間に: 見直し speed-autosave-first）。覚えが無いと、開き直した後の最初の自動保存が
+ * 全部を見る保存になり、打っている最中にスマホで 0.4 秒ほど止まる。書く物は捨てる（保存はしない）。覚えがある・作れない文書は何もしない。
+ * 作ったら true
+ */
+export function primeThin(doc: DocData): boolean {
+  if (!page || !doc.nodes || typeof doc.nodes !== "object" || encStates.has(doc.nodes) || !isWatched(doc)) return false;
+  try {
+    encodeFull(doc, true);
+  } catch {
+    // 書けない文書は、保存のときに知らせる（ここでは何もしない）
+    return false;
+  }
+  return encStates.has(doc.nodes);
+}
+
 /** 文書を薄い形にする（全部を見て）。keep なら、次に変わった所だけ書くための覚えを残す（ストアが書いた所を知らせる文書だけ） */
 function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: ThinStats } | null {
   const docNodes = doc.nodes;

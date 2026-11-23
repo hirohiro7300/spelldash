@@ -98,6 +98,10 @@ export function buildInspector(app: AppContext): HTMLElement {
       typing.blur();
       // 決めた文字を入れた変更で、もう作り直した（同じ物を 2 度作らない）
       if (key === k && !force) return;
+      // blur の中で変換が決まらなかった（compositionend を後で送るブラウザ）: 欄を使い回さずに作り直す。後から来た決めた文字は、外した欄の
+      // 中身のまま、変換を始めたときのカードへ入る（bindText の owner。使い回すと、次のカードの題名を入れた欄の中身を前のカードへ入れるか、
+      // 決めた文字を次のカードへ入れてしまう: 見直し data-3）
+      if (composingEls.has(typing)) force = true;
     }
     // ノードから別のノードへ（同じ書き手・同じ形のまま）: 欄は作り直さず、カードごとの部分と中身だけ入れ替える
     // （選ぶたびに詳細の全部を作り直して配置し直すと、机でも 30 ms を超える: 作業メモ perf-8）
@@ -306,22 +310,26 @@ function holdFocus(body: HTMLElement): (() => void) | null {
  * しない: 作業メモ perf-9）。変換を決めたとき（compositionend）にその時の欄の中身を入れる（Chrome は compositionend の後に input を
  * 送らない。送るブラウザでは同じ中身なので、2 度目は何も変えない）。変換中に欄を離れる・作り直すときは、先に変換を決めさせる（詳細の render）
  */
-function bindText(app: AppContext, el: HTMLInputElement | HTMLTextAreaElement, write: (v: string) => void): void {
+function bindText<T = undefined>(app: AppContext, el: HTMLInputElement | HTMLTextAreaElement, write: (v: string, at: T) => void, owner?: () => T): void {
   let composing = false;
+  /** 変換を始めたときの書き先（欄を別のカードに使い回しても、決めた文字は始めたときのカードへ: 見直し data-3） */
+  let at = undefined as T;
   el.addEventListener("compositionstart", () => {
     composing = true;
     composingEls.add(el);
+    at = owner ? owner() : (undefined as T);
   });
   el.addEventListener("compositionend", () => {
+    const t = composing ? at : owner ? owner() : (undefined as T);
     composing = false;
     composingEls.delete(el);
-    write(el.value);
+    write(el.value, t);
   });
   unsaved.set(el, () => composing);
   el.addEventListener("input", (ev) => {
     if (el instanceof HTMLTextAreaElement) fitHeight(el);
     if (composing || (ev as InputEvent).isComposing) return;
-    write(el.value);
+    write(el.value, owner ? owner() : (undefined as T));
   });
   el.addEventListener("blur", () => app.store.history.seal());
   el.addEventListener("keydown", (ev) => {
@@ -461,7 +469,16 @@ function nodePanel(app: AppContext, id0: ID, root: HTMLElement, push: (u: Update
 
   // タイトル
   const title = h("textarea", { class: "insp-title", placeholder: "タイトル", dataset: { fk: "title" }, attrs: { rows: "1", "aria-label": "タイトル", spellcheck: "false" } });
-  bindText(app, title, (v) => cmd.updateNode(id, { title: v.replace(/\n/g, " ") }, { label: "タイトルを編集", coalesce: `title:${id}` }));
+  // 書き先は打ったとき（変換なら変換を始めたとき）のカード。そのカードが無くなっていたら入れない
+  const owner = (): ID => id;
+  bindText(
+    app,
+    title,
+    (v, at) => {
+      if (store.doc.nodes[at]) cmd.updateNode(at, { title: v.replace(/\n/g, " ") }, { label: "タイトルを編集", coalesce: `title:${at}` });
+    },
+    owner,
+  );
   title.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !isImeKey(ev)) {
       ev.preventDefault();
@@ -474,12 +491,19 @@ function nodePanel(app: AppContext, id0: ID, root: HTMLElement, push: (u: Update
   wrap.append(h("div", { class: "insp-meta" }, status, projLine));
   // 文章（3 か月ごとの地図のカードは、組み立てた本文を読むだけで上に出し、下の欄は自分のメモ: 作業メモ SPEC v1 §4.4・safety-10）
   const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", dataset: { fk: "body" }, attrs: { rows: "3", "aria-label": "文章" } });
-  bindText(app, bodyTa, (v) => {
-    // 前の版で書き換えた本文を移したメモ（meta.prevBody）を書き換えたら、もう前の版の本文のままではないので印を外す（見直し data-3）
-    const meta = node()?.meta;
-    const prev = meta?.[PREV_BODY_META] === true ? Object.fromEntries(Object.entries(meta).filter(([k]) => k !== PREV_BODY_META)) : null;
-    cmd.updateNode(id, prev ? { body: v, meta: prev } : { body: v }, { label: "文章を編集", coalesce: `body:${id}` });
-  });
+  bindText(
+    app,
+    bodyTa,
+    (v, at) => {
+      const n = store.doc.nodes[at];
+      if (!n) return;
+      // 前の版で書き換えた本文を移したメモ（meta.prevBody）を書き換えたら、もう前の版の本文のままではないので印を外す（見直し data-3）
+      const meta = n.meta;
+      const prev = meta?.[PREV_BODY_META] === true ? Object.fromEntries(Object.entries(meta).filter(([k]) => k !== PREV_BODY_META)) : null;
+      cmd.updateNode(at, prev ? { body: v, meta: prev } : { body: v }, { label: "文章を編集", coalesce: `body:${at}` });
+    },
+    owner,
+  );
   // カードごとの部分（組み立てた本文・3 年の影響・3 か月ごとの地図の操作）。別のカードを選んだら、ここだけ作り直す（mountBlocks）
   let composed: ReturnType<typeof buildComposedBody> = null;
   let impact: ReturnType<typeof buildImpactNodeBlock> = null;
@@ -542,7 +566,8 @@ function nodePanel(app: AppContext, id0: ID, root: HTMLElement, push: (u: Update
     h("label", { class: "date-field" }, h("span", { class: "date-label" }, "開始"), start),
     rel,
   );
-  wrap.append(sectionEl("時間", dates));
+  const timeSec = sectionEl("時間", dates);
+  wrap.append(timeSec);
 
   // 条件（3 年の分かれ道の選択肢では「やること」として文章の前に）
   const condCount = h("span", { class: "insp-count" });
@@ -621,6 +646,15 @@ function nodePanel(app: AppContext, id0: ID, root: HTMLElement, push: (u: Update
   const addTwo = h("button", { class: "btn btn-sm", type: "button", title: "条件つきの分岐を 2 つまとめて作る", onClick: () => cmd.addBranches(id, 2) }, icon("split", 14), "2 つに分岐");
   const connSec = sectionEl("つながり", conns, h("div", { class: "btn-row" }, addChild, addTwo));
   wrap.append(connSec);
+  // 「前の版で決めたこと」の見出しのカードは、まとめの見出し: 空の期限・条件・つながりの欄は出さない（見直し reader-5。何か入っていれば
+  // 出す: 入れた物を隠さない）
+  push(() => {
+    const n = node();
+    const g = !!n && isGroup();
+    timeSec.hidden = g && !n.time.due && !n.time.start;
+    condSec.hidden = g && !n.conditions.length;
+    connSec.hidden = g && !(vm.index.out.get(id) ?? []).length && !(vm.index.inc.get(id) ?? []).length;
+  });
 
   // 操作
   const dupBtn = h("button", { class: "btn btn-sm", type: "button", title: `複製（${MOD}D）`, onClick: () => cmd.duplicate([id]) }, icon("copy", 14), "複製");
@@ -680,7 +714,7 @@ function nodePanel(app: AppContext, id0: ID, root: HTMLElement, push: (u: Update
       if (p) projLine.append(h("span", { class: "proj-pill", style: { "--c": p.color } }, h("span", { class: "dot", style: { background: p.color } }), p.name));
     }
     if (n.projectIds.length > 1) projLine.append(h("span", { class: "shared-pill", title: "複数のプロジェクトから参照されている共有ノード" }, icon("link", 12), "共有"));
-    if (!n.projectIds.length) projLine.append(h("span", { class: "muted-pill" }, "未分類"));
+    if (!n.projectIds.length && !isGroup()) projLine.append(h("span", { class: "muted-pill" }, "未分類"));
     }
 
     // 3 年の影響（数が変わったときだけ作り直す。下の欄を次のフレームに回している間は、画面の外の並びの中身も後で作る）
@@ -724,7 +758,7 @@ function nodePanel(app: AppContext, id0: ID, root: HTMLElement, push: (u: Update
         const box = h("input", { type: "checkbox", class: "cond-check", attrs: { "aria-label": "満たした" } });
         box.addEventListener("change", () => cmd.updateCondition(id, c.id, { met: box.checked }));
         const text = h("input", { class: "cond-text", dataset: { fk: `cond:${c.id}` }, attrs: { "aria-label": "条件" } });
-        bindText(app, text, (v) => cmd.updateCondition(id, c.id, { text: v }, `cond:${c.id}`));
+        bindText(app, text, (v, at) => cmd.updateCondition(at, c.id, { text: v }, `cond:${c.id}`), owner);
         text.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter" && !isImeKey(ev)) text.blur();
         });

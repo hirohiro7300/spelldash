@@ -335,6 +335,8 @@ export class DocIndex implements GraphIndex {
     this.inc = new Map();
     this.projectNodes = new Map();
     this.unassigned = [];
+    this.drops.clear();
+    this.dropKeys.clear();
     this.cross = new Set();
     this.shared = new Set();
     this.scenarioCounts = new Map();
@@ -678,6 +680,8 @@ export class DocIndex implements GraphIndex {
       }
     }
 
+    // まとめた一覧から外す物を外す（線の所はプロジェクトの一覧を読む）
+    this.flushDrops();
     for (const id of info.edges) {
       const before = this.seenE(id);
       const after = doc.edges[id];
@@ -800,6 +804,8 @@ export class DocIndex implements GraphIndex {
   }
 
   private addProjects(n: GNode, building: boolean): void {
+    // 外す物が残っていれば先に外す（並びの番号で入れる所を探す: 外したノードの番号はもう無い）
+    this.flushDrops();
     const id = n.id;
     if (n.projectIds.length === 0) {
       if (building) this.unassigned.push(id);
@@ -818,15 +824,57 @@ export class DocIndex implements GraphIndex {
     }
   }
 
+  /**
+   * 一覧（未分類・プロジェクトごと。8 万の ID になる）から外すのは、1 回の変更の中でまとめる（dropLater → flushDrops）。1 つずつ
+   * lastIndexOf と splice で外すと O(消す数 × 一覧) になり、8 千枚の枝を消すと机で 7 秒ほど止まった（見直し speed-docindex-removeone）
+   */
+  private readonly drops = new Map<ID[], Set<ID>>();
+  private readonly dropKeys = new Set<ID>();
+
+  private dropLater(list: ID[] | undefined, id: ID): void {
+    if (!list) return;
+    // 一番後ろ（足したばかりのカードを消す: Tab の元に戻す）はすぐ外す
+    if (list[list.length - 1] === id && !this.drops.has(list)) {
+      list.pop();
+      return;
+    }
+    let set = this.drops.get(list);
+    if (!set) this.drops.set(list, (set = new Set()));
+    set.add(id);
+  }
+
+  /** まとめた外す物を、一覧ごとに 1 回で外す（一覧に足す前・変更の終わりに） */
+  private flushDrops(): void {
+    if (this.drops.size) {
+      for (const [list, set] of this.drops) {
+        if (set.size === 1) {
+          for (const id of set) removeOne(list, id);
+          continue;
+        }
+        let w = 0;
+        for (let r = 0; r < list.length; r++) {
+          const x = list[r]!;
+          if (!set.has(x)) list[w++] = x;
+        }
+        list.length = w;
+      }
+      this.drops.clear();
+    }
+    if (this.dropKeys.size) {
+      for (const p of this.dropKeys) this.fixProjectKey(p);
+      this.dropKeys.clear();
+    }
+  }
+
   private removeProjects(n: GNode): void {
     const id = n.id;
     if (n.projectIds.length === 0) {
-      removeOne(this.unassigned, id);
+      this.dropLater(this.unassigned, id);
       return;
     }
     for (const p of n.projectIds) {
-      removeOne(this.projectNodes.get(p), id);
-      this.fixProjectKey(p);
+      this.dropLater(this.projectNodes.get(p), id);
+      this.dropKeys.add(p);
     }
     if (n.projectIds.length > 1) {
       this.shared.delete(id);

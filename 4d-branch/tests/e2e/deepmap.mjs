@@ -350,7 +350,9 @@ async function runProfile(browser, profile) {
       assert(after.shown >= want && after.shown <= 3000, `開いた後のカードの数が合わない（${after.shown}・ボタンは ${want} 枚）`);
       // 開き始めた手のカードが画面の中（今日の手と、その次の列が見える所へ寄る）
       assert(after.s && after.s.x > -40 && after.s.x < after.w * 0.6 && after.s.y > 0 && after.s.y < after.h, `開き始めた手のカードが画面の外（${JSON.stringify(after.s)}・${after.w}×${after.h}）`);
-      assert(/開いた（[\d,]+ 枚）/.test(after.toast) && /見取り図で見る/.test(after.toast), `何を開いたかのお知らせが無い（${after.toast}）`);
+      assert(/開いた（[\d,]+[ \u00a0]枚）/.test(after.toast) && /見取り図で見る/.test(after.toast), `何を開いたかのお知らせが無い（${after.toast}）`);
+      // 「1 年」「383 枚」は折り返さない 1 かたまり（390 で「から1」「年先まで」に割れていた: 見直し reader-4）
+      assert(/から \d+\u00a0年/.test(after.toast) && /\d\u00a0枚）/.test(after.toast), `お知らせの数と単位の間で折り返せる（${after.toast}）`);
       if (tag === "390") assert(after.right === false, "スマホで開いた後に引き出しが開いたまま");
       await shot(page, `${tag}-08-opened-1y`);
       await page.evaluate(() => window.__fourD.app.vm.resetImpactOpen());
@@ -920,9 +922,19 @@ async function storedProfile(browser, profile) {
       const ctl = await page.evaluate(() => {
         const vis = (el) => !!el && el.getClientRects().length > 0;
         const body = document.querySelector(".sidebar-right .insp-body-scroll");
-        return { title: body?.querySelector(".insp-title")?.value ?? null, picker: vis(body?.querySelector(".type-picker")), status: vis(body?.querySelector(".select-status")) };
+        const labels = [...(body?.querySelectorAll(".insp-section") ?? [])].filter(vis).map((x) => x.querySelector(".insp-label")?.textContent ?? "");
+        return {
+          title: body?.querySelector(".insp-title")?.value ?? null,
+          picker: vis(body?.querySelector(".type-picker")),
+          status: vis(body?.querySelector(".select-status")),
+          labels,
+          pill: [...(body?.querySelectorAll(".muted-pill") ?? [])].filter(vis).map((x) => x.textContent),
+          dates: vis(body?.querySelector(".insp-dates")),
+        };
       });
       assert(ctl.title === "前の版で決めたこと" && !ctl.picker && !ctl.status, `見出しのカードに種類・状態の欄が出ている（${JSON.stringify(ctl)}）`);
+      // 空の期限・条件・つながり・「未分類」も出さない（見直し reader-5）
+      assert(!ctl.dates && !ctl.labels.some((l) => /^(時間|条件|つながり)/.test(l)) && !ctl.pill.includes("未分類"), `見出しのカードに空の期限・条件・つながりの欄が出ている（${JSON.stringify(ctl)}）`);
       if (drawer.narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
       const meta = await page.evaluate(() => window.__fourD.store.doc.meta?.releaseSheet ?? null);
       assert(meta === 7, `見せた版が文書に残っていない（${meta}）`);

@@ -391,4 +391,91 @@ describe.skipIf(!DIR)("見え方の計算: 8 万枚の地図（IMPACT_Q_FULL が
     },
     SLOW,
   );
+
+  it(
+    "枝ごと消す（大きな枝・中くらいの枝）とその元に戻す: 範囲・木・見込み・3 年の影響が最初から作った物と同じ。時間を書き出す（見直し speed-del-subtree-quadratic・speed-del-mid-undo）",
+    async () => {
+      const gc = await gcFn();
+      const { store, ui, vm } = setup(build(map));
+      const cmd = new Commands(store, ui, vm, { toast: () => undefined, viewCenter: () => ({ x: 0, y: 0 }), startEdit: () => undefined, reveal: () => undefined, confirm: async () => true });
+      vm.ensure();
+      expect(vm.impact.active).toBe(true);
+      const read = () => {
+        vm.ensure();
+        void vm.impact.vRoot;
+        void vm.forecast;
+      };
+      const check = (what: string) => {
+        const doc = store.doc;
+        const roots = [...vm.index.impactRoots];
+        const problems = [...scopeDiff(vm), ...engineGraphDiff(vm.engine, doc, vm.index.out, roots).map((x) => `エンジン: ${x}`)];
+        problems.push(...forecastDiff(vm.forecast, computeForecast(doc, vm.index.out, null)).map((x) => `見込み: ${x}`));
+        const fresh = setup(store.doc);
+        fresh.vm.ensure();
+        if (JSON.stringify(vm.impact.counts) !== JSON.stringify(fresh.vm.impact.counts)) problems.push(`数 ${JSON.stringify(vm.impact.counts)} ≠ ${JSON.stringify(fresh.vm.impact.counts)}`);
+        if (problems.length) throw new Error(`${what} の後: ${problems.slice(0, 5).join(" / ")}`);
+      };
+      // 最初の形の編集（組み立てたままの地図の形から、文書から作った形へ）を済ませておく
+      const root = vm.impactRoots()[0]!;
+      const id0 = cmd.addChild(root)!;
+      read();
+      store.transact("消す", (tx) => tx.deleteNode(id0));
+      read();
+      /** 範囲のカードの、先のカードの数（道の線でたどる） */
+      const below = (id: ID): number => {
+        const seen = new Set<ID>([id]);
+        const stack = [id];
+        while (stack.length) {
+          for (const eid of vm.index.out.get(stack.pop()!) ?? []) {
+            const e = store.doc.edges[eid]!;
+            if ((e.relation === "leads" || e.relation === "condition") && !seen.has(e.target)) (seen.add(e.target), stack.push(e.target));
+          }
+        }
+        return seen.size;
+      };
+      // 今日の手（入口の子）のうち一番大きな枝と、深い所の 100〜300 枚の枝
+      const kids = (id: ID) => (vm.index.out.get(id) ?? []).map((eid) => store.doc.edges[eid]!.target);
+      const today = kids(root).flatMap((d) => [d, ...kids(d)]).filter((id) => store.doc.nodes[id]!.meta.ak !== undefined || store.doc.nodes[id]!.meta.fork !== undefined);
+      const big = today.map((id) => ({ id, n: below(id) })).sort((a, b) => b.n - a.n)[0]!;
+      const rand = rng(21);
+      const cards = Object.keys(store.doc.nodes).filter((id) => vm.inImpact(id));
+      let mid: { id: ID; n: number } | null = null;
+      for (let k = 0; k < 4000 && !mid; k++) {
+        const id = pick(rand, cards);
+        const n = below(id);
+        if (n >= 100 && n <= 300) mid = { id, n };
+      }
+      expect(big.n).toBeGreaterThan(3000);
+      expect(mid).not.toBeNull();
+      const t: Record<string, number[]> = { bigDel: [], bigUndo: [], midDel: [], midUndo: [] };
+      const n0 = vm.index.nodeCount;
+      for (const [name, x] of [["big", big], ["mid", mid!]] as const) {
+        for (let round = 0; round < (name === "big" ? 1 : 2); round++) {
+          gc();
+          let t0 = performance.now();
+          cmd.deleteNodes([x.id]);
+          read();
+          t[`${name}Del`]!.push(performance.now() - t0);
+          expect(vm.index.nodeCount).toBe(n0 - x.n);
+          check(`${name} の枝（${x.n} 枚）を消す`);
+          gc();
+          t0 = performance.now();
+          store.undo();
+          read();
+          t[`${name}Undo`]!.push(performance.now() - t0);
+          expect(vm.index.nodeCount).toBe(n0);
+          check(`${name} の枝（${x.n} 枚）を戻す`);
+        }
+      }
+      console.log(`枝ごと消す（8 万枚・${map.n} 枚。ms）: 大きな枝 ${big.n} 枚 消す ${fmt(t.bigDel!)} · 戻す ${fmt(t.bigUndo!)} · 中くらいの枝 ${mid!.n} 枚 消す ${fmt(t.midDel!)} · 戻す ${fmt(t.midUndo!)}`);
+      // Node での目安（作業メモ SPEC §7.2 の下の注。P3 で測って決めた）: 中くらいの枝は机の形の編集の目標 400 ms、8 千枚の枝は
+      // スマホの目標 1,600 ms まで（測った値: 中くらい 消す 138〜238・戻す 197〜298、大きな枝 消す 450〜590・戻す 437〜750。
+      // 直す前は 1 枚ずつ外して大きな枝で 10 秒を超えていた）
+      expect(best(t.midDel!)).toBeLessThanOrEqual(400 * SLACK);
+      expect(best(t.midUndo!)).toBeLessThanOrEqual(400 * SLACK);
+      expect(best(t.bigDel!)).toBeLessThanOrEqual(1600 * SLACK);
+      expect(best(t.bigUndo!)).toBeLessThanOrEqual(1600 * SLACK);
+    },
+    SLOW,
+  );
 });

@@ -764,6 +764,8 @@ export class CanvasView {
         continue;
       }
       drawNode(ctx, n, p.x, p.y, opts);
+      // ふつうのカードの箱も目印の重なりに使う（「前の版で決めたこと」の詰まった列で、目標の目印が上のカードを隠していた: 見直し reader-3）
+      if (lod === "low") cardBoxes.push({ x0: (p.x - HALF_W) * z + cam.x, y0: (p.y - HALF_H) * z + cam.y, x1: (p.x + HALF_W) * z + cam.x, y1: (p.y + HALF_H) * z + cam.y });
       if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fcOf()?.active ? fcNow!.reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
     }
     // つまみ
@@ -781,7 +783,7 @@ export class CanvasView {
     // 画面の大きさで描く文字（縮小したときのタイトル・目印）
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80, cardBoxes);
-    if (screenLabels.length) this.drawScreenLabels(screenLabels, 80);
+    if (screenLabels.length) this.drawScreenLabels(screenLabels, 80, cardBoxes);
     // 年月の目盛り（3 か月ごとの地図。どの拡大率でも画面の上に固定: 作業メモ SPEC v1 §5.6・user-7・user-15）
     this.setRuler(quarter && imp.root ? this.drawRuler(imp.root, doc) : false);
 
@@ -974,6 +976,8 @@ export class CanvasView {
         base = cy + 4;
         box = alt;
       }
+      // 真ん中に出す目印（ふつうのカードの題名）が、上のカードに重なる: 出さない（選んだカードの目印は出す）
+      else if (it.rank > 0 && !it.left && cards.length && onCard(box)) continue;
       if (it.rank > 0 && placed.some((b) => b.x0 < box.x1 && b.x1 > box.x0 && b.y0 < box.y1 && b.y1 > box.y0)) continue;
       placed.push(box);
       shown++;

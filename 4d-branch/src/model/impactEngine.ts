@@ -58,7 +58,7 @@ import {
   type Vec3,
 } from "./impact";
 import { impactBin } from "./impactFormat";
-import { addLeaf, removeLeaf } from "./impactSplice";
+import { addSet, removeSet, type AddedLeaf } from "./impactSplice";
 import { NODE_NUM_META } from "./impactMeta";
 import type { DocData, GEdge, GNode, ID } from "./types";
 
@@ -69,6 +69,8 @@ export interface EngineInputs {
   sid: ID | null;
   /** 文書の索引の出る線（形を文書から作り直すときだけ呼ぶ） */
   out: () => Map<ID, ID[]>;
+  /** 文書の索引の入る線（形を直すときに、足すカードへほかの範囲のカードから入る線が無いかを見る。無ければ見ない） */
+  inc?: () => Map<ID, ID[]>;
   /** 3 年の分かれ道の入口（文書の順）。渡せば形を作り直すときに文書を全部なめて探さない（索引が持っている物: 見直し perf-9） */
   roots?: () => ID[];
   /** 見込み（P_path。合流のある地図で、そこまでの稼ぎの重みに使う）とその版。合流が無ければ呼ばない */
@@ -1105,16 +1107,6 @@ class EngineResult implements ImpactResult {
 
 /** 地図の登録（組み立てたままの文書なら、その地図の列から形を作る） */
 /** 状態の配列 a の at に v を入れた写し（add）・at を除いた写し */
-function gap8(a: Uint8Array, at: number, add: boolean, v: number): Uint8Array {
-  const out = new Uint8Array(a.length + (add ? 1 : -1));
-  out.set(a.subarray(0, at), 0);
-  if (add) {
-    out[at] = v;
-    out.set(a.subarray(at), at + 1);
-  } else out.set(a.subarray(at + 1), at);
-  return out;
-}
-
 export interface MapDoc {
   map: MapData;
   doc: DocData;
@@ -1140,6 +1132,10 @@ export class ImpactEngine {
   private readonly spliceDel = new Map<ID, ID>();
   /** 足したかもしれない線の先のカード（そこから出る線も足したかもしれない線として見る） */
   private readonly spliceNew = new Set<ID>();
+  /** 消した範囲のカード（直した後に形に残っていれば直せていない: 線の無い入口などを消したとき。見直し data-1） */
+  private readonly spliceGone = new Set<ID>();
+  /** 範囲の外のカードから出る、足した道の線（その元のカードを後で足したら、ここから先も足す: 枝を戻す元に戻すで、線の順が子からでも） */
+  private readonly spliceMaybe = new Set<ID>();
   /** 形を最初から作り直した回数と、葉を足す・消すだけで直した回数（確かめ用） */
   readonly topoCounts = { rebuilt: 0, spliced: 0 };
   readonly version: Versions = { topology: 0, numbers: 0, statuses: 0, scenario: 0, present: 0 };
@@ -1239,8 +1235,13 @@ export class ImpactEngine {
       }
       const old = seen.nodeObj[i];
       if (!now) {
-        // 範囲のカードを消した: 入ってくる線も同じ変更で消えている（葉なら直してみる。そうでなければ直すときに作り直す）
-        c |= C_SPLICE;
+        // 範囲のカードを消した: 入ってくる線も同じ変更で消えている（葉なら直してみる。そうでなければ直すときに作り直す）。
+        // 入口を消したら作り直す（入口は入ってくる線が無いので、線を見るだけでは消したことに気付けない: 見直し data-1）
+        if (i < topo.roots.length || topo.roots.includes(i)) c |= C_TOPO;
+        else {
+          c |= C_SPLICE;
+          this.spliceGone.add(id);
+        }
         continue;
       }
       if (old === now) continue;
@@ -1267,7 +1268,7 @@ export class ImpactEngine {
               c |= C_SPLICE;
               this.spliceAdd.add(id);
               this.spliceNew.add(now.target);
-            }
+            } else this.spliceMaybe.add(id);
           }
         } else if (topo.loose.size) c |= C_TOPO;
         continue;
@@ -1394,6 +1395,8 @@ export class ImpactEngine {
     this.spliceAdd.clear();
     this.spliceDel.clear();
     this.spliceNew.clear();
+    this.spliceGone.clear();
+    this.spliceMaybe.clear();
   }
 
   /**
@@ -1403,8 +1406,9 @@ export class ImpactEngine {
    */
   private splice(inp: EngineInputs): boolean {
     const t0 = performance.now();
-    const adds = [...this.spliceAdd];
+    const adds = [...this.spliceAdd, ...this.spliceMaybe];
     const dels = [...this.spliceDel];
+    const gone = [...this.spliceGone];
     this.clearSplice();
     if (!this.topo || !this.seen || this.topo.map) return false;
     let topo: Topo = this.topo;
@@ -1425,63 +1429,92 @@ export class ImpactEngine {
     };
     /** 直したノード（最後に、道の線が文書の出る線と同じ並びかを確かめる） */
     const touched = new Set<ID>();
-    // 消す（どれも、入ってくる線が 1 本の葉）
-    for (const [eid, target] of dels) {
-      if (doc.edges[eid]) return false;
-      const j = topo.idx.get(target);
-      if (j === undefined) return false;
-      const s = topo.incOff[j + 1]! - topo.incOff[j]! === 1 ? topo.incSlot[topo.incOff[j]!]! : -1;
-      if (s < 0 || topo.eid[s] !== eid) return false;
-      const u = topo.ids[topo.src[s]!]!;
-      const r = removeLeaf(topo, seen, nums, j);
+    // 消す（どれも、入ってくる線が 1 本で、出る線の先も消すカード: 葉か、枝ごと）。まとめて 1 回で外す
+    if (dels.length) {
+      const drop = new Uint8Array(topo.n);
+      for (const [eid, target] of dels) {
+        if (doc.edges[eid]) return false;
+        const j = topo.idx.get(target);
+        if (j === undefined) return false;
+        const s = topo.incOff[j + 1]! - topo.incOff[j]! === 1 ? topo.incSlot[topo.incOff[j]!]! : -1;
+        if (s < 0 || topo.eid[s] !== eid) return false;
+        drop[j] = 1;
+      }
+      const r = removeSet(topo, seen, nums, drop);
       if (!r) return false;
-      if (stat) stat = gap8(stat, j, false, 0);
+      if (stat) {
+        const st2 = new Uint8Array(r.topo.n);
+        for (let i = 0; i < stat.length; i++) {
+          const i2 = r.pos(i);
+          if (i2 >= 0) st2[i2] = stat[i]!;
+        }
+        stat = st2;
+      }
       remap(r.pos);
+      for (const [, target] of dels) touched.delete(target);
+      // 消したカードへの線の元で残るカード（枝の親）の道の線を確かめる
+      const t0p: Topo = topo;
+      for (const [, target] of dels) {
+        const jj: number = t0p.idx.get(target)!;
+        const u = t0p.src[t0p.incSlot[t0p.incOff[jj]!]!]!;
+        if (!drop[u]) touched.add(t0p.ids[u]!);
+      }
       ({ topo, seen } = r);
       nums = r.nums;
-      touched.delete(target);
-      touched.add(u);
     }
-    // 足す（範囲のカードから、まだ範囲に無いカードへ。足したカードからの線は、そのカードを足した後に）
-    let left = addE;
-    while (left.length) {
-      const next: GEdge[] = [];
-      for (const e of left) {
-        const u = topo.idx.get(e.source);
-        if (u === undefined) {
-          if (topo.loose.has(e.source)) return false;
-          next.push(e);
-          continue;
-        }
-        if (topo.idx.has(e.target) || topo.loose.has(e.target)) return false;
-        const v = doc.nodes[e.target]!;
-        if (isImpactRoot(v)) return false;
-        // u の道の線の並び（文書の出る線のうち、形にもうある線とこの線）での、この線の場所
-        let k = 0;
-        let found = false;
-        const a = topo.off[u]!;
-        const b = topo.off[u + 1]!;
-        for (const eid of out.get(e.source) ?? []) {
-          if (eid === e.id) {
-            found = true;
-            break;
+    // 足す（範囲のカードから、まだ範囲に無いカードへ。足したカードからの線も: 枝ごと）。まとめて 1 回で足す
+    if (addE.length) {
+      const add = new Map<ID, AddedLeaf>();
+      let left = addE;
+      while (left.length) {
+        const next: GEdge[] = [];
+        for (const e of left) {
+          if (!topo.idx.has(e.source) && !add.has(e.source)) {
+            if (topo.loose.has(e.source)) return false;
+            next.push(e);
+            continue;
           }
-          if (a + k < b && topo.eid[a + k] === eid) k++;
+          if (topo.idx.has(e.target) || topo.loose.has(e.target) || add.has(e.target)) return false;
+          const v = doc.nodes[e.target]!;
+          if (isImpactRoot(v)) return false;
+          add.set(e.target, { e, v });
         }
-        if (!found) return false;
-        const r = addLeaf(topo, seen, nums, u, k, e, v);
+        // 元がまだ形に無い線: 足したカードからの線なら次の回に。どれも進まなければ、範囲の外の線（形は変わらない）
+        if (next.length === left.length) break;
+        left = next;
+      }
+      if (add.size) {
+        // 足すカードの道の線は、どれも足す線（前からあるカードへの線・合流があれば最初から作る）。足すカードへ入る道の線も、
+        // 足す線のほかに範囲（循環に入ったカードを含む）から来る物が無いこと（あれば並べる順が変わる・循環に入る）
+        const inc = inp.inc?.();
+        for (const [id, x] of add) {
+          for (const eid of out.get(id) ?? []) {
+            const e = doc.edges[eid];
+            if (!e || !isFlowEdge(e) || e.source === e.target || !doc.nodes[e.target]) continue;
+            if (add.get(e.target)?.e !== e) return false;
+          }
+          for (const eid of inc?.get(id) ?? []) {
+            const e = doc.edges[eid];
+            if (!e || e === x.e || !isFlowEdge(e) || e.source === e.target) continue;
+            if (topo.idx.has(e.source) || topo.loose.has(e.source) || add.has(e.source)) return false;
+          }
+        }
+        const r = addSet(topo, seen, nums, add, (id) => out.get(id));
         if (!r) return false;
-        const q = r.topo.idx.get(v.id)!;
-        if (stat) stat = gap8(stat, q, true, statusCode(v));
+        if (stat) {
+          const st2 = new Uint8Array(r.topo.n);
+          for (let i = 0; i < stat.length; i++) st2[r.pos(i)] = stat[i]!;
+          for (const [id, x] of add) st2[r.topo.idx.get(id)!] = statusCode(x.v);
+          stat = st2;
+        }
         remap(r.pos);
+        for (const [id, x] of add) {
+          touched.add(x.e.source);
+          touched.add(id);
+        }
         ({ topo, seen } = r);
         nums = r.nums;
-        touched.add(e.source);
-        touched.add(v.id);
       }
-      // 元がまだ形に無い線: 足したカードからの線なら次の回に。どれも進まなければ、範囲の外の線（形は変わらない）
-      if (next.length === left.length) break;
-      left = next;
     }
     // 直したノードの道の線が、文書の出る線と同じ並びか（足したカードの先・混ざった変更などを、ここで見落とさない）
     for (const id of touched) {
@@ -1497,6 +1530,8 @@ export class ImpactEngine {
       }
       if (s !== end) return false;
     }
+    // 消したカードがどれも形から外れたか（入ってくる線を見ずに残ったカードがあれば、直せていない: 見直し data-1）
+    for (const id of gone) if (topo.idx.has(id)) return false;
     if (topo === this.topo) return true;
     this.topo = topo;
     this.seen = seen;

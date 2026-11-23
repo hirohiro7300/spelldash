@@ -59,6 +59,7 @@ export {
   pageHash,
   pageMapData,
   pageRelease,
+  primeThin,
   sectionOf,
   setThinBaseline,
   thinBaseline,
