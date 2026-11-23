@@ -11,6 +11,13 @@ import type { CompiledMap } from "../deepmap/core/compile";
 /** 開いた後にキャンバスに見えるカードの上限（全体で） */
 export const DEEP_OPEN_CAP = 3000;
 
+/**
+ * 1 つの区切りで開いた後の、並びの行の数の上限（行 = 開いた先で、先を開いていないカード。キャンバスの行の高さ 128 px で約 4 万 px:
+ * 一番引いた 4% で 2 画面ほど）。これより縦に長い区切りは、キャンバスでは読めない（今日の「1 年先まで」は 1,400 行・18 万 px）ので
+ * 見取り図で見る（見直し user-8）。今日の手ごとの「1 年先まで」（80〜180 行）は開ける
+ */
+export const DEEP_OPEN_ROWS = 320;
+
 export interface DeepHorizon {
   /** 何か月先まで（12・24・36。地図の終わりまでなら、その手前で 1 つにまとめる） */
   months: number;
@@ -20,6 +27,8 @@ export interface DeepHorizon {
   toEnd: boolean;
   /** 開いた後に見える、そのカードの先のカードの数（そのカードは含まない） */
   count: number;
+  /** 開いた後の並びの行の数（見える先のカードのうち、その先を開いていない物。キャンバスの高さ = 行 × 128 px） */
+  rows: number;
 }
 
 /** カード i の先を、月 limit より前の判断・手まで開いたときに見えるカードの数と、開くカード */
@@ -60,27 +69,33 @@ export function deepHorizons(cm: CompiledMap, i: number): DeepHorizon[] {
     cands.push({ months: toEnd ? H - m0 : months, limit, toEnd, lim: toEnd ? Infinity : limit });
     if (toEnd) break;
   }
-  // 区切りは小さい順。親の月が入る一番小さい区切りに 1 つ数え、後で足し上げる（大きい区切りは小さい区切りの物を含む）
-  const { size, parent, month } = cm;
+  // 区切りは小さい順。親の月が入る一番小さい区切りに 1 つ数え、後で足し上げる（大きい区切りは小さい区切りの物を含む）。
+  // 行（見えて、先を開いていないカード）は、見え始める区切りで 1 つ足し、そのカード自身が開く区切りで 1 つ引く
+  const { size, parent, month, kidOff } = cm;
   const end = i + size[i]!;
   const first = new Array<number>(cands.length).fill(0);
+  const rowsD = new Array<number>(cands.length + 1).fill(0);
+  const firstIn = (m: number): number => {
+    for (let c = 0; c < cands.length; c++) if (m < cands[c]!.lim) return c;
+    return cands.length;
+  };
   for (let j = i + 1; j < end; j++) {
-    const mp = month[parent[j]!]!;
-    for (let c = 0; c < cands.length; c++) {
-      if (mp < cands[c]!.lim) {
-        first[c]!++;
-        break;
-      }
-    }
+    const c1 = firstIn(month[parent[j]!]!);
+    if (c1 >= cands.length) continue;
+    first[c1]!++;
+    rowsD[c1]!++;
+    if (kidOff[j + 1]! > kidOff[j]!) rowsD[firstIn(month[j]!)]!--;
   }
   const out: DeepHorizon[] = [];
   let count = 0;
+  let rows = 0;
   for (let c = 0; c < cands.length; c++) {
     count += first[c]!;
+    rows += rowsD[c]!;
     const x = cands[c]!;
     // 先が無い（行き先）・開いても何も増えない区切りは出さない
     if (!count) continue;
-    out.push({ months: x.months, limit: x.limit, toEnd: x.toEnd, count });
+    out.push({ months: x.months, limit: x.limit, toEnd: x.toEnd, count, rows });
   }
   return out;
 }

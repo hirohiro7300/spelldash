@@ -115,18 +115,22 @@ function primaryOf(doc: DocData, out: Map<ID, ID[]>, roots: readonly ID[]): ID |
  * 文書の 3 年の分かれ道の形を組み直す（computeImpact の impactScope・入口の決め方・並べる順と同じ）。入口が無ければ null。
  * out は graph の索引（ノード → 出る線の ID）。線は 1 度だけ読み、範囲の番号で持つ（Map を引き直さない・線の並びを作り直さない）
  */
-export function compileDocTopo(doc: DocData, out: Map<ID, ID[]>): { topo: Topo; seen: Seen } | null {
-  // 入口（impactScope と同じく文書の順に）と範囲（入口から進む線で深さ優先にたどった順。番号はたどった順）
+export function compileDocTopo(doc: DocData, out: Map<ID, ID[]>, rootOrder?: readonly ID[]): { topo: Topo; seen: Seen } | null {
+  // 入口（impactScope と同じく文書の順に。rootOrder を渡されたらその物: 索引が文書の順で持っている）と範囲（入口から進む線で深さ優先にたどった順。番号はたどった順）
   const tmp = new Map<ID, number>();
   const tid: ID[] = [];
   const stack: number[] = [];
   const rootList: ID[] = [];
-  for (const id in doc.nodes) {
-    if (!isImpactRoot(doc.nodes[id])) continue;
+  const addRoot = (id: ID): void => {
     rootList.push(id);
     tmp.set(id, tid.length);
     stack.push(tid.length);
     tid.push(id);
+  };
+  if (rootOrder) {
+    for (const id of rootOrder) if (isImpactRoot(doc.nodes[id])) addRoot(id);
+  } else {
+    for (const id in doc.nodes) if (isImpactRoot(doc.nodes[id])) addRoot(id);
   }
   if (!rootList.length) return null;
   // 範囲のノードごとの出る道の線（flowOuts と同じ選び方・同じ並び）: outE / outT の [outA[u], outA[u] + outN[u])

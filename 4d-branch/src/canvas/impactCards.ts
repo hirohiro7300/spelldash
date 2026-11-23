@@ -40,6 +40,11 @@ export interface ImpactCard {
   dropped: boolean;
   /** 縮小したときの目印の文（選択肢「+65万｜…」・行き先「3年 +210万（2.4%）」） */
   label: string;
+  /**
+   * 目印の文から、カードの真ん中に出している差（選択肢の「+65万｜」）を除いた物（選択肢の題名。ほかは label と同じ）。
+   * 縮小して真ん中に差を描いているときは、こちらを目印にする（同じ差を 2 度出さず、次の列へはみ出しにくい: 見直し user-9）
+   */
+  labelTitle: string;
   /** 一番小さくしたときの目印の文（行き先「3年後 月 42万（18%）」・今日「今日」） */
   dotLabel: string;
   /**
@@ -230,7 +235,7 @@ function buildCard(imp: ImpactResult, doc: DocData, id: ID, anchor: string | nul
   const n = doc.nodes[id];
   if (!n) return null;
   const short = typeof n.meta?.short === "string" && n.meta.short.trim() ? (n.meta.short as string).trim() : n.title.trim() || "（無題）";
-  const card: ImpactCard = { role: "out", bin: 0, pill: null, chip: null, marks: "", head: "", headColor: null, bottom: "", bottomShort: "", risk: [], short, low: "", base: false, dropped: n.status === "dropped", label: "", dotLabel: "", heat: null, heatLow: "" };
+  const card: ImpactCard = { role: "out", bin: 0, pill: null, chip: null, marks: "", head: "", headColor: null, bottom: "", bottomShort: "", risk: [], short, low: "", base: false, dropped: n.status === "dropped", label: "", labelTitle: "", dotLabel: "", heat: null, heatLow: "" };
   const horizonLabel = `${Math.round((imp.horizon / 12) * 10) / 10}年後`;
 
   if (id === imp.root) {
@@ -280,6 +285,7 @@ function buildCard(imp: ImpactResult, doc: DocData, id: ID, anchor: string | nul
     card.bottomShort = parts[0] ?? "";
     card.risk = a.outcomes.filter((o) => o.w > 0).map((o) => ({ w: o.w, bin: o.bin }));
     card.label = `${a.isBase ? "基準" : card.pill}｜${clip(n.title, 12)}`;
+    card.labelTitle = clip(n.title, 12);
     return card;
   }
 

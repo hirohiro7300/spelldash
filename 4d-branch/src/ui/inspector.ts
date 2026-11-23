@@ -6,6 +6,7 @@ import { onlyTimeCursor } from "../app/uiState";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
 import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from "../model/dates";
 import type { GEdge, GNode, ID } from "../model/types";
+import { isNarrowScreen } from "./breakpoints";
 import { MOD, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
 import { buildComposedBody, buildDeepNodeBlock, buildDeepOverview, buildDeepPage, type DeepPageHandle } from "./deepPanel";
@@ -61,7 +62,18 @@ export function buildInspector(app: AppContext): HTMLElement {
     park.focus({ preventScroll: true });
   };
 
+  /** 狭い画面で引き出しを閉じている間に作り直しを頼まれた（開いたときに作る） */
+  let pendingForce = false;
   const render = (force = false) => {
+    // 狭い画面で引き出しを閉じている（置かれていない）間は作らず、開いたときに作る（カードを押すたびに見えないパネルを作らない: 見直し perf-5）
+    if (isNarrowScreen() && !ui.prefs.rightOpen) {
+      if (force) pendingForce = true;
+      return;
+    }
+    if (pendingForce) {
+      pendingForce = false;
+      force = true;
+    }
     const k = selKey();
     if (k === key && !force) {
       for (const u of updaters) u();
@@ -881,9 +893,10 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
     deep.update();
     const impactShown = impact.update();
     clear(ends);
-    const fc = vm.forecast;
-    ends.hidden = impactShown || !fc.active || !fc.ends.length;
-    if (!impactShown && fc.active && fc.ends.length) {
+    // 見込みの行き先は 3 年の影響を出していないときだけ（出しているときは見込みの計画を作らない: 8 万枚の地図の起動を待たせない。見直し perf-7）
+    const fc = impactShown ? null : vm.forecast;
+    ends.hidden = !fc || !fc.active || !fc.ends.length;
+    if (fc && fc.active && fc.ends.length) {
       const sid = ui.prefs.scenarioId;
       const scen = sid ? doc.scenarios[sid] : undefined;
       const forks = forkCount(fc, doc);

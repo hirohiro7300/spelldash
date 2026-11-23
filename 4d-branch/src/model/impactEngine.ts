@@ -64,6 +64,8 @@ export interface EngineInputs {
   sid: ID | null;
   /** 文書の索引の出る線（形を文書から作り直すときだけ呼ぶ） */
   out: () => Map<ID, ID[]>;
+  /** 3 年の分かれ道の入口（文書の順）。渡せば形を作り直すときに文書を全部なめて探さない（索引が持っている物: 見直し perf-9） */
+  roots?: () => ID[];
   /** 見込み（P_path。合流のある地図で、そこまでの稼ぎの重みに使う）とその版。合流が無ければ呼ばない */
   reach: () => { version: number; of: (id: ID) => number };
 }
@@ -1302,7 +1304,7 @@ export class ImpactEngine {
       } else this.pristine = null;
     }
     if (!made) {
-      const x = compileDocTopo(inp.doc, inp.out());
+      const x = compileDocTopo(inp.doc, inp.out(), inp.roots?.());
       this.topo = x?.topo ?? null;
       this.seen = x?.seen ?? null;
       this.lastCompile = x ? "doc" : null;

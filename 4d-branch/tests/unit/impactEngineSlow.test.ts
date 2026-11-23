@@ -6,6 +6,7 @@
 //      測る前に、3 年の影響が active で、ノードの数が地図の数と同じことを確かめる（perf-13: 計算が止まっていて速く見えるのを防ぐ）。
 //      CI の機械は遅いので目標の 2 倍まで（IMPACT_PERF_SLACK で変えられる）。測った値はいつも書き出す
 import { beforeAll, describe, expect, it } from "vitest";
+import { analyze, compileMap, overview } from "../../src/deepmap/core";
 import { decodeBundle } from "../../src/demo/impactBundle";
 import { buildQuarterDoc } from "../../src/demo/quarterDoc";
 import type { MapData } from "../../src/deepmap/mapData";
@@ -95,6 +96,90 @@ describe.skipIf(!DIR)("3 年の影響のエンジン: 8 万枚の地図（IMPACT
       SLOW,
     );
   }
+
+  it(
+    "今日の 10 の手の差（キャンバスの札・今決めること・カードの見出し）は、見取り図の「今やる vs 3 か月待つ」（計算の芯の overview）と同じ数。≒ は一番の手（◎）から 10 万円未満だけ（年収 360・540: 見直し user-1・user-7・equiv-1・equiv-3）",
+    () => {
+      const cm = compileMap(map);
+      for (const annual of [360, 540]) {
+        const doc = build(map);
+        withAnnual(doc, annual);
+        const { eng, engine } = engRun(doc, null, { map });
+        const { ref } = refRun(doc);
+        const ov = overview(analyze(cm, annual, {}));
+        const ids = engine.graph.topo!.ids;
+        expect(ov.moves.length).toBe(10);
+        for (const mv of ov.moves) {
+          const id = ids[mv.node]!;
+          for (const r of [eng, ref]) {
+            const a = r.alt.get(id)!;
+            expect([annual, id, a.deltaBasis]).toEqual([annual, id, mv.delta!.basis]);
+            expect(Math.abs(a.delta! - mv.delta!.d)).toBeLessThan(1e-9 * Math.max(1, Math.abs(mv.delta!.d)));
+          }
+        }
+        // ≒: どの判断でも、◎ の手から（画面の差で）10 万円未満。◎ そのものには付けない
+        let ties = 0;
+        let decisions = 0;
+        for (const d of engine.graph.topo!.ids.keys()) {
+          if (d % 7 !== 0 && d !== 0) continue;
+          const dec = eng.decision.get(ids[d]!);
+          if (!dec) continue;
+          const alts = dec.alts.map((x) => eng.alt.get(x)!);
+          const rec = alts.find((x) => x.rec);
+          if (!rec) continue;
+          decisions++;
+          expect(rec.mark === "tie").toBe(false);
+          for (const x of alts) {
+            if (x.mark !== "tie") continue;
+            ties++;
+            expect(rec.delta! - x.delta!).toBeLessThan(10 + 1e-9);
+          }
+        }
+        expect(decisions).toBeGreaterThan(500);
+        expect(ties).toBeGreaterThan(0);
+        // 今日: ≒ は 10 の手の半分より少ない（大きく悪い手で幅が広がっても、+1 万円の手まで「ほぼ同じ」にしない）
+        const today = eng.decision.get(eng.root!)!.alts.map((x) => eng.alt.get(x)!);
+        expect(today.filter((x) => x.mark === "tie").length).toBeLessThan(5);
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    "やらない場合の差: カードを 100 枚開いても、地図の大きさの配列を残さない（ArrayBuffer の増え ≤ 10 MB）。種類ごとの k も同じ（見直し perf-2・perf-3）",
+    async () => {
+      const gc = await gcFn();
+      const proc = (globalThis as unknown as { process: { memoryUsage(): { arrayBuffers: number } } }).process;
+      const doc = build(map);
+      withAnnual(doc, 360);
+      const { eng } = engRun(doc, null, { map });
+      expect(eng.active).toBe(true);
+      expect(eng.counts.nodes).toBe(map.n);
+      // 違う判断の手を 100 枚（カードを開くたびに読む never(fam).card）
+      const picks: Array<{ id: string; fam: string }> = [];
+      const seenDec = new Set<string>();
+      for (const id of eng.altIds()) {
+        const a = eng.alt.get(id)!;
+        const fam = doc.nodes[id]!.meta.fam;
+        if (a.isBase || seenDec.has(a.decision) || typeof fam !== "string") continue;
+        seenDec.add(a.decision);
+        picks.push({ id, fam });
+        if (picks.length >= 100) break;
+      }
+      expect(picks.length).toBe(100);
+      // 入れ物を先に作る（1 つだけ。地図の大きさで約 4.6 MB）
+      eng.never(picks[0]!.fam).card.get(picks[0]!.id);
+      gc();
+      const ab0 = proc.memoryUsage().arrayBuffers;
+      for (const p of picks) eng.never(p.fam).card.get(p.id);
+      for (const f of eng.families()) void eng.never(f).k;
+      gc();
+      const grown = (proc.memoryUsage().arrayBuffers - ab0) / 1024 / 1024;
+      console.log(`やらない場合の差: 手 100 枚と種類 ${eng.families().length} の k で ArrayBuffer +${grown.toFixed(2)} MB`);
+      expect(grown).toBeLessThan(10);
+    },
+    SLOW,
+  );
 
   it(
     `時間（3 回のうち一番良い値）: 形 ≤ ${TARGET.compile}・計算 1 回 ≤ ${TARGET.pass}・これにする ≤ ${TARGET.pick}・選ぶ ≤ ${TARGET.select}・題名の 1 文字 ≤ ${TARGET.keystroke} ms（×${SLACK}）`,

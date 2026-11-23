@@ -149,6 +149,16 @@
 .deep-open.is-map {
   border-style: dashed;
 }
+/* 今日の「手ごとに開く」「今日から全部」の見出し（見直し user-8） */
+.deep-open-note {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.deep-open-moves .btn {
+  min-height: 34px;
+  font-size: 12px;
+}
 
 /* 組み立てた本文（読むだけ） */
 .deep-body {

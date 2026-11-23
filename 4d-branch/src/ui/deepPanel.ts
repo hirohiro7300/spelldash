@@ -15,7 +15,7 @@ import type { DeepCtx } from "../app/deepState";
 import type { DeepPage } from "../app/uiState";
 import type { Analysis, Overview } from "../deepmap/core";
 import { findFirstMove, findPathToken, kindSlug, moveDetailVM, notesSection, notesVM, overviewVM, parseRoute, pathVM, renderMoveDetail, renderOverview, renderPathPage, ym, type MoveDetailVM, type OverviewVM, type PathVM } from "../deepmap/views";
-import { DEEP_OPEN_CAP, deepHorizons, horizonOpen, type DeepHorizon } from "../model/deepOpen";
+import { DEEP_OPEN_CAP, DEEP_OPEN_ROWS, deepHorizons, horizonOpen, type DeepHorizon } from "../model/deepOpen";
 import type { ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
 import { clear, h } from "./dom";
@@ -403,45 +403,47 @@ function openActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElem
   const hs = deepHorizons(ctx.cm, i);
   if (!hs.length) return null;
   // 今見えているカードのうち、このカードの先の物（開いた後の全体 = それ以外 + 開いた後のこのカードの先）
-  const end = i + ctx.cm.size[i]!;
   app.vm.ensure();
-  let inside = 0;
-  for (const nid of app.vm.drawNodes) {
-    const j = ctx.indexOf(nid);
-    if (j > i && j < end) inside++;
-  }
-  const outside = app.vm.drawNodes.length - inside;
+  const outsideOf = (k: number): number => {
+    const end = k + ctx.cm.size[k]!;
+    let inside = 0;
+    for (const nid of app.vm.drawNodes) {
+      const j = ctx.indexOf(nid);
+      if (j > k && j < end) inside++;
+    }
+    return app.vm.drawNodes.length - inside;
+  };
+  const outside = outsideOf(i);
   const row = h("div", { class: "deep-open-row" });
   const label = (x: DeepHorizon) => (x.toEnd ? `${ym(ctx.map, ctx.cm.H)}まで` : `${x.months / 12} 年先まで`);
+  /** キャンバスで読める区切りか（全体で 3,000 枚まで・縦に 320 行まで: 見直し user-8） */
+  const fits = (x: DeepHorizon, out: number) => out + x.count <= DEEP_OPEN_CAP && x.rows <= DEEP_OPEN_ROWS;
   let over: DeepHorizon | null = null;
   for (const x of hs) {
     const total = outside + x.count;
-    if (total > DEEP_OPEN_CAP) {
+    if (!fits(x, outside)) {
       over ??= x;
       continue;
     }
-    row.append(
-      h(
-        "button",
-        {
-          class: "btn btn-sm deep-open",
-          type: "button",
-          dataset: { fk: `open:${x.months}:${id}` },
-          title: `この先の${label(x)}の判断と手を開く（開いた後のキャンバス ${num(total)} 枚）`,
-          onClick: () => {
-            const ids = horizonOpen(ctx.cm, i, x).map((j) => ctx.idOf(j));
-            app.vm.setImpactOpen(ids, [], { reveal: true });
-            if (app.ui.prefs.view !== "map") app.ui.setPrefs({ view: "map" });
-          },
-        },
-        icon("expand", 14),
-        `${label(x)}（${num(x.count)} 枚）`,
-      ),
-    );
+    row.append(openButton(app, ctx, i, x, label(x), `この先の${label(x)}の判断と手を開く（開いた後のキャンバス ${num(total)} 枚）`, `${label(x)}（${num(x.count)} 枚）`));
+  }
+  // 今日（地図の入口）: 手ごとに開く方を先に（今日の「1 年先まで」は 10 の手の全部で縦に長く、キャンバスでは読めない: 見直し user-8）
+  const perMove: HTMLElement[] = [];
+  if (i === 0) {
+    const kids = ctx.cm.kids;
+    for (let s = ctx.cm.kidOff[0]!; s < ctx.cm.kidOff[1]!; s++) {
+      const f = kids[s]!;
+      const fx = deepHorizons(ctx.cm, f).find((x) => fits(x, outsideOf(f)));
+      if (!fx) continue;
+      const n = app.store.doc.nodes[ctx.idOf(f)];
+      const name = (typeof n?.meta?.short === "string" && n.meta.short.trim()) || n?.title.trim() || "（無題）";
+      perMove.push(openButton(app, ctx, f, fx, label(fx), `「${name}」の先の${label(fx)}の判断と手を開く`, `${name}（${label(fx)} ${num(fx.count)} 枚）`));
+    }
   }
   if (over) {
-    // 上限を超える: 見取り図（この手の詳しい画面・今日なら見取り図）で見る
+    // 上限を超える・縦に長すぎる: 見取り図（この手の詳しい画面・今日なら見取り図）で見る
     const f = ctx.cm.first[i] ?? -1;
+    const why = outside + over.count > DEEP_OPEN_CAP ? `キャンバスに出せるのは全体で ${num(DEEP_OPEN_CAP)} 枚まで` : `縦に ${num(over.rows)} 行（キャンバスで読めるのは ${num(DEEP_OPEN_ROWS)} 行まで）`;
     row.append(
       h(
         "button",
@@ -449,7 +451,7 @@ function openActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElem
           class: "btn btn-sm deep-open is-map",
           type: "button",
           dataset: { fk: `open-map:${id}` },
-          title: `${label(over)}は ${num(over.count)} 枚（キャンバスに出せるのは全体で ${num(DEEP_OPEN_CAP)} 枚まで）`,
+          title: `${label(over)}は ${num(over.count)} 枚（${why}）`,
           onClick: () => {
             if (f >= 0) app.ui.openDeep({ kind: "move", f });
             else showDeepOverview(app);
@@ -460,7 +462,49 @@ function openActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElem
       ),
     );
   }
-  return h("div", { class: "deep-open-sec" }, h("h3", { class: "insp-label" }, "この先をひらく", h("span", { class: "insp-count" }, `キャンバスは全体で ${num(DEEP_OPEN_CAP)} 枚まで`)), row);
+  return h(
+    "div",
+    { class: "deep-open-sec" },
+    h("h3", { class: "insp-label" }, "この先をひらく", h("span", { class: "insp-count" }, `キャンバスは全体で ${num(DEEP_OPEN_CAP)} 枚まで`)),
+    perMove.length ? h("p", { class: "deep-open-note" }, "手ごとに開く（今日の手の先を、その手のカードから）") : null,
+    perMove.length ? h("div", { class: "deep-open-row deep-open-moves" }, ...perMove) : null,
+    perMove.length ? h("p", { class: "deep-open-note" }, "今日から全部") : null,
+    row,
+  );
+}
+
+/**
+ * 時間で区切って開くボタン（カード k から区切り x まで）。開いた後は、狭い画面なら引き出しを閉じ、開いたカードの所へキャンバスを寄せ
+ * （開き始めたカードとその次の列が見える所: 見直し user-8）、何を開いたかと「見取り図で見る」をお知らせに出す
+ */
+function openButton(app: AppContext, ctx: DeepCtx, k: number, x: DeepHorizon, what: string, title: string, text: string): HTMLElement {
+  const kid = ctx.idOf(k);
+  return h(
+    "button",
+    {
+      class: "btn btn-sm deep-open",
+      type: "button",
+      dataset: { fk: `open:${x.months}:${kid}` },
+      title,
+      onClick: () => {
+        // 開き始めたカードを先頭に（キャンバスはそのカードを寄せる所の目印にする）
+        const ids = horizonOpen(ctx.cm, k, x).map((j) => ctx.idOf(j));
+        if (ids[0] !== kid) ids.unshift(kid);
+        app.vm.setImpactOpen(ids, [], { reveal: true });
+        if (app.ui.prefs.view !== "map") app.ui.setPrefs({ view: "map" });
+        if (isNarrowScreen() && app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: false });
+        const n = app.store.doc.nodes[kid];
+        const name = k === 0 ? "今日" : `「${(n?.title ?? "").trim() || "（無題）"}」`;
+        const f = ctx.cm.first[k] ?? -1;
+        toast(`${name}から${what}の判断と手を開いた（${num(x.count)} 枚）`, {
+          tone: "ok",
+          action: { label: "見取り図で見る", run: () => (f >= 0 ? app.ui.openDeep({ kind: "move", f }) : showDeepOverview(app)) },
+        });
+      },
+    },
+    icon("expand", 14),
+    text,
+  );
 }
 
 /**

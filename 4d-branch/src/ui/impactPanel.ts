@@ -515,6 +515,8 @@ function flipNote(app: AppContext, imp: ImpactResult, seen: Seen): HTMLElement {
       return !!f;
     },
     () => note.isConnected && app.vm.impact === imp,
+    // 急がない（「計算中」と出している）。短い時間切れだと、起動の最初のフレームの前に割り込む
+    2000,
   );
   return note;
 }

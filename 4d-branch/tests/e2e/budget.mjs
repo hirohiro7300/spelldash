@@ -65,7 +65,7 @@ const LABEL = {
   open: "1 つ開く（C）",
   close: "1 つ閉じる（C）",
   jump: "カードへ寄る（検索の候補から隠れたカードへ）",
-  yearOpen: "1 年先まで開く（今日を選んだ詳細の「1 年先まで（N 枚）」を押す）",
+  yearOpen: "1 年先まで開く（今日を選んだ詳細の、手ごとの「1 年先まで（N 枚）」を押す。今日から全部は縦に長すぎて見取り図で見る: 見直し user-8）",
   structural: "地図の中の形の編集（カードに子を足す: Tab）",
   structuralUndo: "形の編集を元に戻す",
   scenario: "シナリオを変える",
@@ -415,7 +415,7 @@ async function measureProfile(browser, profile) {
       f.ui.select([f.app.vm.impactRoots()[0]]);
     });
     if (narrow) await openRight();
-    const btn = page.locator(".sidebar-right .deep-open-sec button", { hasText: "1 年先まで" });
+    const btn = page.locator(".sidebar-right .deep-open-moves button").nth(k % 3);
     await btn.waitFor({ timeout: 10_000 });
     await page.evaluate(() => window.__budget.frames());
     await page.evaluate(() => window.__budget.arm("pointerdown", "click"));
@@ -594,7 +594,7 @@ async function measureProfile(browser, profile) {
   });
   if (narrow) await openRight();
   {
-    const btn = page.locator(".sidebar-right .deep-open-sec button", { hasText: "1 年先まで" });
+    const btn = page.locator(".sidebar-right .deep-open-moves button").first();
     await btn.waitFor({ timeout: 10_000 });
     await btn.click();
     await page.evaluate(() => window.__budget.frames());

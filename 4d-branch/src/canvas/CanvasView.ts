@@ -4,7 +4,7 @@
 import type { ViewModel } from "../app/viewModel";
 import type { UiState } from "../app/uiState";
 import { NODE_TYPES } from "../model/constants";
-import { edgeProb, formatPercent } from "../model/forecast";
+import { edgeProb, formatPercent, type ForecastResult } from "../model/forecast";
 import { quarterSpanText, ymText } from "../deepmap/core/time";
 import { IMPACT_FIRST_ZOOM, IMPACT_ROW, impactColX } from "../model/impactLayout";
 import { todayStr } from "../model/dates";
@@ -62,6 +62,8 @@ interface ScreenLabel {
   dot: string | null;
   /** カードの左端にそろえる（3 年の分かれ道。列ごとに目印の頭がそろい、左の列の目印と重なりにくい） */
   left?: boolean;
+  /** 文の幅の上限（画面の px。次の列のカードの手前まで。超えたら「…」で切る: 見直し user-9） */
+  maxW?: number;
 }
 
 /** 描いた札（画面座標。E2E の確かめ用。debugPills を [] にしたときだけ集める） */
@@ -103,6 +105,8 @@ export class CanvasView {
   insets = { left: 40, right: 48, top: 60, bottom: 60 };
   /** 確かめ用（E2E）: [] にすると、描くたびに 3 年の分かれ道の選択肢の札の位置を集め直す。ふだんは null（集めない） */
   debugPills: PillDebug[] | null = null;
+  /** 描いた縮小したときの目印（画面座標の左右と、使えた幅の上限）。E2E の確かめ用（[] にしたときだけ集める: 見直し user-9） */
+  debugHeads: Array<{ text: string; x0: number; x1: number; maxW: number | null }> | null = null;
   /** 確かめ用（E2E の性能）: true なら描いた後に 1 画素読み、絵を描き終えるまで待ってから時間を測る（描く命令だけでなく塗りまで） */
   rasterFlush = false;
 
@@ -365,10 +369,14 @@ export class CanvasView {
     const sy1 = maxY * z + y;
     let dx = 0;
     let dy = 0;
-    if (sx1 - sx0 > R - L) dx = L - sx0;
+    // 収まらない向きは、開き始めたカード（ids の先頭）を目印に: 横はそのカードを左の端に（次の列が見える）、縦はそのカードを真ん中に
+    // （開いた物の左上に合わせると、縦に長い開き方では、今日から遠い上の枝だけが見える: 見直し user-8）
+    const ax = (anchor.x - HALF_W) * z + x;
+    const ay = anchor.y * z + y;
+    if (sx1 - sx0 > R - L) dx = L + 16 - ax;
     else if (sx0 < L) dx = L - sx0;
     else if (sx1 > R) dx = R - sx1;
-    if (sy1 - sy0 > B - T) dy = T - sy0;
+    if (sy1 - sy0 > B - T) dy = (T + B) / 2 - ay;
     else if (sy0 < T) dy = T - sy0;
     else if (sy1 > B) dy = B - sy1;
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && z === cam.zoom) return;
@@ -669,10 +677,13 @@ export class CanvasView {
     }
 
     // ノード
-    const fc = vm.forecast;
+    // 見込み（P_path）は、読む所が出たときだけ作る（3 年の分かれ道のカードは使わない。8 万枚の地図では計画を作るのに 4 倍遅いスマホで
+    // 0.5 秒かかり、起動の最初のフレームを待たせる: 見直し perf-7）
+    let fcMemo: ForecastResult | null = null;
+    const fcOf = (): ForecastResult => (fcMemo ??= vm.forecast);
     const screenLabels: ScreenLabel[] = [];
     const impLabels: ScreenLabel[] = [];
-    const ranks = imp.active && (lod === "low" || lod === "dot") ? cards.labelRank(imp, doc, (id) => fc.reach.get(id)?.p ?? 0) : null;
+    const ranks = imp.active && (lod === "low" || lod === "dot") ? cards.labelRank(imp, doc, (id) => fcOf().reach.get(id)?.p ?? 0) : null;
     const pillBox = this.pillTmp;
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
@@ -702,7 +713,7 @@ export class CanvasView {
         collapsed: nv.collapsed,
         showBadge: this.badgeVisible(id, lod),
         today,
-        reach: fc.active ? fc.reach.get(id)?.p : undefined,
+        reach: card ? undefined : fcOf().active ? fcOf().reach.get(id)?.p : undefined,
       };
       if (card) {
         drawImpactNode(ctx, n, p.x, p.y, opts, card, pills ? pillBox : null);
@@ -710,15 +721,17 @@ export class CanvasView {
         if (lod === "low" || lod === "dot") {
           // 縮小したときの目印: 選択中 > 検索の当たり > 今日の選択肢 > ★ の選択肢 > 見込みの高い行き先（一番小さくしたときは今日と行き先 5 つ）
           const r = selected ? 0 : nv.match ? 1 : (ranks?.get(id) ?? -1);
-          const text = lod === "dot" ? card.dotLabel || card.label : card.label;
+          // 選択肢は、カードの真ん中に差を描いているとき（low・19% 以上）は題名だけ（同じ差を 2 度出さない: 見直し user-9）
+          const deltaShown = lod === "low" && z >= 0.19 && card.role === "alt" && !!card.low && !!card.labelTitle;
+          const text = lod === "dot" ? card.dotLabel || card.label : deltaShown ? card.labelTitle : card.label;
           if (r >= 0 && text && (lod === "low" || r <= 1 || card.role === "root" || card.role === "end")) {
-            impLabels.push({ x: p.x, y: p.y, text, color: "#EEF1F7", alpha: nv.alpha, rank: card.role === "root" && lod === "dot" ? -1 : r, dot: card.role === "root" ? null : binStroke(card.bin), left: true });
+            impLabels.push({ x: p.x, y: p.y, text, color: "#EEF1F7", alpha: nv.alpha, rank: card.role === "root" && lod === "dot" ? -1 : r, dot: card.role === "root" ? null : binStroke(card.bin), left: true, maxW: lod === "low" ? this.nextColumnGap(id, p.x) : undefined });
           }
         }
         continue;
       }
       drawNode(ctx, n, p.x, p.y, opts);
-      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fc.active ? fc.reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
+      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fcOf().active ? fcOf().reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
     }
     // つまみ
     if (lod === "full" || lod === "compact") {
@@ -830,6 +843,22 @@ export class CanvasView {
   }
 
   /** 縮小したときの目印（画面の大きさで）。重なる名前は出さない（大事なものから置く）。cap まで */
+  /**
+   * カード id（x は中心の世界座標）の目印の文が使える幅（画面の px）: 見えている子のカード（次の列）の左の端まで。
+   * 見えている子が無ければ上限なし（undefined）
+   */
+  private nextColumnGap(id: ID, x: number): number | undefined {
+    let next = Infinity;
+    for (const eid of this.vm.index.out.get(id) ?? []) {
+      const e = this.store.doc.edges[eid];
+      if (!e || !this.vm.hasOverlay(e.target) || this.vm.node(e.target).hidden) continue;
+      const q = this.vm.posOf(e.target);
+      if (q && q.x > x && q.x < next) next = q.x;
+    }
+    // 目印はカードの左の端から始まる: 使える幅 = 次の列のカードの左の端 − このカードの左の端 − すき間
+    return next === Infinity ? undefined : (next - x) * this.camera.zoom - 10;
+  }
+
   private drawScreenLabels(items: ScreenLabel[], cap: number): void {
     const ctx = this.ctx;
     const z = this.camera.zoom;
@@ -845,14 +874,21 @@ export class CanvasView {
       const sx = it.x * z + cam.x;
       const sy = (it.y - HALF_H) * z + cam.y - 6;
       if (sx < -100 || sx > this.width + 100 || sy < -20 || sy > this.height + 20) continue;
-      const text = it.text ?? this.plainText(it.n!, it.reach);
-      const w = ctx.measureText(text).width;
       const dw = it.dot ? 12 : 0;
+      let text = it.text ?? this.plainText(it.n!, it.reach);
+      // 次の列のカードの手前で切る（入りきらないほど狭ければ出さない）
+      if (it.maxW !== undefined) {
+        if (it.maxW - dw < 28) continue;
+        text = clipToWidth(ctx, text, it.maxW - dw);
+        if (!text) continue;
+      }
+      const w = ctx.measureText(text).width;
       const left = it.left ? sx - HALF_W * z : sx - (w + dw) / 2;
       const box = { x0: left - 4, y0: sy - 14, x1: left + w + dw + 4, y1: sy + 4 };
       if (it.rank > 0 && placed.some((b) => b.x0 < box.x1 && b.x1 > box.x0 && b.y0 < box.y1 && b.y1 > box.y0)) continue;
       placed.push(box);
       shown++;
+      this.debugHeads?.push({ text, x0: left, x1: left + w + dw, maxW: it.maxW ?? null });
       if (it.dot) {
         ctx.beginPath();
         ctx.arc(left + 4, sy - 4, 4.5, 0, Math.PI * 2);
@@ -870,4 +906,18 @@ export class CanvasView {
       ctx.fillText(text, left + dw, sy);
     }
   }
+}
+
+/** 文を幅 maxW（画面の px。今の文字の形で測る）に収める。入りきらなければ後ろを「…」にする */
+export function clipToWidth(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
+  if (ctx.measureText(text).width <= maxW) return text;
+  const chars = Array.from(text);
+  let lo = 0;
+  let hi = chars.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(`${chars.slice(0, mid).join("")}…`).width <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? `${chars.slice(0, lo).join("")}…` : "";
 }

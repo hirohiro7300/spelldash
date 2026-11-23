@@ -297,32 +297,49 @@ async function runProfile(browser, profile) {
       await shot(page, `${tag}-06-canvas-ruler`);
     });
 
-    await check(`${tag}: 今日を選ぶと時間で区切って開ける（「1 年先まで（N 枚）」。3,000 枚を超える区切りは「見取り図で見る」）`, async () => {
+    await check(`${tag}: 今日を選ぶと、手ごとに時間で区切って開ける（「手の名前（1 年先まで N 枚）」）。縦に長すぎる・3,000 枚を超える区切りは「見取り図で見る」（見直し user-8）`, async () => {
       await page.evaluate(() => {
         const f = window.__fourD;
+        f.app.vm.resetImpactOpen();
         f.ui.select([f.app.vm.impact.root]);
         f.ui.setPrefs({ rightOpen: true });
       });
       await settle(page);
       const sec = page.locator(".sidebar-right .deep-open-sec");
       await sec.waitFor();
-      const btn = sec.locator("button", { hasText: "1 年先まで" });
-      assert((await btn.count()) === 1, "「1 年先まで」が無い");
+      const moves = sec.locator(".deep-open-moves button");
+      assert((await moves.count()) >= 5, `手ごとに開くボタンが少ない（${await moves.count()}）`);
+      const btn = moves.first();
       const label = await btn.innerText();
-      const m = /（([\d,]+) 枚）/.exec(label);
-      assert(m, `枚数が無い（${label}）`);
+      const m = /1 年先まで ([\d,]+) 枚/.exec(label);
+      assert(m, `手ごとのボタンに区切りと枚数が無い（${label}）`);
       const want = Number(m[1].replace(/,/g, ""));
-      assert((await sec.locator("button", { hasText: "見取り図で見る" }).count()) === 1, "上限を超える区切りの「見取り図で見る」が無い");
+      // 今日から全部の「1 年先まで」（10 の手の全部・縦に 1,400 行）は開かず、見取り図で見る
+      const all = sec.locator(".deep-open-row:not(.deep-open-moves) button");
+      const allText = (await all.allInnerTexts()).join(" / ");
+      assert(/見取り図で見る（1 年先まで/.test(allText), `今日から全部の「1 年先まで」が見取り図にならない（${allText}）`);
       assert((await sec.locator("button", { hasText: "全部" }).count()) === 0, "「全部」と書いたボタンがある");
       await shot(page, `${tag}-07-open-actions`);
+      const fk = await btn.getAttribute("data-fk");
+      const startId = fk.slice(fk.lastIndexOf(":") + 1);
       await btn.click();
-      await settle(page, 400);
-      const shown = await page.evaluate(() => {
-        const vm = window.__fourD.app.vm;
+      await settle(page, 700);
+      const after = await page.evaluate((id) => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
         vm.ensure();
-        return vm.drawNodes.length;
-      });
-      assert(shown >= want && shown <= 3000, `開いた後のカードの数が合わない（${shown}・ボタンは ${want} 枚）`);
+        const v = f.app.view;
+        const p = vm.posOf(id);
+        const s = p ? v.camera.toScreen(p.x, p.y) : null;
+        const r = v.canvas.getBoundingClientRect();
+        const toast = [...document.querySelectorAll(".toast")].map((t) => t.textContent).join(" / ");
+        return { shown: vm.drawNodes.length, right: f.ui.prefs.rightOpen, s, w: r.width, h: r.height, zoom: v.camera.zoom, toast };
+      }, startId);
+      assert(after.shown >= want && after.shown <= 3000, `開いた後のカードの数が合わない（${after.shown}・ボタンは ${want} 枚）`);
+      // 開き始めた手のカードが画面の中（今日の手と、その次の列が見える所へ寄る）
+      assert(after.s && after.s.x > -40 && after.s.x < after.w * 0.6 && after.s.y > 0 && after.s.y < after.h, `開き始めた手のカードが画面の外（${JSON.stringify(after.s)}・${after.w}×${after.h}）`);
+      assert(/開いた（[\d,]+ 枚）/.test(after.toast) && /見取り図で見る/.test(after.toast), `何を開いたかのお知らせが無い（${after.toast}）`);
+      if (tag === "390") assert(after.right === false, "スマホで開いた後に引き出しが開いたまま");
       await shot(page, `${tag}-08-opened-1y`);
       await page.evaluate(() => window.__fourD.app.vm.resetImpactOpen());
       await settle(page);
@@ -334,6 +351,8 @@ async function runProfile(browser, profile) {
         const deep = f.app.vm.deep.get();
         const id = deep.idOf(deep.cm.firstMoves[0]);
         f.ui.select([id]);
+        // 狭い画面: 時間で区切って開いた後は引き出しを閉じている（見直し user-8）ので開く
+        f.ui.setPrefs({ rightOpen: true });
         return id;
       });
       await settle(page, 300);
@@ -367,6 +386,332 @@ async function runProfile(browser, profile) {
       await page.evaluate(() => window.__fourD.ui.clearSelection());
       await settle(page);
     });
+
+    // ------------------------------------------------------------ 見直しの直し（user-1〜user-15・equiv-1〜equiv-5・perf-5）
+    const showOverview = async () => {
+      await page.evaluate(() => {
+        const f = window.__fourD;
+        f.ui.closeDeep();
+        f.ui.clearSelection();
+        f.ui.setPrefs({ rightOpen: true, scenarioId: null });
+      });
+      await settle(page, 300);
+      await page.locator(".sidebar-right .deep-ov .dm-glance-row").first().waitFor();
+    };
+    const num = (t) => {
+      const m = /([+\-−])?\s*([\d,]+(?:\.\d+)?)/.exec(t ?? "");
+      return m ? (m[1] === "-" || m[1] === "−" ? -1 : 1) * Number(m[2].replace(/,/g, "")) : NaN;
+    };
+
+    await check(`${tag}: 今日の手の差は、キャンバスの札も見取り図の札も同じ数（比べ方をそろえた q どうし: 見直し user-1・equiv-1）`, async () => {
+      await showOverview();
+      const r = await page.evaluate(() => {
+        const f = window.__fourD;
+        const imp = f.app.vm.impact;
+        const cards = f.app.view.cards;
+        const canvas = {};
+        for (const id of imp.decision.get(imp.root).alts) {
+          const a = imp.alt.get(id);
+          if (a.isBase) continue;
+          canvas[f.store.doc.nodes[id].title.trim()] = { pill: cards.card(imp, f.store.doc, id).pill, basis: a.deltaBasis };
+        }
+        const glance = [...document.querySelectorAll(".sidebar-right .deep-ov a.dm-glance-row:not(.is-base)")].map((a) => ({ name: a.querySelector(".dm-glance-name")?.textContent?.trim(), pill: a.querySelector(".dm-glance-pill")?.textContent?.trim() }));
+        const legend = document.querySelector(".sidebar-right .imp-overview")?.textContent ?? "";
+        return { canvas, glance, legend };
+      });
+      assert(r.glance.length >= 8, `見取り図の行が少ない（${r.glance.length}）`);
+      let matched = 0;
+      for (const g of r.glance) {
+        const c = r.canvas[g.name];
+        if (!c) continue;
+        matched++;
+        const a = num(c.pill);
+        const b = num(g.pill);
+        assert(c.basis === "q", `${g.name}: キャンバスの差が q どうしでない（${c.basis}）`);
+        assert(Math.abs(a - b) <= (Math.abs(b) >= 10 ? 1 : 0.11), `${g.name}: キャンバスの札 ${c.pill} と見取り図の札 ${g.pill} が違う`);
+      }
+      assert(matched >= 8, `見取り図の行とキャンバスの手の名前が合わない（${matched} 行）`);
+    });
+
+    await check(`${tag}: 今日の手のカードの「この種類を 3 年やらない場合との差」は見取り図と同じ数（判断ごとの別の問いは出さない: 見直し user-2）`, async () => {
+      await showOverview();
+      const rows = await page.evaluate(() => [...document.querySelectorAll(".sidebar-right .deep-ov a.dm-row")].map((a) => ({ name: a.querySelector(".dm-row-name")?.textContent?.trim(), pills: [...a.querySelectorAll(".dm-row-pills .dm-pill-wrap")].map((x) => x.textContent?.trim()) })));
+      const id = await page.evaluate(() => {
+        const f = window.__fourD;
+        const imp = f.app.vm.impact;
+        const id = imp.decision.get(imp.root).alts.find((x) => !imp.alt.get(x).isBase);
+        f.ui.select([id]);
+        return id;
+      });
+      await settle(page, 300);
+      const facts = await page.locator(".sidebar-right .imp-facts").first().innerText();
+      assert(!facts.includes("この手を 3 年間ずっとやらない場合と比べると"), `判断ごとの「やらない場合」が出ている（${facts}）`);
+      const name = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].title.trim(), id);
+      const row = rows.find((x) => x.name?.startsWith(name));
+      assert(row, `見取り図に「${name}」の行が無い`);
+      const worthPill = row.pills.find((x) => x.includes("やらない"));
+      const line = facts.split("\n").find((x) => x.includes("やらない場合との差"));
+      assert(line && worthPill, `やらない場合との差が無い（カード ${line}・見取り図 ${worthPill}）`);
+      if (worthPill.includes("ほぼ差なし")) assert(line.includes("ほぼ差なし"), `見取り図は「ほぼ差なし」なのにカードは ${line}`);
+      else assert(Math.abs(num(line.replace(/^[^+\-−\d]*/, "")) - num(worthPill.replace(/^[^+\-−\d]*/, ""))) < 0.6, `カード ${line} と見取り図 ${worthPill} が違う`);
+    });
+
+    await check(`${tag}: 「元の文章に戻す」は写した地図の文章だけを外し、自分で書いたメモは残す。手で書いただけのメモには出さない（見直し user-3）`, async () => {
+      const id = await page.evaluate(() => {
+        const f = window.__fourD;
+        const deep = f.app.vm.deep.get();
+        const id = deep.idOf(deep.cm.firstMoves[1]);
+        f.ui.select([id]);
+        f.ui.setPrefs({ rightOpen: true });
+        return id;
+      });
+      await settle(page, 300);
+      const sec = page.locator(".sidebar-right .deep-body");
+      await sec.waitFor();
+      const reset = sec.getByRole("button", { name: "元の文章に戻す" });
+      // 手で書いたメモだけ: 出さない
+      await page.evaluate((nid) => window.__fourD.app.cmd.updateNode(nid, { body: "上司に 12 月の面談で聞く。" }), id);
+      await settle(page);
+      assert(!(await reset.isVisible()), "手で書いただけのメモに「元の文章に戻す」が出ている");
+      // 写す（自分のメモの前に足す）→ 写した所だけ外す・お知らせに元に戻す
+      await sec.getByRole("button", { name: "この文章をもとに書き換える" }).click();
+      await settle(page);
+      const copied = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].body, id);
+      assert(copied.endsWith("上司に 12 月の面談で聞く。") && copied.length > 100, "写した文章が自分のメモの前に入っていない");
+      assert(await sec.locator(".deep-body-text.is-folded").count(), "写した後に読むだけの文章をたたんでいない");
+      await reset.click();
+      await settle(page);
+      const after = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].body, id);
+      assert(after === "上司に 12 月の面談で聞く。", `自分のメモが残っていない（${after.slice(0, 40)}）`);
+      const toastText = await page.evaluate(() => [...document.querySelectorAll(".toast")].map((t) => t.textContent).join(" / "));
+      assert(/写した地図の文章を外した/.test(toastText) && /元に戻す/.test(toastText), `外したお知らせが無い（${toastText}）`);
+      await page.evaluate((nid) => (window.__fourD.app.cmd.updateNode(nid, { body: "" }), window.__fourD.ui.clearSelection()), id);
+      await settle(page);
+    });
+
+    await check(`${tag}: 概要は見取り図に無い物だけ: 前の版の欄は「くわしい数」にたたみ、見出しの数は見取り図と同じ言い方（まとめた行き先を行き先に数えない）。行き先は種類ごと（見直し user-5）`, async () => {
+      await showOverview();
+      const r = await page.evaluate(() => {
+        const ov = document.querySelector(".sidebar-right .imp-overview");
+        const more = ov?.querySelector("details.imp-more");
+        return { counts: ov?.querySelector(".imp-counts, .imp-head-counts")?.textContent ?? ov?.textContent ?? "", more: !!more, open: more?.open ?? null, decideOutside: !!ov?.querySelector(":scope > .imp-decide") };
+      });
+      assert(r.more && r.open === false, "「くわしい数」のたたみが無い・開いている");
+      assert(!r.decideOutside, "今決めることが見取り図の下に出ている");
+      assert(/行き先 [\d,]+（見込み 1% 以上 [\d,]+）・標準の続きの見積もり [\d,]+/.test(r.counts), `見出しの数の言い方が見取り図と違う（${r.counts.slice(0, 120)}）`);
+      await page.locator(".sidebar-right details.imp-more > summary").click();
+      await settle(page, 300);
+      assert(await page.locator(".sidebar-right .imp-more .imp-dest .dm-dest").count(), "くわしい数の行き先が種類ごとでない");
+      await page.locator(".sidebar-right details.imp-more > summary").click();
+      await settle(page);
+    });
+
+    await check(`${tag}: 同じ題名のカードは年月と親の手で見分ける（検索の行・同じ物は 1 行に N 枚: 見直し user-6）`, async () => {
+      if (profile.mobile) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
+      const input = page.locator(".search-input");
+      await input.click();
+      await input.fill("転職せず");
+      await settle(page, 400);
+      const rows = await page.locator(".search-results .search-row").allInnerTexts();
+      assert(rows.length >= 3, `検索の行が少ない（${rows.length}）`);
+      assert(rows.every((t) => /\d{4} 年 \d+ 月/.test(t) && t.includes("→")), `年月と親の手の無い行がある（${rows.slice(0, 3).join(" / ")}）`);
+      assert(new Set(rows).size === rows.length, "同じ行が並んでいる（まとめていない）");
+      await input.fill("");
+      await page.keyboard.press("Escape");
+      await settle(page);
+    });
+
+    await check(`${tag}: ≒ は一番の手（◎）から 10 万円未満だけ・◎ そのものには付けない（見直し user-7・equiv-3）`, async () => {
+      const r = await page.evaluate(() => {
+        const imp = window.__fourD.app.vm.impact;
+        const alts = imp.decision.get(imp.root).alts.map((id) => imp.alt.get(id));
+        const rec = alts.find((a) => a.rec);
+        return { rec: rec ? { mark: rec.mark, d: rec.delta } : null, ties: alts.filter((a) => a.mark === "tie").map((a) => a.delta), n: alts.length };
+      });
+      assert(r.rec && r.rec.mark !== "tie", `◎ の手に ≒ が付いている（${JSON.stringify(r.rec)}）`);
+      assert(r.ties.length < r.n - 2, `≒ が多すぎる（${r.ties.length} / ${r.n}）`);
+      for (const d of r.ties) assert(r.rec.d - d < 10 + 1e-9, `◎ から 10 万円以上離れた手に ≒（${d} / ◎ ${r.rec.d}）`);
+    });
+
+    await check(`${tag}: 概要の「見取り図で見る」で見取り図の頭へ送る（見直し user-10）`, async () => {
+      await showOverview();
+      const btn = page.locator(".sidebar-right .imp-deep-open button", { hasText: "見取り図で見る" }).first();
+      await btn.scrollIntoViewIfNeeded();
+      await settle(page);
+      const before = await page.evaluate(() => document.querySelector(".sidebar-right .insp-body-scroll").scrollTop);
+      await btn.click();
+      await settle(page, 400);
+      const r = await page.evaluate(() => {
+        const sc = document.querySelector(".sidebar-right .insp-body-scroll");
+        const ov = document.querySelector(".sidebar-right .deep-ov");
+        return { top: sc.scrollTop, off: ov.getBoundingClientRect().top - sc.getBoundingClientRect().top, focus: document.activeElement?.closest(".deep-ov") !== null };
+      });
+      assert(before > 200, `ボタンまで送れていない（${before}）`);
+      assert(Math.abs(r.off) < 40, `見取り図の頭へ送っていない（見取り図の上端 ${r.off}px）`);
+      assert(r.focus, "見取り図の見出しにフォーカスが無い");
+    });
+
+    await check(`${tag}: 方針（シナリオ）を選ぶと、見取り図の方針の外の手の行も薄くする（見直し user-13）`, async () => {
+      await showOverview();
+      const sid = await page.evaluate(() => {
+        const f = window.__fourD;
+        const sids = f.store.doc.scenarioOrder;
+        const pick = sids.find((x) => /早期独立/.test(f.store.doc.scenarios[x]?.name ?? "")) ?? sids[1] ?? sids[0];
+        f.ui.setPrefs({ scenarioId: pick });
+        return pick;
+      });
+      await settle(page, 500);
+      const r = await page.evaluate(() => {
+        const f = window.__fourD;
+        const imp = f.app.vm.impact;
+        const off = imp.decision.get(imp.root).alts.filter((id) => !imp.alt.get(id).allowed).length;
+        const dim = document.querySelectorAll(".sidebar-right .deep-ov a.dm-glance-row.is-off").length;
+        return { off, dim };
+      });
+      assert(sid && r.off > 0, "方針の外の今日の手が無い（確かめられない）");
+      assert(r.dim === r.off, `見取り図で薄くした行の数が方針の外の手と違う（${r.dim} / ${r.off}）`);
+    });
+
+    await check(`${tag}: 方針の外の手のカードは「計算では選びません」と言わない（版 7 は方針で絞っていない: 見直し equiv-5）`, async () => {
+      const id = await page.evaluate(() => {
+        const f = window.__fourD;
+        const imp = f.app.vm.impact;
+        const id = imp.decision.get(imp.root).alts.find((x) => !imp.alt.get(x).allowed);
+        f.ui.select([id]);
+        f.ui.setPrefs({ rightOpen: true });
+        return id;
+      });
+      assert(id, "方針の外の手が無い");
+      await settle(page, 300);
+      const text = await page.locator(".sidebar-right .insp-body-scroll").innerText();
+      assert(!text.includes("計算では選びません"), "方針の外の手に「計算では選びません」と出ている");
+      assert(text.includes("方針で絞っていない"), "方針で絞っていないと言っていない");
+      await page.evaluate(() => (window.__fourD.ui.setPrefs({ scenarioId: null }), window.__fourD.ui.clearSelection()));
+      await settle(page);
+    });
+
+    await check(`${tag}: 手のカードの地図の文章は、同じ判断の手の一覧より上（狭い画面は同じ判断の手を 3 つまで: 見直し user-11）`, async () => {
+      const id = await page.evaluate(() => {
+        const f = window.__fourD;
+        const deep = f.app.vm.deep.get();
+        const id = deep.idOf(deep.cm.firstMoves[2]);
+        f.ui.select([id]);
+        f.ui.setPrefs({ rightOpen: true });
+        return id;
+      });
+      await settle(page, 300);
+      const r = await page.evaluate(() => {
+        const sc = document.querySelector(".sidebar-right .insp-body-scroll");
+        const top = (sel) => {
+          const el = sc.querySelector(sel);
+          return el ? el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop : null;
+        };
+        return { body: top(".deep-body"), sibs: top(".imp-sibs"), rows: sc.querySelectorAll(".imp-sibs .imp-alt-row, .imp-sibs [data-fk^='alt:']").length, more: !!sc.querySelector(".imp-alt-more") };
+      });
+      assert(r.body !== null && r.sibs !== null && r.body < r.sibs, `地図の文章が同じ判断の手より下（文章 ${r.body}・手 ${r.sibs}）`);
+      if (profile.mobile) assert(r.more, "狭い画面で同じ判断の手をたたんでいない（「ほか N 個を見る」が無い）");
+      await page.evaluate(() => window.__fourD.ui.clearSelection());
+      await settle(page);
+      void id;
+    });
+
+    await check(`${tag}: 年収を仮の 360 から 360 に入れると「（仮）」が消えて「仮に戻す」が出る（見直し equiv-2）`, async () => {
+      await showOverview();
+      await page.locator('[data-fk="salary"]').click();
+      await page.locator(".imp-salary-input").fill("360");
+      await page.locator('[data-fk="salary-ok"]').click();
+      await settle(page, 300);
+      const r = await page.evaluate(() => ({ set: window.__fourD.app.vm.impact.annualSet, kari: document.querySelector(".sidebar-right .imp-kari")?.hidden ?? true, reset: document.querySelector('.sidebar-right [data-fk="salary-reset"]')?.hidden ?? true }));
+      assert(r.set === true && r.kari === true && r.reset === false, `年収を入れたのに仮のまま（${JSON.stringify(r)}）`);
+      await page.evaluate(() => window.__fourD.app.cmd.undo());
+      await settle(page);
+      assert((await page.evaluate(() => window.__fourD.app.vm.impact.annualSet)) === false, "元に戻しても仮に戻らない");
+    });
+
+    await check(`${tag}: 道の画面の名前はカードの題名（書き換えれば道の画面も変わる: 見直し equiv-4）`, async () => {
+      // 一番ありそうな行き先までの道。着いた所のカードの名前は、そのカードの題名（地図の題名の無い「—」は組み立てた名前）
+      const node = await page.evaluate(() => {
+        const f = window.__fourD;
+        const deep = f.app.vm.deep.get();
+        const end = f.app.vm.impact.ends[0].id;
+        f.ui.setPrefs({ rightOpen: true });
+        f.ui.openDeep({ kind: "path", node: deep.indexOf(end) });
+        return end;
+      });
+      await settle(page, 400);
+      const endCard = page.locator(".sidebar-right .deep-page.is-path .dm-tl-end");
+      await endCard.waitFor();
+      const before = await endCard.innerText();
+      assert(before.length > 4, "着いた所のカードが空");
+      await page.evaluate((id) => window.__fourD.app.cmd.updateNode(id, { title: "書き換えた行き先の題名" }), node);
+      await settle(page, 400);
+      const after = await page.locator(".sidebar-right .deep-page.is-path .dm-tl-end").innerText();
+      assert(after.includes("書き換えた行き先の題名"), `題名を書き換えても道の画面が変わらない（${after.slice(0, 80)}）`);
+      await page.evaluate(() => (window.__fourD.app.cmd.undo(), window.__fourD.ui.closeDeep()));
+      await settle(page);
+    });
+
+    if (!profile.mobile) {
+      await check(`${tag}: 引いたとき（21%）の手の目印は、真ん中に差を描いたカードでは題名だけ・次の列の手前で切る（見直し user-9）`, async () => {
+        await page.evaluate(() => {
+          const f = window.__fourD;
+          f.ui.clearSelection();
+          f.app.vm.resetImpactOpen();
+          const v = f.app.view;
+          const root = f.app.vm.impact.root;
+          v.centerOn(root, { zoom: 0.21, animate: false });
+        });
+        await settle(page, 400);
+        const r = await page.evaluate(async () => {
+          const v = window.__fourD.app.view;
+          v.debugHeads = [];
+          v.requestRender();
+          await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+          const heads = v.debugHeads ?? [];
+          v.debugHeads = null;
+          return { heads, zoom: v.camera.zoom };
+        });
+        assert(r.zoom < 0.3 && r.zoom > 0.15, `21% にならない（${r.zoom}）`);
+        assert(r.heads.length >= 5, `目印が少ない（${r.heads.length}）`);
+        const withDelta = r.heads.filter((x) => /万｜/.test(x.text));
+        assert(withDelta.length === 0, `真ん中に差を描いたカードの目印に差が残っている（${withDelta.map((x) => x.text).slice(0, 3).join(" / ")}）`);
+        const over = r.heads.filter((x) => x.maxW !== null && x.x1 - x.x0 > x.maxW + 1);
+        assert(over.length === 0, `次の列へはみ出す目印がある（${over.map((x) => `${x.text} ${(x.x1 - x.x0).toFixed(0)}/${x.maxW.toFixed(0)}`).slice(0, 3).join(" / ")}）`);
+        assert(r.heads.some((x) => x.maxW !== null), "次の列の幅で切った目印が無い（確かめられない）");
+        await shot(page, `${tag}-21-heads`);
+      });
+    }
+
+    if (!profile.mobile) {
+      await check(`${tag}: 道の画面の下の「地図でこの道をひらく」の後に閉じると、カードの詳細は頭から（見直し user-15）`, async () => {
+        await page.evaluate(() => {
+          const f = window.__fourD;
+          const deep = f.app.vm.deep.get();
+          f.ui.openDeep({ kind: "path", node: deep.cm.firstMoves[0] });
+        });
+        await settle(page, 400);
+        const btn = page.locator(".sidebar-right [data-fk='deep-open-map']");
+        await btn.scrollIntoViewIfNeeded();
+        await btn.click();
+        await settle(page, 400);
+        await page.locator(".sidebar-right [data-fk='deep-close']").click();
+        await settle(page, 400);
+        const top = await page.evaluate(() => document.querySelector(".sidebar-right .insp-body-scroll").scrollTop);
+        assert(top === 0, `閉じた後のカードの詳細が途中から（${top}px）`);
+        await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection()));
+        await settle(page);
+      });
+    } else {
+      await check(`${tag}: 閉じた引き出しは置かない（display: none。カードを押すたびに幅 0 の引き出しをレイアウトしない: 見直し perf-5）`, async () => {
+        await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false, leftOpen: false }));
+        await settle(page);
+        const d = await page.evaluate(() => [getComputedStyle(document.querySelector(".sidebar-right")).display, getComputedStyle(document.querySelector(".sidebar-left")).display]);
+        assert(d[0] === "none" && d[1] === "none", `閉じた引き出しが置かれている（${d.join(" / ")}）`);
+        await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
+        await settle(page);
+        assert((await page.evaluate(() => getComputedStyle(document.querySelector(".sidebar-right")).display)) !== "none", "開いた引き出しが出ない");
+      });
+    }
 
     await check(`${tag}: 検索は組み立てた本文を探さないと言う`, async () => {
       const input = page.locator(".search-input").first();
@@ -415,6 +760,83 @@ async function runProfile(browser, profile) {
   }
 }
 
+/**
+ * 起動の間に先に描く見取り図（読み込み中）: 押せる形に見せず、文書の組み立ての間に押した入力は、組み立ての後に入れ替わったアプリの
+ * 同じ位置を押さない（見直し user-12）
+ */
+async function splashCheck(browser) {
+  // スマホ（引き出しの行が、先に描いた見取り図の行と少しずれた所にある: 前の版では、押した行の 1 つ上の手が開いた）
+  console.log("\n[起動の見取り図] 390×844・タッチ・CPU 4 倍遅く");
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await ctx.addInitScript(() => {
+    try {
+      localStorage.setItem("4d-branch:prefs", JSON.stringify({ releaseSheet: 7, onboardingDone: true }));
+    } catch {
+      /* about:blank */
+    }
+    // 押した時刻（入力が起きた時刻）と、先に描いた見取り図が出た・外れた時刻・2 行目の位置・読み込み中か・押せるリンクの数を記録する
+    // 押し始め（タッチ・ポインタ）。先に描いた見取り図が捨てる入力の前に記録する（一番先に足した capture のリスナー）。押した後の click は、
+    // 捨てたタッチからは作られない
+    window.__clicks = [];
+    for (const t of ["touchstart", "pointerdown"]) window.addEventListener(t, (ev) => window.__clicks.push(ev.timeStamp), true);
+    const mo = new MutationObserver(() => {
+      const box = document.querySelector(".deep-splash");
+      if (box && !window.__splashAt) {
+        window.__splashAt = performance.now();
+        const r = box.querySelectorAll(".dm-glance-row")[1]?.getBoundingClientRect();
+        try {
+          sessionStorage.setItem("splash", JSON.stringify({ x: r ? r.left + r.width / 2 : 0, y: r ? r.top + r.height / 2 : 0, busy: box.textContent.includes("読み込み中"), hrefs: box.querySelectorAll("a[href]").length }));
+        } catch {
+          /* 使えない */
+        }
+      }
+      if (!box && window.__splashAt && !window.__splashGone) window.__splashGone = performance.now();
+    });
+    document.addEventListener("DOMContentLoaded", () => mo.observe(document.body, { childList: true, subtree: true }));
+  });
+  const page = await ctx.newPage();
+  const cdp = await ctx.newCDPSession(page);
+  const ready = () => page.waitForFunction(() => !!window.__fourD?.app?.vm?.deep?.get(), null, { timeout: 180_000, polling: 200 });
+  try {
+    await check("起動: 先に描く見取り図は「読み込み中」で押せる形に見せず、組み立ての間に押した所は後のアプリで押されない（見直し user-12）", async () => {
+      // 1 回目: 見取り図の 2 行目の位置を記録する（組み立ての間はページの中を読めないので、出たときに記録した物を後で読む）
+      await page.goto(`${BASE}#demo-q`);
+      await ready();
+      const sp = await page.evaluate(() => JSON.parse(sessionStorage.getItem("splash") || "null"));
+      assert(sp && sp.x > 0, "先に描いた見取り図が記録されていない");
+      assert(sp.busy, "先に描いた見取り図に「読み込み中」が無い");
+      assert(sp.hrefs === 0, `先に描いた見取り図に押せるリンクがある（${sp.hrefs}）`);
+      // 2 回目から: CPU を遅くして、組み立ての間（見取り図が出てから外れるまで）に押す。押した時刻が間に入った回で確かめる
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+      let done = false;
+      for (const wait of [1800, 2600, 3400, 1200]) {
+        await page.evaluate(() => sessionStorage.removeItem("splash"));
+        // 同じ URL（# だけ）への goto は読み直さないので、読み直す
+        await page.reload({ waitUntil: "commit" });
+        await new Promise((r) => setTimeout(r, wait));
+        await Promise.race([page.touchscreen.tap(sp.x, sp.y), new Promise((r) => setTimeout(r, 30_000))]);
+        await ready();
+        await settle(page, 600);
+        const r = await page.evaluate(() => ({ clicks: window.__clicks, at: window.__splashAt ?? null, gone: window.__splashGone ?? null, page: window.__fourD.ui.deepPage, sel: window.__fourD.ui.selection.nodes.size }));
+        const inWindow = r.at !== null && r.gone !== null && r.clicks.some((t) => t > r.at && t < r.gone);
+        if (process.env.DEEPMAP_DEBUG) console.log(`      待ち ${wait} ms: 見取り図 ${r.at?.toFixed(0)}〜${r.gone?.toFixed(0)} ms・押した ${r.clicks.map((t) => t.toFixed(0)).join(", ")}`);
+        if (!inWindow) continue;
+        assert(r.page === null && r.sel === 0, `組み立ての間に押した所が、後のアプリで押された（${JSON.stringify({ page: r.page, sel: r.sel })}）`);
+        done = true;
+        break;
+      }
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+      assert(done, "組み立ての間に押せなかった（確かめられない）");
+      // 起動の後に押したのは届く
+      await page.locator(".sidebar-right .deep-ov a.dm-glance-row").nth(1).tap();
+      await settle(page, 400);
+      assert((await page.evaluate(() => window.__fourD.ui.deepPage?.kind)) === "move", "起動の後に押した手の行が開かない");
+    });
+  } finally {
+    await ctx.close();
+  }
+}
+
 async function main() {
   build();
   await startServer();
@@ -423,6 +845,7 @@ async function main() {
     const only = process.env.DEEPMAP_PROFILE || "";
     if (!only || only === "390") await runProfile(browser, { name: "390", viewport: { width: 390, height: 844 }, mobile: true });
     if (!only || only === "1440") await runProfile(browser, { name: "1440", viewport: { width: 1440, height: 900 }, mobile: false });
+    if (!only || only === "splash") await splashCheck(browser);
   } finally {
     await browser.close();
     server?.kill();

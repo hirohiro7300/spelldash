@@ -52,6 +52,31 @@ export function formatPercent(p: number): string {
 }
 
 /** 分岐から出る線ごとの割合（合計 1）。見込みの無い線には残りを等分する。kind は「3 年の分かれ道」の範囲の中だけ */
+/**
+ * 運の分かれ道の分け方を out に足す（chanceWeights(edges.slice(a, b)) と同じ数を同じ順の足し算で。並びを作らない: 8 万枚の計画で
+ * 3 万回呼ぶ: 見直し perf-9）
+ */
+function pushChance(edges: readonly GEdge[], a: number, b: number, out: number[]): void {
+  const cnt = b - a;
+  if (!cnt) return;
+  let sumKnown = 0;
+  let unknown = 0;
+  for (let k = a; k < b; k++) {
+    const v = probOf(edges[k]!);
+    if (v === null) unknown++;
+    sumKnown = sumKnown + (v ?? 0);
+  }
+  if (unknown === cnt) {
+    for (let k = 0; k < cnt; k++) out.push(1 / cnt);
+    return;
+  }
+  const share = unknown ? Math.max(0, 100 - sumKnown) / unknown : 0;
+  let total = 0;
+  for (let k = a; k < b; k++) total = total + (probOf(edges[k]!) ?? share);
+  if (total > 0) for (let k = a; k < b; k++) out.push((probOf(edges[k]!) ?? share) / total);
+  else for (let k = 0; k < cnt; k++) out.push(1 / cnt);
+}
+
 function splitOf(node: GNode, edges: GEdge[], kind: ForkKind | null): number[] {
   if (kind !== null) return kind === "chance" ? chanceWeights(edges) : edges.map(() => 1);
   if (node.type !== "branch" || !edges.length) return edges.map(() => 1);
@@ -261,6 +286,7 @@ export class ForecastPlan {
       }
       kinds.push(kind);
       if (kind !== null && kind !== "chance") for (let k = 0; k < cnt; k++) splitL.push(1);
+      else if (kind === "chance") pushChance(edges, a, edges.length, splitL);
       else for (const x of splitOf(n, edges.slice(a), kind)) splitL.push(x);
     }
     offL.push(edges.length);

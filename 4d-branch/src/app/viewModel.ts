@@ -491,6 +491,10 @@ export class ViewModel {
       doc,
       sid,
       out: () => this.index.out,
+      roots: () => {
+        const idx = this.index;
+        return [...idx.impactRoots].sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
+      },
       reach: () => {
         const fc = this.forecast;
         return { version: this.forecastStamp, of: (id) => fc.reach.get(id)?.p ?? 0 };
@@ -1270,7 +1274,10 @@ export class ViewModel {
       return s;
     };
     let changed = false;
+    /** 開く物の先頭（時間で区切って開くときは、開き始めたカード。もう開いていても、キャンバスを寄せる目印として見せる物の先頭に） */
+    let head: ID | null = null;
     for (const id of open) {
+      head ??= id;
       const r = rootOf(id);
       if (r === undefined) continue;
       const s = get(r);
@@ -1287,6 +1294,11 @@ export class ViewModel {
       if (get(r).delete(id)) changed = true;
     }
     if (!changed) return false;
+    if (opts.reveal && head !== null) {
+      const r = rootOf(head);
+      const list = r === undefined ? undefined : opened.get(r);
+      if (list && list[0] !== head) list.unshift(head);
+    }
     for (const [r, s] of next) this.ui.setImpactOpen(r, [...s], opts.reveal ? (opened.get(r) ?? []) : []);
     return true;
   }
