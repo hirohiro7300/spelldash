@@ -77,6 +77,9 @@ export interface EngineInputs {
   reach: () => { version: number; of: (id: ID) => number };
 }
 
+/** 持ち続けない RV の代わり（今の結果の main は RV を読まない。入れ物として渡さない） */
+const NO_RV = new Float64Array(0);
+
 /** 変わった物の印 */
 const C_TOPO = 1;
 const C_NUMS = 2;
@@ -195,7 +198,12 @@ interface Run {
   readonly shown: Uint8Array | null;
   readonly main: Pass;
   readonly P: Float64Array;
-  readonly sq: Pass;
+  /**
+   * ずっと今のまま（sq）の今日の値・月の稼ぎ（数が出なければ null）と、そこへ来る見込み。sq の計算の入れ物（地図の大きさの配列 5 MB ほど）は
+   * 持ち続けない（読むのはこの 3 つだけ: P4 のヒープ）
+   */
+  readonly sqV: number | null;
+  readonly sqR: number | null;
   readonly Psq: Float64Array;
   readonly A: Float64Array;
   readonly Adef: Uint8Array;
@@ -485,8 +493,8 @@ class EngineResult implements ImpactResult {
     const r0 = topo.roots[0];
     this.vRoot = r0 !== undefined && main.def[r0] ? sumV(main.V, r0) : null;
     this.rRoot = r0 !== undefined && main.def[r0] ? main.R[r0]! : null;
-    this.vSQ = r0 !== undefined && r.sq.def[r0] ? sumV(r.sq.V, r0) : null;
-    this.rSQ = r0 !== undefined && r.sq.def[r0] ? r.sq.R[r0]! : null;
+    this.vSQ = r.sqV;
+    this.rSQ = r.sqR;
     this.counts = this.info.counts;
   }
 
@@ -1289,10 +1297,23 @@ export class ImpactEngine {
     this.dirty |= c;
   }
 
-  /** 今の結果（版が同じなら前と同じ物） */
-  result(inp: EngineInputs): ImpactResult {
+  /**
+   * 今の文書の形（作り直し・直しを待っていれば、ここで済ませる。数・計算はしない。result が最初にするのと同じ）。
+   * 見え方の計算が、3 年の分かれ道の範囲を文書をたどらずにこの形から作る（src/app/viewModel.ts の scopeFromTopo）
+   */
+  topoNow(inp: EngineInputs): Topo | null {
+    this.ensureTopo(inp);
+    return this.topo;
+  }
+
+  private ensureTopo(inp: EngineInputs): void {
     if (this.dirty & C_TOPO) this.rebuild(inp);
     else if (this.dirty & C_SPLICE && !this.splice(inp)) this.rebuild(inp);
+  }
+
+  /** 今の結果（版が同じなら前と同じ物） */
+  result(inp: EngineInputs): ImpactResult {
+    this.ensureTopo(inp);
     const topo = this.topo;
     const seen = this.seen;
     if (!topo || !seen) {
@@ -1559,13 +1580,17 @@ export class ImpactEngine {
     const c = assemble(topo, nums, stat, allowed);
     const S = o.annual / 12;
     const H = nums.H;
-    const main = backward(c, S, o.tail, H, 0, null);
+    // RV（月の稼ぎの 3 つの部分）は R を数える途中だけの物: 結果は読まないので持ち続けない（地図の大きさの配列 1.8 MB: P4 のヒープ）
+    const main: Pass = { ...backward(c, S, o.tail, H, 0, null), RV: NO_RV };
     const P = forward(c, main);
     const sq = backward(c, S, o.tail, H, 1, null);
     const Psq = forward(c, sq);
+    const r0 = topo.roots[0];
+    const sqV = r0 !== undefined && sq.def[r0] ? sumV(sq.V, r0) : null;
+    const sqR = r0 !== undefined && sq.def[r0] ? sq.R[r0]! : null;
     const { A, Adef } = this.accOf(topo, nums, S, o.reach);
     const flipsKey = `${this.version.topology}|${this.version.numbers}|${this.version.statuses}|${this.version.scenario}|${o.annual}|${o.tail}`;
-    return { key: o.key, topo, nums, c, annual: o.annual, S, tail: o.tail, H, sid: o.sid, shown, main, P, sq, Psq, A, Adef, flipsKey };
+    return { key: o.key, topo, nums, c, annual: o.annual, S, tail: o.tail, H, sid: o.sid, shown, main, P, sqV, sqR, Psq, A, Adef, flipsKey };
   }
 
   /**

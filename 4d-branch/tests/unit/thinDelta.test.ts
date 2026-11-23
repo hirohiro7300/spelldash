@@ -6,7 +6,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { MapData } from "../../src/deepmap/mapData";
 import type { DocData } from "../../src/model/types";
-import { decodeStored, encodeStored, primeThin, setThinBaseline, thinBaselineDoc, watchThinWrites } from "../../src/persist/codec";
+import { decodeStored, encodeStored, primeThin, primeThinSteps, setThinBaseline, thinBaselineDoc, watchThinWrites } from "../../src/persist/codec";
 import { encodeThinFull } from "../../src/persist/thinMap";
 import { Store } from "../../src/store/store";
 import { loadQSmall } from "./helpers/qSmall";
@@ -110,6 +110,45 @@ describe("変わった所だけ書く自動保存", () => {
       expect(same(store).compared).toBeLessThanOrEqual(4);
       applyEdit(store, R, "title", new Set());
       expect(same(store).compared).toBeLessThanOrEqual(4);
+    } finally {
+      off();
+    }
+  });
+
+  it("覚えを少しずつ作る（primeThinSteps: 起動の後に 1 つの長い仕事を作らない: P4）: 何歩にも分かれ、作った覚えで書く物は同じ。途中で書かれたら作りかけを捨てる", () => {
+    setThinBaseline(qMap);
+    const reread = () => decodeStored(JSON.parse(JSON.stringify(encodeThinFull(accountShape(thinBaselineDoc({ at: AT }), seeded(5), { rate: 0.05, rootReId: true, dx: 120, dy: -40 }))!.stored))).doc;
+    const store = new Store(reread());
+    expect(primeThinSteps(store.doc)).toBeNull();
+    const off = watchThinWrites(store);
+    try {
+      const s = primeThinSteps(store.doc)!;
+      expect(s).not.toBeNull();
+      let steps = 0;
+      while (!s.step()) steps++;
+      // q-small（4,333 枚）でも 1 歩ではない（4,000 枚ほどずつ止まる）
+      expect(steps).toBeGreaterThan(1);
+      expect(s.made).toBe(true);
+      expect(s.dropped).toBe(false);
+      // もうあれば作らない
+      expect(primeThinSteps(store.doc)).toBeNull();
+      const R = seeded(37);
+      applyEdit(store, R, "status", new Set());
+      expect(same(store).compared).toBeLessThanOrEqual(4);
+      applyEdit(store, R, "title", new Set());
+      expect(same(store).compared).toBeLessThanOrEqual(4);
+      // 途中で書かれた: 作りかけを捨て、覚えは残らない（次の自動保存は全部を見て、書く物は同じ）
+      store.replaceDoc(reread(), "取り込み");
+      const t = primeThinSteps(store.doc)!;
+      expect(t.step()).toBe(false);
+      applyEdit(store, R, "status", new Set());
+      while (!t.step());
+      expect(t.dropped).toBe(true);
+      expect(t.made).toBe(false);
+      expect(primeThinSteps(store.doc)).not.toBeNull();
+      same(store);
+      // その自動保存が覚えを作ったので、もう作らない
+      expect(primeThinSteps(store.doc)).toBeNull();
     } finally {
       off();
     }
