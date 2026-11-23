@@ -361,20 +361,14 @@ export class DocIndex implements GraphIndex {
     const sharedBy = new Map<ID[], number>();
     const tagsBy = new Map<string[], number>();
     const nodeAt = this.nodeAt;
-    // キーと値を同じ順の配列で読む（キーごとに文書を引き直さない）
-    const nkeys = Object.keys(doc.nodes);
-    const nvals = Object.values(doc.nodes);
-    const outL: ID[][] = new Array(nkeys.length);
-    const incL: ID[][] = new Array(nkeys.length);
+    // キーを 1 回だけ数え、値はキーで引く（Object.values は 7 万の鍵の入れ物では Object.keys の 2〜3 倍遅い: 見直し perf-1）
+    const nodesRec = doc.nodes;
+    const nkeys = Object.keys(nodesRec);
     for (let i = 0; i < nkeys.length; i++) {
       const id = nkeys[i]!;
-      const n = nvals[i]!;
+      const n = nodesRec[id]!;
       this.nodeSeq.set(id, i);
       nodeAt.push(n);
-      const o: ID[] = (outL[i] = []);
-      const c: ID[] = (incL[i] = []);
-      this.out.set(id, o);
-      this.inc.set(id, c);
       const pids = n.projectIds;
       if (pids.length === 0) this.unassigned.push(id);
       else {
@@ -405,27 +399,58 @@ export class DocIndex implements GraphIndex {
     this.nodeCount = nodeAt.length;
     for (const [pids, c] of sharedBy) for (const p of pids) this.sharedIn.set(p, (this.sharedIn.get(p) ?? 0) + c);
     for (const [tags, c] of tagsBy) this.countTagList(tags, c);
+    // 出る線・入る線の並びは、先に数えてちょうどの長さで作る（空の配列に 1 つ足すと 16 個分の場所を取る: 7.7 万枚で 2 つの並びが 17 MB。
+    // ちょうどの長さなら 5 MB ほど: 見直し perf-6）。並びの中は今までどおり線のキーの順
+    const edgesRec = doc.edges;
+    const ekeys = Object.keys(edgesRec);
+    const N = nkeys.length;
+    const ea = new Int32Array(ekeys.length);
+    const eb = new Int32Array(ekeys.length);
+    const outN = new Int32Array(N);
+    const incN = new Int32Array(N);
+    for (let k = 0; k < ekeys.length; k++) {
+      const e = edgesRec[ekeys[k]!]!;
+      const a = this.nodeSeq.get(e.source);
+      const b = this.nodeSeq.get(e.target);
+      if (a === undefined || b === undefined) {
+        ea[k] = -1;
+        continue;
+      }
+      ea[k] = a;
+      eb[k] = b;
+      outN[a]!++;
+      incN[b]!++;
+    }
+    const outL: ID[][] = new Array(N);
+    const incL: ID[][] = new Array(N);
+    for (let i = 0; i < N; i++) {
+      const id = nkeys[i]!;
+      const o: ID[] = (outL[i] = outN[i] ? new Array<ID>(outN[i]!) : []);
+      const c: ID[] = (incL[i] = incN[i] ? new Array<ID>(incN[i]!) : []);
+      this.out.set(id, o);
+      this.inc.set(id, c);
+    }
+    outN.fill(0);
+    incN.fill(0);
     const edgeAt = this.edgeAt;
     const linked = this.edgeLinked;
     /** プロジェクト間か（所属の配列の組ごとに覚える） */
     const crossMemo = new Map<ID[], Map<ID[], boolean>>();
-    const ekeys = Object.keys(doc.edges);
-    const evals = Object.values(doc.edges);
     for (let k = 0; k < ekeys.length; k++) {
       const id = ekeys[k]!;
-      const e = evals[k]!;
+      const e = edgesRec[id]!;
       this.edgeSeq.set(id, k);
       edgeAt.push(e);
       if (e.collapsed) this.collapsedEdges.add(id);
-      const a = this.nodeSeq.get(e.source);
-      const b = this.nodeSeq.get(e.target);
-      if (a === undefined || b === undefined) {
+      const a = ea[k]!;
+      if (a < 0) {
         linked.push(false);
         continue;
       }
+      const b = eb[k]!;
       linked.push(true);
-      outL[a]!.push(id);
-      incL[b]!.push(id);
+      outL[a]![outN[a]!++] = id;
+      incL[b]![incN[b]!++] = id;
       const na = nodeAt[a]!;
       const nb = nodeAt[b]!;
       const pa = na.projectIds;

@@ -17,6 +17,7 @@ import { F_STUB, ROLE_A } from "../deepmap/core/compile";
 import type { MapData } from "../deepmap/mapData";
 import { composeCard, materializeBody, type Card } from "../demo/compose";
 import { impactNodeId64 } from "../demo/impact";
+import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
 import { loadPageMap, PAGE_Q } from "../demo/pageBundle";
 import { compiledMapOf, statusCode } from "../model/impactGraph";
 import type { DocData, GNode, ID } from "../model/types";
@@ -108,38 +109,39 @@ interface Calc {
   ov: Overview | null;
 }
 
-/** 地図の番号ごとのカードの ID（鍵の 64 ビットの指紋。地図ごとに 1 回だけ。buildQuarterDoc と同じ ID） */
-const idsMemo = new WeakMap<MapData, ID[]>();
-function idsOf(map: MapData): ID[] {
-  let ids = idsMemo.get(map);
-  if (!ids) {
-    ids = new Array<ID>(map.n);
-    for (let i = 0; i < map.n; i++) ids[i] = impactNodeId64(map.key(i));
-    idsMemo.set(map, ids);
-  }
-  return ids;
+/**
+ * 地図の番号ごとのカードの ID（鍵の 64 ビットの指紋。地図ごとに 1 回だけ。buildQuarterDoc と同じ ID）。組み立て・保存の基準と同じ表
+ * （../demo/quarterIds.ts: 起動で 7.7 万の鍵の指紋と表を、ここでもう 1 つ作らない。見直し perf-1・perf-7）。書き換えない
+ */
+function idsOf(map: MapData): readonly ID[] {
+  return quarterIdTable(map).node;
 }
 
-/** ノードの ID → 地図の番号（地図ごとに 1 回作る。カードを選ぶたび・見えるカードごとに鍵から地図をたどらない） */
-const revMemo = new WeakMap<MapData, ReadonlyMap<ID, number>>();
-function revOf(map: MapData): ReadonlyMap<ID, number> {
-  let rev = revMemo.get(map);
-  if (!rev) {
-    const ids = idsOf(map);
-    const m = new Map<ID, number>();
-    for (let i = 0; i < ids.length; i++) m.set(ids[i]!, i);
-    revMemo.set(map, (rev = m));
-  }
-  return rev;
+/** ID → 地図の番号（get・has だけ） */
+interface IdRev {
+  get(id: ID): number | undefined;
+  has(id: ID): boolean;
+}
+
+/** ノードの ID → 地図の番号（地図ごとに 1 つ。保存の基準と同じ表） */
+function revOf(map: MapData): IdRev {
+  return quarterIdIndex(map);
 }
 
 /**
- * 3 年の影響のエンジンが地図の列から形を作ったとき、その ID の並びと表（番号は地図と同じ）を、ここの表として覚える
- * （起動のときに 7.2 万の鍵の指紋と表をもう 1 つ作らない: 見直し perf-7）。どちらも書き換えない
+ * 文書ごとの ID → 番号: 鍵の指紋と違う ID の番号だけを表に持ち、ほかは地図ごとの表（base）で引く（同じ ID が 2 つあれば後の番号:
+ * 前の Map と同じ）。7.7 万の表をもう 1 つ作らない。関数の外で作る（中で作ると、閉じた所が前の表や文書をつかんだままになる）
  */
-function adoptIds(map: MapData, ids: ID[], idx: ReadonlyMap<ID, number>): void {
-  if (!idsMemo.has(map) && ids.length === map.n) idsMemo.set(map, ids);
-  if (!revMemo.has(map) && idx.size === map.n) revMemo.set(map, idx);
+function overRev(ids: readonly ID[], hashed: readonly ID[], base: IdRev): IdRev {
+  const over = new Map<ID, number>();
+  for (let i = 0; i < ids.length; i++) if (ids[i] !== hashed[i]) over.set(ids[i]!, i);
+  const get = (id: ID): number | undefined => {
+    const o = over.get(id);
+    const j = base.get(id);
+    const b = j !== undefined && ids[j] === id ? j : undefined;
+    return o === undefined ? b : b === undefined || o > b ? o : b;
+  };
+  return { get, has: (id) => get(id) !== undefined };
 }
 
 /** 題名が仮の物（地図の題名を書いていない行き先の「—」・空）か */
@@ -173,7 +175,7 @@ const isZero = (arr: Uint8Array): boolean => {
 };
 
 /** 選んだ手・見送った手を、文書から地図の番号ごとに読む（手のカードだけ） */
-function statusFromDoc(doc: DocData, cm: CompiledMap, ids: ID[]): Uint8Array {
+function statusFromDoc(doc: DocData, cm: CompiledMap, ids: readonly ID[]): Uint8Array {
   const out = new Uint8Array(cm.n);
   const role = cm.role;
   for (let i = 0; i < cm.n; i++) if (role[i] === ROLE_A) out[i] = statusCode(doc.nodes[ids[i]!] as GNode | undefined);
@@ -271,7 +273,7 @@ export class DeepState {
   }
 
   /** 文書ごとの、地図の番号 → カードの ID の表と、その逆（鍵の指紋と違う ID の文書だけ。文書の入れ物と形の版ごとに作る） */
-  private docIds: { map: MapData; nodes: DocData["nodes"]; topo: number; ids: ID[]; rev: ReadonlyMap<ID, number> } | null = null;
+  private docIds: { map: MapData; nodes: DocData["nodes"]; topo: number; ids: ID[]; rev: IdRev } | null = null;
   /** 表を作り直した回数（作り直したら画面に渡す物も作り直す） */
   private idStamp = 0;
 
@@ -279,11 +281,10 @@ export class DeepState {
    * 地図の番号 → 文書のカードの ID。今日が鍵の指紋の ID なら、どのカードも鍵の指紋の ID（地図ごとの表）。
    * そうでなければ（版 6 から引き上げた・ID を引き継いだ地図）、文書の鍵から表を作る（形が変わったときだけ）
    */
-  private idTable(doc: DocData, map: MapData): { ids: ID[]; rev(): ReadonlyMap<ID, number>; hashed: boolean } {
-    // 今日が鍵の指紋の ID: 地図ごとの表（エンジンが地図の列から作っていればその物。なければ要るときに作る: 起動で 7 万の指紋を作らない）
-    const memo = idsMemo.get(map);
-    if (doc.nodes[memo?.[0] ?? impactNodeId64(map.key(0))]?.meta?.key === map.key(0)) return { ids: memo ?? new Array<ID>(map.n), rev: () => revOf(map), hashed: true };
+  private idTable(doc: DocData, map: MapData): { ids: readonly ID[]; rev(): IdRev; hashed: boolean } {
+    // 今日が鍵の指紋の ID: 地図ごとの表（組み立て・保存の基準と同じ物）
     const hashed = idsOf(map);
+    if (doc.nodes[hashed[0]!]?.meta?.key === map.key(0)) return { ids: hashed, rev: () => revOf(map), hashed: true };
     const topo = this.vm.index.version.topo;
     const c = this.docIds;
     if (c && c.map === map && c.nodes === doc.nodes && c.topo === topo) return { ids: c.ids, rev: () => c.rev, hashed: false };
@@ -309,26 +310,30 @@ export class DeepState {
     // 見つからない番号だけを、鍵の指紋でない ID のカードの鍵から埋める（7 万の鍵を表で引かない）
     const ids = hashed.slice();
     const seen = new Uint8Array(map.n);
-    const taken = new Set<ID>();
+    let unseen = 0;
+    const keys = quarterIdTable(map).keys;
     for (let i = 0; i < map.n; i++) {
       const n = doc.nodes[hashed[i]!];
-      if (n && n.meta?.key === map.key(i)) {
+      if (n && n.meta?.key === keys[i]) seen[i] = 1;
+      else unseen++;
+    }
+    // どの番号も鍵の指紋の ID で見つかったなら、下で全体を見ても何も変わらないので見ない。鍵の指紋の ID で見つかったカードは飛ばす
+    // （前は見つかった ID の集まりを作っていた: 7 万の ID を入れずに、地図ごとの表で引く）
+    const base = revOf(map);
+    if (unseen > 0) {
+      // 全体を見てよい: ID が鍵の指紋と違う地図（版 6 から引き上げた地図など）で、文書の形が変わったときに 1 回
+      for (const id in doc.nodes) {
+        const j = base.get(id);
+        if (j !== undefined && seen[j]) continue;
+        const k = doc.nodes[id]!.meta?.key;
+        if (typeof k !== "string") continue;
+        const i = map.indexOfKey(k);
+        if (i < 0 || seen[i]) continue;
         seen[i] = 1;
-        taken.add(hashed[i]!);
+        ids[i] = id;
       }
     }
-    // 全体を見てよい: ID が鍵の指紋と違う地図（版 6 から引き上げた地図など）で、文書の形が変わったときに 1 回
-    for (const id in doc.nodes) {
-      if (taken.has(id)) continue;
-      const k = doc.nodes[id]!.meta?.key;
-      if (typeof k !== "string") continue;
-      const i = map.indexOfKey(k);
-      if (i < 0 || seen[i]) continue;
-      seen[i] = 1;
-      ids[i] = id;
-    }
-    const rev = new Map<ID, number>();
-    for (let i = 0; i < ids.length; i++) rev.set(ids[i]!, i);
+    const rev = overRev(ids, hashed, base);
     this.docIds = { map, nodes: doc.nodes, topo, ids, rev };
     this.idStamp++;
     return { ids, rev: () => rev, hashed: false };
@@ -356,10 +361,7 @@ export class DeepState {
   /** 計算の芯（地図ごとに 1 回だけ。3 年の影響のエンジンが地図の列から形を作るときと同じ物: compiledMapOf） */
   private cmOf(map: MapData): CompiledMap {
     const t = this.vm.engine.graph.topo;
-    if (t && t.map === map && t.cm) {
-      adoptIds(map, t.ids, t.idx);
-      return t.cm;
-    }
+    if (t && t.map === map && t.cm) return t.cm;
     return compiledMapOf(map);
   }
 
@@ -390,7 +392,7 @@ export class DeepState {
     if (b && b.key === key && b.ctx.map === map) return b.ctx;
     const annual = imp.annual;
     // ID の並び（今日が鍵の指紋の ID なら地図ごとの表。違えば文書から作った表）
-    const ids: ID[] = table.ids;
+    const ids: readonly ID[] = table.ids;
     // 見取り図と道の計算は方針（シナリオ）にも編集の有無にも依らない: 同じ計算なら前の物を使う（シナリオを変えても数え直さない）
     const calc: Calc = this.calc && this.calc.key === calcKey ? this.calc : { key: calcKey, a: null, ov: null };
     this.calc = calc;
@@ -429,7 +431,7 @@ export class DeepState {
         if (docText) return docText;
         const base = deepText(map, annual, ctx.analysis());
         const nodeOf = (i: number) => {
-          const id = ids[i] ?? (i >= 0 && i < map.n ? (ids[i] = impactNodeId64(map.key(i))) : undefined);
+          const id = ids[i] ?? (i >= 0 && i < map.n ? impactNodeId64(map.key(i)) : undefined);
           return id ? store.doc.nodes[id] : undefined;
         };
         docText = {
@@ -456,7 +458,7 @@ export class DeepState {
         const i = table.rev().get(id);
         return i !== undefined && map.key(i) === k ? i : -1;
       },
-      idOf: (i) => ids[i] ?? (ids[i] = impactNodeId64(map.key(i))),
+      idOf: (i) => ids[i] ?? impactNodeId64(map.key(i)),
       pickedSummary: () => {
         if (picked !== null) return picked;
         const reach = ctx.analysis().pi.reach;
@@ -477,7 +479,7 @@ export class DeepState {
   }
 
   /** 選んだ・見送った（地図の番号ごと）と、その版の鍵 */
-  private statusArr(doc: DocData, map: MapData, cm: CompiledMap, ids: ID[] | null): { key: string; arr: Uint8Array } {
+  private statusArr(doc: DocData, map: MapData, cm: CompiledMap, ids: readonly ID[] | null): { key: string; arr: Uint8Array } {
     const eng = this.vm.engine;
     const fromMap = eng.mapStatus(doc);
     // 選んだ手の版（エンジンの形・状態の版）が同じなら、文書の物が替わっても（全部の入れ替えを変わった物だけで受けた後）同じ配列

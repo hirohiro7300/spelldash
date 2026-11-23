@@ -38,7 +38,8 @@
 import type { MapData } from "../deepmap/mapData";
 import { fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf } from "../demo/impact";
 import { impactBaselineDigest } from "../demo/impactDigest";
-import { buildQuarterDoc, type QuarterLayout } from "../demo/quarterDoc";
+import { buildQuarterParts, type QuarterLayout } from "../demo/quarterDoc";
+import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
 import { NODE_H, NODE_TYPE_ORDER, NODE_W, STATUS_ORDER } from "../model/constants";
 import { impactConfigOf, setPreferredRelease } from "../model/forks";
 import { DocFormatError, NewerDocError, normalizeDoc, SCHEMA, SCHEMA_VERSION, setReadableVersion, THIN_VERSION, type NormalizeReport } from "../model/schema";
@@ -291,7 +292,9 @@ interface Core {
   readonly anchor: string;
   /** この組み立ての基準の文書の指紋（初めて要るときに数える） */
   digest: string | null;
-  /** 組み立てた文書（入れ物は凍らせる） */
+  /** 組み立てた文書の nodes・edges の入れ物の空の物（ほかは組み立てた文書と同じ。凍っている） */
+  readonly shell: DocData;
+  /** 組み立てた文書（入れ物は凍らせる。初めて要るときに作る: 基準の文書の指紋・確かめ用） */
   readonly doc: DocData;
   readonly at: string;
   readonly n: number;
@@ -303,12 +306,12 @@ interface Core {
   readonly nodes: readonly GNode[];
   /** 親からの線（今日は null） */
   readonly edges: readonly (GEdge | null)[];
-  /** カードの ID・親からの線の ID（番号ごと。今日の線は ""） */
+  /** カードの ID・親からの線の ID（番号ごと。今日の線の物は使わない: 今日の線は無い） */
   readonly ids: readonly ID[];
   readonly eids: readonly ID[];
   readonly idIndex: ReadonlyMap<ID, number>;
-  readonly eidIndex: ReadonlyMap<ID, number>;
-  readonly keyIndex: ReadonlyMap<string, number>;
+  readonly eidIndex: IndexOf<ID>;
+  readonly keyIndex: IndexOf<string>;
   readonly projects: ReadonlyArray<{ id: ID; name: string }>;
   readonly scenarios: ReadonlyArray<{ id: ID; name: string }>;
   /** 時刻・位置を決める見本（散らした番号） */
@@ -322,6 +325,12 @@ interface Core {
   /** カードのやることの枠の名前（チェックを覚える名前） */
   readonly slotMemo: Map<number, readonly string[]>;
   views: View[];
+}
+
+/** ID・鍵 → 地図の番号を引く口（無ければ undefined） */
+export interface IndexOf<K> {
+  get(k: K): number | undefined;
+  has(k: K): boolean;
 }
 
 /** 基準の写し（at・dx・dy・pmap・smap を当てた物）。変わらないカードと線は組み立てた物のまま */
@@ -448,42 +457,40 @@ export function thinBaselineRoot(): GNode | null {
 
 const isoOk = (s: unknown): s is string => typeof s === "string" && Number.isFinite(Date.parse(s));
 
-/** 基準を組み立てる（地図ごとに初めの 1 回だけ。時刻は at があればそれ、無ければ地図の年月の 1 日） */
+/**
+ * 基準を組み立てる（地図ごとに初めの 1 回だけ。時刻は at があればそれ、無ければ地図の年月の 1 日）。
+ * 組み立ては番号ごとの並びで受け取り、7.7 万枚の文書の入れ物（nodes・edges）は作らない（読む文書の入れ物は、読むときに 1 回だけ作る。
+ * 入れ物を作って読み直すと、それだけで起動が 0.1〜0.4 秒遅く、ヒープも 3 MB ほど増える: 見直し perf-1・perf-6）。入れ物の入った文書
+ * （基準の文書の指紋・確かめ用）は、初めて要るときに作る（core.doc）。カードの ID と ID → 番号の表は、地図ごとの物（../demo/quarterIds.ts）を共有する
+ */
 function coreOf(map: MapData, at: string | null): Core {
   const hit = cores.get(map);
   if (hit) return hit;
   const h = map.header;
   const ms = at !== null && isoOk(at) ? Date.parse(at) : Date.parse(`${h.anchor}-01T00:00:00.000Z`);
-  const doc = buildQuarterDoc(map, { version: h.hash, release: h.release, at: Number.isFinite(ms) ? ms : 0, layout: THIN_LAYOUT });
+  const parts = buildQuarterParts(map, { version: h.hash, release: h.release, at: Number.isFinite(ms) ? ms : 0, layout: THIN_LAYOUT });
+  const doc = parts.doc;
   const n = map.n;
-  const keys = new Array<string>(n);
-  const nodes = new Array<GNode>(n);
-  const edges = new Array<GEdge | null>(n).fill(null);
+  const tab = quarterIdTable(map);
+  const keys = tab.keys;
+  const nodes = parts.nodes;
+  const edges = parts.edges;
+  const ids = parts.ids;
   const parent = new Int32Array(n);
-  const idIndex = new Map<ID, number>();
-  const eidIndex = new Map<ID, number>();
-  const keyIndex = new Map<string, number>();
-  // 組み立ては番号の順にカードと線を入れる（線は今日を除く）。違えば組み立ての決まりが変わったので止める
-  let i = 0;
-  for (const node of Object.values(doc.nodes)) {
-    const k = map.key(i);
-    if (node.meta.key !== k) throw new Error(`基準の組み立ての並びが地図の番号と合いません（${i}: ${k}）`);
-    keys[i] = k;
-    nodes[i] = node;
-    idIndex.set(node.id, i);
-    keyIndex.set(k, i);
+  // 組み立ては番号の順にカードと線を作る（線は今日を除く）。違えば組み立ての決まりが変わったので止める
+  if (nodes.length !== n || edges.length !== n || ids !== tab.node) throw new Error("基準の組み立てのカードの数が地図と合いません");
+  for (let i = 0; i < n; i++) {
+    const node = nodes[i]!;
+    if (node.meta.key !== keys[i] || node.id !== ids[i]) throw new Error(`基準の組み立ての並びが地図の番号と合いません（${i}: ${keys[i]}）`);
     parent[i] = map.parent(i);
-    i++;
   }
-  if (i !== n) throw new Error("基準の組み立てのカードの数が地図と合いません");
-  i = 1;
-  for (const e of Object.values(doc.edges)) {
-    if (i >= n || e.target !== nodes[i]!.id || e.source !== nodes[parent[i]!]!.id) throw new Error(`基準の組み立ての線が地図の番号と合いません（${i}）`);
-    edges[i] = e;
-    eidIndex.set(e.id, i);
-    i++;
+  if (edges[0] !== null) throw new Error("基準の組み立ての線の数が地図と合いません");
+  for (let i = 1; i < n; i++) {
+    const e = edges[i];
+    if (!e || e.id !== tab.edge[i] || e.target !== ids[i] || e.source !== ids[parent[i]!]) throw new Error(`基準の組み立ての線が地図の番号と合いません（${i}）`);
   }
-  if (i !== n) throw new Error("基準の組み立ての線の数が地図と合いません");
+  const idIndex = quarterIdIndex(map);
+  if (idIndex.size !== n) throw new Error("基準の組み立てのカードの ID が重なっています");
   // 子の並び（深さ優先の番号なので、子は番号の順に出てくる）
   const kidStart = new Int32Array(n + 1);
   for (let c = 1; c < n; c++) kidStart[parent[c]! + 1]!++;
@@ -545,11 +552,41 @@ function coreOf(map: MapData, at: string | null): Core {
   Object.freeze(doc.scenarioOrder);
   Object.freeze(doc.meta);
   Object.freeze(doc);
+  // 線の ID → 番号: 線の ID は e_i_ + 子のカードの指紋なので、カードの ID の表で引いて確かめる（7.7 万の線の表を作らない: 見直し perf-6）
+  const eidIndex: IndexOf<ID> = {
+    get: (id) => {
+      if (typeof id !== "string" || id.length !== 18 || !id.startsWith("e_i_")) return undefined;
+      const i = idIndex.get(`n_i_${id.slice(4)}`);
+      return i !== undefined && i > 0 && tab.edge[i] === id ? i : undefined;
+    },
+    has: (id) => eidIndex.get(id) !== undefined,
+  };
+  // 鍵 → 番号: 地図の鍵の引き方（区切りごとにたどる）で引き、鍵が同じかを確かめる（7.7 万の鍵の表を作らない。引くのは変更のあるカードだけ）
+  const keyIndex: IndexOf<string> = {
+    get: (k) => {
+      if (typeof k !== "string") return undefined;
+      const i = map.indexOfKey(k);
+      return i >= 0 && i < n && keys[i] === k ? i : undefined;
+    },
+    has: (k) => keyIndex.get(k) !== undefined,
+  };
+  let full: DocData | null = null;
   const core: Core = {
     map,
     anchor: h.anchor,
     digest: null,
-    doc,
+    shell: doc,
+    // 入れ物の入った基準の文書（基準の文書の指紋・確かめ用。初めて要るときに作り、凍らせる）
+    get doc(): DocData {
+      if (full) return full;
+      const nd: Record<ID, GNode> = {};
+      const ed: Record<ID, GEdge> = {};
+      for (let i = 0; i < n; i++) nd[ids[i]!] = nodes[i]!;
+      for (let i = 1; i < n; i++) ed[edges[i]!.id] = edges[i]!;
+      Object.freeze(nd);
+      Object.freeze(ed);
+      return (full = Object.freeze({ ...doc, nodes: nd, edges: ed }));
+    },
     at: nodes[0]!.createdAt,
     n,
     keys,
@@ -558,8 +595,8 @@ function coreOf(map: MapData, at: string | null): Core {
     kids,
     nodes,
     edges,
-    ids: nodes.map((x) => x.id),
-    eids: edges.map((e) => (e ? e.id : "")),
+    ids,
+    eids: tab.edge,
     idIndex,
     eidIndex,
     keyIndex,
@@ -691,7 +728,7 @@ export function thinBaselineDoc(base: Partial<MapBase> = {}): DocData {
     smap: { ...Object.fromEntries(core.scenarios.map((s) => [s.id, s.id])), ...base.smap },
   };
   const v = viewOf(core, full);
-  const d = core.doc;
+  const d = core.shell;
   const nodes: Record<ID, GNode> = {};
   const edges: Record<ID, GEdge> = {};
   for (let i = 0; i < core.n; i++) nodes[v.nodes[i]!.id] = v.nodes[i]!;
@@ -717,7 +754,7 @@ export interface PageMapAccess {
   readonly parent: Int32Array;
   readonly kidStart: Int32Array;
   readonly kids: Int32Array;
-  readonly keyIndex: ReadonlyMap<string, number>;
+  readonly keyIndex: IndexOf<string>;
   /** 組み立てた基準の時刻と、今日の位置 */
   readonly at: string;
   readonly rootX: number;
