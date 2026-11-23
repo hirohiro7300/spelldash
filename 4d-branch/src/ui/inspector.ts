@@ -125,19 +125,42 @@ export function buildInspector(app: AppContext): HTMLElement {
     updaters = [];
     viewUpdaters = [];
     panel = null;
-    // 作り直しを頼まれた（全部の入れ替え・書き手・閲覧のみ・地図の画面）: 取っておいた概要とノードの詳細も使わない
-    if (force) kept.clear();
-    clear(body);
     // 別の物を出した（道の画面を閉じてカードの詳細へ戻った など）: 前の画面の送った位置のまま、詳細の途中から見せない（見直し user-15）。
-    // 中身を入れる前に（入れた後に送った位置を変えると、その場で全部を配置し直す）
-    if (moved) body.scrollTop = 0;
+    // 中身を隠す・入れ替える前に（その後に送った位置を変えると、その場で全部を配置し直す。前のフレームで配置は済んでいる）
+    if (moved && body.scrollTop) body.scrollTop = 0;
+    // 作り直しを頼まれた（全部の入れ替え・書き手・閲覧のみ・地図の画面）: 取っておいた概要とノードの詳細も使わない
+    if (force) {
+      kept.clear();
+      clear(body);
+    } else {
+      // 取っておいた概要は外さずに隠す（content-visibility: hidden。配置と文字の組みを持ったまま描かない）。外して入れ直すと、
+      // 概要へ戻るたびに見取り図と 3 年の影響の全部を配置し直し、文字を組み直す（Esc で概要へ戻ると机でも 30 ms を超えていた: P4）。
+      // 隠した物の中の部品は押せず、Tab でも行かず、読み上げにも出ない。中にあったフォーカスは、外したときと同じく外す。
+      // ほかの物（ノードの詳細・接続・道の画面など）は今までどおり外す
+      const ov = kept.get("none")?.el;
+      for (const c of [...body.childNodes]) {
+        if (c === ov) {
+          const a = document.activeElement;
+          if (a instanceof HTMLElement && ov.contains(a)) a.blur();
+          ov.classList.add("insp-kept-off");
+          ov.setAttribute("aria-hidden", "true");
+        } else c.remove();
+      }
+    }
+    // 隠した概要（あれば）。出す物はいつもその前に置く（ページの順で、出している物が隠した物より先に来る）
+    const ovEl = kept.get("none")?.el;
+    const hiddenOv = ovEl && ovEl.parentNode === body ? ovEl : null;
+    const last0 = body.lastElementChild;
     const doc = store.doc;
     let page: DeepPageHandle | null = null;
     // 概要とノードの詳細は取っておき、戻ったときに作り直さずに中身だけ合わせる（カードを選ぶ・概要へ戻るたびに全部を作らない: 作業メモ perf-8）
     const slot = k === "none" ? "none" : k.startsWith("node:") && doc.nodes[k.slice(5)] ? "node" : null;
     const hit = slot ? kept.get(slot) : undefined;
     if (hit) {
-      body.append(hit.el);
+      if (hit.el === hiddenOv) {
+        hit.el.classList.remove("insp-kept-off");
+        hit.el.removeAttribute("aria-hidden");
+      } else body.insertBefore(hit.el, hiddenOv);
       updaters = hit.updaters;
       viewUpdaters = hit.viewUpdaters;
       panel = hit.panel;
@@ -157,7 +180,12 @@ export function buildInspector(app: AppContext): HTMLElement {
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
     } else if (k.startsWith("multi:")) multiPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     else overviewPanel(app, body, (u) => updaters.push(u));
-    if (slot && !hit && body.firstElementChild instanceof HTMLElement) kept.set(slot, { el: body.firstElementChild, updaters, viewUpdaters, panel });
+    // 新しく作った物（後ろに足された物）。隠した概要があれば、その前へ移す（まだ配置していないので、移しても配置はやり直さない）
+    const fresh: Element[] = [];
+    for (let c = last0 ? last0.nextElementSibling : body.firstElementChild; c; c = c.nextElementSibling) fresh.push(c);
+    if (hiddenOv) for (const c of fresh) body.insertBefore(c, hiddenOv);
+    const made = fresh[0];
+    if (slot && !hit && made instanceof HTMLElement) kept.set(slot, { el: made, updaters, viewUpdaters, panel });
     headTitle.textContent = k === "none" ? "概要" : k.startsWith("deep:") ? "3 年の分かれ道" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
     if (moved) panel?.lowerLater();
@@ -290,7 +318,7 @@ function holdFocus(body: HTMLElement): (() => void) | null {
     /* 文字の位置を持たない欄（日付・数） */
   }
   return () => {
-    const el = body.querySelector<HTMLElement>(`[data-fk="${CSS.escape(fk)}"]`);
+    const el = body.querySelector<HTMLElement>(`:scope > :not(.insp-kept-off) [data-fk="${CSS.escape(fk)}"]`);
     if (!el) return;
     body.scrollTop = top;
     el.focus();

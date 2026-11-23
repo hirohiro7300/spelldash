@@ -317,7 +317,17 @@ async function runProfile(browser, profile) {
         f.ui.setPrefs({ rightOpen: true });
       });
       await settle(page);
-      const sec = page.locator(".sidebar-right .deep-open-sec");
+      // 概要（今日の「この先をひらく」も持つ）は外さずに隠して取っておく（P4: Esc で概要へ戻る速さ）。見ているのは出している詳細の物。
+      // 隠した概要は見えず、読み上げに出ず、フォーカスも入らない
+      const kept = await page.evaluate(() => {
+        const ov = document.querySelector(".sidebar-right .insp-overview");
+        if (!ov) return null;
+        const b = ov.querySelector("button");
+        b?.focus();
+        return { off: ov.classList.contains("insp-kept-off"), aria: ov.getAttribute("aria-hidden"), shown: [...ov.children].some((x) => x.checkVisibility()) || ov.getBoundingClientRect().height > 0, btnShown: [...ov.querySelectorAll("button")].some((x) => x.checkVisibility()), focused: !!b && document.activeElement === b };
+      });
+      assert(!kept || (kept.off && kept.aria === "true" && !kept.shown && !kept.btnShown && !kept.focused), `隠した概要が見える・押せる（${JSON.stringify(kept)}）`);
+      const sec = page.locator(".sidebar-right .deep-open-sec:visible");
       await sec.waitFor();
       const moves = sec.locator(".deep-open-moves button");
       assert((await moves.count()) >= 5, `手ごとに開くボタンが少ない（${await moves.count()}）`);
@@ -1019,7 +1029,8 @@ async function storedProfile(browser, profile) {
         f.ui.setPrefs({ rightOpen: true });
       });
       await settle(page);
-      const sec = page.locator(".sidebar-right .deep-open-sec");
+      // 隠して取っておいた概要にも今日の「この先をひらく」がある（P4）。出している詳細の物を押す
+      const sec = page.locator(".sidebar-right .deep-open-sec:visible");
       await sec.waitFor();
       const btn = sec.locator(".deep-open-moves button").first();
       const label = await btn.innerText();
