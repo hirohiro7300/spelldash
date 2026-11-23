@@ -43,6 +43,8 @@ function parseRelease(text: string): PageMapRelease | null {
 export const PAGE_Q_RELEASE: PageMapRelease | null = PAGE_Q ? parseRelease(qRelease) : null;
 
 let loading: Promise<MapData> | null = null;
+/** 読み終えた地図（読み終えるまで null） */
+let loadedMap: MapData | null = null;
 
 /**
  * ページに入れた 3 か月ごとの地図を読む（1 度だけ伸ばして読み、2 度目からは同じ約束を返す）。
@@ -50,6 +52,14 @@ let loading: Promise<MapData> | null = null;
  */
 export function loadPageMap(): Promise<MapData | null> {
   if (!PAGE_Q) return Promise.resolve(null);
-  loading ??= decodeBundle(qB64);
+  loading ??= decodeBundle(qB64).then((m) => (loadedMap = m));
   return loading;
+}
+
+/**
+ * もう読み終えたページの地図（まだなら null。読み始めない）。保存してあった物を読むときに読み終えていれば、画面は起動の最初から地図を使う
+ * （読み終えた知らせを待って画面を 2 度作らない: 見直し perf-1）
+ */
+export function pageMapIfLoaded(): MapData | null {
+  return loadedMap;
 }

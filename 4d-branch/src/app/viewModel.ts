@@ -25,7 +25,7 @@
 //     絞り込みが無いとき、範囲のノードは必ず入口から数える線でつながる（入口にも、入口の無い循環にもならない）ので、
 //     自分のノードだけで入口を決めればよい（computeCollapse を自分のノードの部分にだけ使うのと同じ）
 
-import { ForecastPlan, type ForecastResult } from "../model/forecast";
+import { ForecastPlan, type ForecastResult, type PlanSteps } from "../model/forecast";
 import { flowOuts, forkKindOf, isFlowEdge, isImpactRoot } from "../model/forks";
 import { DocIndex } from "../model/docIndex";
 import type { ImpactResult } from "../model/impact";
@@ -216,6 +216,9 @@ function quarterCol(doc: DocData, root: ID): ((id: ID, depth: number) => number)
     return Math.round(m / 3) * 2 + (meta?.fork === "chance" ? 1 : 0);
   };
 }
+
+/** これより小さい文書は、見込みをその場で数える（大きい文書は空いた時間に: ViewModel.forecastIfReady） */
+const FORECAST_SYNC_NODES = 5000;
 
 export class ViewModel {
   /** 文書の索引（変更のたびに変わった物だけ直す。GraphIndex と同じ中身に、数・期限の幅・入口などを足した物） */
@@ -453,9 +456,17 @@ export class ViewModel {
       // 入口（文書の順）と 3 年の分かれ道の範囲は、索引と見え方の計算が持っている物を使う
       let plan = this.forecastPlan;
       if (!plan || plan.inputs !== this.forecastInputs) {
-        const idx = this.index;
-        const roots = [...idx.forecastRoots].sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
-        plan = this.forecastPlan = { inputs: this.forecastInputs, doc, plan: new ForecastPlan(doc, idx.out, { roots, impactScope: this.scopeSet() }) };
+        // 空いた時間に作りかけの計画があれば、その続きを作る（同じ入力のときだけ）
+        const st = this.forecastSteps;
+        this.forecastSteps = null;
+        if (st && st.inputs === this.forecastInputs && st.doc === doc) {
+          while (!st.steps.step());
+          plan = this.forecastPlan = { inputs: st.inputs, doc, plan: st.steps.plan! };
+        } else {
+          const idx = this.index;
+          const roots = [...idx.forecastRoots].sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
+          plan = this.forecastPlan = { inputs: this.forecastInputs, doc, plan: new ForecastPlan(doc, idx.out, { roots, impactScope: this.scopeSet() }) };
+        }
       } else if (plan.doc !== doc) {
         // 見込みに使う所は同じで文書の物だけ替わった（全部の入れ替えを変わった物だけで受けた後）: 計画は作り直さない（見直し perf-4）
         plan.plan.rebase(doc);
@@ -467,6 +478,65 @@ export class ViewModel {
       this.forecastStamp++;
     }
     return this.forecastCache;
+  }
+
+  /** 空いた時間に少しずつ作っている見込みの計画（入力の版と文書が同じ間だけ続ける） */
+  private forecastSteps: { inputs: number; doc: DocData; steps: PlanSteps } | null = null;
+  private forecastWaiters: Array<() => void> = [];
+  private forecastWarming = false;
+
+  /**
+   * 見込み（もう数えてあれば。数えていなければ null: 大きい文書では読んでも数えない。小さい文書（ノード 5,000 枚まで）はその場で数えて返す:
+   * 数えるのは数 ms で、空いた時間を待つと見え方が一度変わるだけ）
+   */
+  forecastIfReady(): ForecastResult | null {
+    const doc = this.store.doc;
+    const sid0 = this.ui.prefs.scenarioId ?? null;
+    const sid = sid0 && doc.scenarios[sid0] ? sid0 : null;
+    if (`${this.forecastInputs}|${sid ?? ""}` === this.forecastKey) return this.forecastCache;
+    return this.index.nodeCount <= FORECAST_SYNC_NODES ? this.forecast : null;
+  }
+
+  /**
+   * 見込みを空いた時間に少しずつ数え、数え終えたら done を呼ぶ（もう数えてあればすぐ）。起動の最初のフレーム・概要の最初の作りを、
+   * 8 万枚の地図の見込みの計画（4 倍遅いスマホで 0.6 秒ほど）で待たせない（見直し perf-1: 見取り図を先に見せて、触れるようにしてから）。
+   * 途中で見込みに使う物が変わったら、作りかけの計画を捨てて作り直す
+   */
+  warmForecast(done: () => void): void {
+    if (this.forecastIfReady()) {
+      done();
+      return;
+    }
+    this.forecastWaiters.push(done);
+    if (this.forecastWarming) return;
+    this.forecastWarming = true;
+    const finish = (): true => {
+      this.forecastWarming = false;
+      const ws = this.forecastWaiters;
+      this.forecastWaiters = [];
+      for (const w of ws) w();
+      return true;
+    };
+    idleSteps(() => {
+      if (this.forecastIfReady()) return finish();
+      const doc = this.store.doc;
+      const plan = this.forecastPlan;
+      if (!plan || plan.inputs !== this.forecastInputs) {
+        let st = this.forecastSteps;
+        if (!st || st.inputs !== this.forecastInputs || st.doc !== doc) {
+          const idx = this.index;
+          const roots = [...idx.forecastRoots].sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
+          st = this.forecastSteps = { inputs: this.forecastInputs, doc, steps: ForecastPlan.steps(doc, idx.out, { roots, impactScope: this.scopeSet() }) };
+        }
+        if (!st.steps.step()) return false;
+        this.forecastPlan = { inputs: st.inputs, doc, plan: st.steps.plan! };
+        this.forecastSteps = null;
+        // 流すのは次の空いた時間に
+        return false;
+      }
+      void this.forecast;
+      return finish();
+    });
   }
 
   /** 見込みの行き先の並びを、題名が変わったら読まれたときに並べ直す（computeForecast と同じ並べ方。初めの並べ替えも読まれたときに） */

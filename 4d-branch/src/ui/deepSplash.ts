@@ -6,7 +6,7 @@
 
 import "../deepmap/views/views.css";
 import "../styles/deep.css";
-import { deepText, plainAnalysis, plainOverview } from "../app/deepState";
+import { deepText, plainAnalysis, plainOverview, statusAnalysis } from "../app/deepState";
 import type { MapData } from "../deepmap/mapData";
 import { overviewVM, renderOverview, ym } from "../deepmap/views";
 import { IMPACT_DEFAULT_ANNUAL } from "../model/impact";
@@ -72,10 +72,11 @@ function dropQueuedInput(box: HTMLElement): void {
 }
 
 /** 見取り図を mount に描き、描かれる（次の画面）まで待つ。描けなければ何もしない（アプリの起動は続ける） */
-export async function paintDeepSplash(mount: HTMLElement, map: MapData, annual = IMPACT_DEFAULT_ANNUAL): Promise<void> {
+export async function paintDeepSplash(mount: HTMLElement, map: MapData, annual = IMPACT_DEFAULT_ANNUAL, status: Uint8Array | null = null): Promise<void> {
   try {
     const cm = compiledMapOf(map);
-    const a = plainAnalysis(cm, annual);
+    // 保存してあった選んだ手・見送った手が分かれば、その計算（アプリの見取り図と同じ数。アプリはこの計算をそのまま使う）
+    const a = status && status.length === cm.n ? statusAnalysis(cm, annual, status) : plainAnalysis(cm, annual);
     // 手の名前はカードの題名（後のアプリの見取り図と同じ名前。保存した題名は後で読むので、ここは地図の題名）
     const text = deepText(map, annual);
     const vm = overviewVM(a, plainOverview(cm, a), { name: (f) => text.title(f) });

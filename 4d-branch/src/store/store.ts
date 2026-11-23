@@ -63,6 +63,7 @@ export class Tx {
   }
 
   private rec<C extends Collection>(c: C, id: ID, before: EntityOf[C] | undefined, after: EntityOf[C] | undefined): void {
+    if (c === "nodes" || c === "edges") this.store.onWrite?.(this.store.doc, c, id, after === undefined);
     const key = `${c}\u0000${id}`;
     const ex = this.entry.entities.get(key);
     if (ex) ex.after = after;
@@ -336,6 +337,12 @@ export class Store {
   incidence: ((id: ID) => Iterable<ID> | null) | null = null;
   private readonly emitter = new Emitter<StoreEvents>();
   private current: Tx | null = null;
+  /**
+   * 今の文書の nodes・edges に書いたその場で呼ぶ（トランザクションの中・元に戻す・やり直す・失敗して戻したときも。gone は消した）。
+   * 保存の書き手が、次の自動保存で変わった所だけを見直すのに使う（src/persist/thinMap.ts の watchThinWrites: 見直し perf-10）。
+   * 全部の入れ替え・読み込みでは文書の入れ物ごと替わるので呼ばない
+   */
+  onWrite: ((doc: DocData, c: "nodes" | "edges", id: ID, gone: boolean) => void) | null = null;
   private ro = false;
 
   constructor(doc: DocData) {
@@ -478,6 +485,7 @@ export class Store {
       const v = dir === "undo" ? ch.before : ch.after;
       if (v === undefined) delete coll[ch.id];
       else coll[ch.id] = v;
+      if (ch.c === "nodes" || ch.c === "edges") this.onWrite?.(this.doc, ch.c, ch.id, v === undefined);
       info[ch.c].add(ch.id);
       if (ch.c !== "nodes" || ch.before === undefined || ch.after === undefined) posOnly = false;
       else {

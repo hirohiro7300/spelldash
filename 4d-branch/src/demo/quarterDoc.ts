@@ -48,6 +48,8 @@ import type { MapBand, MapData, MapRole, MapTodo } from "../deepmap/mapData";
 import { isDateStr } from "../model/dates";
 import { SCHEMA, SCHEMA_VERSION } from "../model/schema";
 import type { Condition, DocData, GEdge, GNode, ID, Meta, NodeTime, NodeType, Project, Scenario } from "../model/types";
+import type { BundleMapData } from "./impactBundle";
+import { quarterIdTable } from "./quarterIds";
 import { edgeTextPrint, fnv36, fnv64x36, IMPACT_AREAS, IMPACT_SCENARIOS, IMPACT_TITLE, impactTagsOf, type ImpactLine, type ImpactSt, type R3 } from "./impact";
 
 export type QuarterLayout = "none" | "columns";
@@ -199,35 +201,17 @@ function hashStrs(xs: readonly string[]): number {
 const ROLES: readonly MapRole[] = ["r", "a", "s", "e"];
 const ROLE_TYPE: readonly NodeType[] = ["goal", "action", "branch", "result"];
 
-/** 64 ビットの指紋の 2 つの FNV-1a の初めの値（./impact.ts の fnv64x36 と同じ） */
-const OFF1 = 0x811c9dc5;
-const OFF2 = 0x9e3779b9;
 const b36x7 = (h: number): string => (h >>> 0).toString(36).padStart(7, "0");
 
-/** 36 進の数字（0〜9・a〜z）の文字の番号 */
-const D36 = new Uint8Array(36);
-for (let d = 0; d < 36; d++) D36[d] = (d < 10 ? 48 : 87) + d;
-/** 32 ビットの指紋を、36 進 7 桁（b36x7 と同じ文字）の文字の番号で out[at..at+6] に書く（最初の割り算の後は 31 ビットに入るので、整数の計算） */
-function lane36(h: number, out: Uint8Array, at: number): void {
-  const x = h >>> 0;
-  let y = Math.floor(x / 36);
-  out[at + 6] = D36[x - y * 36]!;
-  for (let k = 5; k >= 0; k--) {
-    const z = (y / 36) | 0;
-    out[at + k] = D36[y - z * 36]!;
-    y = z;
-  }
-}
 /**
- * 鍵の指紋 14 文字（L[o..o+13]）に前と後ろの文字を付けた ID を、初めから 1 つの文字列で作る（つないだ文字列は、名前に使うときと
- * 書き出すときに 1 つにし直すので、時間とメモリを食う。見直し perf-1）: 頭の 4 文字（n_i_・e_i_）+ 指紋、または c_ + 指紋 + _ + 番号
+ * やることの項目の ID: c_ + ノードの指紋 14 文字（ノードの ID の 5 文字目から）+ _ + 番号。初めから 1 つの文字列で作る（つないだ文字列は、
+ * 名前に使うときと書き出すときに 1 つにし直すので、時間とメモリを食う。見直し perf-1）
  */
-const laneId = (a: number, b: number, c: number, L: Uint8Array, o: number): string =>
-  String.fromCharCode(a, b, c, 95, L[o]!, L[o + 1]!, L[o + 2]!, L[o + 3]!, L[o + 4]!, L[o + 5]!, L[o + 6]!, L[o + 7]!, L[o + 8]!, L[o + 9]!, L[o + 10]!, L[o + 11]!, L[o + 12]!, L[o + 13]!);
-function condId(L: Uint8Array, o: number, t: number): string {
-  if (t < 10) return String.fromCharCode(99, 95, L[o]!, L[o + 1]!, L[o + 2]!, L[o + 3]!, L[o + 4]!, L[o + 5]!, L[o + 6]!, L[o + 7]!, L[o + 8]!, L[o + 9]!, L[o + 10]!, L[o + 11]!, L[o + 12]!, L[o + 13]!, 95, 48 + t);
+function condId(id: string, t: number): string {
+  const L = (k: number): number => id.charCodeAt(4 + k);
+  if (t < 10) return String.fromCharCode(99, 95, L(0), L(1), L(2), L(3), L(4), L(5), L(6), L(7), L(8), L(9), L(10), L(11), L(12), L(13), 95, 48 + t);
   const codes = [99, 95];
-  for (let k = 0; k < 14; k++) codes.push(L[o + k]!);
+  for (let k = 0; k < 14; k++) codes.push(L(k));
   codes.push(95);
   for (const ch of String(t)) codes.push(ch.charCodeAt(0));
   return String.fromCharCode(...codes);
@@ -258,6 +242,35 @@ export function quarterRootId(map: MapData): ID {
  * 投げる物: QuarterDocError（版の食い違い・地図の年月・ID の重なり・知らない手の種類と領域とシナリオ・木の形）
  */
 export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
+  const p = buildQuarterParts(map, opts);
+  // 入れ物には番号の順に入れる（カード → 線。どちらも今日から深さ優先の番号の順。保存の基準 ../persist/thinMap.ts もこの順を前提にする）
+  const nodes = p.doc.nodes;
+  const edges = p.doc.edges;
+  for (let i = 0; i < p.nodes.length; i++) nodes[p.ids[i]!] = p.nodes[i]!;
+  for (let i = 1; i < p.edges.length; i++) {
+    const e = p.edges[i]!;
+    edges[e.id] = e;
+  }
+  return p.doc;
+}
+
+/**
+ * 組み立てた物を番号ごとの並びで（文書の nodes・edges の入れ物は空のまま）。保存の基準（../persist/thinMap.ts）は入れ物を作らずにこれを使う
+ * （8 万枚の入れ物を作って読み直すと、それだけで起動が遅く、ヒープも増える: 見直し perf-1・perf-6）。buildQuarterDoc はこれを入れ物に入れた物
+ */
+export interface QuarterParts {
+  /** 文書（nodes・edges は空の入れ物。ほかは buildQuarterDoc と同じ） */
+  doc: DocData;
+  /** 番号ごとのカード */
+  nodes: GNode[];
+  /** 番号ごとの親からの線（今日は null） */
+  edges: Array<GEdge | null>;
+  /** 番号ごとのカードの ID（./quarterIds.ts の地図ごとの物。書き換えない） */
+  ids: readonly ID[];
+}
+
+/** buildQuarterDoc と同じ組み立てを、番号ごとの並びで返す（同じ地図と同じ opts なら buildQuarterDoc と同じ物） */
+export function buildQuarterParts(map: MapData, opts: QuarterDocOpts): QuarterParts {
   const h = map.header;
   if (opts.version !== h.hash) throw new QuarterDocError(`版（${opts.version}）が地図の中身の指紋（${h.hash}）と違います`);
   if (opts.release !== h.release) throw new QuarterDocError(`版の順番（${opts.release}）が地図の版の順番（${h.release}）と違います`);
@@ -321,6 +334,13 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       return fz(o);
     },
   );
+  // 同梱データの読み手の、同じ中身の行の番号ごとの共有の部品（無ければ中身で引く）
+  const rowKey = (map as Partial<BundleMapData>).rowKey;
+  const stBy: ImpactSt[] = [];
+  const rrBy: R3[] = [];
+  const bandBy: MapBand[] = [];
+  const lnBy: ImpactLine[] = [];
+  const rvBy: Array<[string, string]> = [];
   // 期限とタグ（役割と月ごと）
   const optTime = new Map<number, NodeTime>();
   const outTime = new Map<number, NodeTime>();
@@ -360,21 +380,25 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
     return x;
   };
 
-  // 鍵 → 64 ビットの指紋（./impact.ts の fnv64x36 と同じ計算）と ID。重なれば止める（違う鍵が同じ指紋・同じ鍵が 2 回）。
-  // 重なりは 1 つ目の 32 ビットで引き、同じなら 2 つ目も比べる（文字の鍵の表を作らない）。役割と、兄弟の中の順番（深さ優先の番号では、兄弟は並べる順に出てくる）
-  const keys = new Array<string>(n);
-  /** 鍵の指紋 14 文字の文字の番号（カード i は LN[14i..14i+13]。ノード・線・やることの項目の ID はここから作る） */
-  const LN = new Uint8Array(n * 14);
-  const ids = new Array<ID>(n);
-  const H2 = new Int32Array(n);
+  // 鍵 → 64 ビットの指紋（./impact.ts の fnv64x36 と同じ計算）と ID は、地図ごとに 1 度だけ数えた物（./quarterIds.ts。見え方の地図の画面・
+  // エンジンも同じ物を使う）。重なれば止める（違う鍵が同じ指紋・同じ鍵が 2 回）。重なりは 2 つの 32 ビットの開いた番地の表で確かめる
+  // （文字の鍵の表を作らない）。役割と、兄弟の中の順番（深さ優先の番号では、兄弟は並べる順に出てくる）
+  const tab = quarterIdTable(map);
+  const keys = tab.keys;
+  const ids = tab.node;
+  const eids = tab.edge;
+  const H1 = tab.h1;
+  const H2 = tab.h2;
   const roles = new Int8Array(n);
   const rank = new Int32Array(n);
   const fill = new Int32Array(n);
-  const byH1 = new Map<number, number>();
-  /** 1 つ目の 32 ビットが同じ 2 枚目から（めったに無い） */
-  const moreH1 = new Map<number, number[]>();
+  let cap = 2;
+  while (cap < n * 2) cap *= 2;
+  const mask = cap - 1;
+  /** 指紋の表（番地ごとに番号 + 1。0 は空き） */
+  const slots = new Int32Array(cap);
   for (let i = 0; i < n; i++) {
-    const key = map.key(i);
+    const key = keys[i]!;
     const role = map.role(i);
     const code = role === "r" ? 0 : role === "a" ? 1 : role === "s" ? 2 : role === "e" ? 3 : -1;
     if (code < 0) throw new QuarterDocError(`知らない役割です: ${String(role)}（${key}）`);
@@ -388,31 +412,21 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       if (code === 0 || (code === 1 ? pc !== 0 && pc !== 2 : pc !== 1)) throw new QuarterDocError(`カードの親の役割が違います: ${key}（${role} の親が ${ROLES[pc]}）`);
       rank[i] = fill[p]!++;
     }
-    let h1 = OFF1;
-    let h2 = OFF2;
-    for (let c = 0; c < key.length; c++) {
-      const ch = key.charCodeAt(c);
-      h1 = Math.imul(h1 ^ ch, PRIME);
-      h2 = Math.imul(h2 ^ ch, PRIME);
+    const h1 = H1[i]!;
+    const h2 = H2[i]!;
+    let at = Math.imul(h1, 0x9e3779b1) >>> 0;
+    for (;;) {
+      at &= mask;
+      const j = slots[at]! - 1;
+      if (j < 0) break;
+      if (H1[j] === h1 && H2[j] === h2) {
+        const other = keys[j]!;
+        const hx = b36x7(h1) + b36x7(h2);
+        throw new QuarterDocError(other === key ? `同じ鍵のカードが 2 枚あります: ${key}` : `カードの ID が重なりました（64 ビットの指紋が同じ）: ${other} と ${key}（${hx}）`);
+      }
+      at++;
     }
-    const first = byH1.get(h1);
-    if (first === undefined) byH1.set(h1, i);
-    else {
-      const others = moreH1.get(h1);
-      for (const j of others ? [first, ...others] : [first])
-        if (H2[j] === h2) {
-          const other = keys[j]!;
-          const hx = b36x7(h1) + b36x7(h2);
-          throw new QuarterDocError(other === key ? `同じ鍵のカードが 2 枚あります: ${key}` : `カードの ID が重なりました（64 ビットの指紋が同じ）: ${other} と ${key}（${hx}）`);
-        }
-      if (others) others.push(i);
-      else moreH1.set(h1, [i]);
-    }
-    H2[i] = h2;
-    keys[i] = key;
-    lane36(h1, LN, i * 14);
-    lane36(h2, LN, i * 14 + 7);
-    ids[i] = laneId(110, 95, 105, LN, i * 14);
+    slots[at] = i + 1;
   }
   for (let i = 0; i < n; i++) {
     if (fill[i] !== map.childCount(i)) throw new QuarterDocError(`子の数が合いません（深さ優先の並びでない）: ${keys[i]}`);
@@ -462,8 +476,8 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
     return c0;
   };
 
-  const nodes = doc.nodes;
-  const edges = doc.edges;
+  const nodes = new Array<GNode>(n);
+  const edges = new Array<GEdge | null>(n).fill(null);
   for (let i = 0; i < n; i++) {
     const code = roles[i]!;
     const m = map.month(i);
@@ -497,7 +511,7 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       if (todo.length) {
         const td = todoOf(todo);
         conditions = new Array<Condition>(todo.length);
-        for (let t = 0; t < todo.length; t++) conditions[t] = { id: condId(LN, i * 14, t), text: td.texts[t]!, met: false };
+        for (let t = 0; t < todo.length; t++) conditions[t] = { id: condId(id, t), text: td.texts[t]!, met: false };
         meta.cites = td.cites;
         k0 = td.k0;
       }
@@ -510,10 +524,20 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       const q = map.q(i);
       if (q) meta.q = [q[0], q[1], q[2]];
     } else {
-      const s0 = map.st(i);
-      const st = stPool.of(hashSt(s0), s0);
-      const r0 = map.rr(i);
-      const rr = r3Pool.of(hashR3(r0), r0);
+      let st: ImpactSt;
+      let rr: R3;
+      if (rowKey) {
+        // 同梱データの読み手: 同じ中身の行は同じ番号（中身を作って数えて比べるのは番号ごとに 1 回）
+        const ks = rowKey.call(map, i, "st");
+        st = stBy[ks] ??= ((s0) => stPool.of(hashSt(s0), s0))(map.st(i));
+        const kr = rowKey.call(map, i, "rr");
+        rr = rrBy[kr] ??= ((r0) => r3Pool.of(hashR3(r0), r0))(map.rr(i));
+      } else {
+        const s0 = map.st(i);
+        st = stPool.of(hashSt(s0), s0);
+        const r0 = map.rr(i);
+        rr = r3Pool.of(hashR3(r0), r0);
+      }
       if (code === 0) {
         const never: Record<string, R3> = {};
         for (const f of Object.keys(h.never)) {
@@ -541,8 +565,15 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
           b0: B0,
         };
       } else {
-        const b0 = map.band(i);
-        const band = b0 ? bandPool.of(hashPair(hashPair(SEED, b0.cl), b0.pu), b0) : null;
+        const kb = rowKey ? rowKey.call(map, i, "band") : -1;
+        let band: MapBand | null;
+        if (kb === 0) band = null;
+        else if (kb > 0 && bandBy[kb] !== undefined) band = bandBy[kb]!;
+        else {
+          const b0 = map.band(i);
+          band = b0 ? bandPool.of(hashPair(hashPair(SEED, b0.cl), b0.pu), b0) : null;
+          if (kb > 0 && band) bandBy[kb] = band;
+        }
         const r = rank[i]!;
         if (code === 2) meta = band ? { fork: "decision", m, short, st, rr, band, rank: r, key, t0, b0: B0 } : { fork: "decision", m, short, st, rr, rank: r, key, t0, b0: B0 };
         else if (map.sum(i)) meta = band ? { end: true, sum: true, m, short, st, rr, band, rank: r, key, t0, b0: B0 } : { end: true, sum: true, m, short, st, rr, rank: r, key, t0, b0: B0 };
@@ -567,10 +598,10 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       updatedAt: at,
       meta,
     };
-    nodes[id] = node;
+    nodes[i] = node;
     if (code === 0) continue;
     // 親からの線（子の鍵の指紋。ノードの ID が重ならないので線も重ならない）
-    const eid = laneId(101, 95, 105, LN, i * 14);
+    const eid = eids[i]!;
     const source = ids[map.parent(i)]!;
     let edge: GEdge;
     if (code === 1) {
@@ -581,18 +612,23 @@ export function buildQuarterDoc(map: MapData, opts: QuarterDocOpts): DocData {
       const condition = str(map.line(i));
       const prob = map.p(i);
       const e = map.e(i);
-      const l = map.ln(i);
-      const x = map.rv(i);
+      const kl = rowKey ? rowKey.call(map, i, "ln") : -1;
+      const kv = rowKey ? rowKey.call(map, i, "rv") : -1;
+      const l = kl === 0 ? null : kl > 0 && lnBy[kl] !== undefined ? lnBy[kl]! : map.ln(i);
+      const x = kv === 0 ? null : kv > 0 && rvBy[kv] !== undefined ? rvBy[kv]! : map.rv(i);
       const r: R3 = [e[0], e[1], e[2]];
       const c0 = c0Of(label, condition);
       let emeta: Meta;
-      if (l && x) emeta = { prob, r, ln: lnPool.of(hashLn(l), l), rv: rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x), p0: prob, c0 };
-      else if (l) emeta = { prob, r, ln: lnPool.of(hashLn(l), l), p0: prob, c0 };
-      else if (x) emeta = { prob, r, rv: rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x), p0: prob, c0 };
+      // 同じ番号の判断の線・事実は、1 度共有の物にしたらそのまま（共有の物を共有の入れ物で引いても同じ物が返る）
+      const ln = l ? (kl > 0 ? (lnBy[kl] ??= lnPool.of(hashLn(l), l)) : lnPool.of(hashLn(l), l)) : null;
+      const rv = x ? (kv > 0 ? (rvBy[kv] ??= rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x)) : rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x)) : null;
+      if (ln && rv) emeta = { prob, r, ln, rv, p0: prob, c0 };
+      else if (ln) emeta = { prob, r, ln, p0: prob, c0 };
+      else if (rv) emeta = { prob, r, rv, p0: prob, c0 };
       else emeta = { prob, r, p0: prob, c0 };
       edge = { id: eid, source, target: id, relation: "condition", label, condition, scenarioIds: EMPTY, collapsed: false, createdAt: at, updatedAt: at, meta: emeta };
     }
-    edges[eid] = edge;
+    edges[i] = edge;
   }
-  return doc;
+  return { doc, nodes, edges, ids };
 }

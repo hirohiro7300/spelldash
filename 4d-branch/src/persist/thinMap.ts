@@ -38,7 +38,8 @@
 import type { MapData } from "../deepmap/mapData";
 import { fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf } from "../demo/impact";
 import { impactBaselineDigest } from "../demo/impactDigest";
-import { buildQuarterDoc, type QuarterLayout } from "../demo/quarterDoc";
+import { buildQuarterDoc, buildQuarterParts, type QuarterLayout } from "../demo/quarterDoc";
+import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
 import { NODE_H, NODE_TYPE_ORDER, NODE_W, STATUS_ORDER } from "../model/constants";
 import { impactConfigOf, setPreferredRelease } from "../model/forks";
 import { DocFormatError, NewerDocError, normalizeDoc, SCHEMA, SCHEMA_VERSION, setReadableVersion, THIN_VERSION, type NormalizeReport } from "../model/schema";
@@ -291,7 +292,9 @@ interface Core {
   readonly anchor: string;
   /** この組み立ての基準の文書の指紋（初めて要るときに数える） */
   digest: string | null;
-  /** 組み立てた文書（入れ物は凍らせる） */
+  /** 組み立てた文書の nodes・edges の入れ物の空の物（ほかは組み立てた文書と同じ。凍っている） */
+  readonly shell: DocData;
+  /** 組み立てた文書（入れ物は凍らせる。初めて要るときに作る: 基準の文書の指紋・確かめ用） */
   readonly doc: DocData;
   readonly at: string;
   readonly n: number;
@@ -303,12 +306,12 @@ interface Core {
   readonly nodes: readonly GNode[];
   /** 親からの線（今日は null） */
   readonly edges: readonly (GEdge | null)[];
-  /** カードの ID・親からの線の ID（番号ごと。今日の線は ""） */
+  /** カードの ID・親からの線の ID（番号ごと。今日の線の物は使わない: 今日の線は無い） */
   readonly ids: readonly ID[];
   readonly eids: readonly ID[];
   readonly idIndex: ReadonlyMap<ID, number>;
-  readonly eidIndex: ReadonlyMap<ID, number>;
-  readonly keyIndex: ReadonlyMap<string, number>;
+  readonly eidIndex: IndexOf<ID>;
+  readonly keyIndex: IndexOf<string>;
   readonly projects: ReadonlyArray<{ id: ID; name: string }>;
   readonly scenarios: ReadonlyArray<{ id: ID; name: string }>;
   /** 時刻・位置を決める見本（散らした番号） */
@@ -322,6 +325,25 @@ interface Core {
   /** カードのやることの枠の名前（チェックを覚える名前） */
   readonly slotMemo: Map<number, readonly string[]>;
   views: View[];
+  /**
+   * 組み立てたときに当てた基準（初めて読んだ記録の at・dx・dy・pmap・smap。その記録の写しは組み立てた物そのもの: 7.7 万枚を写さない）。
+   * 組み立ての決まりの値（位置・プロジェクト・シナリオ）は、ここから戻して使う（inferBase・viewOf・pageMapAccess）
+   */
+  readonly b0: MapBase;
+  readonly b0Key: string;
+  /** その基準の写し（組み立てた物そのもの。最近の写しの数に数えず、いつも持つ） */
+  v0: View | null;
+  /** 読み替えたプロジェクト・シナリオの並び → 組み立てたときの並び（読み替えていない並びは無い） */
+  readonly orig: ReadonlyMap<readonly ID[], readonly ID[]>;
+}
+
+/** 組み立てたときのプロジェクト・シナリオの並び（読み替える前） */
+const origList = (core: Core, l: readonly ID[]): ID[] => (core.orig.get(l) ?? l) as ID[];
+
+/** ID・鍵 → 地図の番号を引く口（無ければ undefined） */
+export interface IndexOf<K> {
+  get(k: K): number | undefined;
+  has(k: K): boolean;
 }
 
 /** 基準の写し（at・dx・dy・pmap・smap を当てた物）。変わらないカードと線は組み立てた物のまま */
@@ -448,42 +470,40 @@ export function thinBaselineRoot(): GNode | null {
 
 const isoOk = (s: unknown): s is string => typeof s === "string" && Number.isFinite(Date.parse(s));
 
-/** 基準を組み立てる（地図ごとに初めの 1 回だけ。時刻は at があればそれ、無ければ地図の年月の 1 日） */
-function coreOf(map: MapData, at: string | null): Core {
+/**
+ * 基準を組み立てる（地図ごとに初めの 1 回だけ。時刻は at があればそれ、無ければ地図の年月の 1 日）。
+ * 組み立ては番号ごとの並びで受け取り、7.7 万枚の文書の入れ物（nodes・edges）は作らない（読む文書の入れ物は、読むときに 1 回だけ作る。
+ * 入れ物を作って読み直すと、それだけで起動が 0.1〜0.4 秒遅く、ヒープも 3 MB ほど増える: 見直し perf-1・perf-6）。入れ物の入った文書
+ * （基準の文書の指紋・確かめ用）は、初めて要るときに作る（core.doc）。カードの ID と ID → 番号の表は、地図ごとの物（../demo/quarterIds.ts）を共有する
+ */
+function coreOf(map: MapData, at: string | null, pre: { dx?: unknown; dy?: unknown; pmap?: Record<ID, ID | null>; smap?: Record<ID, ID | null> } | null = null): Core {
   const hit = cores.get(map);
   if (hit) return hit;
   const h = map.header;
   const ms = at !== null && isoOk(at) ? Date.parse(at) : Date.parse(`${h.anchor}-01T00:00:00.000Z`);
-  const doc = buildQuarterDoc(map, { version: h.hash, release: h.release, at: Number.isFinite(ms) ? ms : 0, layout: THIN_LAYOUT });
+  const parts = buildQuarterParts(map, { version: h.hash, release: h.release, at: Number.isFinite(ms) ? ms : 0, layout: THIN_LAYOUT });
+  const doc = parts.doc;
   const n = map.n;
-  const keys = new Array<string>(n);
-  const nodes = new Array<GNode>(n);
-  const edges = new Array<GEdge | null>(n).fill(null);
+  const tab = quarterIdTable(map);
+  const keys = tab.keys;
+  const nodes = parts.nodes;
+  const edges = parts.edges;
+  const ids = parts.ids;
   const parent = new Int32Array(n);
-  const idIndex = new Map<ID, number>();
-  const eidIndex = new Map<ID, number>();
-  const keyIndex = new Map<string, number>();
-  // 組み立ては番号の順にカードと線を入れる（線は今日を除く）。違えば組み立ての決まりが変わったので止める
-  let i = 0;
-  for (const node of Object.values(doc.nodes)) {
-    const k = map.key(i);
-    if (node.meta.key !== k) throw new Error(`基準の組み立ての並びが地図の番号と合いません（${i}: ${k}）`);
-    keys[i] = k;
-    nodes[i] = node;
-    idIndex.set(node.id, i);
-    keyIndex.set(k, i);
+  // 組み立ては番号の順にカードと線を作る（線は今日を除く）。違えば組み立ての決まりが変わったので止める
+  if (nodes.length !== n || edges.length !== n || ids !== tab.node) throw new Error("基準の組み立てのカードの数が地図と合いません");
+  for (let i = 0; i < n; i++) {
+    const node = nodes[i]!;
+    if (node.meta.key !== keys[i] || node.id !== ids[i]) throw new Error(`基準の組み立ての並びが地図の番号と合いません（${i}: ${keys[i]}）`);
     parent[i] = map.parent(i);
-    i++;
   }
-  if (i !== n) throw new Error("基準の組み立てのカードの数が地図と合いません");
-  i = 1;
-  for (const e of Object.values(doc.edges)) {
-    if (i >= n || e.target !== nodes[i]!.id || e.source !== nodes[parent[i]!]!.id) throw new Error(`基準の組み立ての線が地図の番号と合いません（${i}）`);
-    edges[i] = e;
-    eidIndex.set(e.id, i);
-    i++;
+  if (edges[0] !== null) throw new Error("基準の組み立ての線の数が地図と合いません");
+  for (let i = 1; i < n; i++) {
+    const e = edges[i];
+    if (!e || e.id !== tab.edge[i] || e.target !== ids[i] || e.source !== ids[parent[i]!]) throw new Error(`基準の組み立ての線が地図の番号と合いません（${i}）`);
   }
-  if (i !== n) throw new Error("基準の組み立ての線の数が地図と合いません");
+  const idIndex = quarterIdIndex(map);
+  if (idIndex.size !== n) throw new Error("基準の組み立てのカードの ID が重なっています");
   // 子の並び（深さ優先の番号なので、子は番号の順に出てくる）
   const kidStart = new Int32Array(n + 1);
   for (let c = 1; c < n; c++) kidStart[parent[c]! + 1]!++;
@@ -525,6 +545,42 @@ function coreOf(map: MapData, at: string | null): Core {
     else byScen.set(k, { list: s, idx: [c] });
   }
   const scenSamples = [...byScen.values()].map((g) => ({ list: g.list, idx: spreadOf(g.idx, 9) }));
+  // 初めて読んだ記録の基準（ずらし・プロジェクトとシナリオの読み替え）を、組み立てた物に当てておく（その記録を読むたびに 7.7 万枚を
+  // 写さない: 見直し perf-6。凍らせる前に。カード・線の物はカードごとに 1 つなので、ここで書き換えてよい）。見本は当てる前の物で取った
+  const projects = doc.projectOrder.map((id) => ({ id, name: doc.projects[id]!.name }));
+  const scenarios = doc.scenarioOrder.map((id) => ({ id, name: doc.scenarios[id]!.name }));
+  const fullOf = (list: ReadonlyArray<{ id: ID }>, m: Record<ID, ID | null> | undefined): Record<ID, ID | null> => {
+    const out: Record<ID, ID | null> = {};
+    for (const g of list) out[g.id] = m && isObj(m) && own(m, g.id) && (m[g.id] === null || typeof m[g.id] === "string") ? m[g.id]! : g.id;
+    return out;
+  };
+  const int = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 0);
+  const b0: MapBase = { at: nodes[0]!.createdAt, dx: int(pre?.dx), dy: int(pre?.dy), pmap: fullOf(projects, pre?.pmap), smap: fullOf(scenarios, pre?.smap) };
+  const orig = new Map<readonly ID[], readonly ID[]>();
+  {
+    const pm = listMapper(b0.pmap);
+    const sm = listMapper(b0.smap);
+    if (pm || sm || b0.dx || b0.dy) {
+      for (const node of nodes) {
+        if (pm) {
+          const m = pm(node.projectIds);
+          if (m !== node.projectIds) (orig.set(m, node.projectIds), (node.projectIds = m));
+        }
+        if (sm) {
+          const m = sm(node.scenarioIds);
+          if (m !== node.scenarioIds) (orig.set(m, node.scenarioIds), (node.scenarioIds = m));
+        }
+        node.x += b0.dx;
+        node.y += b0.dy;
+      }
+      if (sm)
+        for (const e of edges) {
+          if (!e) continue;
+          const m = sm(e.scenarioIds);
+          if (m !== e.scenarioIds) (orig.set(m, e.scenarioIds), (e.scenarioIds = m));
+        }
+    }
+  }
   // 入れ物は凍らせる（本番も。読み込みのたびに新しい入れ物へ写すので、ここへは誰も書かない: safety-11）
   if (FREEZE_ALL) {
     for (const node of nodes) {
@@ -545,11 +601,51 @@ function coreOf(map: MapData, at: string | null): Core {
   Object.freeze(doc.scenarioOrder);
   Object.freeze(doc.meta);
   Object.freeze(doc);
+  // 線の ID → 番号: 線の ID は e_i_ + 子のカードの指紋なので、カードの ID の表で引いて確かめる（7.7 万の線の表を作らない: 見直し perf-6）
+  const eidIndex: IndexOf<ID> = {
+    get: (id) => {
+      if (typeof id !== "string" || id.length !== 18 || !id.startsWith("e_i_")) return undefined;
+      const i = idIndex.get(`n_i_${id.slice(4)}`);
+      return i !== undefined && i > 0 && tab.edge[i] === id ? i : undefined;
+    },
+    has: (id) => eidIndex.get(id) !== undefined,
+  };
+  // 鍵 → 番号: 地図の鍵の引き方（区切りごとにたどる）で引き、鍵が同じかを確かめる（7.7 万の鍵の表を作らない。引くのは変更のあるカードだけ）
+  const keyIndex: IndexOf<string> = {
+    get: (k) => {
+      if (typeof k !== "string") return undefined;
+      const i = map.indexOfKey(k);
+      return i >= 0 && i < n && keys[i] === k ? i : undefined;
+    },
+    has: (k) => keyIndex.get(k) !== undefined,
+  };
+  let full: DocData | null = null;
   const core: Core = {
     map,
     anchor: h.anchor,
     digest: null,
-    doc,
+    shell: doc,
+    // 入れ物の入った基準の文書（基準の文書の指紋・確かめ用。初めて要るときに作り、凍らせる）
+    get doc(): DocData {
+      if (full) return full;
+      // 基準を当てて組み立てた物は、組み立てたままの物を組み立て直す（基準の文書の指紋は組み立てたままの物で数える）
+      if (orig.size || b0.dx || b0.dy) {
+        const d = buildQuarterDoc(map, { version: h.hash, release: h.release, at: Number.isFinite(ms) ? ms : 0, layout: THIN_LAYOUT });
+        if (FREEZE_ALL) {
+          for (const id of Object.keys(d.nodes)) (Object.freeze(d.nodes[id]!.meta), Object.freeze(d.nodes[id]));
+          for (const id of Object.keys(d.edges)) (Object.freeze(d.edges[id]!.meta), Object.freeze(d.edges[id]));
+        }
+        for (const k of ["nodes", "edges", "projects", "scenarios", "projectOrder", "scenarioOrder", "meta"] as const) Object.freeze(d[k]);
+        return (full = Object.freeze(d));
+      }
+      const nd: Record<ID, GNode> = {};
+      const ed: Record<ID, GEdge> = {};
+      for (let i = 0; i < n; i++) nd[ids[i]!] = nodes[i]!;
+      for (let i = 1; i < n; i++) ed[edges[i]!.id] = edges[i]!;
+      Object.freeze(nd);
+      Object.freeze(ed);
+      return (full = Object.freeze({ ...doc, nodes: nd, edges: ed }));
+    },
     at: nodes[0]!.createdAt,
     n,
     keys,
@@ -558,13 +654,13 @@ function coreOf(map: MapData, at: string | null): Core {
     kids,
     nodes,
     edges,
-    ids: nodes.map((x) => x.id),
-    eids: edges.map((e) => (e ? e.id : "")),
+    ids,
+    eids: tab.edge,
     idIndex,
     eidIndex,
     keyIndex,
-    projects: doc.projectOrder.map((id) => ({ id, name: doc.projects[id]!.name })),
-    scenarios: doc.scenarioOrder.map((id) => ({ id, name: doc.scenarios[id]!.name })),
+    projects,
+    scenarios,
     spread,
     projSamples,
     allSamples: spreadOf(allIdx, 9),
@@ -572,7 +668,13 @@ function coreOf(map: MapData, at: string | null): Core {
     scenSamples,
     slotMemo: new Map(),
     views: [],
+    b0,
+    b0Key: baseKey(b0),
+    orig,
+    v0: null,
   };
+  // その基準の写しは組み立てた物そのもの
+  core.v0 = { key: core.b0Key, base: b0, nodes, edges, memoN: new WeakMap(), memoE: new WeakMap() };
   cores.set(map, core);
   return core;
 }
@@ -609,6 +711,7 @@ function listMapper(map: Readonly<Record<ID, ID | null>>): ((l: readonly ID[]) =
 /** 基準の写し（at・dx・dy・pmap・smap を当てた物。最近の 3 つを持つ） */
 function viewOf(core: Core, base: MapBase): View {
   const key = baseKey(base);
+  if (key === core.b0Key && core.v0) return core.v0;
   const k = core.views.findIndex((v) => v.key === key);
   if (k >= 0) {
     const v = core.views[k]!;
@@ -616,22 +719,28 @@ function viewOf(core: Core, base: MapBase): View {
     return v;
   }
   const n = core.n;
+  // 組み立てた物には初めの基準（b0）を当ててある: そこからの違いだけを当てる（読み替えは組み立てたときの並びから）
   const stamp = base.at !== core.at;
-  const shift = base.dx !== 0 || base.dy !== 0;
+  const dx = base.dx - core.b0.dx;
+  const dy = base.dy - core.b0.dy;
+  const shift = dx !== 0 || dy !== 0;
   const pm = listMapper(base.pmap);
   const sm = listMapper(base.smap);
   const nodes = new Array<GNode>(n);
   const edges = new Array<GEdge | null>(n).fill(null);
   for (let i = 0; i < n; i++) {
     const c = core.nodes[i]!;
-    const projectIds = pm ? pm(c.projectIds) : c.projectIds;
-    const scenarioIds = sm ? sm(c.scenarioIds) : c.scenarioIds;
+    const po = origList(core, c.projectIds);
+    const so = origList(core, c.scenarioIds);
+    const projectIds = pm ? pm(po) : po;
+    const scenarioIds = sm ? sm(so) : so;
     if (!stamp && !shift && projectIds === c.projectIds && scenarioIds === c.scenarioIds) nodes[i] = c;
-    else nodes[i] = fzAll({ ...c, projectIds, scenarioIds, x: c.x + base.dx, y: c.y + base.dy, createdAt: base.at, updatedAt: base.at });
+    else nodes[i] = fzAll({ ...c, projectIds, scenarioIds, x: c.x + dx, y: c.y + dy, createdAt: base.at, updatedAt: base.at });
   }
   for (let i = 1; i < n; i++) {
     const e = core.edges[i]!;
-    const scenarioIds = sm ? sm(e.scenarioIds) : e.scenarioIds;
+    const so = origList(core, e.scenarioIds);
+    const scenarioIds = sm ? sm(so) : so;
     if (!stamp && scenarioIds === e.scenarioIds) edges[i] = e;
     else edges[i] = fzAll({ ...e, scenarioIds, createdAt: base.at, updatedAt: base.at });
   }
@@ -691,7 +800,7 @@ export function thinBaselineDoc(base: Partial<MapBase> = {}): DocData {
     smap: { ...Object.fromEntries(core.scenarios.map((s) => [s.id, s.id])), ...base.smap },
   };
   const v = viewOf(core, full);
-  const d = core.doc;
+  const d = core.shell;
   const nodes: Record<ID, GNode> = {};
   const edges: Record<ID, GEdge> = {};
   for (let i = 0; i < core.n; i++) nodes[v.nodes[i]!.id] = v.nodes[i]!;
@@ -717,7 +826,7 @@ export interface PageMapAccess {
   readonly parent: Int32Array;
   readonly kidStart: Int32Array;
   readonly kids: Int32Array;
-  readonly keyIndex: ReadonlyMap<string, number>;
+  readonly keyIndex: IndexOf<string>;
   /** 組み立てた基準の時刻と、今日の位置 */
   readonly at: string;
   readonly rootX: number;
@@ -751,12 +860,12 @@ export function pageMapAccess(at: string | null): PageMapAccess | null {
     kids: core.kids,
     keyIndex: core.keyIndex,
     at: core.at,
-    rootX: core.nodes[0]!.x,
-    rootY: core.nodes[0]!.y,
+    rootX: core.nodes[0]!.x - core.b0.dx,
+    rootY: core.nodes[0]!.y - core.b0.dy,
     projects: core.projects,
     scenarios: core.scenarios,
     slots: (i) => slotsOf(core, i),
-    projectIdsOf: (i) => core.nodes[i]!.projectIds,
+    projectIdsOf: (i) => origList(core, core.nodes[i]!.projectIds),
     view: (base) => {
       const v = viewOf(core, base);
       return { nodes: v.nodes, edges: v.edges };
@@ -797,16 +906,17 @@ function inferBase(core: Core, doc: DocData, cards: ReadonlyArray<GNode | undefi
     const c = cards[i];
     if (!c) return;
     ats.push(c.createdAt);
-    dxs.push(c.x - core.nodes[i]!.x);
-    dys.push(c.y - core.nodes[i]!.y);
+    // 組み立てたままの位置から（組み立てた物には初めの基準のずらしを当ててある）
+    dxs.push(c.x - (core.nodes[i]!.x - core.b0.dx));
+    dys.push(c.y - (core.nodes[i]!.y - core.b0.dy));
   };
   for (const i of core.spread) sample(i);
   const root = cards[0];
   // 今日を消した地図で、散らした見本のカードが残っていない: 残ったカードを番号の順に（文書の中身だけで決まる）
   if (!root && !ats.length) for (let i = 1; i < core.n && ats.length < core.spread.length; i++) sample(i);
   const at = vote(ats) ?? (root && isoOk(root.createdAt) ? root.createdAt : core.at);
-  const dx = Math.round(vote(dxs) ?? (root ? root.x - core.nodes[0]!.x : 0));
-  const dy = Math.round(vote(dys) ?? (root ? root.y - core.nodes[0]!.y : 0));
+  const dx = Math.round(vote(dxs) ?? (root ? root.x - (core.nodes[0]!.x - core.b0.dx) : 0));
+  const dy = Math.round(vote(dys) ?? (root ? root.y - (core.nodes[0]!.y - core.b0.dy) : 0));
   // プロジェクト: 1 つのプロジェクトだけのカード・全部のプロジェクトのカードの、文書の並びで多数決。決まらなければ同じ ID・同じ名前・無い
   const pVotes = new Map<ID, Array<ID | null>>();
   const pv = (p: ID, t: ID | null): void => {
@@ -993,8 +1103,294 @@ function withRelease(root: GNode, pb: PageBaseline): GNode {
   return { ...root, meta: { ...root.meta, futureVersion: pb.hash, futureRelease: pb.release } };
 }
 
+/** 地図のカード c（基準の写しは v）の変更（同じなら null）。比べた結果はカードの物ごとに覚える */
+function cardPatch(core: Core, view: View, base: MapBase, c: GNode, v: GNode, i: number, stats: ThinStats): NodePatch | null {
+  let p = view.memoN.get(c);
+  if (p === undefined) {
+    stats.compared++;
+    p = diffNode(c, v, base.at, () => slotsOf(core, i));
+    view.memoN.set(c, p);
+  }
+  if (!p) return null;
+  const was = wasOf(v, !!p.f && own(p.f, "conditions"));
+  // チェックだけ書くときは、チェックした項目の文も（次の版で鍵が無くなったカードに、チェックを文ごと残す）
+  if (p.k) was.kt = c.conditions.filter((x) => x.met).map((x) => x.text);
+  return { ...p, was };
+}
+
+/** 同梱の線 e（基準の写しは v）の変更（同じなら null）。線の物ごとに覚える */
+function edgePatch(view: View, base: MapBase, e: GEdge, v: GEdge): EdgePatch | null {
+  let p = view.memoE.get(e);
+  if (p === undefined) {
+    p = diffEdge(e, v, base.at);
+    view.memoE.set(e, p);
+  }
+  return p;
+}
+
+/** 印（番号の順） */
+function pinsOf(core: Core, view: View, pinned: ReadonlySet<number>): Record<string, CardPin> {
+  const pin: Record<string, CardPin> = {};
+  for (const i of [...pinned].sort((a, b) => a - b)) {
+    const v = view.nodes[i]!;
+    pin[core.keys[i]!] = { t: v.title, s: typeof v.meta.short === "string" ? v.meta.short : "", m: typeof v.meta.m === "number" ? v.meta.m : 0 };
+  }
+  return pin;
+}
+
+// ---------------------------------------------------------------- 変わった所だけ書く（作業メモ SPEC v1 §7.1 の 10・見直し perf-10）
+//
+// 自動保存は、変更のたびに 7.7 万枚の文書を全部見て薄い形にしていた（机で 50 ms・4 倍遅いスマホで 0.2 秒ほど。鍵の一覧を作るだけで半分）。
+// ストアが nodes・edges に書いたその場で、書いたノード・線の ID を知らせる（Store.onWrite。トランザクションの中・元に戻す・やり直す・
+// 失敗して戻したときも。ほかに文書を書き換える所は無い）文書だけ、前に全部を見て書いたときの覚え（番号ごとのカードと線・利用者のノードと線の
+// 並び・番号ごとの変更）を残し、次は書かれた物だけ見直す。覚えは文書の nodes の入れ物ごと（全部の入れ替え・読み込みでは入れ物ごと替わるので、
+// 新しい入れ物は全部を見る）。次の物は全部を見直す（変わった所だけでは前と同じ答えを確かめにくい物。答えはいつも全部を見たときと同じ:
+// tests/unit/thinDelta.test.ts）:
+//   地図のカード・同梱の線を消した・足した・鍵や両端を変えた、地図の鍵を持つ利用者のノード、数の形の ID、基準（時刻・ずらし・
+//   プロジェクトとシナリオの読み替え）が変わった、同じ鍵が 2 つ以上・今日を消した地図、ページの地図が替わった
+
+/** 前に全部を見て書いたときの覚え（文書の nodes の入れ物ごと） */
+interface EncState {
+  page: PageBaseline;
+  core: Core;
+  edgesRec: Record<ID, GEdge>;
+  /** 番号ごとのカードと親からの同梱の線（書かれた物で直していく） */
+  cards: Array<GNode | undefined>;
+  bundle: Array<GEdge | undefined>;
+  /** 基準の ID と違うカードの ID → 番号・基準の ID と違う同梱の線の ID → 番号 */
+  nidIndex: Map<ID, number>;
+  bundleIds: Map<ID, number>;
+  /** 丸ごと書く利用者のノードと線（文書の順。足した物は後ろ・消した物は外す: 文書の鍵の順と同じ） */
+  others: Map<ID, true>;
+  userEdges: Map<ID, true>;
+  /** 番号ごとのカード・線の変更（消した印 0・−1 も） */
+  nAt: Map<number, NodePatch | 0 | -1>;
+  eAt: Map<number, EdgePatch | 0>;
+  baseKey: string;
+  view: View;
+  cardCount: number;
+  fatKeyed: number;
+  /** その後にストアが書いたノード・線の ID と、そのうち消した物（足し直すと文書の鍵の順が変わる） */
+  dirtyN: Set<ID>;
+  dirtyE: Set<ID>;
+  goneN: Set<ID>;
+  goneE: Set<ID>;
+}
+
+const encStates = new WeakMap<Record<ID, GNode>, EncState>();
+
+/** 書いた所を知らせるストア（今の文書だけを書く） */
+interface WriteSource {
+  readonly doc: DocData;
+  onWrite: ((doc: DocData, c: "nodes" | "edges", id: ID, gone: boolean) => void) | null;
+}
+const watched = new Set<WriteSource>();
+
+/**
+ * ストアが書いた所を、書き手に知らせる（その後の自動保存は変わった所だけ見直す: perf-10）。やめる関数を返す。
+ * ストアの文書を書き換えるのはストアだけ（src/store/store.ts。書いたその場で onWrite を呼ぶ）
+ */
+export function watchThinWrites(store: WriteSource): () => void {
+  watched.add(store);
+  store.onWrite = (doc, c, id, gone) => {
+    const st = encStates.get(doc.nodes);
+    if (!st) return;
+    (c === "nodes" ? st.dirtyN : st.dirtyE).add(id);
+    if (gone) (c === "nodes" ? st.goneN : st.goneE).add(id);
+  };
+  return () => {
+    watched.delete(store);
+    store.onWrite = null;
+  };
+}
+
+/** 書いた所を知らせるストアの今の文書か */
+function isWatched(doc: DocData): boolean {
+  for (const w of watched) if (w.doc === doc) return true;
+  return false;
+}
+
+/** 数の形の鍵（オブジェクトの鍵の順で前に来る: 足した順と違う） */
+const indexKey = (id: string): boolean => /^(?:0|[1-9]\d*)$/.test(id) && Number(id) < 4294967295;
+
+/** 前の覚えから、書かれた物だけ見直して薄い形にする。全部を見直すべき物があれば null（覚えは途中で壊れているので捨てる） */
+function encodeDelta(st: EncState, doc: DocData): { stored: StoredDoc; stats: ThinStats } | null {
+  const pb = st.page;
+  const core = st.core;
+  const docNodes = doc.nodes;
+  const docEdges = doc.edges;
+  const { cards, bundle, nidIndex, bundleIds, others, userEdges } = st;
+  const keys = core.keys;
+  const parent = core.parent;
+  /** カードの番号（基準の ID か、読み替えた ID。今のカードの物だけ） */
+  const cardAt = (id: ID): number | undefined => {
+    const j = nidIndex.get(id);
+    if (j !== undefined) return j;
+    const k = core.idIndex.get(id);
+    return k !== undefined && cards[k]?.id === id ? k : undefined;
+  };
+  const touchedN = new Set<number>();
+  const touchedE = new Set<number>();
+  for (const id of st.dirtyN) {
+    const now = docNodes[id];
+    const k = cardAt(id);
+    if (k !== undefined) {
+      if (!now) return null;
+      if (k === 0) {
+        if (!isPageRoot(core, now)) return null;
+      } else if (now.meta?.key !== keys[k]) return null;
+      cards[k] = now;
+      if (k > 0) touchedN.add(k);
+      continue;
+    }
+    // カードでない（利用者のノード）。基準の ID・地図の鍵・数の形の ID は、全部を見直す
+    if (core.idIndex.get(id) !== undefined || indexKey(id)) return null;
+    if (!now) {
+      others.delete(id);
+      continue;
+    }
+    // 消してから足し直した（元に戻した など）: 文書の鍵の順が変わったかもしれない
+    if (st.goneN.has(id)) return null;
+    const key = now.meta?.key;
+    if (typeof key === "string" && core.keyIndex.has(key)) return null;
+    others.set(id, true);
+  }
+  for (const id of st.dirtyE) {
+    const now = docEdges[id];
+    let k = bundleIds.get(id);
+    if (k === undefined) {
+      const j = core.eidIndex.get(id);
+      if (j !== undefined && bundle[j]?.id === id) k = j;
+    }
+    if (k !== undefined) {
+      if (!now || now.target !== cards[k]?.id || now.source !== cards[parent[k]!]?.id) return null;
+      bundle[k] = now;
+      touchedE.add(k);
+      continue;
+    }
+    if (core.eidIndex.get(id) !== undefined || indexKey(id)) return null;
+    if (!now) {
+      userEdges.delete(id);
+      continue;
+    }
+    if (st.goneE.has(id)) return null;
+    // ID の違う同梱の線になる物（親のカードから子のカードへの指紋のある線）は、全部を見直す
+    const t = cardAt(now.target);
+    const sIdx = t !== undefined && t > 0 ? cardAt(now.source) : undefined;
+    if (t !== undefined && sIdx !== undefined && parent[t] === sIdx && bundle[t] === undefined && typeof now.meta?.c0 === "string") return null;
+    userEdges.set(id, true);
+  }
+  st.dirtyN.clear();
+  st.dirtyE.clear();
+  st.goneN.clear();
+  st.goneE.clear();
+  // 基準は毎回決め直す（見本のカード・プロジェクト・シナリオだけを見る）。変われば写しが替わるので全部を見直す
+  const base = inferBase(core, doc, cards, bundle);
+  if (baseKey(base) !== st.baseKey) return null;
+  const view = st.view;
+  const stats: ThinStats = { cards: st.cardCount, patched: 0, tombs: 0, patchedEdges: 0, edgeTombs: 0, nid: 0, eid: 0, pins: 0, storedNodes: 0, storedEdges: 0, fatKeyed: st.fatKeyed, compared: 0 };
+  for (const i of touchedN) {
+    const c = cards[i]!;
+    const v = view.nodes[i]!;
+    const p = c === v ? null : cardPatch(core, view, base, c, v, i, stats);
+    if (p) st.nAt.set(i, p);
+    else st.nAt.delete(i);
+  }
+  for (const i of touchedE) {
+    const e = bundle[i]!;
+    const v = view.edges[i]!;
+    const p = e === v ? null : edgePatch(view, base, e, v);
+    if (p) st.eAt.set(i, p);
+    else st.eAt.delete(i);
+  }
+  // 番号の順に書く（全部を見て書いたときと同じ並び）
+  const nPatch: Record<string, NodePatch | 0 | -1> = {};
+  for (const i of [...st.nAt.keys()].sort((a, b) => a - b)) {
+    const p = st.nAt.get(i)!;
+    nPatch[keys[i]!] = p;
+    if (p === 0 || p === -1) stats.tombs++;
+    else stats.patched++;
+  }
+  const ePatch: Record<string, EdgePatch | 0> = {};
+  const pinned = new Set<number>();
+  for (const i of [...st.eAt.keys()].sort((a, b) => a - b)) {
+    const p = st.eAt.get(i)!;
+    ePatch[keys[i]!] = p;
+    if (p === 0) stats.edgeTombs++;
+    else stats.patchedEdges++;
+  }
+  // ID の読み替え（カード・線）は番号の順に。覚えの表から（書かれた所で変わらない: ID の違うカードは消すと全部を見直す）
+  const nid: Record<string, ID> = {};
+  // 今日は ID を丸ごと書くので読み替えには入れない（全部を見て書くときと同じ）
+  for (const i of [...nidIndex.values()].sort((a, b) => a - b)) if (i > 0 && cards[i]!.id !== view.nodes[i]!.id) (nid[keys[i]!] = cards[i]!.id), stats.nid++;
+  const eid: Record<string, ID> = {};
+  for (const i of [...bundleIds.values()].sort((a, b) => a - b)) if (bundle[i]!.id !== view.edges[i]!.id) (eid[keys[i]!] = bundle[i]!.id), stats.eid++;
+  const root = cards[0]!;
+  const nodesOut: Record<ID, GNode> = { [root.id]: withRelease(root, pb) };
+  for (const id of others.keys()) nodesOut[id] = docNodes[id]!;
+  stats.storedNodes = others.size + 1;
+  const edgesOut: Record<ID, GEdge> = {};
+  for (const id of userEdges.keys()) {
+    const e = docEdges[id]!;
+    edgesOut[id] = e;
+    const s = cardAt(e.source);
+    const t = cardAt(e.target);
+    if (s !== undefined && s > 0) pinned.add(s);
+    if (t !== undefined && t > 0) pinned.add(t);
+  }
+  stats.storedEdges = userEdges.size;
+  for (const i of st.eAt.keys()) if (st.eAt.get(i) !== 0) pinned.add(i);
+  const pin = pinsOf(core, view, pinned);
+  stats.pins = pinned.size;
+  const section: ThinSection = {
+    v: THIN_SECTION_V,
+    root: root.id,
+    key: keys[0]!,
+    release: pb.release,
+    hash: pb.hash,
+    digest: pageDigest(pb),
+    bv: THIN_BASELINE_VERSION,
+    anchor: pb.anchor,
+    at: base.at,
+    dx: base.dx,
+    dy: base.dy,
+  };
+  const pmap = compactMap(base.pmap);
+  if (pmap) section.pmap = pmap;
+  const smap = compactMap(base.smap);
+  if (smap) section.smap = smap;
+  if (Object.keys(nPatch).length) section.n = nPatch;
+  if (Object.keys(ePatch).length) section.e = ePatch;
+  if (stats.nid) section.nid = nid;
+  if (stats.eid) section.eid = eid;
+  if (stats.pins) section.pin = pin;
+  return { stored: { ...doc, version: THIN_VERSION, nodes: nodesOut, edges: edgesOut, maps: [section] }, stats };
+}
+
+/** いつも全部を見て薄い形にする（覚えを使わず、残さない。変わった所だけ書いた物と比べる確かめ用） */
+export function encodeThinFull(doc: DocData): { stored: StoredDoc; stats: ThinStats } | null {
+  return encodeFull(doc, false);
+}
+
 /** 文書を薄い形にする。ページの地図が無い文書は null（そのまま書く）。ページの地図はあるが基準が無ければ ThinBaselineMissingError */
 export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats } | null {
+  const st = doc.nodes && typeof doc.nodes === "object" ? encStates.get(doc.nodes) : undefined;
+  if (st) {
+    // 覚えは 1 度使ったら外す（見直しの途中で全部を見直すと決めたら、覚えは壊れている。使えたら付け直す）
+    encStates.delete(doc.nodes);
+    if (st.edgesRec === doc.edges && page === st.page && cores.get(page.map) === st.core && isWatched(doc)) {
+      const r = encodeDelta(st, doc);
+      if (r) {
+        encStates.set(doc.nodes, st);
+        return r;
+      }
+    }
+  }
+  return encodeFull(doc, isWatched(doc));
+}
+
+/** 文書を薄い形にする（全部を見て）。keep なら、次に変わった所だけ書くための覚えを残す（ストアが書いた所を知らせる文書だけ） */
+function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: ThinStats } | null {
   const docNodes = doc.nodes;
   // ノードの入れ物の無い物（文書の形でない物）は、そのまま書く（書き手は作らないが、壊さずに通す）
   if (!docNodes || typeof docNodes !== "object") return null;
@@ -1082,6 +1478,7 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
   const edgeIds = Object.keys(docEdges);
   // 同じ鍵が 2 つ以上: 今日は先へ進む線のある物 → 早く作った物 → ID の順。ほかは madeFirst（入口から道の線でたどる）
   const losers: ID[] = [];
+  const hadDups = dups.size > 0;
   if (dups.size) {
     const rootDups = dups.get(0);
     if (rootDups) {
@@ -1172,12 +1569,16 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
     }
   }
   const userEdges: ID[] = [];
+  /** ID が基準の線の ID と違う同梱の線（線の ID → 番号） */
+  const bundleIds = new Map<ID, number>();
   for (const eid of oddEdges) {
     const e = docEdges[eid]!;
     const t = indexOfCard(e.target);
     const s = t !== undefined && t > 0 ? indexOfCard(e.source) : undefined;
-    if (t !== undefined && s !== undefined && core.parent[t] === s && bundle[t] === undefined && typeof e.meta?.c0 === "string") bundle[t] = e;
-    else userEdges.push(eid);
+    if (t !== undefined && s !== undefined && core.parent[t] === s && bundle[t] === undefined && typeof e.meta?.c0 === "string") {
+      bundle[t] = e;
+      bundleIds.set(eid, t);
+    } else userEdges.push(eid);
   }
   // ---- 基準
   const base = inferBase(core, doc, cards, bundle);
@@ -1202,29 +1603,25 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
       }
     allGone[i] = gone;
   }
+  // 番号ごとの変更（次に変わった所だけ書くときの覚え）
+  const nAt = keep ? new Map<number, NodePatch | 0 | -1>() : null;
+  const eAt = keep ? new Map<number, EdgePatch | 0>() : null;
   for (let i = 1; i < n; i++) {
     const c = cards[i];
     const v = view.nodes[i]!;
     if (!c) {
       if (allGone[i]) {
-        if (!allGone[core.parent[i]!]) (nPatch[keys[i]!] = 0), stats.tombs++;
-      } else (nPatch[keys[i]!] = -1), stats.tombs++;
+        if (!allGone[core.parent[i]!]) (nPatch[keys[i]!] = 0), nAt?.set(i, 0), stats.tombs++;
+      } else (nPatch[keys[i]!] = -1), nAt?.set(i, -1), stats.tombs++;
       continue;
     }
     stats.cards++;
     if (c.id !== v.id) (nid[keys[i]!] = c.id), stats.nid++;
     if (c === v) continue;
-    let p = view.memoN.get(c);
-    if (p === undefined) {
-      stats.compared++;
-      p = diffNode(c, v, base.at, () => slotsOf(core!, i));
-      view.memoN.set(c, p);
-    }
+    const p = cardPatch(core, view, base, c, v, i, stats);
     if (p) {
-      const was = wasOf(v, !!p.f && own(p.f, "conditions"));
-      // チェックだけ書くときは、チェックした項目の文も（次の版で鍵が無くなったカードに、チェックを文ごと残す）
-      if (p.k) was.kt = c.conditions.filter((x) => x.met).map((x) => x.text);
-      nPatch[keys[i]!] = { ...p, was };
+      nPatch[keys[i]!] = p;
+      nAt?.set(i, p);
       stats.patched++;
     }
   }
@@ -1233,18 +1630,15 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
     const e = bundle[i];
     if (!e) {
       ePatch[keys[i]!] = 0;
+      eAt?.set(i, 0);
       stats.edgeTombs++;
       continue;
     }
     const v = view.edges[i]!;
     if (e.id !== v.id) (eid[keys[i]!] = e.id), stats.eid++;
     if (e === v) continue;
-    let p = view.memoE.get(e);
-    if (p === undefined) {
-      p = diffEdge(e, v, base.at);
-      view.memoE.set(e, p);
-    }
-    if (p) (ePatch[keys[i]!] = p), stats.patchedEdges++;
+    const p = edgePatch(view, base, e, v);
+    if (p) (ePatch[keys[i]!] = p), eAt?.set(i, p), stats.patchedEdges++;
   }
   // ---- 丸ごと書くノードと線（今日を先に）。利用者の線が指す地図のカードには印
   const nodesOut: Record<ID, GNode> = {};
@@ -1275,12 +1669,36 @@ export function encodeThin(doc: DocData): { stored: StoredDoc; stats: ThinStats 
   stats.storedEdges = userEdges.length;
   // 直した同梱の線の先のカードにも印（次の版で鍵が無くなっても、直した見込み・説明を題名つきのカードに残せるように: loss-4）
   for (const k of Object.keys(ePatch)) if (ePatch[k] !== 0) pinned.add(core.keyIndex.get(k)!);
-  const pin: Record<string, CardPin> = {};
-  for (const i of [...pinned].sort((a, b) => a - b)) {
-    const v = view.nodes[i]!;
-    pin[keys[i]!] = { t: v.title, s: typeof v.meta.short === "string" ? v.meta.short : "", m: typeof v.meta.m === "number" ? v.meta.m : 0 };
-  }
+  const pin = pinsOf(core, view, pinned);
   stats.pins = pinned.size;
+  // 次に変わった所だけ書くための覚え（同じ鍵が 2 つ以上・今日を消した地図は覚えない: 次も全部を見る）
+  if (keep && nAt && eAt && root && !hadDups && !losers.length) {
+    const others = new Map<ID, true>();
+    for (const id of stored) others.set(id, true);
+    const users = new Map<ID, true>();
+    for (const id of userEdges) users.set(id, true);
+    encStates.set(docNodes, {
+      page,
+      core,
+      edgesRec: docEdges,
+      cards,
+      bundle,
+      nidIndex,
+      bundleIds,
+      others,
+      userEdges: users,
+      nAt,
+      eAt,
+      baseKey: baseKey(base),
+      view,
+      cardCount: stats.cards,
+      fatKeyed: stats.fatKeyed,
+      dirtyN: new Set(),
+      dirtyE: new Set(),
+      goneN: new Set(),
+      goneE: new Set(),
+    });
+  }
   const section: ThinSection = {
     v: THIN_SECTION_V,
     root: root ? root.id : ids[0]!,
@@ -1564,7 +1982,8 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   if (s.hash !== pb.hash) throw mismatch("中身の指紋", s.release);
   if (s.bv !== THIN_BASELINE_VERSION) throw mismatch("組み立ての版", s.release);
   if (s.anchor !== pb.anchor) throw mismatch("地図の年月", s.release);
-  const core = coreOf(pb.map, s.at);
+  // 基準を初めて組み立てるなら、この記録の基準を当てて組み立てる（この記録の写しは組み立てた物そのもの）
+  const core = coreOf(pb.map, s.at, s);
   if (s.digest !== pageDigest(pb)) throw mismatch("基準の文書の指紋", s.release);
   if (s.key !== core.keys[0]) throw mismatch("今日の鍵", s.release);
   const n = core.n;
@@ -1622,7 +2041,9 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     if (nidIndex.has(id) || (!rootGone && id === s.root)) throw corrupt("カードの ID が重なっています", s.release);
     nidIndex.set(id, i);
   }
-  for (let i = 1; i < n; i++) if (!gone[i]) idOf[i] = s.nid?.[keys[i]!] ?? view.nodes[i]!.id;
+  // 読み替えたカードだけ読み替えた ID（鍵で s.nid を 7.7 万回引かない: 鍵の文字を 1 つにし直して数えることになる。見直し perf-1）
+  for (let i = 1; i < n; i++) if (!gone[i]) idOf[i] = view.nodes[i]!.id;
+  for (const [id, i] of nidIndex) if (i > 0) idOf[i] = id;
   const cardAt = (id: ID): number | undefined => {
     const j = nidIndex.get(id);
     if (j !== undefined) return j;
@@ -1673,9 +2094,12 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     if (!sameWas(i, s.pin![k]!)) throw mismatch(`印の題名が基準と違います: ${k.slice(0, 80)}`, s.release);
   }
   const ePatch = s.e ?? {};
+  /** 消した同梱の線（番号ごと。線の変更が 0 の物。鍵で 7.7 万回引かない） */
+  const eTomb = new Uint8Array(n);
   for (const k of Object.keys(ePatch)) {
     const i = known(k, "線の変更");
     if (gone[i] || gone[core.parent[i]!]) throw mismatch(`消したカードの線の変更: ${k.slice(0, 80)}`, s.release);
+    if (ePatch[k] === 0) eTomb[i] = 1;
   }
   /** 線の ID（読み替えた物だけ。番号ごと） */
   const eidOver = new Array<ID | undefined>(n);
@@ -1689,7 +2113,7 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     eidOver[i] = id;
   }
   const edgeIdOf = (i: number): ID => eidOver[i] ?? view.edges[i]!.id;
-  const edgeLive = (i: number): boolean => !gone[i] && !gone[core.parent[i]!] && ePatch[keys[i]!] !== 0;
+  const edgeLive = (i: number): boolean => !gone[i] && !gone[core.parent[i]!] && !eTomb[i];
   for (const [id, i] of eidIndex) {
     const k = core.eidIndex.get(id);
     if (k !== undefined && k !== i && edgeLive(k) && edgeIdOf(k) === id) throw corrupt("線の ID が重なっています", s.release);

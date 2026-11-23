@@ -223,10 +223,82 @@ class ReachMap implements ReadonlyMap<ID, Reach> {
  * 作り直すのは、見込みに使う物（道の線・% ・線のシナリオ・入口・種類）が変わったとき（読み手が版で決める）。
  * tests/unit/forecastFast.test.ts が computeForecast と同じかを確かめる
  */
+/** 計画の中身（ForecastPlan が持つ物） */
+interface PlanParts {
+  ids: ID[];
+  idx: Map<ID, number>;
+  off: Int32Array;
+  tgt: Int32Array;
+  edges: GEdge[];
+  kinds: Array<ForkKind | null>;
+  split: Float64Array;
+  rootIdx: number[];
+}
+
+/** 計画を作る（ノード 2,048 ずつ yield する: 空いた時間に少しずつ作れる。最後に中身を返す） */
+function* planParts(doc: DocData, out: Map<ID, ID[]>, inp: ForecastInputs): Generator<void, PlanParts> {
+  const scope = inp.impactScope;
+  const ids: ID[] = [];
+  const idx = new Map<ID, number>();
+  for (const r of inp.roots) {
+    if (idx.has(r)) continue;
+    idx.set(r, ids.length);
+    ids.push(r);
+  }
+  const rootIdx = inp.roots.map((r) => idx.get(r)!);
+  const offL: number[] = [];
+  const tgtL: number[] = [];
+  const edges: GEdge[] = [];
+  const kinds: Array<ForkKind | null> = [];
+  const splitL: number[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    if ((i & 2047) === 2047) yield;
+    const id = ids[i]!;
+    const n = doc.nodes[id]!;
+    offL.push(edges.length);
+    const a = edges.length;
+    let self = false;
+    for (const eid of out.get(id) ?? []) {
+      const e = doc.edges[eid];
+      if (!e || (e.relation !== "leads" && e.relation !== "condition") || !doc.nodes[e.target]) continue;
+      if (e.target === id) self = true;
+      edges.push(e);
+      let j = idx.get(e.target);
+      if (j === undefined) {
+        j = ids.length;
+        idx.set(e.target, j);
+        ids.push(e.target);
+      }
+      tgtL.push(j);
+    }
+    const cnt = edges.length - a;
+    // 分かれ道の種類（自分への線を除く出る線で決める: forkKindOf）と分け方（splitOf）。印（meta.fork）のある所は並びを作らずに
+    let kind: ForkKind | null = null;
+    if (scope.has(id)) {
+      const f = n.meta?.fork;
+      if (cnt === 0 || (self && !edges.slice(a).some((e) => e.source !== e.target))) kind = "leaf";
+      else if (f === "decision" || f === "chance") kind = f;
+      else kind = forkKindOf(n, edges.slice(a).filter((e) => e.source !== e.target));
+    }
+    kinds.push(kind);
+    if (kind !== null && kind !== "chance") for (let k = 0; k < cnt; k++) splitL.push(1);
+    else if (kind === "chance") pushChance(edges, a, edges.length, splitL);
+    else for (const x of splitOf(n, edges.slice(a), kind)) splitL.push(x);
+  }
+  offL.push(edges.length);
+  return { ids, idx, off: Int32Array.from(offL), tgt: Int32Array.from(tgtL), edges, kinds, split: Float64Array.from(splitL), rootIdx };
+}
+
+/** 少しずつ作る計画（step を true が返るまで呼ぶ。でき上がった計画は plan） */
+export interface PlanSteps {
+  step(): boolean;
+  readonly plan: ForecastPlan | null;
+}
+
 export class ForecastPlan {
   /** 番号（方針なしで入口から届いた順） → ノード */
-  private readonly ids: ID[] = [];
-  private readonly idx = new Map<ID, number>();
+  private readonly ids: ID[];
+  private readonly idx: Map<ID, number>;
   /** 出る線（outsOf の方針なしの物と同じ選び方・並び）: [off[i], off[i + 1]) */
   private readonly off: Int32Array;
   private readonly tgt: Int32Array;
@@ -241,60 +313,47 @@ export class ForecastPlan {
     private doc: DocData,
     out: Map<ID, ID[]>,
     inp: ForecastInputs,
+    parts?: PlanParts,
   ) {
-    const scope = (this.scope = inp.impactScope);
-    const ids = this.ids;
-    const idx = this.idx;
-    for (const r of inp.roots) {
-      if (idx.has(r)) continue;
-      idx.set(r, ids.length);
-      ids.push(r);
-    }
-    this.rootIdx = inp.roots.map((r) => idx.get(r)!);
-    const offL: number[] = [];
-    const tgtL: number[] = [];
-    const edges: GEdge[] = [];
-    const kinds: Array<ForkKind | null> = [];
-    const splitL: number[] = [];
-    for (let i = 0; i < ids.length; i++) {
-      const id = ids[i]!;
-      const n = doc.nodes[id]!;
-      offL.push(edges.length);
-      const a = edges.length;
-      let self = false;
-      for (const eid of out.get(id) ?? []) {
-        const e = doc.edges[eid];
-        if (!e || (e.relation !== "leads" && e.relation !== "condition") || !doc.nodes[e.target]) continue;
-        if (e.target === id) self = true;
-        edges.push(e);
-        let j = idx.get(e.target);
-        if (j === undefined) {
-          j = ids.length;
-          idx.set(e.target, j);
-          ids.push(e.target);
+    let p = parts;
+    if (!p) {
+      const g = planParts(doc, out, inp);
+      for (let r = g.next(); ; r = g.next())
+        if (r.done) {
+          p = r.value;
+          break;
         }
-        tgtL.push(j);
-      }
-      const cnt = edges.length - a;
-      // 分かれ道の種類（自分への線を除く出る線で決める: forkKindOf）と分け方（splitOf）。印（meta.fork）のある所は並びを作らずに
-      let kind: ForkKind | null = null;
-      if (scope.has(id)) {
-        const f = n.meta?.fork;
-        if (cnt === 0 || (self && !edges.slice(a).some((e) => e.source !== e.target))) kind = "leaf";
-        else if (f === "decision" || f === "chance") kind = f;
-        else kind = forkKindOf(n, edges.slice(a).filter((e) => e.source !== e.target));
-      }
-      kinds.push(kind);
-      if (kind !== null && kind !== "chance") for (let k = 0; k < cnt; k++) splitL.push(1);
-      else if (kind === "chance") pushChance(edges, a, edges.length, splitL);
-      else for (const x of splitOf(n, edges.slice(a), kind)) splitL.push(x);
     }
-    offL.push(edges.length);
-    this.off = Int32Array.from(offL);
-    this.tgt = Int32Array.from(tgtL);
-    this.edges = edges;
-    this.kinds = kinds;
-    this.split = Float64Array.from(splitL);
+    this.scope = inp.impactScope;
+    this.ids = p.ids;
+    this.idx = p.idx;
+    this.off = p.off;
+    this.tgt = p.tgt;
+    this.edges = p.edges;
+    this.kinds = p.kinds;
+    this.split = p.split;
+    this.rootIdx = p.rootIdx;
+  }
+
+  /**
+   * 計画を少しずつ作る（空いた時間に: 8 万枚の地図では 1 度に作ると、4 倍遅いスマホで 0.4 秒ほどの 1 つの仕事になる。見直し perf-1）。
+   * 作る間、文書と出る線の索引は、見込みに使う所が変わらないこと（変わったら呼ぶ側がやめて作り直す）
+   */
+  static steps(doc: DocData, out: Map<ID, ID[]>, inp: ForecastInputs): PlanSteps {
+    const g = planParts(doc, out, inp);
+    let plan: ForecastPlan | null = null;
+    return {
+      step: () => {
+        if (plan) return true;
+        const r = g.next();
+        if (!r.done) return false;
+        plan = new ForecastPlan(doc, out, inp, r.value);
+        return true;
+      },
+      get plan() {
+        return plan;
+      },
+    };
   }
 
   /** その方針（無ければ null）での見込み */

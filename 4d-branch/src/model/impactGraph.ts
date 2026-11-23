@@ -15,6 +15,7 @@
 //                              同じ値の行き先の並びは computeImpact と同じ（幅優先の順で数える: bfs）
 
 import { compileMap, F_BASE, F_STUB, ROLE_A, ROLE_E, ROLE_R, type CompiledMap } from "../deepmap/core/compile";
+import { quarterIdTable } from "../demo/quarterIds";
 import type { MapData } from "../deepmap/mapData";
 import { dayNumber, isDateStr } from "./dates";
 import { flowOuts, impactConfigOf, isFlowEdge, isImpactRoot } from "./forks";
@@ -534,47 +535,13 @@ export function rippleCounts(topo: Topo, nums: Nums): Int32Array {
 
 // ------------------------------------------------------------ 同梱の地図（版 7）から
 
-/** 36 進の数字の文字の番号 */
-const D36 = new Uint8Array(36);
-for (let d = 0; d < 36; d++) D36[d] = (d < 10 ? 48 : 87) + d;
-const PRIME = 0x01000193;
-
-/** 32 ビットの指紋を 36 進 7 桁（左を 0 で埋める）の文字の番号で out[at..at+6] に（src/demo/quarterDoc.ts の lane36 と同じ） */
-function lane36(h: number, out: Uint8Array, at: number): void {
-  const x = h >>> 0;
-  let y = Math.floor(x / 36);
-  out[at + 6] = D36[x - y * 36]!;
-  for (let k = 5; k >= 0; k--) {
-    const z = (y / 36) | 0;
-    out[at + k] = D36[y - z * 36]!;
-    y = z;
-  }
-}
-
 /**
  * 地図の番号ごとのノードと親からの線の ID（buildQuarterDoc と同じ: n_i_ / e_i_ + 鍵の 64 ビットの指紋 14 文字。
  * src/demo/impact.ts の impactNodeId64・impactEdgeId64 と同じ文字。初めから 1 つの文字列で作る）
  */
-export function quarterIds(map: MapData): { node: ID[]; edge: ID[] } {
-  const n = map.n;
-  const node = new Array<ID>(n);
-  const edge = new Array<ID>(n);
-  const L = new Uint8Array(14);
-  for (let i = 0; i < n; i++) {
-    const key = map.key(i);
-    let h1 = 0x811c9dc5;
-    let h2 = 0x9e3779b9;
-    for (let c = 0; c < key.length; c++) {
-      const ch = key.charCodeAt(c);
-      h1 = Math.imul(h1 ^ ch, PRIME);
-      h2 = Math.imul(h2 ^ ch, PRIME);
-    }
-    lane36(h1, L, 0);
-    lane36(h2, L, 7);
-    node[i] = String.fromCharCode(110, 95, 105, 95, L[0]!, L[1]!, L[2]!, L[3]!, L[4]!, L[5]!, L[6]!, L[7]!, L[8]!, L[9]!, L[10]!, L[11]!, L[12]!, L[13]!);
-    edge[i] = String.fromCharCode(101, 95, 105, 95, L[0]!, L[1]!, L[2]!, L[3]!, L[4]!, L[5]!, L[6]!, L[7]!, L[8]!, L[9]!, L[10]!, L[11]!, L[12]!, L[13]!);
-  }
-  return { node, edge };
+export function quarterIds(map: MapData): { node: readonly ID[]; edge: readonly ID[] } {
+  // 組み立て・保存の基準・地図の画面と同じ表（地図ごとに 1 度だけ数える: src/demo/quarterIds.ts）
+  return quarterIdTable(map);
 }
 
 /** 版 7 の地図の計算の芯（同じ地図なら 1 度だけ作る。見取り図などの画面もこれを使う） */

@@ -247,11 +247,61 @@ const copyBand = (b: MapBand): MapBand => {
 };
 
 /**
+ * 同梱データの読み手の地図（MapData に、鍵の区切りを足した物）。鍵 key(i) は「親の鍵 + . + 区切り」（今日は区切りだけ）。
+ * 区切りがあれば、鍵の指紋を親の値から区切りの文字だけで数えられる（7.7 万の鍵の文字を 1 つにし直さない: ./quarterIds.ts。見直し perf-1）
+ */
+export interface BundleMapData extends MapData {
+  /** カード i の鍵の最後の区切り（同じ番号は同じ文字列） */
+  seg(i: number): string;
+  /**
+   * 同じ中身の行の番号（組み立てが、同じ中身の部品を 1 つにするのに使う: 中身を作って比べずに、番号で引く。見直し perf-1）。
+   * st・rr は同じ番号なら st(i)・rr(i) が同じ中身。ln・rv・band は表の番号（0 は無し）で、同じ番号なら同じ中身
+   */
+  rowKey(i: number, what: "st" | "rr" | "ln" | "rv" | "band"): number;
+}
+
+/** 列の値の組が同じ行に同じ番号を付ける（最初に出た順に 0, 1, …） */
+function internRows(n: number, cols: readonly Int32Array[]): Int32Array {
+  const out = new Int32Array(n);
+  const first: number[] = [];
+  const table = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    let h = 0x811c9dc5;
+    for (const c of cols) h = Math.imul(h ^ c[i]!, 0x01000193);
+    h &= 0x3fffffff;
+    const bucket = table.get(h);
+    let id = -1;
+    if (bucket)
+      for (const k of bucket) {
+        const r = first[k]!;
+        let same = true;
+        for (const c of cols)
+          if (c[r] !== c[i]) {
+            same = false;
+            break;
+          }
+        if (same) {
+          id = k;
+          break;
+        }
+      }
+    if (id < 0) {
+      id = first.length;
+      first.push(i);
+      if (bucket) bucket.push(id);
+      else table.set(h, [id]);
+    }
+    out[i] = id;
+  }
+  return out;
+}
+
+/**
  * 決まった並びのバイト列（gzip を伸ばした後）から、読むだけの地図を作る（同期・型付きの配列。ノードごとの物は問われたときに作る）。
  * どの accessor も、同じ木（作る側が丸めた開発用の木）の fromDevTree() と同じ答えを返す。食い違いは ImpactBundleError。
  * 文字列は表の番号ごとに同じ物、やることは同じ並びごとに同じ凍らせた配列を返す（ほかの配列と物は、問うたびに新しい物）
  */
-export function decodeBundleBytes(bytes: Uint8Array): MapData {
+export function decodeBundleBytes(bytes: Uint8Array): BundleMapData {
   const r = new Reader(bytes, 0, bytes.length);
   for (let k = 0; k < 4; k++) if (bytes[k] !== BUNDLE_MAGIC[k]) bad("3 か月ごとの地図の同梱データではありません");
   r.p = 4;
@@ -302,7 +352,9 @@ export function decodeBundleBytes(bytes: Uint8Array): MapData {
   const seg = readCol(r, n, "鍵の区切り");
   const flags = readCol(r, n, "印");
   const jpp = readCol(r, n, "仕事と答え");
-  const stCols = ST_NUMS.map((k) => readCol(r, n, `状態 ${k}`));
+  // 読み手 r は関数の中から呼ばない（閉じた所が r をつかむと、伸ばした同梱データ全部（約 4 MB）を地図と一緒に持ち続ける: 見直し perf-6）
+  const stCols: Int32Array[] = [];
+  for (const k of ST_NUMS) stCols.push(readCol(r, n, `状態 ${k}`));
   const fl = readCol(r, n, "状態の印");
   const rr = [readCol(r, n, "月の稼ぎ 0"), readCol(r, n, "月の稼ぎ 1"), readCol(r, n, "月の稼ぎ 2")];
   const band = readCol(r, n, "幅");
@@ -498,9 +550,30 @@ export function decodeBundleBytes(bytes: Uint8Array): MapData {
     return arr;
   };
 
+  // 同じ中身の行の番号（初めて問われたときに作る）
+  let stKeys: Int32Array | null = null;
+  let rrKeys: Int32Array | null = null;
+  const rowKey = (i: number, what: "st" | "rr" | "ln" | "rv" | "band"): number => {
+    N(i);
+    switch (what) {
+      case "st":
+        return (stKeys ??= internRows(n, [jpp, ...stCols, fl]))[i]!;
+      case "rr":
+        return (rrKeys ??= internRows(n, rr))[i]!;
+      case "ln":
+        return isOut(i) ? ln[sub[i]!]! : 0;
+      case "rv":
+        return isOut(i) ? rv[sub[i]!]! : 0;
+      case "band":
+        return band[i]!;
+    }
+  };
+
   return {
     header,
     n,
+    seg: (i) => S.seg.get(seg[N(i)]!),
+    rowKey,
     parent: (i) => parent[N(i)]!,
     childCount: (i) => kidOff[N(i) + 1]! - kidOff[i]!,
     child: (i, k) => {
@@ -609,7 +682,7 @@ export async function gunzipBytes(gz: Uint8Array): Promise<Uint8Array> {
 }
 
 /** 同梱データ（base64 の gzip）から読むだけの地図を作る。読めなければ ImpactBundleError（gzip の食い違いも） */
-export async function decodeBundle(b64: string): Promise<MapData> {
+export async function decodeBundle(b64: string): Promise<BundleMapData> {
   const gz = base64ToBytes(b64);
   let raw: Uint8Array;
   try {
