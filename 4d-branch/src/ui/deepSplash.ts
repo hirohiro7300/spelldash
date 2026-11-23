@@ -6,7 +6,7 @@
 
 import "../deepmap/views/views.css";
 import "../styles/deep.css";
-import { plainAnalysis, plainOverview } from "../app/deepState";
+import { deepText, plainAnalysis, plainOverview } from "../app/deepState";
 import type { MapData } from "../deepmap/mapData";
 import { overviewVM, renderOverview, ym } from "../deepmap/views";
 import { IMPACT_DEFAULT_ANNUAL } from "../model/impact";
@@ -76,7 +76,9 @@ export async function paintDeepSplash(mount: HTMLElement, map: MapData, annual =
   try {
     const cm = compiledMapOf(map);
     const a = plainAnalysis(cm, annual);
-    const vm = overviewVM(a, plainOverview(cm, a));
+    // 手の名前はカードの題名（後のアプリの見取り図と同じ名前。保存した題名は後で読むので、ここは地図の題名）
+    const text = deepText(map, annual);
+    const vm = overviewVM(a, plainOverview(cm, a), { name: (f) => text.title(f) });
     const view = renderOverview(vm);
     // 先に描くのは見出し・結びの文・「10 の手をひと目で」だけ（1 画面に収まる所。10 の手のくわしい行は描かず、最初の描画を軽く。
     // くわしい行はアプリの右のパネル・引き出しの見取り図に出る）

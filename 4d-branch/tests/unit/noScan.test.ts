@@ -24,7 +24,8 @@ const OTHERS: Record<string, string[]> = {
 
 /** 認めた所の数の上限（増やすときは、変更のたびの道ではないことを確かめてから） */
 // 9 個目: 新しい地図の知らせ（一度だけ）を開いたときに「前の版で決めたこと」を探す（src/ui/releaseSheet.ts。W-int）
-const MAX_ALLOWED = 9;
+// 10 個目: ID が鍵の指紋と違う地図（版 6 から引き上げた地図）で、地図の番号 → ID の表を形が変わったときに作る（src/app/deepState.ts。W-int）
+const MAX_ALLOWED = 10;
 
 describe("変更のたびに文書を全部なめない", () => {
   it("src/app・src/ui・src/canvas の doc.nodes・doc.edges の全部なめは、認めた所だけ", () => {

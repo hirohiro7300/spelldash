@@ -304,10 +304,13 @@ function uniformBasis(ov: Overview): DeltaBasis | null {
   return bs.size === 1 ? [...bs][0]! : bs.size === 0 ? ov.basis.delta : null;
 }
 
-export function overviewRowVM(a: Analysis, ov: Overview, mv: MoveSummary): OverviewRowVM {
+/** 今日の手の名前の出し方（アプリは文書のカードの題名: キャンバス・詳細・道の画面と同じ名前。見直し equiv-4。無ければ手の種類の名前） */
+export type MoveNameOf = (node: number) => string | null | undefined;
+
+export function overviewRowVM(a: Analysis, ov: Overview, mv: MoveSummary, nameOf?: MoveNameOf): OverviewRowVM {
   const map = a.cm.map;
   const endYm = ym(map, a.cm.H);
-  const name = moveName(map, mv.kind, mv.isBase);
+  const name = (!mv.isBase && nameOf?.(mv.node)?.trim()) || moveName(map, mv.kind, mv.isBase);
   const delta = deltaPill(mv, uniformBasis(ov) === null);
   const worth = worthPill(mv, ov.worthNoise ?? WORTH_NOISE);
   const { rangeText, rangeParts, vsKeepText } = distTexts(mv.dist, ov.vSQ);
@@ -448,11 +451,11 @@ function glanceOf(ov: Overview, rows: readonly OverviewRowVM[], basis: DeltaBasi
   };
 }
 
-export function overviewVM(a: Analysis, ov: Overview = overview(a)): OverviewVM {
+export function overviewVM(a: Analysis, ov: Overview = overview(a), opts: { name?: MoveNameOf } = {}): OverviewVM {
   assertFresh(a);
   const map = a.cm.map;
   const endYm = ym(map, a.cm.H);
-  const rows = ov.moves.map((mv) => overviewRowVM(a, ov, mv));
+  const rows = ov.moves.map((mv) => overviewRowVM(a, ov, mv, opts.name));
   // 良い順（表示した差の大きい順。同じなら地図の値、次に並べる順）
   const value = new Map(ov.moves.map((m) => [m.node, m.value] as const));
   const order = new Map(ov.moves.map((m) => [m.node, m.k] as const));

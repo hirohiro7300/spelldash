@@ -83,7 +83,7 @@ export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?
   const cm = ctx.cm;
   const a = ctx.analysis();
   const ov = ctx.overview();
-  const vm = overviewVM(a, ov);
+  const vm = overviewVM(a, ov, { name: (f) => ctx.text().title(f) });
   // 今日の手ごとの分かれ道（判断 + 出来事の分かれ）の幅
   let lo = Infinity;
   let hi = 0;

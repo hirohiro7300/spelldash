@@ -236,11 +236,49 @@ export class DeepState {
     );
   }
 
-  /** 文書の 3 年の分かれ道の入口が、その地図の今日か（ID と版の指紋。今日の ID だけを鍵から作る: 全部の指紋は作らない） */
+  /**
+   * 文書の 3 年の分かれ道の入口が、その地図の今日か（今日の鍵と版の指紋）。今日の ID は鍵の指紋の ID とは限らない
+   * （版 6 から引き上げた地図・ID を引き継いで取り込んだ地図は、前の ID のまま: W-store の §2.3）
+   */
   private matches(map: MapData, doc: DocData, root: ID): boolean {
     const n = doc.nodes[root];
     if (!n || n.meta?.futureVersion !== map.header.hash || n.meta?.futureRelease !== map.header.release) return false;
-    return root === (idsMemo.get(map)?.[0] ?? impactNodeId64(map.key(0)));
+    return n.meta?.key === map.key(0);
+  }
+
+  /** 文書ごとの、地図の番号 → カードの ID の表と、その逆（鍵の指紋と違う ID の文書だけ。文書の入れ物と形の版ごとに作る） */
+  private docIds: { map: MapData; nodes: DocData["nodes"]; topo: number; ids: ID[]; rev: ReadonlyMap<ID, number> } | null = null;
+  /** 表を作り直した回数（作り直したら画面に渡す物も作り直す） */
+  private idStamp = 0;
+
+  /**
+   * 地図の番号 → 文書のカードの ID。今日が鍵の指紋の ID なら、どのカードも鍵の指紋の ID（地図ごとの表）。
+   * そうでなければ（版 6 から引き上げた・ID を引き継いだ地図）、文書の鍵から表を作る（形が変わったときだけ）
+   */
+  private idTable(doc: DocData, map: MapData): { ids: ID[]; rev(): ReadonlyMap<ID, number>; hashed: boolean } {
+    // 今日が鍵の指紋の ID: 地図ごとの表（エンジンが地図の列から作っていればその物。なければ要るときに作る: 起動で 7 万の指紋を作らない）
+    const memo = idsMemo.get(map);
+    if (doc.nodes[memo?.[0] ?? impactNodeId64(map.key(0))]?.meta?.key === map.key(0)) return { ids: memo ?? new Array<ID>(map.n), rev: () => revOf(map), hashed: true };
+    const hashed = idsOf(map);
+    const topo = this.vm.index.version.topo;
+    const c = this.docIds;
+    if (c && c.map === map && c.nodes === doc.nodes && c.topo === topo) return { ids: c.ids, rev: () => c.rev, hashed: false };
+    const ids = hashed.slice();
+    const seen = new Uint8Array(map.n);
+    // 全体を見てよい: ID が鍵の指紋と違う地図（版 6 から引き上げた地図など）で、文書の形が変わったときに 1 回
+    for (const id in doc.nodes) {
+      const k = doc.nodes[id]!.meta?.key;
+      if (typeof k !== "string") continue;
+      const i = map.indexOfKey(k);
+      if (i < 0 || seen[i]) continue;
+      seen[i] = 1;
+      ids[i] = id;
+    }
+    const rev = new Map<ID, number>();
+    for (let i = 0; i < ids.length; i++) rev.set(ids[i]!, i);
+    this.docIds = { map, nodes: doc.nodes, topo, ids, rev };
+    this.idStamp++;
+    return { ids, rev: () => rev, hashed: false };
   }
 
   /** 文書の地図（無ければ null）。ページに入っていれば読み込みを始める */
@@ -287,17 +325,18 @@ export class DeepState {
       return null;
     }
     const cm = this.cmOf(map);
-    const st = this.statusArr(doc, map, cm);
+    const table = this.idTable(doc, map);
+    const st = this.statusArr(doc, map, cm, table.hashed ? null : table.ids);
     const edited = !vm.engine.mapTopo(doc);
     const sid0 = this.ui.prefs.scenarioId;
     const sid = sid0 && doc.scenarios[sid0] ? sid0 : null;
     const calcKey = `${map.header.hash}|${cm.version.topology}|${cm.version.numbers}|${imp.annual}|${st.key}#${this.statusStamp}`;
-    const key = `${calcKey}|${edited ? 1 : 0}|${sid ?? ""}`;
+    const key = `${calcKey}|${edited ? 1 : 0}|${sid ?? ""}|${table.hashed ? 0 : this.idStamp}`;
     const b = this.built;
     if (b && b.key === key && b.ctx.map === map) return b.ctx;
     const annual = imp.annual;
-    // ID の並び（エンジンが地図の列から作っていればその物。なければ要るときに作る）
-    const ids: ID[] = idsMemo.get(map) ?? new Array<ID>(map.n);
+    // ID の並び（今日が鍵の指紋の ID なら地図ごとの表。違えば文書から作った表）
+    const ids: ID[] = table.ids;
     // 見取り図と道の計算は方針（シナリオ）にも編集の有無にも依らない: 同じ計算なら前の物を使う（シナリオを変えても数え直さない）
     const calc: Calc = this.calc && this.calc.key === calcKey ? this.calc : { key: calcKey, a: null, ov: null };
     this.calc = calc;
@@ -355,7 +394,7 @@ export class DeepState {
         // 地図のカードの ID は鍵から決まる（impactNodeId64）ので、ID から番号を引き、鍵が同じかを確かめる
         const k = this.store.doc.nodes[id]?.meta?.key;
         if (typeof k !== "string") return -1;
-        const i = revOf(map).get(id);
+        const i = table.rev().get(id);
         return i !== undefined && map.key(i) === k ? i : -1;
       },
       idOf: (i) => ids[i] ?? (ids[i] = impactNodeId64(map.key(i))),
@@ -379,7 +418,7 @@ export class DeepState {
   }
 
   /** 選んだ・見送った（地図の番号ごと）と、その版の鍵 */
-  private statusArr(doc: DocData, map: MapData, cm: CompiledMap): { key: string; arr: Uint8Array } {
+  private statusArr(doc: DocData, map: MapData, cm: CompiledMap, ids: ID[] | null): { key: string; arr: Uint8Array } {
     const eng = this.vm.engine;
     const fromMap = eng.mapStatus(doc);
     // 選んだ手の版（エンジンの形・状態の版）が同じなら、文書の物が替わっても（全部の入れ替えを変わった物だけで受けた後）同じ配列
@@ -392,12 +431,12 @@ export class DeepState {
       } else this.status.doc = doc;
       return this.status;
     }
-    const key = `d${eng.version.topology}|${eng.version.statuses}|${map.header.hash}`;
+    const key = `d${eng.version.topology}|${eng.version.statuses}|${map.header.hash}|${ids ? this.idStamp : 0}`;
     if (this.status && this.status.key === key) {
       this.status.doc = doc;
       return this.status;
     }
-    this.status = { key, doc, arr: statusFromDoc(doc, cm, idsOf(map)) };
+    this.status = { key, doc, arr: statusFromDoc(doc, cm, ids ?? idsOf(map)) };
     this.statusStamp++;
     return this.status;
   }

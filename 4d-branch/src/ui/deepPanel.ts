@@ -200,7 +200,7 @@ export function buildDeepOverview(app: AppContext): { el: HTMLElement; update():
       }
       hrefs = new Map();
       const t0 = performance.now();
-      const vm = overviewVM(a, ov);
+      const vm = overviewVM(a, ov, { name: (f) => ctx.text().title(f) });
       rememberOverview(vm, hrefs);
       clear(el);
       const notes = notesVM(a, ov.basis.delta, ov.basis.worth, { worthNoise: ov.worthNoise });
