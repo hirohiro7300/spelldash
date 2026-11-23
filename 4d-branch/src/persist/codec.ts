@@ -44,7 +44,10 @@ import {
   type ThinStats,
   type ThinUpgradeInfo,
   THIN_BASELINE_VERSION,
+  thinBaselineRoot,
+  jsonEq,
 } from "./thinMap";
+import { NODE_NUM_META } from "../model/impactMeta";
 import { isLegacyRootRaw, upgradeLegacyMap } from "./legacyMap";
 
 export {
@@ -167,7 +170,7 @@ export function storedVersion(stored: Pick<StoredDoc, "version">): number {
 export function decodeStored(raw: unknown, opts: ThinDecodeOpts = {}): StoredDecoded {
   if (isThinShape(raw) && thinReadable()) {
     const d = decodeThin(raw, opts);
-    if (!d.upgrade && keepsMapShape(raw)) mapShaped.add(d.doc);
+    if (!d.upgrade && keepsMapShape(raw) && rootKeepsNumbers(d.doc, raw)) mapShaped.add(d.doc);
     return noted(d);
   }
   const r = normalizeDoc(raw);
@@ -220,6 +223,8 @@ const mapShaped = new WeakSet<DocData>();
 
 /** 地図のカードの変更で、形と数を変えない項目（状態・題名・本文・やること・タグ・位置・たたみ・時刻） */
 const SHAPE_SAFE_NODE: ReadonlySet<string> = new Set(["status", "title", "body", "conditions", "tags", "x", "y", "collapsed", "updatedAt"]);
+/** 地図のカードの meta の変更で、形と数を変えない物（前の版で書き換えた本文を移したメモの印: W-app の I9・見直し perf-2） */
+const SHAPE_SAFE_META: ReadonlySet<string> = new Set(["prevBody"]);
 /** 同梱の線の変更で、形と数を変えない項目（説明・条件の文・時刻） */
 const SHAPE_SAFE_EDGE: ReadonlySet<string> = new Set(["label", "condition", "updatedAt"]);
 
@@ -236,11 +241,20 @@ function keepsMapShape(raw: unknown): boolean {
   const safe = (p: unknown, ok: ReadonlySet<string>): boolean => {
     if (!p || typeof p !== "object") return false;
     const x = p as { f?: Record<string, unknown>; fd?: unknown; m?: unknown; md?: unknown };
-    if (x.fd !== undefined || x.m !== undefined || x.md !== undefined) return false;
+    if (x.fd !== undefined) return false;
     for (const k of Object.keys(x.f ?? {})) if (!ok.has(k)) return false;
+    // meta は、数に使わない印だけなら形と数は同じ（カードだけ。線の meta は見込みなので変えたら組み立てたままではない）
+    for (const part of [x.m, x.md]) {
+      if (part === undefined) continue;
+      if (!metaOk || !part || typeof part !== "object") return false;
+      const keys = Array.isArray(part) ? part : Object.keys(part);
+      for (const k of keys) if (typeof k !== "string" || !SHAPE_SAFE_META.has(k)) return false;
+    }
     return true;
   };
+  let metaOk = true;
   for (const k of Object.keys(s.n ?? {})) if (!safe(s.n![k], SHAPE_SAFE_NODE)) return false;
+  metaOk = false;
   for (const k of Object.keys(s.e ?? {})) if (!safe(s.e![k], SHAPE_SAFE_EDGE)) return false;
   // 利用者のノードに別の入口（もう 1 つの地図）があれば、組み立てたままではない
   const nodes = (raw as { nodes?: unknown }).nodes;
@@ -252,6 +266,35 @@ function keepsMapShape(raw: unknown): boolean {
     }
   }
   return true;
+}
+
+/**
+ * 読んだ文書の今日が、基準の今日と数の上で同じか（種類・期限・数に使う meta・期間）。今日は記録に丸ごとあるので、keepsMapShape の
+ * 変更の確かめには入らない。年収とその後に足す月（impact.annual・tail）は計算の入力なので、違ってよい（見直し data-4）
+ */
+function rootKeepsNumbers(doc: DocData, raw: unknown): boolean {
+  let s: ReturnType<typeof sectionOf>;
+  try {
+    s = sectionOf(raw);
+  } catch {
+    return false;
+  }
+  const base = thinBaselineRoot();
+  const now = s ? doc.nodes[s.root] : undefined;
+  if (!base || !now) return false;
+  if (now.type !== base.type || !jsonEq(now.time ?? null, base.time ?? null)) return false;
+  const a = now.meta ?? {};
+  const b = base.meta ?? {};
+  for (const k of NODE_NUM_META) if (!jsonEq(a[k] ?? null, b[k] ?? null)) return false;
+  const ia = (a.impact ?? {}) as Record<string, unknown>;
+  const ib = (b.impact ?? {}) as Record<string, unknown>;
+  for (const k of new Set([...Object.keys(ia), ...Object.keys(ib)])) if (k !== "annual" && k !== "tail" && !jsonEq(ia[k] ?? null, ib[k] ?? null)) return false;
+  return true;
+}
+
+/** 読んだ文書の、組み立てたままの印を消す（形か数を書き換えた: src/app/futureCache.ts の forgetMapDoc） */
+export function forgetStoredShape(doc: DocData): void {
+  mapShaped.delete(doc);
 }
 
 /** 読んだ文書が、ページの地図を組み立てたままの形と数か（keepsMapShape の通った物。読んだ物そのものだけ） */

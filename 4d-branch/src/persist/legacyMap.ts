@@ -19,6 +19,7 @@ import { anchorMonthStart } from "../demo/quarterDoc";
 import { edgeTextPrint, fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf } from "../demo/impact";
 import { isFlowEdge, isImpactRoot, primaryImpactRoot } from "../model/forks";
 import { normalizeDoc } from "../model/schema";
+import { NODE_H, NODE_W } from "../model/constants";
 import type { Condition, DocData, GEdge, GNode, ID, Meta, NodeStatus } from "../model/types";
 import { madeFirst } from "./keyedCards";
 import {
@@ -523,6 +524,77 @@ export interface LegacyUpgrade {
 }
 
 /**
+ * 地図のカード（今日・前の版で決めたことを含む）に線でつながる利用者のカードと、そこから利用者の線でつながる利用者のカードのうち、
+ * 今日から遠い物（FAR_FROM_ROOT より遠い）の新しい位置（ID → 位置）。版 6 の地図は縦に 10 万 px ほどあり、その中に置いたカードは、新しい地図（今日の近くに収まる）から
+ * 数万 px 離れて残っていた（線は今日の近くのカードへ伸び、最初の画面は 4% に縮んで何も読めない: 見直し R1）。並びの形は保ったまま
+ * まとめて動かし、右の端を列 colX（前の版で決めたことの列、無ければ今日）の左に、上の端を今日の高さにそろえる。ほかのカードと
+ * 重なればさらに左へ。地図につながらない利用者のカードは動かさない。文書の中身だけで決まる（どの端末でも同じ位置）
+ */
+const FAR_FROM_ROOT = 4000;
+
+function attachedUserShift(
+  doc: DocData,
+  nodeIds: readonly ID[],
+  keyOfCard: ReadonlyMap<ID, string>,
+  edges: readonly GEdge[],
+  rootId: ID,
+  colX: number,
+  ry: number,
+  fixed: ReadonlyArray<{ x: number; y: number }>,
+): Map<ID, { x: number; y: number }> {
+  const out = new Map<ID, { x: number; y: number }>();
+  const user = new Set<ID>();
+  for (const id of nodeIds) if (id !== rootId && !keyOfCard.has(id)) user.add(id);
+  if (!user.size) return out;
+  const adj = new Map<ID, ID[]>();
+  const attached = new Set<ID>();
+  const stack: ID[] = [];
+  for (const e of edges) {
+    const us = user.has(e.source);
+    const ut = user.has(e.target);
+    if (us && ut) {
+      adj.set(e.source, [...(adj.get(e.source) ?? []), e.target]);
+      adj.set(e.target, [...(adj.get(e.target) ?? []), e.source]);
+    } else if (us !== ut) {
+      const u = us ? e.source : e.target;
+      if (!attached.has(u)) (attached.add(u), stack.push(u));
+    }
+  }
+  while (stack.length) for (const t of adj.get(stack.pop()!) ?? []) if (!attached.has(t)) (attached.add(t), stack.push(t));
+  // 今日の近くにある物（今日のそばに置いたメモなど）はそのまま。遠い物だけをまとめて動かす
+  const root = doc.nodes[rootId]!;
+  for (const id of [...attached]) {
+    const n = doc.nodes[id]!;
+    if (Math.abs(n.x - root.x) <= FAR_FROM_ROOT && Math.abs(n.y - root.y) <= FAR_FROM_ROOT) attached.delete(id);
+  }
+  if (!attached.size) return out;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const id of attached) {
+    const n = doc.nodes[id]!;
+    minX = Math.min(minX, n.x);
+    maxX = Math.max(maxX, n.x);
+    minY = Math.min(minY, n.y);
+    maxY = Math.max(maxY, n.y);
+  }
+  const gap = 160;
+  const others: Array<{ x: number; y: number }> = [...fixed];
+  for (const id of user) if (!attached.has(id)) others.push(doc.nodes[id]!);
+  let dx = Math.round(colX - NODE_W - gap - maxX);
+  const dy = Math.round(ry - minY);
+  const hits = (): boolean =>
+    others.some((o) => o.x > minX + dx - NODE_W - gap / 2 && o.x < maxX + dx + NODE_W + gap / 2 && o.y > minY + dy - NODE_H - gap / 2 && o.y < maxY + dy + NODE_H + gap / 2);
+  for (let guard = 0; guard < 64 && hits(); guard++) dx -= Math.round(maxX - minX + NODE_W + gap);
+  for (const id of attached) {
+    const n = doc.nodes[id]!;
+    out.set(id, { x: n.x + dx, y: n.y + dy });
+  }
+  return out;
+}
+
+/**
  * 版 6 までの地図（太い形）を持つ文書を、ページの 3 か月ごとの地図を持つ文書にする（doc は変えない）。ページの地図が無い・
  * 引き上げる地図が無い（ページの地図をもう持つ・別の地図）なら null。保存してあった物とページの地図だけから決まる
  */
@@ -730,11 +802,13 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
   }
   const rx = Math.round(P.x);
   const ry = Math.round(P.y);
+  let colX = rx;
   if (detachList.length) {
     // 列の位置: 今日の左。地図の外のカード（利用者のノード・ほかの地図・今日）と重なれば、さらに左へ
     const placed: Array<{ x: number; y: number }> = [];
     for (const id of nodeIds) if (!keyOfCard.has(id) || id === P.id) placed.push(doc.nodes[id]!);
     const gx = prevColumnX(rx, ry, detachList.length, placed);
+    colX = gx;
     const ver = isStr(P.meta.futureVersion) ? P.meta.futureVersion : "";
     let gid = `n_prev_${fnv64x36(`${P.id}\u0000${fromRel}\u0000${ver}`)}`;
     for (let t = 2; used.has(gid); t++) gid = `n_prev_${fnv64x36(`${P.id}\u0000${fromRel}\u0000${ver}#${t}`)}`;
@@ -744,10 +818,13 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
       nodesIn[card.id] = detachFatCard(card, key, st, inEdge.get(card.id), fromRel, gx, ry + PREV_ROW * (j + 1));
     });
   }
+  const shift = attachedUserShift(doc, nodeIds, keyOfCard, keptEdges, P.id, colX, ry, Object.values(nodesIn));
   for (const id of nodeIds) {
     if (id === P.id || keyOfCard.has(id)) continue;
     const nd = doc.nodes[id]!;
-    nodesIn[id] = losers.has(id) ? withoutKey(nd) : nd;
+    const at = shift.get(id);
+    const placed = at ? { ...nd, x: at.x, y: at.y } : nd;
+    nodesIn[id] = losers.has(id) ? withoutKey(placed) : placed;
   }
 
   // ---- 線: 同梱の線（ページの地図の物。利用者が直した見込み・説明は、版 6 の線から当てる）→ 利用者の線（そのまま）。

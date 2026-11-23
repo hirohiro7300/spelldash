@@ -55,6 +55,7 @@ import {
   type Vec3,
 } from "./impact";
 import { impactBin } from "./impactFormat";
+import { NODE_NUM_META } from "./impactMeta";
 import type { DocData, GEdge, GNode, ID } from "./types";
 
 /** エンジンが文書の外から受け取る物 */
@@ -79,8 +80,6 @@ const C_PRESENT = 16;
 
 /** 計算に使わない・どれにも当たらないノードの所（変わっても何もしない） */
 const NODE_SKIP: ReadonlySet<string> = new Set(["id", "title", "body", "tags", "conditions", "x", "y", "updatedAt", "collapsed", "createdAt", "status", "type", "meta", "time", "projectIds", "scenarioIds"]);
-/** 数に使う meta の名前（変わったら数を入れ直す。forecastRoot は数字なしの手の見分けにも使う） */
-const NODE_NUM_META: readonly string[] = ["fork", "m", "rr", "rank", "base", "fam", "ak", "end", "q", "stub", "sum", "forecastRoot"];
 /** 数の meta と impact のほか（変わったら見せ方だけ）。ノードごとに作らない（全部の入れ替えでは 7 万枚を比べる） */
 const META_SKIP: ReadonlySet<string> = new Set([...NODE_NUM_META, "impact"]);
 const EDGE_SKIP: ReadonlySet<string> = new Set(["id", "label", "condition", "updatedAt", "collapsed", "createdAt", "source", "target", "relation", "scenarioIds", "meta"]);
@@ -1148,6 +1147,11 @@ export class ImpactEngine {
     if (!p || p.doc === doc || this.dirty & (C_TOPO | C_NUMS) || this.lastCompile !== "map") return p && p.doc === doc ? p.map : null;
     this.pristine = { ...p, doc };
     return p.map;
+  }
+
+  /** その文書を、組み立てたままの地図の文書として持っているか（形か数を変えると持たなくなる） */
+  holdsMap(doc: DocData): boolean {
+    return this.pristine !== null && this.pristine.doc === doc;
   }
 
   /** 全部を作り直す */

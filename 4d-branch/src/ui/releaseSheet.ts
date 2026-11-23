@@ -10,8 +10,9 @@ import { deltaBetween, F_BASE, type Analysis } from "../deepmap/core";
 import { overviewVM, ym } from "../deepmap/views";
 import { buildFuture } from "../demo/futureBundle";
 import { formatMan } from "../model/impactFormat";
-import { decidedTable, deltaTable, optionDeltasOf, todayDeltasOf, type DecidedRow } from "../model/releaseNotes";
+import { decidedTable, deltaTable, flipLabel, optionDeltasOf, todayDeltasOf, type DecidedRow } from "../model/releaseNotes";
 import type { DocData, GNode, ID } from "../model/types";
+import { isNarrowScreen } from "./breakpoints";
 import { showDeepOverview } from "./deepPanel";
 import { h } from "./dom";
 import { openModal } from "./overlays";
@@ -78,7 +79,7 @@ export function prevEdgeText(n: GNode): string | null {
 }
 
 /** 知らせを出す（閉じたら onClose）。decided: 前の版で選んだ・見送ったカードの鍵の読み替え（この起動で地図を新しい版で読んだときだけ） */
-export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?: DecidedCards; onClose?: () => void } = {}): void {
+export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?: DecidedCards; notices?: readonly string[]; onClose?: () => void } = {}): void {
   const map = ctx.map;
   const cm = ctx.cm;
   const a = ctx.analysis();
@@ -113,7 +114,7 @@ export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?
           { class: r.signChanged ? "is-flip" : "" },
           h("th", { attrs: { scope: "row" } }, names.get(r.kind) ?? r.kind),
           h("td", null, cell(r.before, r.isBase)),
-          h("td", null, cell(r.after, r.isBase), r.signChanged ? h("span", { class: "rel-tag" }, r.after! > 0 ? "マイナスからプラスに" : "プラスからマイナスに") : null),
+          h("td", null, cell(r.after, r.isBase), r.signChanged ? h("span", { class: "rel-tag" }, flipLabel(r.after!)) : null),
         ),
       ),
     ),
@@ -129,7 +130,7 @@ export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?
   };
   const tagOf = (r: DecidedRow): string => {
     const parts: string[] = [];
-    if (r.signChanged) parts.push(r.after! > 0 ? "マイナスからプラスに" : "プラスからマイナスに");
+    if (r.signChanged) parts.push(flipLabel(r.after!));
     if (r.rankChanged) parts.push(`同じ判断の手の中で ${r.rankBefore} 番目 → ${r.rankAfter} 番目`);
     return parts.join("・");
   };
@@ -176,7 +177,10 @@ export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?
       )
     : null;
   const m = openModal({ title: "新しい地図になった（版 7）", subtitle: `${ym(map, 0)}時点の地図・カード ${num(cm.n)} 枚`, width: 560, className: "rel-sheet", onClose: opts.onClose ?? (() => undefined), icon: "split" });
+  // 起動の知らせ（引き上げで移した・残したカードの数など）。お知らせにすると、この知らせの上に長く重なるので、ここに出す（見直し R2）
+  const notices = opts.notices?.length ? h("div", { class: "rel-notices", role: "note" }, ...opts.notices.map((t) => h("p", null, t))) : null;
   m.body.append(
+    ...(notices ? [notices] : []),
     h(
       "ul",
       { class: "rel-points" },
@@ -212,6 +216,8 @@ export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?
     const ids: ID[] = [prev.group.id, ...prev.cards.map((c) => c.id)].filter((id) => !!app.store.doc.nodes[id]);
     if (app.ui.prefs.view !== "map") app.ui.setPrefs({ view: "map" });
     app.ui.select([prev.group.id]);
+    // 狭い画面では右の引き出しがキャンバスを覆うので閉じる（寄せた「前の版で決めたこと」のカードを見せる: 見直し R7）
+    if (isNarrowScreen() && app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: false });
     app.view.fit(ids, { minZoom: 0.3 });
   });
   m.footer.append(...[goPrev, goPath, goMap].filter((x): x is HTMLButtonElement => !!x));

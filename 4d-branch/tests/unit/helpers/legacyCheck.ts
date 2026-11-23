@@ -198,8 +198,17 @@ export function checkUpgrade(input: DocData, out: DocData, map: MapData): { kept
       if (set.has("edge-text")) expect([pe?.label, pe?.condition], key).toEqual([e6!.label, e6!.condition]);
     }
   }
-  // 利用者のノードと線はそのまま（同じ ID・同じ中身）。線の両端は、どれも引き上げた文書にある
-  for (const o of inv.ownNodes) expect(out.nodes[o.id], o.title).toEqual(o);
+  // 利用者のノードと線はそのまま（同じ ID・同じ中身。地図のカードにつながる物は、位置だけを新しい地図の近くへ動かす: 見直し R1）。
+  // 線の両端は、どれも引き上げた文書にある
+  const own = new Set(inv.ownNodes.map((o) => o.id));
+  const rootNow = Object.values(out.nodes).find((n) => n.meta?.forecastRoot === true)!;
+  for (const o of inv.ownNodes) {
+    const n = out.nodes[o.id]!;
+    expect({ ...n, x: 0, y: 0 }, o.title).toEqual({ ...o, x: 0, y: 0 });
+    const linked = Object.values(out.edges).some((e) => (e.source === o.id && !own.has(e.target)) || (e.target === o.id && !own.has(e.source)));
+    if (linked) expect(Math.abs(n.y - rootNow.y) + Math.abs(n.x - rootNow.x), `${o.title} が新しい地図から遠い`).toBeLessThan(8000);
+    else if (!Object.values(out.edges).some((e) => e.source === o.id || e.target === o.id)) expect([n.x, n.y], `${o.title} の位置`).toEqual([o.x, o.y]);
+  }
   for (const e of inv.userEdges) expect(out.edges[e.id], e.id).toEqual(e);
   for (const e of Object.values(out.edges)) {
     expect(out.nodes[e.source], `線 ${e.id} の元`).toBeDefined();

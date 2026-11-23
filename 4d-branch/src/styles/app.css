@@ -824,7 +824,8 @@ kbd {
 }
 .row-name {
   flex: 1;
-  min-width: 0;
+  /* 数の札が長くても、名前は数文字で切らない（共有の数の方を縮める: 見直し R8） */
+  min-width: min(7.5em, 50%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -843,6 +844,10 @@ kbd {
   font-size: 11px;
   color: var(--accent-2);
   opacity: 0.85;
+  flex: 0 0 auto;
+}
+.row-shared-n {
+  white-space: nowrap;
 }
 .row-more {
   opacity: 0;

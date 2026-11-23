@@ -59,7 +59,8 @@ import {
   looksLikeId,
   man,
   manDelta,
-  manDeltaRange,
+  manVs,
+  manVsRange,
   manMonthly,
   manMonthlyDelta,
   manRange,
@@ -245,7 +246,7 @@ export interface OverviewVM {
 function distTexts(d: Dist | null, vSQ: number | null): { rangeText: string | null; rangeParts: string[]; vsKeepText: string | null } {
   if (!d) return { rangeText: null, rangeParts: [], vsKeepText: null };
   const rangeParts = [`3 年の合計 ${manRange(d.p10, d.p90)}`, `（10〜90%・真ん中 ${man(d.p50)}）`];
-  const vsKeepText = vSQ === null ? null : `ずっと今のままより ${manDeltaRange(d.p10 - vSQ, d.p90 - vSQ)}`;
+  const vsKeepText = vSQ === null ? null : `ずっと今のままより ${manVsRange(d.p10, d.p90, vSQ)}`;
   return { rangeText: rangeParts.join(""), rangeParts, vsKeepText };
 }
 
@@ -307,6 +308,14 @@ function uniformBasis(ov: Overview): DeltaBasis | null {
 /** 今日の手の名前の出し方（アプリは文書のカードの題名: キャンバス・詳細・道の画面と同じ名前。見直し equiv-4。無ければ手の種類の名前） */
 export type MoveNameOf = (node: number) => string | null | undefined;
 
+/**
+ * 手の名前: 名前の元（文書のカードの題名）があればそれ、無ければ地図の短い名前。見取り図・手の画面・道の画面・「この先をひらく」で
+ * 同じ手を同じ名前で呼ぶ（押した行の名前が次の画面の見出しと違わない: 見直し R3。結果は並べて読む短い名前のまま）
+ */
+function nodeName(nameOf: MoveNameOf | undefined, node: number, fallback: string): string {
+  return nameOf ? safeName(nameOf(node), fallback) : fallback;
+}
+
 export function overviewRowVM(a: Analysis, ov: Overview, mv: MoveSummary, nameOf?: MoveNameOf): OverviewRowVM {
   const map = a.cm.map;
   const endYm = ym(map, a.cm.H);
@@ -315,7 +324,7 @@ export function overviewRowVM(a: Analysis, ov: Overview, mv: MoveSummary, nameOf
   const worth = worthPill(mv, ov.worthNoise ?? WORTH_NOISE);
   const { rangeText, rangeParts, vsKeepText } = distTexts(mv.dist, ov.vSQ);
   const baseMv = ov.moves.find((m) => m.isBase) ?? null;
-  const waitText = !mv.isBase && baseMv?.dist && ov.vSQ !== null ? `3 か月待っても ${manDeltaRange(baseMv.dist.p10 - ov.vSQ, baseMv.dist.p90 - ov.vSQ)}` : null;
+  const waitText = !mv.isBase && baseMv?.dist && ov.vSQ !== null ? `3 か月待っても ${manVsRange(baseMv.dist.p10, baseMv.dist.p90, ov.vSQ)}` : null;
   const decides = decidesOf(a, mv, ov.basis.delta);
   const strip = stripOf(a, mv.node);
   const forksText = `この先の分かれ道 ${num(mv.counts.forks)}`;
@@ -786,7 +795,7 @@ export function destVM(a: Analysis, f: number | null): DestVM {
     shareText: pct(g.share),
     countText: `${num(g.count)} 通りの道`,
     meanText: `3 年の合計 平均 ${man(g.mean)}`,
-    vsKeepText: vSQ === null ? null : `ずっと今のままより ${manDelta(g.mean - vSQ)}`,
+    vsKeepText: vSQ === null ? null : `ずっと今のままより ${manVs(g.mean, vSQ)}`,
     bin: vSQ === null ? 0 : binColors(g.mean - vSQ).bin,
     ends: g.ends,
     summaryText: g.summary > 0.005 ? `${pct(g.summary)} は標準の続きの見積もり` : null,
@@ -855,13 +864,13 @@ function meanSplitText(ov: Overview, mv: MoveSummary): string | null {
   return `ずっと今のままより平均 ${manDelta(total)} ＝ この手の分 ${manDelta(own)}${restText} ＋ 3 か月待っても出る分 ${manDelta(later)}`;
 }
 
-export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a)): MoveDetailVM {
+export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a), opts: { name?: MoveNameOf } = {}): MoveDetailVM {
   assertFresh(a);
   const cm = a.cm;
   const map = cm.map;
   if (cm.parent[f] !== 0 || cm.role[f] !== ROLE_A) throw new RangeError(`今日の手ではありません: ${f}`);
   const mv = ov.moves.find((m) => m.node === f)!;
-  const row = overviewRowVM(a, ov, mv);
+  const row = overviewRowVM(a, ov, mv, opts.name);
   const endYm = ym(map, cm.H);
   let eyebrow = "今日の手";
   try {
@@ -885,7 +894,7 @@ export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a))
     label: outcomeName(map, o.node),
     shareText: pct(o.w),
     totalText: `3 年の合計 平均 ${man(o.total)}`,
-    vsKeepText: vSQ === null ? null : `ずっと今のままより ${manDelta(o.total - vSQ)}`,
+    vsKeepText: vSQ === null ? null : `ずっと今のままより ${manVs(o.total, vSQ)}`,
     bin: vSQ === null ? 0 : binColors(o.total - vSQ).bin,
   }));
   const outM = mv.outcomes.length ? cm.month[mv.outcomes[0]!.node]! : 3;
@@ -1165,7 +1174,8 @@ function stepVM(a: Analysis, pv: PathView, r: PathRow, k: number, text: TextSour
   const anchor = map.header.anchor;
   const endYm = ym(map, cm.H);
   const isBase = (cm.flags[r.option]! & F_BASE) !== 0;
-  const move = moveName(map, kindKey(cm, r.option), isBase);
+  const nameOf: MoveNameOf = (i) => text.title(i);
+  const move = isBase ? moveName(map, kindKey(cm, r.option), true) : nodeName(nameOf, r.option, moveName(map, kindKey(cm, r.option), false));
   const nOut = cm.kidOff[r.option + 1]! - cm.kidOff[r.option]!;
   const split = nOut >= 2;
   const yms = ym(map, r.m);
@@ -1226,7 +1236,7 @@ function stepVM(a: Analysis, pv: PathView, r: PathRow, k: number, text: TextSour
     const d = current ? null : (deltas.get(j) ?? null);
     const jBase = (cm.flags[j]! & F_BASE) !== 0;
     const stub = stubOf(j) === 1;
-    const name = moveName(map, kindKey(cm, j), jBase);
+    const name = jBase ? moveName(map, kindKey(cm, j), true) : nodeName(nameOf, j, moveName(map, kindKey(cm, j), false));
     const tags: string[] = [];
     if (current) tags.push(TAG_CURRENT_OPT);
     if (r.piOption === j) tags.push(TAG_PI);
@@ -1497,11 +1507,12 @@ export function pathVM(a: Analysis, node: number, text: TextSource, opts: { from
     if (k > 0 && !r.onPi) offs.push(`${ym(map, r.m)}の手: ${steps[k]!.move}`);
     if (!r.likely && r.outcome >= 0) offs.push(`${ym(map, r.mNext)}の結果: ${outcomeName(map, r.outcome)} ${pct(r.w)}`);
   });
-  const firstName = firstMove >= 0 ? moveName(map, kindKey(cm, firstMove), (cm.flags[firstMove]! & F_BASE) !== 0) : null;
+  const firstBase = firstMove >= 0 && (cm.flags[firstMove]! & F_BASE) !== 0;
+  const firstName = firstMove >= 0 ? (firstBase ? moveName(map, kindKey(cm, firstMove), true) : nodeName((i) => text.title(i), firstMove, moveName(map, kindKey(cm, firstMove), false))) : null;
   const endNode = pv.end;
   const endM = cm.month[endNode]!;
   const total = a.money.acc[endNode]! + a.pi.V[endNode]!;
-  const vs = a.vSQ === null ? null : `ずっと今のままより ${manDelta(total - a.vSQ)}`;
+  const vs = a.vSQ === null ? null : `ずっと今のままより ${manVs(total, a.vSQ)}`;
   const title = offs.length === 0 ? "一番ありそうな道" : isEnd ? "この行き先までの道" : "切り替えた道";
   let eyebrow = `${firstName ?? "今日から"}・${ym(map, cm.month[start]!)}〜${endYm}`;
   if (start !== 0) eyebrow = `${ym(map, cm.month[start]!)}から・${endYm}まで`;

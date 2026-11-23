@@ -847,8 +847,23 @@ async function storedProfile(browser, profile) {
     await check(`${tag}: 起動で版 7 に引き上げる（id と更新時刻はそのまま・知らせに数・今日は版 7・「前の版で決めたこと」が今日の左）`, async () => {
       await page.goto(BASE);
       await ready();
-      const toast = page.locator(".toast .toast-text", { hasText: "3 か月ごとの新しい地図" });
+      // 引き上げの知らせは、新しい地図の知らせが開けばその中に移る（お知らせが知らせの上に重ならない: 見直し R2）
+      const toast = page.locator(".toast .toast-text, .rel-notices p", { hasText: "3 か月ごとの新しい地図" });
       await toast.first().waitFor({ timeout: 30_000 });
+      await settle(page, 400);
+      // 最初の画面で今日が見える（引き上げで自分のカードが数万 px 離れて残り、4% に縮んで今日が画面の外だった: 見直し R1）
+      const cam = await page.evaluate(() => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
+        vm.ensure();
+        const v = f.app.view;
+        const deep = vm.deep.get();
+        const p = vm.posOf(deep.root);
+        const s = p ? v.camera.toScreen(p.x, p.y) : null;
+        return { s, w: v.width, h: v.height, zoom: v.camera.zoom };
+      });
+      assert(cam.zoom >= 0.08, `最初の画面が縮みすぎ（${JSON.stringify(cam)}）`);
+      assert(cam.s && cam.s.x >= 0 && cam.s.x <= cam.w && cam.s.y >= 0 && cam.s.y <= cam.h, `最初の画面に今日が無い（${JSON.stringify(cam)}）`);
       const info = await page.evaluate(() => {
         const f = window.__fourD;
         const d = f.store.doc;
@@ -875,6 +890,9 @@ async function storedProfile(browser, profile) {
         const t = await sheet.locator(".rel-mine").innerText();
         assert(/選んだ手|見送った手/.test(t) && /番目 → |からマイナスに|からプラスに/.test(t), `自分のカードの行に状態か変わった所が無い（${t.slice(0, 200)}）`);
       }
+      const notes = sheet.locator(".rel-notices");
+      assert((await notes.count()) === 1 && (await notes.innerText()).includes("3 か月ごとの新しい地図"), "引き上げの知らせが新しい地図の知らせの中に無い");
+      assert((await page.locator(".toast:not(.closing) .toast-text", { hasText: "3 か月ごとの新しい地図" }).count()) === 0, "引き上げのお知らせが新しい地図の知らせの上に残っている");
       const prevItems = await sheet.locator(".rel-prev-list li").count();
       assert(prevItems >= 1, "「前の版で決めたこと」のカードが並んでいない");
       for (const name of ["見取り図を見る", "一番ありそうな道を読む", "前の版で決めたことを見る"]) assert((await sheet.getByRole("button", { name }).count()) === 1, `「${name}」のボタンが無い`);
@@ -889,6 +907,9 @@ async function storedProfile(browser, profile) {
         return { id, prev: typeof f.store.doc.nodes[id]?.meta?.prevGroup === "number" };
       });
       assert(sel.prev, `「前の版で決めたこと」が選ばれていない（${JSON.stringify(sel)}）`);
+      // 狭い画面では右の引き出しを閉じ、寄せたカードが見える（見直し R7）
+      const drawer = await page.evaluate(() => ({ narrow: window.innerWidth <= 860, right: window.__fourD.ui.prefs.rightOpen }));
+      assert(!drawer.narrow || !drawer.right, "狭い画面で「前の版で決めたこと」に寄せたのに、右の引き出しがキャンバスを覆っている");
       await shot(page, `${tag}-01-prev-group`);
       const meta = await page.evaluate(() => window.__fourD.store.doc.meta?.releaseSheet ?? null);
       assert(meta === 7, `見せた版が文書に残っていない（${meta}）`);
@@ -996,6 +1017,17 @@ async function storedProfile(browser, profile) {
       const labels = await page.locator(".sidebar-right .insp-section .insp-label").allInnerTexts();
       assert(labels.some((x) => x.trim() === "前の版のメモ"), `「前の版のメモ」が無い（${labels.join("・")}）`);
       await shot(page, `${tag}-06-prev-note`);
+      // メモを書き換えたら「前の版のメモ」ではなくなる。元に戻すと戻る（見直し data-3）
+      const ta = page.locator('.sidebar-right textarea[data-fk="body"]');
+      await ta.fill("書き直したメモ");
+      await settle(page, 300);
+      const labels2 = await page.locator(".sidebar-right .insp-section .insp-label").allInnerTexts();
+      const mark2 = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].meta.prevBody ?? null, id);
+      assert(!labels2.some((x) => x.trim() === "前の版のメモ") && mark2 === null, `書き換えた後も「前の版のメモ」のまま（${labels2.join("・")}・${mark2}）`);
+      await page.evaluate(() => window.__fourD.store.undo());
+      await settle(page, 300);
+      const mark3 = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].meta.prevBody ?? null, id);
+      assert(mark3 === true, "元に戻しても前の版のメモの印が戻らない");
       await page.evaluate(() => window.__fourD.ui.clearSelection());
     });
 

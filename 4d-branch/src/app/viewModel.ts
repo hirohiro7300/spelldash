@@ -40,7 +40,7 @@ import type { ChangeInfo, Store } from "../store/store";
 import { isNarrowScreen } from "../ui/breakpoints";
 import { DeepState } from "./deepState";
 import { idleSteps, whenIdle } from "./idle";
-import { mapDocOf, rememberMapDoc } from "./futureCache";
+import { forgetMapDoc, mapDocOf, rememberMapDoc } from "./futureCache";
 import type { UiState } from "./uiState";
 
 /** 全部の入れ替えを変わった物だけで受けたとき、検索の索引を直す数の上限（多ければ作り直す） */
@@ -313,6 +313,9 @@ export class ViewModel {
     const diff = info.full && this.index.source !== doc ? this.index.diffDoc(doc) : null;
     const change = diff ? { full: false, nodes: diff.nodes, edges: diff.edges, projects: diff.projects, scenarios: diff.scenarios } : info;
     this.engine.note(doc, change);
+    // 組み立てたままと覚えた文書の形か数を、その場で書き換えた（エンジンが組み立てたままと見なさなくなった）: 覚えた物を忘れる。
+    // 全部の入れ替えの元に戻す・やり直すは同じ文書の物に戻るので、忘れないと書き換えた見込みを無視して地図の列から作る（見直し data-1）
+    if (!info.full && (info.nodes.size || info.edges.size) && !this.engine.holdsMap(doc)) forgetMapDoc(doc);
     if (diff) this.engine.rebindObjects(diff.sameNodes, diff.sameEdges);
     if (!diff && (info.full || this.index.source !== doc)) {
       this.index.rebuild(doc);

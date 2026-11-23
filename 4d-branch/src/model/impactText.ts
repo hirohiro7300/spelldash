@@ -37,6 +37,13 @@ export function yen(x: number, signed = true): string {
   return s.replace(/万$/, " 万円").replace(/億$/, " 億円");
 }
 
+/** yen・formatMan が出す数そのもの（10 万円未満は 0.1 万円、1 億円未満は 1 万円、それ以上は 0.1 億円に丸めた値） */
+export function shownManOf(x: number): number {
+  const a = Math.abs(x);
+  const r = a < 10 ? Math.round(a * 10) / 10 : a < 9999.5 ? Math.round(a) : Math.round(a / 1000) * 1000;
+  return x < 0 ? -r : r;
+}
+
 /** 期限（YYYY-MM-DD）の年月（「2026年11月」）。読めなければ null */
 export function ymText(due: string | null | undefined): string | null {
   if (!isDateStr(due)) return null;
@@ -260,8 +267,9 @@ export function headlineOf(x: HeadlineInput): Headline | null {
   const who = x.scenario ? `${x.scenario}の方針${x.picks ? "とあなたの選び方" : ""}だと` : x.picks ? "あなたの選び方で" : "おすすめの選び方で";
   const lead = `${who} ${span}`;
   const value = yen(x.value, false);
-  const vsBest = (x.scenario || x.picks) && x.best !== null && Number.isFinite(x.best) ? `（おすすめとの差 ${yen(x.value - x.best)}）` : "";
-  const sub = x.statusQuo !== null && Number.isFinite(x.statusQuo) ? `ずっと今のままなら ${yen(x.statusQuo, false)}（差 ${yen(x.value - x.statusQuo)}）` : null;
+  // 差は、出した数どうしの差（「1,737 万円 … 1,503 万円（差 +234 万円）」。丸める前の差を丸めると 1 万円ずれる: 見直し R5）
+  const vsBest = (x.scenario || x.picks) && x.best !== null && Number.isFinite(x.best) ? `（おすすめとの差 ${yen(shownManOf(x.value) - shownManOf(x.best))}）` : "";
+  const sub = x.statusQuo !== null && Number.isFinite(x.statusQuo) ? `ずっと今のままなら ${yen(x.statusQuo, false)}（差 ${yen(shownManOf(x.value) - shownManOf(x.statusQuo))}）` : null;
   const label = x.scenario ? `${x.scenario}の方針` : x.picks ? "あなたの選び方" : "おすすめ";
   return { main: `${lead} ${value}${vsBest}`, lead, value, vsBest, sub, label };
 }

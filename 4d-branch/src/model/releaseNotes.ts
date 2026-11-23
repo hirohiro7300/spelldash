@@ -61,7 +61,7 @@ export function deltaTable(before: ReadonlyMap<string, number>, after: ReadonlyA
   const out: DeltaRow[] = rows.map((r) => ({
     ...r,
     rankChanged: !r.isBase && rb.has(r.kind) && ra.has(r.kind) && rb.get(r.kind) !== ra.get(r.kind),
-    signChanged: !r.isBase && r.before !== null && r.after !== null && Math.max(Math.abs(r.before), Math.abs(r.after)) >= 1 && Math.sign(r.before) !== Math.sign(r.after),
+    signChanged: !r.isBase && signFlipped(r.before, r.after),
   }));
   out.sort((p, q) => (q.after ?? -Infinity) - (p.after ?? -Infinity) || p.kind.localeCompare(q.kind));
   return out;
@@ -121,6 +121,19 @@ function rankIn(deltas: ReadonlyMap<string, number>, keys: readonly string[], ke
 }
 
 /**
+ * 差の向きがプラスとマイナスで入れ替わったか（どちらも 0 でなく、向きが逆。どちらかが 1 万円以上。0 になった・0 から動いたは
+ * 向きの変化に数えない: 見直し data-2）
+ */
+export function signFlipped(b: number | null, a: number | null): boolean {
+  return b !== null && a !== null && Math.max(Math.abs(b), Math.abs(a)) >= 1 && Math.sign(b) * Math.sign(a) < 0;
+}
+
+/** 向きが入れ替わった行の言い方（signFlipped の行だけ） */
+export function flipLabel(after: number): string {
+  return after > 0 ? "マイナスからプラスに" : "プラスからマイナスに";
+}
+
+/**
  * 選んだ・見送ったカード（版 6 の鍵 → 今の地図の鍵）の、前の版と今の版の差と順位。before: 版 6 の差（optionDeltasOf）。
  * after: 今の地図の鍵 → その判断の手の差（今のままとの差）と、同じ判断の手の鍵。向きか順位が変わった行だけを返す
  */
@@ -142,7 +155,7 @@ export function decidedTable(
     for (const s of now.siblings) if (s.delta !== null) nowMap.set(s.key, s.delta);
     const rankBefore = rankIn(before, sibsBefore, c.from);
     const rankAfter = rankIn(nowMap, now.siblings.map((s) => s.key), c.to);
-    const signChanged = b !== null && a !== null && Math.max(Math.abs(b), Math.abs(a)) >= 1 && Math.sign(b) !== Math.sign(a);
+    const signChanged = signFlipped(b, a);
     const rankChanged = rankBefore !== null && rankAfter !== null && rankBefore !== rankAfter;
     if (signChanged || rankChanged) rows.push({ key: c.to, status: c.status, before: b, after: a, rankBefore, rankAfter, signChanged, rankChanged });
   }

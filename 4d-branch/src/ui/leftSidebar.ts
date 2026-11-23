@@ -168,8 +168,9 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
         { class: `side-row${on ? " active" : ""}`, role: "option", tabIndex: 0, attrs: { "aria-selected": String(on) }, title: `${p.name}（クリックで強調、${MOD}クリックで複数選択）` },
         h("span", { class: "row-dot", style: { background: p.color, "box-shadow": `0 0 0 3px ${p.color}22` } }),
         nameEl,
-        sharedCount ? h("span", { class: "row-shared", title: `ほかのプロジェクトと共有しているノード ${sharedCount} 件` }, icon("link", 12), String(sharedCount)) : null,
-        h("span", { class: "row-count" }, String(count)),
+        // 数は 3 桁ごとに区切る。共有の数は 1,000 以上なら印だけ（数は印の説明に）にして、名前を押しのけない（名前が数文字に切れていた: 見直し R8）
+        sharedCount ? h("span", { class: "row-shared", title: `ほかのプロジェクトと共有しているノード ${sharedCount.toLocaleString("ja-JP")} 件` }, icon("link", 12), sharedCount < 1000 ? h("span", { class: "row-shared-n" }, String(sharedCount)) : null) : null,
+        h("span", { class: "row-count", title: `ノード ${count.toLocaleString("ja-JP")} 件` }, count.toLocaleString("ja-JP")),
         more,
       );
       row.style.setProperty("--row-color", p.color);

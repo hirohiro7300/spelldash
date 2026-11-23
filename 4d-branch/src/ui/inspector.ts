@@ -14,6 +14,7 @@ import { PREV_BODY_META } from "../persist/legacyMap";
 import { buildImpactNodeBlock, buildImpactOverview, focusLost, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
 import { edgeProb, formatPercent } from "../model/forecast";
+import { chanceWeights, flowOuts, isFlowEdge } from "../model/forks";
 
 type Updater = () => void;
 
@@ -343,7 +344,12 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   wrap.append(h("div", { class: "insp-meta" }, status, projLine));
   // 文章（3 か月ごとの地図のカードは、組み立てた本文を読むだけで上に出し、下の欄は自分のメモ: 作業メモ SPEC v1 §4.4・safety-10）
   const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", dataset: { fk: "body" }, attrs: { rows: "3", "aria-label": "文章" } });
-  bindText(app, bodyTa, (v) => cmd.updateNode(id, { body: v }, { label: "文章を編集", coalesce: `body:${id}` }));
+  bindText(app, bodyTa, (v) => {
+    // 前の版で書き換えた本文を移したメモ（meta.prevBody）を書き換えたら、もう前の版の本文のままではないので印を外す（見直し data-3）
+    const meta = node()?.meta;
+    const prev = meta?.[PREV_BODY_META] === true ? Object.fromEntries(Object.entries(meta).filter(([k]) => k !== PREV_BODY_META)) : null;
+    cmd.updateNode(id, prev ? { body: v, meta: prev } : { body: v }, { label: "文章を編集", coalesce: `body:${id}` });
+  });
   const composed = buildComposedBody(app, id, () => bodyTa.focus());
   // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）。組み立てた本文は、その数のすぐ後に
   // （狭い画面でも、具体的な文章を 2 画面より下へ押しやらない: 見直し user-11）
@@ -600,6 +606,16 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     clear(conns);
     const ins = vm.index.inc.get(id) ?? [];
     const outs = vm.index.out.get(id) ?? [];
+    // 線の見込み。兄弟の見込みの合計が 100% でなければ、数えている見込みも（「77%（ほかと合わせて 46%）」: 見直し R6）
+    const probLabel = (e: GEdge, label: string): string => {
+      const p = edgeProb(e);
+      if (p === null) return label;
+      const sibs = flowOuts(doc, vm.index.out, e.source);
+      const j = sibs.findIndex((x) => x.id === e.id);
+      if (j < 0 || sumOfProbs(sibs) === null) return `${label} ${p}%`;
+      const w = Math.round(chanceWeights(sibs)[j]! * 100);
+      return w === Math.round(p) ? `${label} ${p}%` : `${label} ${p}%（ほかと合わせて ${w}%）`;
+    };
     const connRow = (eid: ID, dir: "in" | "out") => {
       const e = doc.edges[eid]!;
       const other = doc.nodes[dir === "in" ? e.source : e.target]!;
@@ -609,11 +625,14 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
         { class: "conn-row" },
         h("span", { class: "conn-dir", title: dir === "in" ? "入る（ここへ至る）" : "出る（ここから進む）" }, icon(dir === "in" ? "arrowLeft" : "arrowRight", 13)),
         h("button", { class: "conn-node", type: "button", title: "このノードへ移動", onClick: () => (ui.select([other.id]), app.view.centerOn(other.id, { onlyIfHidden: true })) }, h("span", { class: `type-chip type-${other.type}` }, icon(other.type, 12)), h("span", { class: "conn-title" }, other.title || "（無題）")),
-        h("button", { class: "conn-rel", type: "button", title: `${relMeta.label}${e.condition ? `: ${e.condition}` : ""}（接続を選ぶ）`, style: { "--rel": relMeta.color }, onClick: () => ui.select([], [eid]) }, h("span", { class: "dot", style: { background: relMeta.color } }), edgeProb(e) === null ? relMeta.label : `${relMeta.label} ${edgeProb(e)}%`),
+        h("button", { class: "conn-rel", type: "button", title: `${relMeta.label}${e.condition ? `: ${e.condition}` : ""}（接続を選ぶ）`, style: { "--rel": relMeta.color }, onClick: () => ui.select([], [eid]) }, h("span", { class: "dot", style: { background: relMeta.color } }), probLabel(e, relMeta.label)),
       );
       if (vm.index.cross.has(eid)) row.classList.add("cross");
       return row;
     };
+    // 出る線の見込みの合計が 100% でない: 割って数えていることを言う（つながりの 77% と結果の 46% が並んで見える: 見直し R6）
+    const outSum = sumOfProbs(outs.map((x) => doc.edges[x]).filter((x): x is GEdge => !!x));
+    if (outSum !== null) conns.append(h("div", { class: "muted small conn-prob-note" }, `出る線の見込みは合わせて ${outSum}%。100% になるように割って数えている（かっこの中が数えている見込み）`));
     if (!ins.length && !outs.length) conns.append(h("div", { class: "muted small" }, "まだつながりがありません。ノード右の ● をドラッグして別のノードへつなぐか、「分岐を追加」で先を作れます。"));
     if (ins.length) conns.append(h("div", { class: "conn-head" }, `入る ${ins.length}`), ...ins.map((e) => connRow(e, "in")));
     if (outs.length) conns.append(h("div", { class: "conn-head" }, `出る ${outs.length}`), ...outs.map((e) => connRow(e, "out")));
@@ -625,6 +644,14 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     syncCol();
     foot.textContent = `作成 ${new Date(n.createdAt).toLocaleDateString("ja-JP")} · 更新 ${new Date(n.updatedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
   });
+}
+
+/** 見込みのある線の兄弟（同じノードから出る道の線）。見込みの合計が 100% でなければ、その合計（ちょうど 100% か見込みが 1 つも無ければ null） */
+function sumOfProbs(edges: readonly GEdge[]): number | null {
+  const known = edges.filter((e) => isFlowEdge(e)).map(edgeProb).filter((v): v is number => v !== null);
+  if (known.length < 2) return null;
+  const sum = Math.round(known.reduce((n, v) => n + v, 0));
+  return sum === 100 ? null : sum;
 }
 
 // ------------------------------------------------------------ 接続

@@ -294,7 +294,8 @@ export function buildDeepPage(app: AppContext, page: DeepPage): DeepPageHandle |
     const notes = ctxNotes(app, ctx);
     if (notes) body.append(notes);
     if (page.kind === "move") {
-      const vm = moveDetailVM(a, page.f, ctx.overview());
+      // 手と結果の名前は見取り図と同じ元（文書のカードの題名）から（押した行の名前と見出しを同じに: 見直し R3）
+      const vm = moveDetailVM(a, page.f, ctx.overview(), { name: (f) => ctx.text().title(f) });
       rememberMove(vm, hrefs);
       const handle = renderMoveDetail(vm, { destCursor: destCursorOf(ctx, page.f), onDest: (row, k) => ui.openDeep({ kind: "path", node: row.ends[k]! }, { push: true }) });
       destroy = handle.destroy;
@@ -435,8 +436,8 @@ function openActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElem
       const f = kids[s]!;
       const fx = deepHorizons(ctx.cm, f).find((x) => fits(x, outsideOf(f)));
       if (!fx) continue;
-      const n = app.store.doc.nodes[ctx.idOf(f)];
-      const name = (typeof n?.meta?.short === "string" && n.meta.short.trim()) || n?.title.trim() || "（無題）";
+      // 手の名前は見取り図の行と同じ（文書のカードの題名: 見直し R3）
+      const name = ctx.text().title(f).trim() || "（無題）";
       perMove.push(openButton(app, ctx, f, fx, label(fx), `「${name}」の先の${label(fx)}の判断と手を開く`, `${name}（${label(fx)} ${num(fx.count)} 枚）`));
     }
   }

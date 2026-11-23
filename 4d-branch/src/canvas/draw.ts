@@ -364,6 +364,22 @@ function drawDoneMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, a: 
   ctx.stroke();
 }
 
+/** たたんだ先のカードの数（「+1,231」: 3 桁ごとに区切る。お金の札「+18万」と読み違えないよう、ほかの数と同じ書き方: 見直し R8） */
+export function hiddenCountText(count: number): string {
+  return `+${count.toLocaleString("ja-JP")}`;
+}
+
+/** 文字が幅 max に収まるまで太字の大きさを下げる（下げすぎない） */
+function fitFont(ctx: CanvasRenderingContext2D, text: string, max: number, size: number): void {
+  let px = Math.round(size);
+  ctx.font = `700 ${px}px ${CANVAS_FONT}`;
+  const min = Math.max(7, Math.round(size * 0.7));
+  while (px > min && ctx.measureText(text).width > max) {
+    px--;
+    ctx.font = `700 ${px}px ${CANVAS_FONT}`;
+  }
+}
+
 export function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, collapsed: boolean, count: number, color: string, a: number, lod: Lod, zoom: number): void {
   const c = badgeCenter(x, y);
   const k = badgeScale(zoom);
@@ -381,7 +397,9 @@ export function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, c
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = collapsed ? "#0b0e14" : rgba(color, 1);
-  ctx.fillText(collapsed ? (count > 0 ? `+${count}` : "▸") : "−", c.x, c.y + 0.5);
+  const label = collapsed ? (count > 0 ? hiddenCountText(count) : "▸") : "−";
+  fitFont(ctx, label, bw - 6 * k, 11 * k);
+  ctx.fillText(label, c.x, c.y + 0.5);
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
 }
@@ -562,7 +580,9 @@ export function drawStub(ctx: CanvasRenderingContext2D, sx: number, sy: number, 
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#0b0e14";
-  ctx.fillText(count > 0 ? `+${count}` : "▸", x + w / 2, sy + 0.5);
+  const label = count > 0 ? hiddenCountText(count) : "▸";
+  fitFont(ctx, label, w - 6, 11);
+  ctx.fillText(label, x + w / 2, sy + 0.5);
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   return { x, y, w, h };

@@ -40,6 +40,7 @@ import type { ImportPreview } from "../persist/io";
 import { buildPageFuture, pageFutureVersion } from "./pageFuture";
 import { carryMapDoc } from "./futureCache";
 import { FRESH_FUTURE, FUTURE_MIN_ZOOM, NO_AUTO_FUTURE, futureAge, futureMaps, hasEditPrints, hasFutureRoot, hasStaleFuture, inPlaceRoot, isFreshFuture, nearFutureRoot, swapFutureDoc, withNoAutoFuture, yieldsToRemote, type FutureMap } from "../demo/futureSwap";
+import { isForecastRoot } from "../model/forecast";
 
 export interface AppOptions {
   store: Store;
@@ -320,7 +321,7 @@ export class App implements AppContext {
         this.view.cameraChanged();
       } else this.view.fit(undefined, { animate: false });
       // 長い知らせ（地図を新しい版で開いたときの、移した手・残したカードの数など）は、読み切れるだけ長く出す（短い物は今までどおり 9 秒）
-      for (const n of opts.notices) toast(n, { tone: "warn", ms: Math.max(9000, n.length * 80) });
+      for (const n of opts.notices) this.bootNotices.push({ text: n, close: toast(n, { tone: "warn", ms: Math.max(9000, n.length * 80) }) });
       if (opts.firstRun && !this.ui.prefs.onboardingDone && !this.ephemeral) openWelcome(this);
       else this.offerOnce();
       this.offerFutureUpdate();
@@ -395,6 +396,9 @@ export class App implements AppContext {
    * 新しい地図の知らせは版ごとに一度だけ（表示の設定 releaseSheet。どの道で地図が入っても: 作業メモ SPEC §5.9・user-5）。
    * 初めての人のようこそ画面・操作ガイド・確認の途中は、閉じるまで待つ
    */
+  /** 起動の知らせ（新しい地図の知らせを出すときは、その中に移して閉じる: 見直し R2） */
+  private bootNotices: { text: string; close: () => void }[] = [];
+
   private offerDeep(): void {
     if (this.deepOffered || this.newerShown) return;
     const ctx = this.vm.deep.get();
@@ -435,7 +439,11 @@ export class App implements AppContext {
         this.store.doc.meta = { ...this.store.doc.meta, [RELEASE_SHEET_META]: rel };
         this.persistence.markDirty();
       }
-      openReleaseSheet(this, now, this.bootDecided ? { decided: this.bootDecided } : {});
+      // 起動の知らせ（引き上げで移した・残したカードの数など）は、新しい地図の知らせの中に出してお知らせは閉じる
+      // （長いお知らせが知らせの上に 20 秒ほど重なり、表と「前の版で決めたこと」を隠していた: 見直し R2）
+      const notes = this.bootNotices.splice(0);
+      for (const n of notes) n.close();
+      openReleaseSheet(this, now, { ...(this.bootDecided ? { decided: this.bootDecided } : {}), ...(notes.length ? { notices: notes.map((n) => n.text) } : {}) });
     };
     setTimeout(show, 300);
   }
@@ -1136,6 +1144,26 @@ export class App implements AppContext {
     return { maps, stale: maps.filter((m) => age(m) === "old"), newer: maps.filter((m) => age(m) === "newer") };
   }
 
+  /**
+   * 今の地図の未来の道筋の版だけ（古い・新しい版の入口があるか）。入口は索引が持つので、地図をたどらない（起動の後の知らせと、
+   * 出している間の変更のたびに見る: 8 万枚の地図をたどると、スマホで 0.5 秒止まっていた。見直し perf-7）
+   */
+  private futureAges(): { stale: number; newer: number } {
+    const fv = pageFutureVersion();
+    let stale = 0;
+    let newer = 0;
+    for (const id of this.vm.index.forecastRoots) {
+      const n = this.store.doc.nodes[id];
+      if (!n || !isForecastRoot(n)) continue;
+      const v = n.meta.futureVersion;
+      const r = n.meta.futureRelease;
+      const age = futureAge({ version: typeof v === "string" && v ? v : null, release: typeof r === "number" && Number.isFinite(r) ? r : null }, fv.version, fv.release);
+      if (age === "old") stale++;
+      else if (age === "newer") newer++;
+    }
+    return { stale, newer };
+  }
+
   /** この版への差し替えを、「未来の道筋」から聞いて断った（この端末で。別のタブで断った物も） */
   private futureDeclined(): boolean {
     return this.ui.isFutureDeclined(pageFutureVersion().version);
@@ -1477,11 +1505,11 @@ export class App implements AppContext {
     const show = (): void => {
       if (this.store.readOnly) return;
       if (!this.vm.index.forecastRoots.size) return;
-      const st = this.futureState();
-      if (st.newer.length) return this.tellNewerFuture();
+      const st = this.futureAges();
+      if (st.newer) return this.tellNewerFuture();
       const v = pageFutureVersion().version;
       if (this.ui.prefs.futureNotified === v || this.ui.storedPrefs().futureNotified === v) return;
-      if (!st.stale.length) return;
+      if (!st.stale) return;
       this.ui.setPrefs({ futureNotified: v });
       // 押したときに、今の地図で確かめ直す（20 秒の間に同期で新しい版になった・無くなった なら差し替えない）
       let off = (): void => undefined;
@@ -1494,8 +1522,8 @@ export class App implements AppContext {
       // （新しい版になった・地図が無くなった・このページより新しい版になった）、もう当たらないお知らせなので下げる
       off = this.store.on("change", (info) => {
         if (!info.full) return;
-        const now = this.futureState();
-        if (now.stale.length && !now.newer.length) return;
+        const now = this.futureAges();
+        if (now.stale && !now.newer) return;
         close();
       });
     };

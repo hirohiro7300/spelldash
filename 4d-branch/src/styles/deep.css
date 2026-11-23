@@ -308,6 +308,22 @@
 .rel-prev-title {
   color: var(--text-1);
 }
+.rel-notices {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(242, 193, 78, 0.4);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-1);
+}
+.rel-notices p {
+  margin: 0;
+}
+.rel-notices p + p {
+  margin-top: 6px;
+}
 .rel-sheet .modal-footer {
   flex-wrap: wrap;
 }

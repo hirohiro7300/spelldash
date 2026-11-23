@@ -57,6 +57,21 @@ export function manDeltaRange(lo: number, hi: number): string {
   return a === b ? `${a} 万円` : `${a}〜${b} 万円`;
 }
 
+/**
+ * 2 つの水準の差を、画面に出した数どうしの差で（「ずっと今のままより +34 万円」。横に出す合計 1,537 万円と 1,503 万円の差と同じ数:
+ * 見直し R5）
+ */
+export function manVs(total: number, base: number): string {
+  if (!Number.isFinite(total) || !Number.isFinite(base)) return "—";
+  return manDelta(shownMan(total) - shownMan(base));
+}
+
+/** 幅の両端と水準の差を、画面に出した数どうしの差で（「+32〜+306 万円」: manVs と同じ決まり） */
+export function manVsRange(lo: number, hi: number, base: number): string {
+  if (![lo, hi, base].every(Number.isFinite)) return "—";
+  return manDeltaRange(shownMan(lo) - shownMan(base), shownMan(hi) - shownMan(base));
+}
+
 /** 月の稼ぎ（小数 1 桁。「42.6 万円」） */
 export function manMonthly(x: number): string {
   if (!Number.isFinite(x)) return "—";

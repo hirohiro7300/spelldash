@@ -441,6 +441,11 @@ export function thinBaselineCore(): DocData | null {
   return page ? (cores.get(page.map)?.doc ?? null) : null;
 }
 
+/** 組み立てた基準の今日（まだ組み立てていなければ null。凍っている） */
+export function thinBaselineRoot(): GNode | null {
+  return page ? (cores.get(page.map)?.nodes[0] ?? null) : null;
+}
+
 const isoOk = (s: unknown): s is string => typeof s === "string" && Number.isFinite(Date.parse(s));
 
 /** 基準を組み立てる（地図ごとに初めの 1 回だけ。時刻は at があればそれ、無ければ地図の年月の 1 日） */

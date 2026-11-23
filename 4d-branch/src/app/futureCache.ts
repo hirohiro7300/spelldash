@@ -4,23 +4,42 @@
 //                             文書を読み直さずに地図の列から作る: src/model/impactEngine.ts）。組み立てた直後、ストアに渡す前に呼ぶ
 //   mapDocOf(doc)           : 組み立てたままとして覚えた文書なら、その地図
 //   buildMapDoc(map, at)    : 地図から文書を組み立てて覚える（ページの地図なら保存の基準の文書。一時表示 #demo-q・未来の道筋を開く）
-// ストアの全部の入れ替え（読み込み・取り込み・元に戻す）は文書の物が替わるので、覚えた物とは別の文書になる（文書から作り直す）。
+//   forgetMapDoc(doc)       : 形か数を書き換えた文書を忘れる（見え方が、変更を受けたときに呼ぶ）
+// 全部の入れ替えの元に戻す・やり直すは、前の文書の物そのものに戻る（W-app の I4）。覚えた文書を書き換えたら忘れる（見直し data-1）。
 
 import { loadPageMap } from "../demo/pageBundle";
 import { buildQuarterDoc } from "../demo/quarterDoc";
-import { ensurePageMap, hasThinBaseline, pageHash, pageMapData, pageRelease, storedMapShaped, thinBaselineDoc, THIN_LAYOUT } from "../persist/codec";
+import { ensurePageMap, forgetStoredShape, hasThinBaseline, pageHash, pageMapData, pageRelease, storedMapShaped, thinBaselineDoc, THIN_LAYOUT } from "../persist/codec";
 import type { MapData } from "../deepmap/mapData";
 import type { DocData } from "../model/types";
 
 const built = new WeakMap<DocData, MapData>();
+/** 組み立てた後に形か数を書き換えた文書（地図はそのままだが、組み立てたままとは見なさない） */
+const edited = new WeakSet<DocData>();
 
 /** その文書は、その地図を組み立てたままの物（形と数を変えると、エンジンが自分で組み立てたままと見なさなくなる） */
 export function rememberMapDoc(doc: DocData, map: MapData): void {
   built.set(doc, map);
+  edited.delete(doc);
 }
 
-/** 組み立てたままとして覚えた文書の地図（無ければ null） */
+/**
+ * その文書はもう組み立てたままではない（形か数を書き換えた: 見え方が、エンジンが組み立てたままと見なさなくなったときに呼ぶ）。
+ * 覚えた物も、保存した形から読んだときの印も忘れる。ストアは文書をその場で書き換え、元に戻す・やり直すは同じ文書の物に戻るので、
+ * 忘れないと、全部の入れ替えの元に戻すで書き換えた見込みを無視して地図の列から数を作ってしまう（見直し data-1）
+ */
+export function forgetMapDoc(doc: DocData): void {
+  if (built.has(doc)) edited.add(doc);
+  forgetStoredShape(doc);
+}
+
+/** 組み立てたままとして覚えた文書の地図（無い・書き換えた後なら null） */
 export function mapDocOf(doc: DocData): MapData | null {
+  return edited.has(doc) ? null : (built.get(doc) ?? null);
+}
+
+/** その文書を組み立てた地図（書き換えた後でも。地図の画面の入口を見分ける所だけ: src/app/deepState.ts） */
+export function mapOfBuiltDoc(doc: DocData): MapData | null {
   return built.get(doc) ?? null;
 }
 
@@ -29,7 +48,7 @@ export function mapDocOf(doc: DocData): MapData | null {
  * （src/persist/codec.ts の storedMapShaped）ならページの地図。どちらでもなければ null
  */
 export function mapForDoc(doc: DocData): MapData | null {
-  return built.get(doc) ?? (storedMapShaped(doc) ? pageMapData() : null);
+  return mapDocOf(doc) ?? (!edited.has(doc) && storedMapShaped(doc) ? pageMapData() : null);
 }
 
 /**

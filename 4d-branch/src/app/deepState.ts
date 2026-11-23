@@ -11,7 +11,7 @@
 // 文書の形や数を書き換えた後（自分で足したカード・書き換えた見込み）も、見取り図と道は地図の元の数で出す（edited。画面がそう書く）。
 // どれも読まれたときに作り、材料（地図・形と数の版・年収・選んだ手の版）が同じなら前の物を返す（変更のたびには作らない: 作業メモ perf-4）
 
-import { analyze, overview, type Analysis, type CompiledMap, type Overview, type TextSource } from "../deepmap/core";
+import { analyze, overview, textRuntime, type Analysis, type CompiledMap, type Overview, type TextSource } from "../deepmap/core";
 import { ym } from "../deepmap/views/format";
 import { F_STUB, ROLE_A } from "../deepmap/core/compile";
 import type { MapData } from "../deepmap/mapData";
@@ -22,7 +22,7 @@ import { compiledMapOf, statusCode } from "../model/impactGraph";
 import type { DocData, GNode, ID } from "../model/types";
 import { Emitter } from "../store/emitter";
 import type { Store } from "../store/store";
-import { mapDocOf } from "./futureCache";
+import { mapOfBuiltDoc } from "./futureCache";
 import { idleSteps } from "./idle";
 import type { UiState } from "./uiState";
 import type { ViewModel } from "./viewModel";
@@ -35,19 +35,32 @@ export interface DeepText extends TextSource {
 
 /** 文章の組み立てを、カードごと・年収ごとに 1 回だけ（読まれたときに）。年収が変わったら作り直す（題は年収で変わらない） */
 const textMemo = new WeakMap<MapData, { annual: number; text: DeepText }>();
+/** 画面と同じ計算で組み立てた文章（計算ごと。おすすめ・3 年の値を、その年収と選んだ手の計算から書く） */
+const textMemoA = new WeakMap<Analysis, DeepText>();
 
-export function deepText(map: MapData, annual: number): DeepText {
-  const m = textMemo.get(map);
-  if (m && m.annual === annual) return m.text;
+/**
+ * 組み立てた文章。a はその年収の画面と同じ計算（あれば、本文の「おすすめ」「一番の手」と 3 年の値をその計算で書く。無ければ地図に
+ * 書いた年収の値で書き、年収が違えば「年収 360 万円の見積もりで…」とぼかす。画面の札と食い違うので、アプリの画面は a を渡す: 見直し R4）
+ */
+export function deepText(map: MapData, annual: number, a?: Analysis): DeepText {
+  if (a) {
+    const hit = textMemoA.get(a);
+    if (hit) return hit;
+  } else {
+    const m = textMemo.get(map);
+    if (m && m.annual === annual) return m.text;
+  }
+  const rt = a ? textRuntime(a) : undefined;
   const memo = new Map<number, Card>();
   const card = (i: number): Card => {
     let c = memo.get(i);
-    if (!c) memo.set(i, (c = composeCard(map, i, { annual })));
+    if (!c) memo.set(i, (c = composeCard(map, i, rt ? { annual, rt } : { annual })));
     return c;
   };
   // provisional は付けない（「文章は仮」の印を出さない）
   const text: DeepText = { title: (i) => card(i).title, short: (i) => card(i).short, body: (i) => card(i).body, numbers: (i) => card(i).numbers, card };
-  textMemo.set(map, { annual, text });
+  if (a) textMemoA.set(a, text);
+  else textMemo.set(map, { annual, text });
   return text;
 }
 
@@ -184,7 +197,18 @@ export class DeepState {
     private readonly vm: ViewModel,
     private readonly store: Store,
     private readonly ui: UiState,
-  ) {}
+  ) {
+    // 文書ごとの番号 → ID の表を、変わったカードだけで確かめるための印（形が変わるたびに 7 万枚を読み直さない: 見直し perf-3）
+    store.on("change", (info) => {
+      if (!this.docIds) return;
+      if (info.full) this.idsFull = true;
+      else if (!this.idsFull) for (const id of info.nodes) this.idsTouched.add(id);
+    });
+  }
+
+  /** 表を作った後に変わったカード（全部の入れ替えがあれば idsFull） */
+  private readonly idsTouched = new Set<ID>();
+  private idsFull = false;
 
   /** 地図を読み終えた（画面が見取り図を出し直す） */
   onReady(fn: () => void): () => void {
@@ -263,6 +287,24 @@ export class DeepState {
     const topo = this.vm.index.version.topo;
     const c = this.docIds;
     if (c && c.map === map && c.nodes === doc.nodes && c.topo === topo) return { ids: c.ids, rev: () => c.rev, hashed: false };
+    // 形が変わっただけで、地図のカード（鍵のあるカード・表にあるカード）を足しも消しもしていない（Tab で足した子・線・その元に戻す）:
+    // 表はそのまま使う（変わったカードだけを見る）
+    if (c && c.map === map && c.nodes === doc.nodes && !this.idsFull) {
+      let same = true;
+      for (const id of this.idsTouched) {
+        if (c.rev.has(id) || typeof doc.nodes[id]?.meta?.key === "string") {
+          same = false;
+          break;
+        }
+      }
+      this.idsTouched.clear();
+      if (same) {
+        c.topo = topo;
+        return { ids: c.ids, rev: () => c.rev, hashed: false };
+      }
+    }
+    this.idsTouched.clear();
+    this.idsFull = false;
     // 多くのカードは鍵の指紋の ID のまま（引き上げで前の ID を引き継いだカードだけが違う）: まず番号ごとに鍵の指紋の ID を引き、
     // 見つからない番号だけを、鍵の指紋でない ID のカードの鍵から埋める（7 万の鍵を表で引かない）
     const ids = hashed.slice();
@@ -294,7 +336,8 @@ export class DeepState {
 
   /** 文書の地図（無ければ null）。ページに入っていれば読み込みを始める */
   private mapOf(doc: DocData, root: ID): MapData | null {
-    const reg = mapDocOf(doc);
+    // 組み立てた地図（形を書き換えた後でも同じ地図: 入口は鍵と版で確かめる）
+    const reg = mapOfBuiltDoc(doc);
     if (reg && this.matches(reg, doc, root)) return reg;
     if (!this.loaded) {
       const r = doc.nodes[root];
@@ -365,7 +408,12 @@ export class DeepState {
         if (calc.a) return calc.a;
         const t0 = performance.now();
         // 選んだ手も見送った手も無い: 先に描いた見取り図と同じ計算を使う
-        calc.a = isZero(st.arr) ? plainAnalysis(cm, annual) : analyze(cm, annual, { status: st.arr });
+        if (isZero(st.arr)) calc.a = plainAnalysis(cm, annual);
+        else {
+          calc.a = analyze(cm, annual, { status: st.arr });
+          // 先に描いた見取り図の計算（選んだ手の無い物）は、もう使わないので持ち続けない（10 本ほどの 8 万の列: 見直し perf-6）
+          plainMemo.delete(cm);
+        }
         this.timings.analyze = performance.now() - t0;
         return calc.a;
       },
@@ -379,7 +427,7 @@ export class DeepState {
       },
       text: () => {
         if (docText) return docText;
-        const base = deepText(map, annual);
+        const base = deepText(map, annual, ctx.analysis());
         const nodeOf = (i: number) => {
           const id = ids[i] ?? (i >= 0 && i < map.n ? (ids[i] = impactNodeId64(map.key(i))) : undefined);
           return id ? store.doc.nodes[id] : undefined;
