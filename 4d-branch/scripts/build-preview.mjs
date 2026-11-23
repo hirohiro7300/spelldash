@@ -5,7 +5,7 @@
 //                  やることを焼き込んである）。ページの読み手と同じ src/demo/impactBundle.ts で読んで確かめる。同じ置き場に
 //                  impact-release.json があれば、版の順番と指紋が同じことも確かめる
 //       .json(.gz) 開発用の入れ子の木（DevTree。開発中の木を確かめる用。.json なら、ここで gzip する）
-//       渡さなければ、版 7 の候補の同梱データ（作業メモ gen/r7c/impact-q.b64。無ければ前の候補 gen/r7b/impact-q.b64）。どちらも無ければ dev/q-tree.json.gz、dev/r1-tree.json.gz
+//       渡さなければ、版 7 の候補の同梱データ（作業メモ gen/r7d/impact-q.b64。無ければ前の候補 gen/r7c・gen/r7b の impact-q.b64）。どちらも無ければ dev/q-tree.json.gz、dev/r1-tree.json.gz
 //     出力: 環境変数 DEEPMAP_PREVIEW_OUT でも渡せる。既定は作業メモ view/preview-v2.html。ビルドの途中の物は出力の隣の
 //       .preview-build/ に置く（リポジトリには置かない）
 //     文の型の版: 地図の題・短い名前・やることは焼き込み、本文はページの中の組み立て（src/demo/compose）が書く。焼き込んだ版（header.textVersion）が
@@ -26,11 +26,12 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCRATCH = "/tmp/claude-0/-home-user-spelldash/342dd9ca-ed44-551f-af59-60da8aff2834/scratchpad/deepmap";
 const DEFAULT_TREE =
   [
+    path.join(SCRATCH, "gen", "r7d", "impact-q.b64"),
     path.join(SCRATCH, "gen", "r7c", "impact-q.b64"),
     path.join(SCRATCH, "gen", "r7b", "impact-q.b64"),
     path.join(SCRATCH, "dev", "q-tree.json.gz"),
     path.join(SCRATCH, "dev", "r1-tree.json.gz"),
-  ].find((p) => fs.existsSync(p)) ?? path.join(SCRATCH, "gen", "r7c", "impact-q.b64");
+  ].find((p) => fs.existsSync(p)) ?? path.join(SCRATCH, "gen", "r7d", "impact-q.b64");
 const TREE = path.resolve(process.argv[2] || process.env.DEEPMAP_TREE || DEFAULT_TREE);
 const OUT = path.resolve(process.argv[3] || process.env.DEEPMAP_PREVIEW_OUT || path.join(SCRATCH, "view", "preview-v2.html"));
 const BUILD_DIR = path.join(path.dirname(OUT), ".preview-build");
