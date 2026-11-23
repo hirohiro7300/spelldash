@@ -45,6 +45,9 @@ import type { UiState } from "./uiState";
 
 /** 全部の入れ替えを変わった物だけで受けたとき、検索の索引を直す数の上限（多ければ作り直す） */
 const SEARCH_PATCH_MAX = 2000;
+/** 見込みが無いとき・捨てた後の答え */
+const EMPTY_FORECAST: ForecastResult = { active: false, reach: new Map(), ends: [], longest: 0, order: [], impactScope: new Set() };
+
 /** 検索の索引を空いた時間に作るときの 1 歩のノードの数 */
 const SEARCH_SLICE = 2000;
 
@@ -240,7 +243,7 @@ export class ViewModel {
   private forecastTitles = 0;
   /** 見込みを数え直した回数（3 年の影響のエンジンが、合流のある地図で見込みが変わったかを見る） */
   private forecastStamp = 0;
-  private forecastCache: ForecastResult = { active: false, reach: new Map(), ends: [], longest: 0, order: [], impactScope: new Set() };
+  private forecastCache: ForecastResult = EMPTY_FORECAST;
   /** 見込みの計画（見込みに使う物の版ごと。方針を変えたら流し直すだけ） */
   private forecastPlan: { inputs: number; doc: DocData; plan: ForecastPlan } | null = null;
   /** 3 年の影響のエンジン（文書の変更を受け、読まれたときに要る所だけやり直す） */
@@ -342,6 +345,13 @@ export class ViewModel {
         if (map) rememberMapDoc(doc, map);
       } else this.index.apply(doc, info, visit);
       if (hit) this.forecastInputs++;
+      // 見込みの計画が前の文書の物を持ち続けない（取り込みの写しを残さない: 見直し perf-4）。見込みに使う所が同じなら新しい文書に替え、
+      // 変わったなら捨てる（読まれたときに作り直す）
+      const fp = this.forecastPlan;
+      if (diff && fp && fp.doc !== doc && fp.inputs === this.forecastInputs) {
+        fp.plan.rebase(doc);
+        fp.doc = doc;
+      }
       // 作っている途中の検索の索引: ノードが増えた・減った・多く替わったら作り直し、中身だけ変わったら入れた物だけ直す
       // （まだ入れていないノードは、入れるときに今の文書から読む）
       const b = this.searchBuild;
@@ -363,6 +373,12 @@ export class ViewModel {
         }
       }
     }
+    // 見込みに使う物が変わった: 前の計画と答えは使わないので、すぐ捨てる（見込みは読まれたときに作る。それまで前の文書を持ち続けない）
+    if (this.forecastPlan && this.forecastPlan.inputs !== this.forecastInputs) {
+      this.forecastPlan = null;
+      this.forecastCache = EMPTY_FORECAST;
+      this.forecastKey = "";
+    }
     this.appliedRev = store.revision;
   }
 
@@ -373,6 +389,9 @@ export class ViewModel {
     this.appliedRev = this.store.revision;
     this.dirtyVis = true;
     this.forecastInputs++;
+    this.forecastPlan = null;
+    this.forecastCache = EMPTY_FORECAST;
+    this.forecastKey = "";
     this.engine.invalidate();
     this.useMapDoc();
   }

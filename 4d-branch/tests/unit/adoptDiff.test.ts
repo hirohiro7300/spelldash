@@ -122,4 +122,36 @@ describe("全部の入れ替えを変わった物だけで受ける", () => {
     store.redo();
     check(vm, store, "やり直す");
   });
+
+  it("見込みの計画は前の文書（取り込みの写し）を持ち続けない: 写しの間に作った計画は元に戻すと今の文書に替え、見込みに使う物が変わったら捨てる（見直し perf-4）", async () => {
+    const map: MapData = await loadQSmall();
+    const doc = buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: Date.UTC(2026, 10, 1), layout: "columns" });
+    rememberMapDoc(doc, map);
+    const { store, vm } = setup(doc);
+    const internal = vm as unknown as { forecastPlan: { doc: DocData; plan: { doc: DocData } } | null };
+    void vm.forecast;
+    expect(internal.forecastPlan!.doc).toBe(store.doc);
+    // 形の編集（子を足して元に戻す）: 見込みに使う物が変わったので、計画はすぐ捨てる（読まれるまで前の文書を持たない）
+    const anyAlt = options(store.doc)[0]!;
+    store.transact("子", (tx) => {
+      tx.addNode({ ...structuredClone(store.doc.nodes[anyAlt.id]!), id: "u_child", title: "子", meta: {} });
+      tx.addEdge({ ...structuredClone(Object.values(store.doc.edges)[0]!), id: "u_edge", source: anyAlt.id, target: "u_child", meta: {} });
+    });
+    expect(internal.forecastPlan).toBeNull();
+    store.undo();
+    expect(internal.forecastPlan).toBeNull();
+    // 写しを取り込み、写しの間に見込みを読む（計画は写しから作る）→ 元に戻す: 計画は今の文書に替わる
+    store.replaceDoc(structuredClone(store.doc), "取り込み");
+    const fc1 = vm.forecast;
+    const copyDoc = store.doc;
+    expect(internal.forecastPlan!.doc).toBe(copyDoc);
+    store.undo();
+    expect(store.doc).not.toBe(copyDoc);
+    expect(internal.forecastPlan!.doc).toBe(store.doc);
+    expect(internal.forecastPlan!.plan.doc).toBe(store.doc);
+    // 答えの行き先の並べ替えも、計画の今の文書の題名で（写しを読まない）
+    expect(fc1.ends.length).toBeGreaterThan(0);
+    const ref = refRun(store.doc).fc;
+    expect(vm.forecast.ends).toEqual(ref.ends);
+  });
 });

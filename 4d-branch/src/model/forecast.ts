@@ -400,15 +400,18 @@ export class ForecastPlan {
     }
     const reach = new ReachMap(this.idx, done, p, minS, maxS, order);
     const result: ForecastResult = { active: true, reach, ends: [], longest, order, impactScope: this.scope };
-    // 行き先の並び（見込みの高い順・同じ見込みは題名の順。computeForecast の localeCompare("ja") と同じ並べ方）は、読まれたときに
+    // 行き先の並び（見込みの高い順・同じ見込みは題名の順。computeForecast の localeCompare("ja") と同じ並べ方）は、読まれたときに。
+    // 題名はそのときの計画の文書から読む（流した時の文書を持ち続けない: 取り込みの写しを残さない。見直し perf-4）
     let ends: ID[] | null = null;
+    const plan = this;
     Object.defineProperty(result, "ends", {
       enumerable: true,
       configurable: true,
       get: (): ID[] => {
         if (!ends) {
           const col = (endCollator ??= new Intl.Collator("ja"));
-          const sorted = endIdx.slice().sort((x, y) => p[y]! - p[x]! || col.compare(doc.nodes[ids[x]!]!.title || "", doc.nodes[ids[y]!]!.title || ""));
+          const nodes = plan.doc.nodes;
+          const sorted = endIdx.slice().sort((x, y) => p[y]! - p[x]! || col.compare(nodes[ids[x]!]?.title || "", nodes[ids[y]!]?.title || ""));
           ends = sorted.map((i) => ids[i]!);
         }
         return ends;

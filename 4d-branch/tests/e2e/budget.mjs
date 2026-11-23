@@ -266,6 +266,14 @@ async function heapMB(cdp, parts) {
   return mb(h.usedSize) + mb(h.backingStorageSize) + mb(h.embedderHeapUsedSize);
 }
 
+/** BUDGET_HEAP_TRACE=1 のとき、手順ごとの JS のヒープ（GC の後）を書き出す（ヒープの行を何が増やしたかを探す） */
+async function traceHeap(cdp, step) {
+  if (process.env.BUDGET_HEAP_TRACE !== "1") return;
+  await cdp.send("HeapProfiler.collectGarbage");
+  const h = await cdp.send("Runtime.getHeapUsage");
+  console.log(`    ヒープ（${step}）: JS ${(h.usedSize / 1048576).toFixed(1)} MB・ArrayBuffer ${(h.backingStorageSize / 1048576).toFixed(1)} MB`);
+}
+
 /** キャンバスの上のカードの画面の位置（見えていなければ null） */
 const cardPoint = (page, id) =>
   page.evaluate((nid) => {
@@ -340,6 +348,7 @@ async function measureProfile(browser, profile) {
     if (id && (await canvasClick(id, "select"))) done++;
   }
 
+  await traceHeap(cdp, "選ぶの後");
   // これにする・見送る（詳細の「これにする」「見送る」）。その後に元に戻す（⌘Z / Ctrl+Z）
   const pickOnce = async (kind, key) => {
     const alts = await visibleAlts(page);
@@ -369,6 +378,7 @@ async function measureProfile(browser, profile) {
   for (let k = 0; k < ROUNDS; k++) await pickOnce("pick", "pick");
   for (let k = 0; k < ROUNDS; k++) await pickOnce("drop", "drop");
 
+  await traceHeap(cdp, "これにする・見送るの後");
   // 1 つ開く・閉じる（C）: 見えている閉じたカードを選んで
   for (let k = 0; k < ROUNDS; k++) {
     const id = await page.evaluate((kk) => {
@@ -389,6 +399,7 @@ async function measureProfile(browser, profile) {
     push("close", await page.evaluate(() => window.__budget.wait()));
   }
 
+  await traceHeap(cdp, "開く・閉じるの後");
   // カードへ寄る: 検索の候補から、隠れている深いカードを押す（上流を開いて寄る）
   for (let k = 0; k < ROUNDS; k++) {
     const term = await page.evaluate((kk) => {
@@ -414,6 +425,7 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection()));
   }
 
+  await traceHeap(cdp, "寄るの後");
   // 1 年先まで開く: 今日を選んで、詳細の「1 年先まで（N 枚）」を押す（開いた後に詳細の枚数も作り直す。3,000 枚まで）
   for (let k = 0; k < ROUNDS; k++) {
     await page.evaluate(() => {
@@ -434,6 +446,7 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => window.__budget.frames());
   }
 
+  await traceHeap(cdp, "1 年先までの後");
   // 地図の中の形の編集: 見えている状態のカードを選んで Tab（子を足す）→ 書き始めをやめて元に戻す。
   // 狭い画面の最初の形は今日だけなので、今日の手を 2 つ開いておく（測らない）
   await page.evaluate(() => {
@@ -466,6 +479,7 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => window.__fourD.ui.clearSelection());
   }
 
+  await traceHeap(cdp, "形の編集の後");
   // シナリオを変える・外す（下の切替）
   for (let k = 0; k < ROUNDS; k++) {
     const chips = page.locator(".scen-chip");
@@ -478,6 +492,7 @@ async function measureProfile(browser, profile) {
     push("scenarioOff", await page.evaluate(() => window.__budget.wait()));
   }
 
+  await traceHeap(cdp, "シナリオの後");
   // 年収を変える（概要の「変える」→ 入れて「決める」）
   for (let k = 0; k < ROUNDS; k++) {
     await page.evaluate(() => window.__fourD.ui.clearSelection());
@@ -497,6 +512,7 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => window.__fourD.app.cmd.undo());
   }
 
+  await traceHeap(cdp, "年収の後");
   // 取り込み（別の端末の内容が届いた: 全部の入れ替え）。届いた写しは測る前に作る（手を 1 つ選んだ写し）。測った後は元に戻す
   for (let k = 0; k < ROUNDS; k++) {
     await page.evaluate((kk) => {
@@ -517,6 +533,7 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => window.__budget.frames());
   }
 
+  await traceHeap(cdp, "取り込みの後");
   // 変更の後 3 秒の長い仕事（空いた時間の計算が 1 つずつ短く分かれているか: 見直し perf-8）: シナリオ・年収・これにする
   const longAfter = async (fn) => {
     await page.evaluate(() => (window.__long = window.__budget.watchLong()));
@@ -558,6 +575,7 @@ async function measureProfile(browser, profile) {
     await page.waitForTimeout(1500);
   }
 
+  await traceHeap(cdp, "長い仕事の後");
   // 題名の 1 文字（変換中を含む。詳細の題名の欄）
   for (let k = 0; k < ROUNDS; k++) {
     const alts = await visibleAlts(page);
@@ -577,6 +595,7 @@ async function measureProfile(browser, profile) {
     if (narrow) await closePanels();
   }
 
+  await traceHeap(cdp, "題名の後");
   // 検索の 1 文字（変換中を含む）
   for (let k = 0; k < ROUNDS; k++) {
     const times = await page.evaluate(async (kk) => {
@@ -590,6 +609,7 @@ async function measureProfile(browser, profile) {
     for (const x of times) push("search", x);
   }
 
+  await traceHeap(cdp, "検索の後");
   // 使った後のヒープ: 10 回これにする（命令で）・1 年先まで開いたまま（今日の詳細の「1 年先まで」）・検索 1 回
   await page.evaluate(async () => {
     const f = window.__fourD;
