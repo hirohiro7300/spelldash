@@ -45,7 +45,8 @@ describe("生成 v2 の見直しの直し（文章）", () => {
           const o = map.child(a, k);
           const id = map.outId(o);
           const want = (id === "high_mid" ? [quarterSal(map, BANKS.C, cal, a, "high"), quarterSal(map, BANKS.C, cal, a, "mid")] : [quarterSal(map, BANKS.C, cal, a, id)]).filter((x): x is number => x !== null);
-          const at = body.indexOf(`『${map.label(o)}』なら`);
+          // 1.0（W3・con-3）: 結果の名前の後に、その結果の見込み（「（3 割）」）が入る
+          const at = new RegExp(`『${map.label(o).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}』(?:（[^）]*）)?なら`).exec(body)?.index ?? -1;
           if (at < 0) continue;
           const seg = body.slice(at).split("。")[0]!;
           for (const m of seg.matchAll(/今日の ([0-9.]+) 倍/g)) {

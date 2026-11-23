@@ -122,6 +122,15 @@ export interface Banks {
   lead: Record<string, Variant[]>;
   /** 手の時間とお金（その種類の初めてのときなど） */
   cost: Record<string, Variant[]>;
+  /**
+   * 1.0（W3・rep-2）: この手を今選ぶ訳（手の書き出し。手の種類ごと。条件は 1 つ前の判断の出来事 pev・状態など）。「『結果』を受けて、」の代わり。
+   * 関係の無い出来事の後は書かない（無い組は飛ばす）
+   */
+  why: Record<string, Variant[]>;
+  /** 1.0（W3・con-4）: 同じ種類の手の 2 回目からの進み具合（何回目か・前提の上限まであと何回か・ここまでに積んだ物）。手の種類ごと */
+  progress: Record<string, Variant[]>;
+  /** 1.0（W3・con-5）: この手を選ぶと、次の判断から決まりで選べなくなる手の言い方（手の種類ごと。_generic は決まった言い方） */
+  rules: Record<string, Variant[]>;
   /** 手の結果ごとの意味: 手の種類 → 結果の分類 → 組 */
   branch: Record<string, Record<string, Variant[]>>;
   /** 状態の出来事の文（できごとだけ。同じ出来事が道で何回も起きるときは、何回目かで言い換えを選ぶ） */
@@ -167,8 +176,6 @@ export interface Banks {
   short: Record<string, string>;
   /** 手の名詞の形（この後の目安の並び） */
   nextNoun: Record<string, string>;
-  /** 手をした後の言い方（「前の 3 か月は担当を広げた。」。reader-10） */
-  did: Record<string, string>;
   /** 標準の続きの 1 期の言い方（手の種類か「種類.出来事」。この後の目安の並び。reader-5） */
   contNoun: Record<string, string>;
 }

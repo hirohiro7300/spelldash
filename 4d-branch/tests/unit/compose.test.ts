@@ -3,13 +3,13 @@ import world from "../../scripts/impact/world.json";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { MapData } from "../../src/deepmap/mapData";
 import { SENTENCES } from "../../src/demo/compose/banks/sentences";
-import { adviceIn, adviceMatchers, asciiIds, bareBuIssues, checkBanks, checkCard, checkPaths, claimIssues, digitsOutside, eventMonthIssues, FIRST_STATE_MAX, LIMITS, listNameOf, numberWording, OVERCLAIMS, stateRecommendIssues, TWO_IF, TWO_LASTS, wishIndex } from "../../src/demo/compose/checks";
-import { cmpFrameOf, frameOf, FRAME_SOFT, sentencesOf, shownTotal, tieIssues } from "../../scripts/impact/textChecks";
+import { adviceIn, adviceMatchers, asciiIds, bareBuIssues, checkBanks, checkCard, checkPaths, claimIssues, digitsOutside, eventMonthIssues, FIRST_MOVE_MAX, FIRST_STATE_MAX, LIMITS, listNameOf, nextRecIssues, numberWording, outcomeSegment, OVERCLAIMS, pathContext, recommendIssues, stateRecommendIssues, TWO_IF, TWO_LASTS, wishIndex } from "../../src/demo/compose/checks";
+import { cmpFrameOf, frameOf, FRAME_SOFT, sentencesOf, shownTotal, skeleton, tieIssues } from "../../scripts/impact/textChecks";
 import { analyze, compileMap, textRuntime, type Analysis } from "../../src/deepmap/core";
-import { BANKS, composeCard, composeCont, composeMarkedCard, materializeBody, ripple, type Banks, type Card } from "../../src/demo/compose/index";
-import { allowedKind, FIRST_STATE_BUDGET, STATE_BUDGET } from "../../src/demo/compose/compose";
+import { BANKS, composeCard, composeCont, composeMarkedCard, materializeBody, optionValue, ripple, type Banks, type Card } from "../../src/demo/compose/index";
+import { allowedKind, FIRST_MOVE_BUDGET, FIRST_STATE_BUDGET, MOVE_BUDGET, STATE_BUDGET } from "../../src/demo/compose/compose";
 import { calendarOf, ctxOf, eventMonth, joinedAt, keepTotalOf, linkOf, weekday } from "../../src/demo/compose/path";
-import { oneIn, strip, wari } from "../../src/demo/compose/text";
+import { n0, oneIn, strip, wari } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
 import wishData from "../../src/demo/wishlist-data.json";
 import { F_ENDS, F_PORTFOLIO, F_PROMO2, F_SCOPE, F_STILL, header, MIX_SPLIT, MIX_SURE, RULES, TREE } from "./composeFixture";
@@ -341,10 +341,11 @@ describe("SPEC §4.2: 数の行と数の言い方", () => {
     for (const m of [map, rules])
       for (const annual of [360, 540])
         for (const i of all(m)) expect(numberWording(text(composeCard(m, i, { annual }))), m.key(i)).toEqual([]);
-    // 手の 3 か月は翌月から 3 か月。今日の手は「この 3 か月」と今月から言う（user-17）
-    expect(body(rules, find(rules, "r.tax", "a", 3))).toContain("2027 年 3 月〜5 月");
+    // 手の 3 か月は翌月から 3 か月。今日の手は「この 3 か月」と今月から言う（user-17）。1.0（W3・rep-2）: 今日より後の手は、その 3 か月を書き出しで
+    //   言い直さない（道の画面の行の見出しが言う。3 か月の言い方は標準の続きの行で見る）
+    expect(body(rules, find(rules, "r.tax", "a", 3))).not.toContain("2027 年 3 月〜5 月");
     expect(body(map, byKey(map, "r.keep"))).toMatch(/^この 3 か月（2026 年 12 月〜2027 年 2 月）は/);
-    expect(body(map, byKey(map, "r.ad_permside"))).toMatch(/^今月のうちに、本業のまま/);
+    expect(body(map, byKey(map, "r.ad_permside"))).toMatch(/^本業のまま、広告運用と SpellDash の両方を今月のうちに/);
   });
 
   it("顧客と学校の席は整数（ならした値・中身の幅でも端数を書かない。C5b）", () => {
@@ -626,10 +627,11 @@ describe("SPEC §4.2: 学校の年度・年月・題・英数字の名前", () =
     expect(asciiIds("SpellDash の Pro・GA4・CPA・D7・A4 1 枚")).toEqual([]);
     for (const m of [map, rules]) for (const i of all(m)) expect(asciiIds(text(composeCard(m, i, { annual: 360 }))), m.key(i)).toEqual([]);
     const first = body(rules, byKey(rules, "r.first.0fc_switch"));
-    expect(first).toContain("『少しか大きく上げて転職』なら");
-    expect(first).toContain("『転職せず』なら");
-    // 前の 3 か月の手は「〜した」で言う（reader-10）
-    expect(body(rules, all(rules).find((i) => /\.1zza\.all\.2k$/.test(rules.key(i)))!)).toMatch(/^前の 3 か月は別の手を選んだ。/);
+    // 1.0（W3・con-3）: 結果の名前の後に、その結果の見込み（割）
+    expect(first).toMatch(/『少しか大きく上げて転職』（[^）]*割[^）]*）なら/);
+    expect(first).toMatch(/『転職せず』（[^）]*割[^）]*）なら/);
+    // 1.0（W3・rep-2・rep-9）: 手の本文は、真上の状態のカードが言うその 3 か月（「前の 3 か月は…た」「『結果』を受けて」）を言い直さない
+    for (const m of [map, rules]) for (const i of all(m)) if (m.role(i) === "a") expect(body(m, i), m.key(i)).not.toMatch(/^前の 3 か月は|^『[^』]*』を受けて、/);
   });
 });
 
@@ -692,7 +694,7 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     expect(body(rules, find(rules, "r.merge", "a", 6))).toContain("（1 社 月 3 万円）");
     expect(body(map, byKey(map, "r.ad_permside.a0_a1.1ad"))).toContain("1 社 月 3 万円");
     expect(body(rules, find(rules, "r.fee", "a", 6))).toContain("（1 社 月 5 万円）");
-    expect(body(rules, find(rules, "r.fee", "a", 9))).toContain("『導入が決まる』なら 40 席分の売上が加わる");
+    expect(body(rules, find(rules, "r.fee", "a", 9))).toMatch(/『導入が決まる』（[^）]*）なら 40 席分の売上が加わる/);
     expect(body(rules, byKey(rules, "r.fee.0part.p.1keep.all.2ad_side.cl4.3sd_school.yes"))).toContain("40 席が有料の席として加わった");
     // 昇格の額は、結果の給与の差（4 月の昇給がかかった後。facts-6・reader-4）
     expect(body(rules, find(rules, "r.merge", "a", 3))).toContain("昇格すれば年収が 26 万円上がる");
@@ -708,7 +710,7 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     expect(stubA).not.toContain("まだ無い");
     // 結果の中身が同じなら、まとめて言う
     // 戻るのは標準の続きの会社員に戻る期（2029 年 5 月に選ぶ）の 3 か月目（fact-1）
-    expect(body(rules, byKey(rules, "r.twins"))).toContain("『顧客 0 社』でも『顧客 1 社』でも、多くの道で 2029 年 8 月に会社員に戻り");
+    expect(body(rules, byKey(rules, "r.twins"))).toMatch(/『顧客 0 社』（[^）]*）でも『顧客 1 社』（[^）]*）でも、多くの道で 2029 年 8 月に会社員に戻り/);
     // 中身の同じまとめた行き先は、同じだと言う
     expect(body(rules, byKey(rules, "r.twins.cl0"))).toContain("『顧客 1 社』の後と、標準の続きも 3 年後の姿も同じ。");
   });
@@ -742,8 +744,11 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     const rows = Array.from({ length: (rules.cont(i) ?? []).length }, (_, k) => composeCont(rules, i, k, { annual: 360 })!);
     expect(rows).toHaveLength(11);
     expect(rows[0]!.body).toMatch(/^2027 年 3 月〜5 月は、標準の選び方では『今のまま』の 3 か月。/);
+    // 1.0（W3・L2）: 見出し・出来事・静かな期は、期の並びで 3 つの言い方を回す（10 期並んでも 1 つの枠は 4 回まで）
+    expect(rows[1]!.body).toMatch(/^標準の選び方で続けると、2027 年 6 月〜8 月は『[^』]*』。/);
+    expect(rows[2]!.body).toMatch(/^この期（2027 年 9 月〜11 月）の標準の手は『[^』]*』。/);
     expect(rows[4]!.title).toBe("転職活動の続き（5 月に移る）");
-    expect(rows[4]!.body).toContain("この期に一番ありそうな出来事は『転職』。");
+    expect(rows[4]!.body).toContain("一番ありそうな出来事は『転職』とみる。");
     const cites = rows.flatMap((r) => r.todo.map((t) => t.cite));
     expect(new Set(cites).size).toBe(cites.length);
     for (const c of cites) expect(wish.has(c), c).toBe(true);
@@ -755,7 +760,9 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
 
 /** 使った文の型の名前（節.種類#組.言い換え）が束にあるか。文の型を使わない節の名前も認める */
 function resolves(banks: Banks, tag: string): boolean {
-  if (["watch:single", "watch:num", "watch:sum", "watch:sums", "watch:mix", "watch:scope", "ripple", "root", "sum:avg", "sum:mix", "sum:same", "cont", "value", "value:stub"].includes(tag)) return true;
+  if (["watch:single", "watch:num", "watch:sum", "watch:sums", "watch:mix", "watch:scope", "watch:client", "watch:keep", "ripple", "root", "sum:avg", "sum:mix", "sum:same", "cont", "value", "value:stub"].includes(tag)) return true;
+  // 1.0（W3）: 手の数の枠（組み立て側の決まった枠。分かれ道・結果ごとの次のおすすめ・4 月の評価を逃す文・長さの目安で落とした文）
+  if (/^move:(?:forks|next|april|drop:\w+)$/.test(tag)) return true;
   // 0.8（W2）: 状態の数の枠（組み立て側の決まった枠。束の型は使わない）
   if (/^state:(?:quarter|total|contrast|menu|forks|next|thread|then|then:share|then:cap|then:keep|(?:short|drop):\w+)$/.test(tag)) return true;
   // 0.9: 並びの違いを言った手（決まりで変わった手。R2）と、おすすめの手のカードの数の訳（F8）
@@ -1497,5 +1504,204 @@ describe("文章の波 1 の見直しの直し（text-w1/review の R*・F*・co
     expect(new Set(got).size).toBe(7);
     expect(got.every((x) => x !== null && x.startsWith("枠 "))).toBe(true);
     expect(cmpFrameOf("2028 年 5 月、昇格した。4 割の見込みで起きた結果で、3 か月前と比べた月の稼ぎは +3.9 万円。")).toBeNull();
+  });
+});
+
+describe("文章の波 1b の W3（手のカード: text-w1/audit の con-3・con-4・con-5・con-12・con-15・rep-1・rep-2・rep-9・rep-11・L1・L2。文の型 1.0）", () => {
+  type Rt = ReturnType<typeof textRuntime>;
+  const memo = new Map<number, { map: MapData; a: Analysis; rt: Rt }>();
+  const qs = async (annual: number): Promise<{ map: MapData; a: Analysis; rt: Rt }> => {
+    let hit = memo.get(annual);
+    if (!hit) {
+      const map = await loadQSmall();
+      const a = analyze(compileMap(map), annual);
+      memo.set(annual, (hit = { map, a, rt: textRuntime(a) }));
+    }
+    return hit;
+  };
+  const kids = (m: MapData, i: number): number[] => Array.from({ length: m.childCount(i) }, (_, k) => m.child(i, k));
+  const esc = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  it("con-3: 結果が 2 つ以上の手は結果ごとの見込み（割）を言い、広げた手は結果ごとの分かれ道の数と、結果ごとの次の判断のおすすめ（画面と同じ手）を言う", async () => {
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      let odds = 0;
+      let split = 0;
+      for (const a of all(map)) {
+        if (map.role(a) !== "a" || map.childCount(a) < 2) continue;
+        const ks = kids(map, a);
+        const c = composeCard(map, a, { annual, rt });
+        const b = c.body;
+        for (const o of ks) {
+          const p = map.p(o);
+          if (p <= 0 || p >= 100) continue;
+          expect(b, `${map.key(a)}: ${b}`).toContain(`『${map.label(o)}』（${strip(wari(p / 100))}）`);
+          odds++;
+        }
+        expect(nextRecIssues(map, a, b, (d) => rt.recommended(d)), map.key(a)).toEqual([]);
+        if (map.stub(a) || map.month(a) === 0 || !ks.every((o) => map.role(o) === "s" && map.childCount(o) > 0)) continue;
+        split++;
+        for (const o of ks) expect(b, `${map.key(a)}: ${b}`).toMatch(new RegExp(`『${esc(map.label(o))}』の後(?:に|に続くのが|が) ${n0(ripple(map, o).forks)}`));
+        // 長さの目安で落とした手（結果が 4 つの届け出など）は除く
+        if (!c.trace.includes("move:drop:next")) expect(b, map.key(a)).toMatch(/次の判断（[^）]*）のおすすめは|に選ぶ手は、|おすすめの次の手は結果で変わり|どの結果の後も|結果によらず、次に選ぶおすすめの手は/);
+      }
+      expect(odds).toBeGreaterThan(50);
+      expect(split).toBeGreaterThan(10);
+    }
+    // わざと違う手を言う文は見つける
+    const { map, rt } = await qs(360);
+    const a = all(map).find((x) => map.role(x) === "a" && !map.stub(x) && map.month(x) > 0 && map.childCount(x) >= 2 && kids(map, x).every((o) => map.role(o) === "s" && rt.recommended(o) >= 0))!;
+    const o = map.child(a, 0);
+    expect(nextRecIssues(map, a, `次の判断（2027 年 5 月）のおすすめは、『${map.label(o)}』なら『ほかの手』。`, (d) => rt.recommended(d))).toHaveLength(1);
+    expect(nextRecIssues(map, a, `次の判断（2027 年 5 月）のおすすめは、『${map.label(o)}』なら『${listNameOf(map, rt.recommended(o))}』。`, (d) => rt.recommended(d))).toEqual([]);
+  });
+
+  it("rep-1・con-15・L1: 見積もり方の長い言い方は今日の手（道で最初に広げた手）だけ。その後の広げた手の 3 年の見積もりは、短い言い方を道の上の位置で 3 つ回し、おすすめの手はそう言う", async () => {
+    const { map, rt } = await qs(360);
+    const forms = [/までの稼ぎの見積もりは [\d,.]+ 万円/, /この手を選ぶと、[^。]*までの稼ぎは [\d,.]+ 万円ほどの見積もり/, /見積もりでは、ここから [^。]*までに [\d,.]+ 万円を稼ぐ/];
+    const seen = [0, 0, 0];
+    for (const a of all(map)) {
+      if (map.role(a) !== "a" || map.stub(a)) continue;
+      const b = composeCard(map, a, { annual: 360, rt }).body;
+      if (map.month(a) === 0) {
+        expect(b).toContain("その後を標準の選び方で続けた見積もりで");
+        continue;
+      }
+      expect(b, map.key(a)).not.toContain("その後を標準の選び方で続けた見積もりで");
+      if (optionValue(map, a, 360) === null) continue;
+      const k = (map.month(a) / 3) % 3;
+      expect(b, `${map.key(a)}: ${b}`).toMatch(forms[k]!);
+      seen[k]!++;
+      expect(recommendIssues(map, a, b, (d) => rt.recommended(d)), map.key(a)).toEqual([]);
+    }
+    expect(Math.min(...seen)).toBeGreaterThan(20);
+  });
+
+  it("rep-2・rep-9: 手の書き出しは『結果』を受けての言葉でも、その 3 か月の期間でもない。同じ判断に並ぶ手の書き出し（最初の 14 字）は同じにならない", async () => {
+    const { map, rt } = await qs(360);
+    let pairs = 0;
+    let same = 0;
+    for (const d of all(map)) {
+      if (map.role(d) !== "s") continue;
+      const opts = kids(map, d).filter((x) => map.role(x) === "a");
+      const heads = opts.map((x) => [...composeCard(map, x, { annual: 360, rt }).body.replace(/[0-9][0-9,.]*/g, "#")].slice(0, 14).join(""));
+      for (const [k, x] of opts.entries()) {
+        const b = composeCard(map, x, { annual: 360, rt }).body;
+        expect(b, map.key(x)).not.toMatch(/^『[^』]*』を受けて|^前の 3 か月は|^\d{4} 年 \d{1,2} 月〜/);
+        for (let j = k + 1; j < opts.length; j++) {
+          pairs++;
+          if (heads[k] === heads[j]) same++;
+        }
+      }
+    }
+    expect(pairs).toBeGreaterThan(100);
+    expect(same / pairs).toBeLessThan(0.05);
+  });
+
+  it("con-5: 『転職せず』の後の判断に転職活動が並ばないなら、続けて探すとは言わず、決まりの上限か並ばないことを言う（点検 C12）", async () => {
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      let none = 0;
+      for (const a of all(map)) {
+        if (map.role(a) !== "a" || !/^fc_switch2?$/.test(map.kind(a) ?? "")) continue;
+        const b = composeCard(map, a, { annual, rt }).body;
+        expect(pathContext(map, a, b, composeCard(map, a, { annual, rt })), map.key(a)).toEqual([]);
+        for (const o of kids(map, a)) {
+          if (map.outId(o) !== "none" || map.role(o) !== "s") continue;
+          const next = kids(map, o).some((x) => /^fc_switch2?$/.test(map.kind(x) ?? ""));
+          const seg = outcomeSegment(b, map.label(o));
+          expect(seg, map.key(a)).not.toBeNull();
+          if (!next) {
+            none++;
+            expect(seg, `${map.key(a)}: ${b}`).toMatch(/並ばない|ほかの手から選ぶ|休む|使い切|で終わる/);
+          } else expect(seg, `${map.key(a)}: ${b}`).toMatch(/次の 3 か月も|続きが並ぶ|もう 1 期/);
+        }
+      }
+      expect(none).toBeGreaterThan(0);
+    }
+  });
+
+  it("con-5・con-4: 決まりで次の判断から選べなくなる手を言い、それは次の判断の並びと食い違わない。4 月の評価の判断でほかの手を選ぶと、次の評価までを言う", async () => {
+    const { map, rt } = await qs(360);
+    let rules = 0;
+    let april = 0;
+    for (const a of all(map)) {
+      if (map.role(a) !== "a") continue;
+      const b = composeCard(map, a, { annual: 360, rt }).body;
+      if (/次の判断から[^。]*並ばない|後からは選べない|次からは選べない|会社員に戻るまで/.test(b)) {
+        rules++;
+        // 結果の後の判断に、その手は並ばない（広げた手）
+        if (!map.stub(a) && map.kind(a) === "sd_retain") for (const o of kids(map, a)) for (const x of kids(map, o)) expect(map.kind(x), map.key(x)).not.toBe("sd_retain");
+      }
+      if (/の評価で昇格は狙わず|の評価は昇格を狙わずに過ぎ|昇格を狙わないまま/.test(b)) {
+        april++;
+        expect(map.kind(a)).not.toBe("fc_push");
+        expect(kids(map, map.parent(a)).some((x) => map.kind(x) === "fc_push"), map.key(a)).toBe(true);
+      }
+    }
+    expect(rules).toBeGreaterThan(20);
+    expect(april).toBeGreaterThan(20);
+  });
+
+  it("con-4: 同じ種類の手の 2 回目からは、題が何回目か・何期目かを言い（兄弟の題は違う・16 字まで）、本文が前提の上限まであと何回かを言う", async () => {
+    const { map, rt } = await qs(360);
+    let titled = 0;
+    let left = 0;
+    for (const a of all(map)) {
+      if (map.role(a) !== "a") continue;
+      const c = composeCard(map, a, { annual: 360, rt });
+      expect([...c.title].length, c.title).toBeLessThanOrEqual(LIMITS.a.title);
+      if (/[0-9]+ (?:回|期)目/.test(c.title)) titled++;
+      if (/残りは [0-9]+ 期|あと [0-9]+ 期|この期が最後|最後の 1 期|最後の期/.test(c.body)) left++;
+    }
+    expect(titled).toBeGreaterThan(100);
+    expect(left).toBeGreaterThan(20);
+  });
+
+  it("con-12・rep-11: 顧客探しの手の結果が 1 つなら、遊ぶ人の数より先に顧客の見込みを言う。今のままは続けている開発の分の伸びを言う", async () => {
+    const { map, rt } = await qs(360);
+    let client = 0;
+    let keep = 0;
+    for (const a of all(map)) {
+      if (map.role(a) !== "a" || map.stub(a) || map.childCount(a) !== 1) continue;
+      const b = composeCard(map, a, { annual: 360, rt }).body;
+      if ((map.kind(a) === "ad_side" || map.kind(a) === "ad_more") && /顧客が [0-9]+ 社になっている見込み|顧客は [0-9]+ 社(?:になる|まで増える|で 3 か月を終える)見込み|社になる見込みは/.test(b)) {
+        client++;
+        const at = b.search(/顧客が [0-9]+ 社になっている見込み|顧客は [0-9]+ 社|社になる見込み/);
+        const mau = b.indexOf("月に遊ぶ人");
+        if (mau >= 0) expect(at, b).toBeLessThan(mau);
+      }
+      if (map.kind(a) === "keep" && /続けている開発で月に遊ぶ人は|足さない間も|手を足さなくても/.test(b)) keep++;
+    }
+    expect(client).toBeGreaterThan(0);
+    expect(keep).toBeGreaterThan(20);
+  });
+
+  it("長さ: 手の本文の目安（MOVE_BUDGET・FIRST_MOVE_BUDGET）は点検 C3 の上より短く、どの手も上を超えない", async () => {
+    expect(MOVE_BUDGET).toBeLessThan(LIMITS.a.max);
+    expect(FIRST_MOVE_BUDGET).toBeLessThan(FIRST_MOVE_MAX);
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      for (const a of all(map)) {
+        if (map.role(a) !== "a") continue;
+        const n = [...composeCard(map, a, { annual, rt }).body].length;
+        expect(n, map.key(a)).toBeLessThanOrEqual(map.month(a) === 0 ? FIRST_MOVE_MAX : LIMITS.a.max);
+      }
+    }
+  });
+
+  it("L2: 束の進み具合（progress）と選べなくなる手（rules）の言い換えは、どれも構造の文（数の枠）", () => {
+    let n = 0;
+    for (const sec of ["progress", "rules"] as const)
+      for (const vs of Object.values(BANKS[sec]))
+        for (const g of vs)
+          for (const v of g.v)
+            for (const piece of v.split("。")) {
+              const t = piece.replace(/\{(\w+)\}/g, (_m, k: string) => (k === "closedList" ? "転職活動" : k === "job" ? "会社員" : "3"));
+              if ([...t].length <= 8) continue;
+              expect(skeleton(t), t).toBeNull();
+              n++;
+            }
+    expect(n).toBeGreaterThan(40);
   });
 });
