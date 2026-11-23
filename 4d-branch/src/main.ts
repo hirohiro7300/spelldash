@@ -12,7 +12,9 @@ import { buildDemoDoc } from "./demo/demo";
 import { loadImpactBundle } from "./demo/futureBundle";
 import { loadPageMap, PAGE_Q, PAGE_Q_RELEASE } from "./demo/pageBundle";
 import { buildStressDoc } from "./demo/stress";
-import type { DocData } from "./model/types";
+import type { MapData } from "./deepmap/mapData";
+import { statusCode } from "./model/impactGraph";
+import type { DocData, GNode } from "./model/types";
 import { decodeStored, enableThinPage, setBeforeMapDecode, thinReadable, toStored, watchThinWrites } from "./persist/codec";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
@@ -73,7 +75,7 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
     if (PAGE_Q)
       setBeforeMapDecode(async (raw) => {
         const map = await loadPageMap();
-        if (map) await paintDeepSplash(mount, map, ...storedAnnual(raw));
+        if (map) await paintDeepSplash(mount, map, storedAnnual(raw)[0], storedStatus(raw, map));
       });
     const loaded = await persistence.loadInitial({ reopen: opts.reopen }).finally(() => setBeforeMapDecode(null));
     if (loaded.blocked) {
@@ -141,6 +143,28 @@ function storedAnnual(raw: unknown): [number] | [] {
     if (b !== undefined) return [b];
   }
   return [];
+}
+
+/**
+ * 保存してあった薄い形の記録の、選んだ手・見送った手（地図の番号ごと: statusCode。先に描く見取り図に使う）。この地図と同じ版・同じ組み立ての
+ * 記録だけ（ほかは null: 選んだ手の無い見取り図）。読めない所は飛ばす（見取り図だけの目安。アプリは読んだ文書から数え直し、同じ並びなら
+ * この計算をそのまま使う）
+ */
+function storedStatus(raw: unknown, map: MapData): Uint8Array | null {
+  const r = raw as { maps?: unknown } | null;
+  const s = r && typeof r === "object" && Array.isArray(r.maps) && r.maps.length === 1 ? (r.maps[0] as { hash?: unknown; release?: unknown; n?: unknown } | null) : null;
+  if (!s || typeof s !== "object" || s.hash !== map.header.hash || s.release !== map.header.release) return null;
+  const n = s.n && typeof s.n === "object" ? (s.n as Record<string, unknown>) : {};
+  const out = new Uint8Array(map.n);
+  for (const k of Object.keys(n)) {
+    const p = n[k] as { f?: { status?: unknown } } | null;
+    const st = p && typeof p === "object" ? p.f?.status : undefined;
+    if (typeof st !== "string") continue;
+    const i = map.indexOfKey(k);
+    if (i < 0 || map.role(i) !== "a") continue;
+    out[i] = statusCode({ status: st } as GNode);
+  }
+  return out;
 }
 
 /** 起動できなかった（何も書いていない） */

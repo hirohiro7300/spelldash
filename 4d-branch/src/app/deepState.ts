@@ -162,10 +162,34 @@ export function plainAnalysis(cm: CompiledMap, annual: number): Analysis {
   return a;
 }
 
-/** その計算の見取り図の数（plainAnalysis の物なら覚える） */
+/**
+ * 選んだ手・見送った手のある計算（地図ごとに最後の 1 つを覚える。起動の前に見取り図だけ先に描いたとき、保存してあった選んだ手で数えた物を、
+ * アプリの画面でもそのまま使う: 同じ地図・年収・選んだ手の並びなら数え直さない。見直し perf-1）
+ */
+const statusMemo = new WeakMap<CompiledMap, { annual: number; status: Uint8Array; a: Analysis; ov: Overview | null }>();
+
+const sameBytes = (a: Uint8Array, b: Uint8Array): boolean => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+};
+
+/** 選んだ手・見送った手（地図の番号ごと: statusCode）での計算。どれも 0 なら plainAnalysis */
+export function statusAnalysis(cm: CompiledMap, annual: number, status: Uint8Array): Analysis {
+  if (isZero(status)) return plainAnalysis(cm, annual);
+  const m = statusMemo.get(cm);
+  if (m && m.annual === annual && sameBytes(m.status, status)) return m.a;
+  const a = analyze(cm, annual, { status });
+  statusMemo.set(cm, { annual, status: status.slice(), a, ov: null });
+  return a;
+}
+
+/** その計算の見取り図の数（plainAnalysis・statusAnalysis の物なら覚える） */
 export function plainOverview(cm: CompiledMap, a: Analysis): Overview {
   const m = plainMemo.get(cm);
   if (m && m.a === a) return (m.ov ??= overview(a));
+  const sm = statusMemo.get(cm);
+  if (sm && sm.a === a) return (sm.ov ??= overview(a));
   return overview(a);
 }
 
@@ -419,8 +443,9 @@ export class DeepState {
         // 選んだ手も見送った手も無い: 先に描いた見取り図と同じ計算を使う
         if (isZero(st.arr)) calc.a = plainAnalysis(cm, annual);
         else {
-          calc.a = analyze(cm, annual, { status: st.arr });
-          // 先に描いた見取り図の計算（選んだ手の無い物）は、もう使わないので持ち続けない（10 本ほどの 8 万の列: 見直し perf-6）
+          // 先に描いた見取り図が同じ選んだ手で数えていれば、その物（statusAnalysis）
+          calc.a = statusAnalysis(cm, annual, st.arr);
+          // 選んだ手の無い計算は、もう使わないので持ち続けない（10 本ほどの 8 万の列: 見直し perf-6）
           plainMemo.delete(cm);
         }
         this.timings.analyze = performance.now() - t0;
