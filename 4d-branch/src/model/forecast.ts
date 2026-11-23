@@ -223,6 +223,26 @@ class ReachMap implements ReadonlyMap<ID, Reach> {
  * 作り直すのは、見込みに使う物（道の線・% ・線のシナリオ・入口・種類）が変わったとき（読み手が版で決める）。
  * tests/unit/forecastFast.test.ts が computeForecast と同じかを確かめる
  */
+/** 計画のノード 1 つの分かれ道の種類と分け方（edges はそのノードの出る道の線。範囲の外は種類 null） */
+function planNode(n: GNode, id: ID, edges: readonly GEdge[], scope: ReadonlySet<ID>): { kind: ForkKind | null; split: number[] } {
+  const cnt = edges.length;
+  let self = false;
+  for (const e of edges) if (e.target === id) self = true;
+  // 分かれ道の種類（自分への線を除く出る線で決める: forkKindOf）と分け方（splitOf）。印（meta.fork）のある所は並びを作らずに
+  let kind: ForkKind | null = null;
+  if (scope.has(id)) {
+    const f = n.meta?.fork;
+    if (cnt === 0 || (self && !edges.some((e) => e.source !== e.target))) kind = "leaf";
+    else if (f === "decision" || f === "chance") kind = f;
+    else kind = forkKindOf(n, edges.filter((e) => e.source !== e.target));
+  }
+  const split: number[] = [];
+  if (kind !== null && kind !== "chance") for (let k = 0; k < cnt; k++) split.push(1);
+  else if (kind === "chance") pushChance(edges, 0, cnt, split);
+  else for (const x of splitOf(n, edges.slice(), kind)) split.push(x);
+  return { kind, split };
+}
+
 /** 計画の中身（ForecastPlan が持つ物） */
 interface PlanParts {
   ids: ID[];
@@ -257,11 +277,9 @@ function* planParts(doc: DocData, out: Map<ID, ID[]>, inp: ForecastInputs): Gene
     const n = doc.nodes[id]!;
     offL.push(edges.length);
     const a = edges.length;
-    let self = false;
     for (const eid of out.get(id) ?? []) {
       const e = doc.edges[eid];
       if (!e || (e.relation !== "leads" && e.relation !== "condition") || !doc.nodes[e.target]) continue;
-      if (e.target === id) self = true;
       edges.push(e);
       let j = idx.get(e.target);
       if (j === undefined) {
@@ -271,19 +289,9 @@ function* planParts(doc: DocData, out: Map<ID, ID[]>, inp: ForecastInputs): Gene
       }
       tgtL.push(j);
     }
-    const cnt = edges.length - a;
-    // 分かれ道の種類（自分への線を除く出る線で決める: forkKindOf）と分け方（splitOf）。印（meta.fork）のある所は並びを作らずに
-    let kind: ForkKind | null = null;
-    if (scope.has(id)) {
-      const f = n.meta?.fork;
-      if (cnt === 0 || (self && !edges.slice(a).some((e) => e.source !== e.target))) kind = "leaf";
-      else if (f === "decision" || f === "chance") kind = f;
-      else kind = forkKindOf(n, edges.slice(a).filter((e) => e.source !== e.target));
-    }
-    kinds.push(kind);
-    if (kind !== null && kind !== "chance") for (let k = 0; k < cnt; k++) splitL.push(1);
-    else if (kind === "chance") pushChance(edges, a, edges.length, splitL);
-    else for (const x of splitOf(n, edges.slice(a), kind)) splitL.push(x);
+    const x = planNode(n, id, edges.slice(a), scope);
+    kinds.push(x.kind);
+    for (const w of x.split) splitL.push(w);
   }
   offL.push(edges.length);
   return { ids, idx, off: Int32Array.from(offL), tgt: Int32Array.from(tgtL), edges, kinds, split: Float64Array.from(splitL), rootIdx };
@@ -300,15 +308,15 @@ export class ForecastPlan {
   private readonly ids: ID[];
   private readonly idx: Map<ID, number>;
   /** 出る線（outsOf の方針なしの物と同じ選び方・並び）: [off[i], off[i + 1]) */
-  private readonly off: Int32Array;
-  private readonly tgt: Int32Array;
-  private readonly edges: GEdge[];
+  private off: Int32Array;
+  private tgt: Int32Array;
+  private edges: GEdge[];
   /** 分かれ道の種類（範囲の外は null） */
-  private readonly kinds: Array<ForkKind | null>;
+  private kinds: Array<ForkKind | null>;
   /** 方針なしの分け方（結果の線の割合。判断・通過は 1。範囲の外の分岐は方針で変わるので、方針があればその都度） */
-  private readonly split: Float64Array;
+  private split: Float64Array;
   private readonly rootIdx: number[];
-  private readonly scope: ReadonlySet<ID>;
+  private scope: ReadonlySet<ID>;
   constructor(
     private doc: DocData,
     out: Map<ID, ID[]>,
@@ -368,6 +376,99 @@ export class ForecastPlan {
       const e = doc.edges[edges[k]!.id];
       if (e) edges[k] = e;
     }
+  }
+
+  /**
+   * 葉のカードを足した・消しただけの変更（Tab・その元に戻す・行き先を消す。見込みに使う所の変更はその線とノードだけ）を、
+   * 計画を作り直さずに直す（作業メモ perf-4）。touched は線を足した・消したノードとその先（出る線・種類を読み直す）、gone は消したノード、
+   * scope は変更の後の範囲。新しく届くノードは後ろの番号に足す（流す答えは番号の振り方に依らない: 入口・線の並び・届いた順だけで決まる）。
+   * 入口を消すなど直せなければ false（読み手が作り直す）
+   */
+  patch(doc: DocData, out: Map<ID, ID[]>, scope: ReadonlySet<ID>, touched: Iterable<ID>, gone: Iterable<ID>): boolean {
+    const idx = this.idx;
+    const ids = this.ids;
+    for (const id of gone) {
+      const i = idx.get(id);
+      if (i === undefined) continue;
+      if (this.rootIdx.includes(i)) return false;
+      // 消したノードの番号は使わない（そこへの線は、線の元を読み直して外す）
+      idx.delete(id);
+    }
+    this.doc = doc;
+    this.scope = scope;
+    const lists = new Map<number, { edges: GEdge[]; tgt: number[]; kind: ForkKind | null; split: number[] }>();
+    const queue: number[] = [];
+    for (const id of touched) {
+      const i = idx.get(id);
+      if (i !== undefined && !lists.has(i)) {
+        lists.set(i, { edges: [], tgt: [], kind: null, split: [] });
+        queue.push(i);
+      }
+    }
+    if (!queue.length) return true;
+    for (let k = 0; k < queue.length; k++) {
+      const i = queue[k]!;
+      const id = ids[i]!;
+      const n = doc.nodes[id];
+      if (!n) return false;
+      const x = lists.get(i)!;
+      for (const eid of out.get(id) ?? []) {
+        const e = doc.edges[eid];
+        if (!e || (e.relation !== "leads" && e.relation !== "condition") || !doc.nodes[e.target]) continue;
+        x.edges.push(e);
+        let j = idx.get(e.target);
+        if (j === undefined) {
+          // 新しく届くノード: 後ろの番号に足し、その出る線も読む
+          j = ids.length;
+          idx.set(e.target, j);
+          ids.push(e.target);
+          lists.set(j, { edges: [], tgt: [], kind: null, split: [] });
+          queue.push(j);
+        }
+        x.tgt.push(j);
+      }
+      const p = planNode(n, id, x.edges, scope);
+      x.kind = p.kind;
+      x.split = p.split;
+    }
+    // 線の並びを作り直す（読み直したノードはその線、ほかは前の線）
+    const N = ids.length;
+    let slots = 0;
+    for (let i = 0; i < N; i++) {
+      const x = lists.get(i);
+      slots += x ? x.edges.length : this.off[i + 1]! - this.off[i]!;
+    }
+    const off = new Int32Array(N + 1);
+    const tgt = new Int32Array(slots);
+    const split = new Float64Array(slots);
+    const edges = new Array<GEdge>(slots);
+    const kinds = this.kinds.slice();
+    let s = 0;
+    for (let i = 0; i < N; i++) {
+      off[i] = s;
+      const x = lists.get(i);
+      if (x) {
+        for (let k = 0; k < x.edges.length; k++, s++) {
+          tgt[s] = x.tgt[k]!;
+          split[s] = x.split[k]!;
+          edges[s] = x.edges[k]!;
+        }
+        kinds[i] = x.kind;
+      } else {
+        for (let k = this.off[i]!; k < this.off[i + 1]!; k++, s++) {
+          tgt[s] = this.tgt[k]!;
+          split[s] = this.split[k]!;
+          edges[s] = this.edges[k]!;
+        }
+      }
+    }
+    off[N] = s;
+    this.off = off;
+    this.tgt = tgt;
+    this.split = split;
+    this.edges = edges;
+    this.kinds = kinds;
+    return true;
   }
 
   run(scenarioId: ID | null): ForecastResult {

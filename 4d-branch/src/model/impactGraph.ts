@@ -261,7 +261,7 @@ export function slotOfEdge(topo: Topo, e: { id: ID; target: ID }): number {
 }
 
 /** 入ってくる線（incCount[j + 1] = j へ入る線の数）。2 本以上入るノードがあれば merges */
-function incoming(n: number, tgt: Int32Array, incCount: Int32Array): { incOff: Int32Array; incSlot: Int32Array; merges: boolean } {
+export function incoming(n: number, tgt: Int32Array, incCount: Int32Array): { incOff: Int32Array; incSlot: Int32Array; merges: boolean } {
   const incOff = new Int32Array(n + 1);
   let merges = false;
   for (let i = 0; i < n; i++) {
@@ -305,143 +305,186 @@ function probNum(e: GEdge): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : NaN;
 }
 
+/** 数の入れ物（作るときだけ書く。Nums として渡した後は書き換えない） */
+export type NumsArrays = { -readonly [K in keyof Nums]: Nums[K] };
+
+/** 数を入れるときの入口の物（期限の起点・入口の月の稼ぎ・線の見込みの入れ物） */
+export interface NumsBase {
+  readonly H: number;
+  readonly rootDay: number | null;
+  readonly rootRR: Float64Array;
+  readonly probs: Float64Array;
+}
+
+export function numsBase(topo: Topo, seen: Seen): NumsBase {
+  const r0 = topo.roots[0];
+  const rootNode = r0 !== undefined ? seen.nodeObj[r0] : undefined;
+  const rootDay = rootNode && isDateStr(rootNode.time.due) ? dayNumber(rootNode.time.due) : null;
+  const rootRR = new Float64Array(3);
+  if (!read3(rootNode?.meta?.rr, rootRR, 0)) rootRR.set([1, 0, 0]);
+  return { H: rootConfig(topo, seen).horizon, rootDay, rootRR, probs: new Float64Array(16) };
+}
+
+/**
+ * ノード i の数（fillNums の 1 回目の所。tFloorI は先に数えた親の月の大きい方）: 種類・並び・今のまま・数字なし・手の種類・q・まとめ・月・
+ * 月の稼ぎと、出る線の割合と線の並び。q を読んだら true
+ */
+export function numsNode(topo: Topo, seen: Seen, x: NumsArrays, b: NumsBase, i: number, tFloorI: number): boolean {
+  const { off, firstParent } = topo;
+  const { kind, t, rr, w, rank, isBase, noData, fam, rvKey, rvCat, q, stub, sum } = x;
+  const node = seen.nodeObj[i]!;
+  const edgeObj = seen.edgeObj;
+  const meta = node.meta;
+  const a = off[i]!;
+  const e = off[i + 1]!;
+  const deg = e - a;
+  // 線の見込み（null は NaN）
+  let anyProb = false;
+  let known = 0;
+  let sumKnown = 0;
+  const pr = deg <= b.probs.length ? b.probs : new Float64Array(deg);
+  for (let s = a; s < e; s++) {
+    const p = probNum(edgeObj[s]!);
+    pr[s - a] = p;
+    if (!Number.isNaN(p)) {
+      anyProb = true;
+      known++;
+      sumKnown = sumKnown + p;
+    } else sumKnown = sumKnown + 0;
+  }
+  // 分かれ道の種類（forkKindOf と同じ順で決める）
+  let k: number;
+  const fork = meta?.fork;
+  if (deg === 0) k = LEAF;
+  else if (fork === "decision") k = DECISION;
+  else if (fork === "chance") k = CHANCE;
+  else if (anyProb) k = CHANCE;
+  else if (deg >= 2) k = node.type === "goal" || node.type === "branch" ? DECISION : CHANCE;
+  else k = PASS;
+  kind[i] = k;
+  rank[i] = typeof meta?.rank === "number" && Number.isFinite(meta.rank) ? (meta.rank as number) : 1e9 + i;
+  isBase[i] = meta?.base === true ? 1 : 0;
+  const ownRR = read3(meta?.rr, rr, i * 3);
+  noData[i] = deg === 0 && !ownRR && typeof meta?.ak !== "string" && meta?.end !== true && !meta?.forecastRoot ? 1 : 0;
+  fam[i] = typeof meta?.fam === "string" ? (meta.fam as string) : typeof meta?.ak === "string" ? (meta.ak as string) : "";
+  let hasQ = false;
+  if (read3(meta?.q, q, i * 3)) hasQ = true;
+  else q[i * 3] = q[i * 3 + 1] = q[i * 3 + 2] = NaN;
+  stub[i] = meta?.stub === true ? 1 : 0;
+  sum[i] = meta?.sum === true ? 1 : 0;
+  const fp = firstParent[i]!;
+  const m = meta?.m;
+  let ti: number;
+  if (typeof m === "number" && Number.isFinite(m)) ti = m;
+  else if (b.rootDay !== null && isDateStr(node.time.due)) ti = (dayNumber(node.time.due) - b.rootDay) / 30.44;
+  else ti = fp >= 0 ? t[fp]! : 0;
+  t[i] = Math.min(b.H, Math.max(0, tFloorI, ti));
+  if (!ownRR) {
+    if (fp >= 0) {
+      rr[i * 3] = rr[fp * 3]!;
+      rr[i * 3 + 1] = rr[fp * 3 + 1]!;
+      rr[i * 3 + 2] = rr[fp * 3 + 2]!;
+    } else {
+      rr[i * 3] = b.rootRR[0]!;
+      rr[i * 3 + 1] = b.rootRR[1]!;
+      rr[i * 3 + 2] = b.rootRR[2]!;
+    }
+  }
+  // 結果の割合（chanceWeights と同じ: % の無い線には残りを等分。どれにも無いか合計が 0 なら等分）
+  if (k === CHANCE) {
+    if (known === 0) for (let s = a; s < e; s++) w[s] = 1 / deg;
+    else {
+      const unknown = deg - known;
+      const share = unknown ? Math.max(0, 100 - sumKnown) / unknown : 0;
+      let total = 0;
+      for (let s = a; s < e; s++) {
+        const p = pr[s - a]!;
+        total = total + (Number.isNaN(p) ? share : p);
+      }
+      for (let s = a; s < e; s++) {
+        const p = pr[s - a]!;
+        w[s] = total > 0 ? (Number.isNaN(p) ? share : p) / total : 1 / deg;
+      }
+    }
+  } else for (let s = a; s < e; s++) w[s] = 1;
+  for (let s = a; s < e; s++) {
+    const rv = edgeObj[s]!.meta?.rv;
+    if (Array.isArray(rv) && typeof rv[0] === "string" && typeof rv[1] === "string") {
+      rvKey[s] = rv[0];
+      rvCat[s] = rv[1];
+    } else rvKey[s] = rvCat[s] = null;
+  }
+  return hasQ;
+}
+
+/** ノード i の出る線の稼ぎと、判断の今のままの線（fillNums の 2 回目の所。全部の月が決まってから） */
+export function numsEdges(topo: Topo, seen: Seen, x: NumsArrays, i: number): void {
+  const { off, tgt } = topo;
+  const { kind, t, rr, er, base, isBase } = x;
+  for (let s = off[i]!; s < off[i + 1]!; s++) {
+    if (!read3(seen.edgeObj[s]!.meta?.r, er, s * 3)) {
+      const j = tgt[s]!;
+      const dt = j >= 0 ? Math.max(0, t[j]! - t[i]!) : 0;
+      er[s * 3] = rr[i * 3]! * dt;
+      er[s * 3 + 1] = rr[i * 3 + 1]! * dt;
+      er[s * 3 + 2] = rr[i * 3 + 2]! * dt;
+    }
+  }
+  base[i] = -1;
+  if (kind[i] === DECISION) {
+    for (let s = off[i]!; s < off[i + 1]!; s++) {
+      const j = tgt[s]!;
+      if (j >= 0 && isBase[j]) {
+        base[i] = s;
+        break;
+      }
+    }
+  }
+}
+
+/** 空の数の入れ物（n ノード・slots 本の線） */
+export function newNums(H: number, n: number, slots: number): NumsArrays {
+  return {
+    H,
+    kind: new Uint8Array(n),
+    t: new Float64Array(n),
+    rr: new Float64Array(n * 3),
+    w: new Float64Array(slots),
+    er: new Float64Array(slots * 3),
+    base: new Int32Array(n).fill(-1),
+    rank: new Float64Array(n),
+    isBase: new Uint8Array(n),
+    noData: new Uint8Array(n),
+    fam: new Array<string>(n),
+    rvKey: new Array<string | null>(slots).fill(null),
+    rvCat: new Array<string | null>(slots).fill(null),
+    q: new Float64Array(n * 3).fill(NaN),
+    stub: new Uint8Array(n),
+    likeBasis: false,
+    sum: new Uint8Array(n),
+  };
+}
+
 /**
  * 数を文書から入れる（computeImpact の compile の数の所と同じ。形は topo のまま）。seen は今の文書の物（ノードは番号ごと、線は線ごと）。
  * 分かれ道の種類（forkKindOf）・結果の割合（chanceWeights）・3 つの数（vec3）は、同じ決まり・同じ足し算の順で、配列を作らずに数える
  */
 export function fillNums(topo: Topo, seen: Seen): Nums {
-  const { n, off, tgt, firstParent } = topo;
-  const { nodeObj, edgeObj } = seen;
-  const slots = off[n]!;
-  const H = rootConfig(topo, seen).horizon;
-  const kind = new Uint8Array(n);
-  const t = new Float64Array(n);
-  const rr = new Float64Array(n * 3);
-  const w = new Float64Array(slots);
-  const er = new Float64Array(slots * 3);
-  const base = new Int32Array(n).fill(-1);
-  const rank = new Float64Array(n);
-  const isBase = new Uint8Array(n);
-  const noData = new Uint8Array(n);
-  const fam = new Array<string>(n);
-  const rvKey = new Array<string | null>(slots).fill(null);
-  const rvCat = new Array<string | null>(slots).fill(null);
-  const q = new Float64Array(n * 3).fill(NaN);
-  const stub = new Uint8Array(n);
-  const sum = new Uint8Array(n);
-  let likeBasis = false;
+  const { n, off, tgt } = topo;
+  const b = numsBase(topo, seen);
+  const x = newNums(b.H, n, off[n]!);
   const tFloor = new Float64Array(n);
-  const r0 = topo.roots[0];
-  const rootNode = r0 !== undefined ? nodeObj[r0] : undefined;
-  const rootDay = rootNode && isDateStr(rootNode.time.due) ? dayNumber(rootNode.time.due) : null;
-  const rootRR = new Float64Array(3);
-  if (!read3(rootNode?.meta?.rr, rootRR, 0)) rootRR.set([1, 0, 0]);
-  const probs = new Float64Array(16);
+  const t = x.t;
   for (let i = 0; i < n; i++) {
-    const node = nodeObj[i]!;
-    const meta = node.meta;
-    const a = off[i]!;
-    const b = off[i + 1]!;
-    const deg = b - a;
-    // 線の見込み（null は NaN）
-    let anyProb = false;
-    let known = 0;
-    let sumKnown = 0;
-    const pr = deg <= probs.length ? probs : new Float64Array(deg);
-    for (let s = a; s < b; s++) {
-      const p = probNum(edgeObj[s]!);
-      pr[s - a] = p;
-      if (!Number.isNaN(p)) {
-        anyProb = true;
-        known++;
-        sumKnown = sumKnown + p;
-      } else sumKnown = sumKnown + 0;
-    }
-    // 分かれ道の種類（forkKindOf と同じ順で決める）
-    let k: number;
-    const fork = meta?.fork;
-    if (deg === 0) k = LEAF;
-    else if (fork === "decision") k = DECISION;
-    else if (fork === "chance") k = CHANCE;
-    else if (anyProb) k = CHANCE;
-    else if (deg >= 2) k = node.type === "goal" || node.type === "branch" ? DECISION : CHANCE;
-    else k = PASS;
-    kind[i] = k;
-    rank[i] = typeof meta?.rank === "number" && Number.isFinite(meta.rank) ? (meta.rank as number) : 1e9 + i;
-    isBase[i] = meta?.base === true ? 1 : 0;
-    const ownRR = read3(meta?.rr, rr, i * 3);
-    noData[i] = deg === 0 && !ownRR && typeof meta?.ak !== "string" && meta?.end !== true && !meta?.forecastRoot ? 1 : 0;
-    fam[i] = typeof meta?.fam === "string" ? (meta.fam as string) : typeof meta?.ak === "string" ? (meta.ak as string) : "";
-    if (read3(meta?.q, q, i * 3)) likeBasis = true;
-    if (meta?.stub === true) stub[i] = 1;
-    if (meta?.sum === true) sum[i] = 1;
-    const fp = firstParent[i]!;
-    const m = meta?.m;
-    let ti: number;
-    if (typeof m === "number" && Number.isFinite(m)) ti = m;
-    else if (rootDay !== null && isDateStr(node.time.due)) ti = (dayNumber(node.time.due) - rootDay) / 30.44;
-    else ti = fp >= 0 ? t[fp]! : 0;
-    t[i] = Math.min(H, Math.max(0, tFloor[i]!, ti));
-    if (!ownRR) {
-      if (fp >= 0) {
-        rr[i * 3] = rr[fp * 3]!;
-        rr[i * 3 + 1] = rr[fp * 3 + 1]!;
-        rr[i * 3 + 2] = rr[fp * 3 + 2]!;
-      } else {
-        rr[i * 3] = rootRR[0]!;
-        rr[i * 3 + 1] = rootRR[1]!;
-        rr[i * 3 + 2] = rootRR[2]!;
-      }
-    }
-    // 結果の割合（chanceWeights と同じ: % の無い線には残りを等分。どれにも無いか合計が 0 なら等分）
-    if (k === CHANCE) {
-      if (known === 0) for (let s = a; s < b; s++) w[s] = 1 / deg;
-      else {
-        const unknown = deg - known;
-        const share = unknown ? Math.max(0, 100 - sumKnown) / unknown : 0;
-        let total = 0;
-        for (let s = a; s < b; s++) {
-          const p = pr[s - a]!;
-          total = total + (Number.isNaN(p) ? share : p);
-        }
-        for (let s = a; s < b; s++) {
-          const p = pr[s - a]!;
-          w[s] = total > 0 ? (Number.isNaN(p) ? share : p) / total : 1 / deg;
-        }
-      }
-    } else for (let s = a; s < b; s++) w[s] = 1;
-    for (let s = a; s < b; s++) {
-      const rv = edgeObj[s]!.meta?.rv;
-      if (Array.isArray(rv) && typeof rv[0] === "string" && typeof rv[1] === "string") {
-        rvKey[s] = rv[0];
-        rvCat[s] = rv[1];
-      }
+    if (numsNode(topo, seen, x, b, i, tFloor[i]!)) x.likeBasis = true;
+    for (let s = off[i]!; s < off[i + 1]!; s++) {
       const j = tgt[s]!;
       if (j >= 0 && t[i]! > tFloor[j]!) tFloor[j] = t[i]!;
     }
   }
   // 線の稼ぎ（先のノードの月が要るので、全部の月が決まってから）
-  for (let i = 0; i < n; i++) {
-    for (let s = off[i]!; s < off[i + 1]!; s++) {
-      if (!read3(edgeObj[s]!.meta?.r, er, s * 3)) {
-        const j = tgt[s]!;
-        const dt = j >= 0 ? Math.max(0, t[j]! - t[i]!) : 0;
-        er[s * 3] = rr[i * 3]! * dt;
-        er[s * 3 + 1] = rr[i * 3 + 1]! * dt;
-        er[s * 3 + 2] = rr[i * 3 + 2]! * dt;
-      }
-    }
-    if (kind[i] === DECISION) {
-      for (let s = off[i]!; s < off[i + 1]!; s++) {
-        const j = tgt[s]!;
-        if (j >= 0 && isBase[j]) {
-          base[i] = s;
-          break;
-        }
-      }
-    }
-  }
-  return { H, kind, t, rr, w, er, base, rank, isBase, noData, fam, rvKey, rvCat, q, stub, likeBasis, sum };
+  for (let i = 0; i < n; i++) numsEdges(topo, seen, x, i);
+  return x;
 }
 
 /** 状態を文書の物から全部入れる */

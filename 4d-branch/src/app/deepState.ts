@@ -168,6 +168,7 @@ export function plainAnalysis(cm: CompiledMap, annual: number): Analysis {
  */
 const statusMemo = new WeakMap<CompiledMap, { annual: number; status: Uint8Array; a: Analysis; ov: Overview | null }>();
 
+/** 2 つの配列が同じ中身か */
 const sameBytes = (a: Uint8Array, b: Uint8Array): boolean => {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
@@ -261,8 +262,11 @@ export class DeepState {
         if (k === 0) ctx.analysis();
         else if (k === 1) ctx.overview();
         else {
+          // おすすめの値は 1 回の逆にたどる計算を分けて、空いた時間の 1 歩ずつ（perf-10）
           const imp = this.vm.impact;
-          if (imp.active && imp.hasPicks) imp.recommended();
+          if (!imp.active || !imp.hasPicks) return true;
+          if (imp.recommendedStep) return imp.recommendedStep();
+          imp.recommended();
           return true;
         }
         k++;
@@ -417,7 +421,8 @@ export class DeepState {
     const edited = !vm.engine.mapTopo(doc);
     const sid0 = this.ui.prefs.scenarioId;
     const sid = sid0 && doc.scenarios[sid0] ? sid0 : null;
-    const calcKey = `${map.header.hash}|${cm.version.topology}|${cm.version.numbers}|${imp.annual}|${st.key}#${this.statusStamp}`;
+    // 選んだ手は配列で決まる（新しい配列にしたら statusStamp が進む。中身が同じなら同じ配列のまま: 形だけの変更で数え直さない）
+    const calcKey = `${map.header.hash}|${cm.version.topology}|${cm.version.numbers}|${imp.annual}|${st.key[0]}#${this.statusStamp}`;
     const key = `${calcKey}|${edited ? 1 : 0}|${sid ?? ""}|${table.hashed ? 0 : this.idStamp}`;
     const b = this.built;
     if (b && b.key === key && b.ctx.map === map) return b.ctx;
@@ -529,7 +534,13 @@ export class DeepState {
       this.status.doc = doc;
       return this.status;
     }
-    this.status = { key, doc, arr: statusFromDoc(doc, cm, ids ?? idsOf(map)) };
+    const arr = statusFromDoc(doc, cm, ids ?? idsOf(map));
+    // 形だけが変わって選んだ手は同じ（Tab で足したカード・その元に戻す）: 前の配列のまま（計算・見取り図の数をやり直さない: perf-4）
+    if (this.status && this.status.key.startsWith("d") && sameBytes(this.status.arr, arr)) {
+      this.status = { key, doc, arr: this.status.arr };
+      return this.status;
+    }
+    this.status = { key, doc, arr };
     this.statusStamp++;
     return this.status;
   }

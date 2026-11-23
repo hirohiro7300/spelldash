@@ -7,7 +7,7 @@
 //   3 か月ごとの地図の「3 年でやる価値が大きい手」は見取り図と同じ k(fam)（user-2）
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { rememberMapDoc } from "../../src/app/futureCache";
-import { idleSteps } from "../../src/app/idle";
+import { IDLE_SLICE_MS, idleSteps } from "../../src/app/idle";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
 import { clipToWidth } from "../../src/canvas/CanvasView";
@@ -121,6 +121,32 @@ describe("空いた時間の 1 歩ずつの仕事（見直し perf-8）", () => 
     calls.shift()!();
     expect(n).toBe(4);
     expect(calls.length).toBe(0);
+  });
+
+  it("空いた時間が長くても、1 回に続けるのは IDLE_SLICE_MS まで（50 ms を超える長い仕事にしない: perf-10）", () => {
+    const calls: Array<() => void> = [];
+    g.requestIdleCallback = (cb: (d: { timeRemaining(): number }) => void) => {
+      calls.push(() => cb({ timeRemaining: () => 50 }));
+      return calls.length;
+    };
+    let clock = 0;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    try {
+      let n = 0;
+      idleSteps(() => {
+        n++;
+        clock += 12;
+        return n >= 10;
+      });
+      // 12 ms の歩: 12 → 24（あと 12 で 36 > 30）で次の空いた時間へ
+      calls.shift()!();
+      expect(n).toBe(2);
+      expect(IDLE_SLICE_MS).toBeLessThan(50);
+      calls.shift()!();
+      expect(n).toBe(4);
+    } finally {
+      now.mockRestore();
+    }
   });
 });
 
