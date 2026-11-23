@@ -70,6 +70,7 @@ export {
   ThinWriteError,
   THIN_BASELINE_VERSION,
   THIN_LAYOUT,
+  watchThinWrites,
 } from "./thinMap";
 export type { CardCounts, LegacyUpgradeDetail, MapBase, PageMapRecord, StoredDoc, ThinDecodeOpts, ThinDecoded, ThinErrorCode, ThinSection, ThinStats, ThinUpgradeInfo, ThinUpgradeMode } from "./thinMap";
 export { legacyRootOf, upgradeLegacyMap } from "./legacyMap";

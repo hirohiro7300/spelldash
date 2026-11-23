@@ -13,7 +13,7 @@ import { loadImpactBundle } from "./demo/futureBundle";
 import { loadPageMap, PAGE_Q, PAGE_Q_RELEASE } from "./demo/pageBundle";
 import { buildStressDoc } from "./demo/stress";
 import type { DocData } from "./model/types";
-import { decodeStored, enableThinPage, setBeforeMapDecode, thinReadable, toStored } from "./persist/codec";
+import { decodeStored, enableThinPage, setBeforeMapDecode, thinReadable, toStored, watchThinWrites } from "./persist/codec";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
 import { isNarrowScreen } from "./ui/breakpoints";
@@ -108,6 +108,8 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
   // 狭い画面では左右のパネルを閉じて始める（キャンバスを広く）。重ねて出す CSS と同じ判定（860px ちょうども狭い側）
   if (isNarrowScreen()) ui.prefs = { ...ui.prefs, leftOpen: false, rightOpen: false };
   const store = new Store(doc);
+  // ストアが書いた所を保存の書き手に知らせる（自動保存は変わった所だけ見直す: 見直し perf-10）。画面の部品が変更を受ける前につなぐ
+  if (PAGE_Q) watchThinWrites(store);
   store.readOnly = !persistence.writer;
   const app = new App({ store, ui, persistence, ephemeral, firstRun, bootFallback, notices, mount });
   persistence.attach(() => store.doc);
