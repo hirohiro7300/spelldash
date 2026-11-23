@@ -582,6 +582,11 @@ function titlesOf(c: Ctx, p: number): readonly TitleEntry[] {
   return out;
 }
 
+/** カード i の題（兄弟と違う物）を印つきのまま（点検が、本文の『』の中の名前をカードの題と比べる。P4・reader-1） */
+export function markedTitle(c: Ctx, i: number): string {
+  return titleOf(c, i, []);
+}
+
 /** カード i の題（兄弟と違う物）。使った文の型を trace に足す */
 function titleOf(c: Ctx, i: number, trace: string[]): string {
   const { map } = c;
@@ -1444,12 +1449,15 @@ function hasBest(map: MapData, d: number): boolean {
   return false;
 }
 
-/** 手の名前（道の画面の「選べる手」の並びと同じ名前: 地図の手の種類の名前。比べる元は「この 3 か月は今のまま」。reader-8） */
+/**
+ * 手の名前: そのカードの題（見取り図の行・道の画面の「選べる手」・キャンバスのカードと同じ名前。P4・reader-1: 前は手の種類の名前で、
+ * 見取り図が『給与の上がる転職先を探す』と出す手を本文は『転職活動をする』と言っていた）。比べる元は「この 3 か月は今のまま」（画面も同じ: reader-8）。
+ * 題の数・手引きの印はそのまま（点検は、題の中の数をそのカードの題から来た物として確かめる: checks.ts の quotedTitleSpans）
+ */
 function listName(c: Ctx, x: number): string {
   const { map } = c;
   if (map.isBase(x)) return "この 3 か月は今のまま";
-  const name = map.header.kinds[map.kind(x) ?? ""]?.[0];
-  return name && !ASCII_ID.test(name) ? slot(name) : titleOf(c, x, []);
+  return titleOf(c, x, []);
 }
 
 /**

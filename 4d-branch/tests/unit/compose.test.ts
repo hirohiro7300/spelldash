@@ -9,7 +9,7 @@ import { analyze, compileMap, textRuntime, type Analysis } from "../../src/deepm
 import { BANKS, composeCard, composeCont, composeMarkedCard, materializeBody, optionValue, ripple, type Banks, type Card } from "../../src/demo/compose/index";
 import { allowedKind, FIRST_MOVE_BUDGET, FIRST_STATE_BUDGET, MOVE_BUDGET, planMonths, STATE_BUDGET } from "../../src/demo/compose/compose";
 import { calendarOf, ctxOf, eventMonth, joinedAt, keepTotalOf, linkOf, weekday } from "../../src/demo/compose/path";
-import { n0, oneIn, strip, wari } from "../../src/demo/compose/text";
+import { n0, oneIn, PS, strip, wari } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
 import wishData from "../../src/demo/wishlist-data.json";
 import { F_ENDS, F_PORTFOLIO, F_PROMO2, F_SCOPE, F_STILL, header, MIX_SPLIT, MIX_SURE, RULES, TREE } from "./composeFixture";
@@ -1803,5 +1803,74 @@ describe("1.2（W5）: やることの段取り・標準の続きの期の月の
         if (m.role(i) === "e" && !m.sum(i)) expect(c.title).not.toMatch(/^3 年後: 給与 [\d.]+ 倍$/);
         if (m.role(i) === "s") expect(c.title).not.toMatch(/の幅$/);
       }
+  });
+});
+
+describe("P4・reader-1: 本文は手を、見取り図・道の画面・キャンバスと同じカードの題で呼ぶ", () => {
+  const memo = new Map<number, { map: MapData; rt: ReturnType<typeof textRuntime> }>();
+  const qs = async (annual: number): Promise<{ map: MapData; rt: ReturnType<typeof textRuntime> }> => {
+    let hit = memo.get(annual);
+    if (!hit) {
+      const map = await loadQSmall();
+      memo.set(annual, (hit = { map, rt: textRuntime(analyze(compileMap(map), annual)) }));
+    }
+    return hit;
+  };
+
+  it("状態の次のおすすめ・手のおすすめの名前は、そのおすすめの手のカードの題（前は手の種類の名前で、題と違う手があった）", async () => {
+    for (const annual of [360, 540]) {
+      const { map, rt } = await qs(annual);
+      let states = 0;
+      let moves = 0;
+      let differs = 0;
+      for (const i of all(map)) {
+        const role = map.role(i);
+        if (role !== "s" && role !== "a") continue;
+        const b = composeCard(map, i, { annual, rt }).body;
+        if (role === "s") {
+          const m = /(?:おすすめは|一番多いのは|一番の手は)『([^』]*)』/.exec(b);
+          const rec = rt.recommended(i);
+          if (!m || rec < 0) continue;
+          const want = map.isBase(rec) ? "この 3 か月は今のまま" : composeCard(map, rec, { annual }).title;
+          expect(m[1], `${map.key(i)}: ${b}`).toBe(want);
+          if (!map.isBase(rec) && want !== map.header.kinds[map.kind(rec)!]?.[0]) differs++;
+          states++;
+        } else {
+          const d = map.parent(i);
+          if (map.role(d) === "r") continue;
+          const rec = rt.recommended(d);
+          if (rec < 0 || rec === i) continue;
+          for (const m of b.matchAll(/おすすめの『([^』]*)』/g)) {
+            expect(m[1], `${map.key(i)}: ${b}`).toBe(map.isBase(rec) ? "この 3 か月は今のまま" : composeCard(map, rec, { annual }).title);
+            moves++;
+          }
+        }
+      }
+      expect(states).toBeGreaterThan(0);
+      expect(moves).toBeGreaterThan(0);
+      // 題と手の種類の名前が違う手（『給与の上がる転職先を探す』と『転職活動をする』のような物）も、題で呼んでいる
+      expect(differs).toBeGreaterThan(0);
+    }
+  });
+
+  it("C1b はそのまま厳しい: 『』の中の手引きの数字は、呼べる手のカードの題とそのまま同じときだけ、その題から来た物とみる", async () => {
+    const { map, rt } = await qs(360);
+    let titled = 0;
+    let caught = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "s") continue;
+      const t = composeMarkedCard(map, i, { annual: 360, rt });
+      const quotes = [...t.body.matchAll(/『([^』]*)』/g)].filter((m) => m[1]!.includes(PS) && /\d/.test(m[1]!));
+      if (!quotes.length) continue;
+      // そのままの本文は通る（題の中の数は、その手の題から）
+      expect(checkCard(map, i, t, BANKS, wish, 360).filter((x) => x.startsWith("C1b")), map.key(i)).toEqual([]);
+      titled++;
+      // 題と少しでも違う『』（題ではない名前）に入れた手引きの数字は、このカードの引いた項目に無ければ見つかる
+      const q = quotes[0]![0];
+      const bad = { ...t, body: t.body.replace(q, q.replace("『", "『別の")) };
+      if (checkCard(map, i, bad, BANKS, wish, 360).some((x) => x.startsWith("C1b 引用元に無い数字"))) caught++;
+    }
+    expect(titled).toBeGreaterThan(0);
+    expect(caught).toBeGreaterThan(0);
   });
 });
