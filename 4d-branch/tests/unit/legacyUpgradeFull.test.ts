@@ -2,7 +2,7 @@
 //   合成のアカウントの形の版 6 の文書（tests/fixtures/account-r6.json）の利用者の物は、どの深さの物も、鍵の同じカード（今日・最初の 10 の手・
 //   3 か月後の状態）・読み替えた手（3 か月後の手 → 同じ状態の 3 か月目の同じ種類の手。84 枚のうち 55 枚）・「前の版で決めたこと」のどれかにある。
 //   いつも同じ結果（2 回・2 つの時差）。次に保存すると薄い形で小さい。保存先から起動しても同じ。時間は書き出しておく。
-// 動くのは、ページに版 7 の候補を入れたテスト（VITE_IMPACT_Q=1 IMPACT_Q_BUNDLE=<impact-q.b64> npx vitest run …）か、
+// 動くのは、遅いテスト（npm run test:slow。ページに入れた版 7 の地図）か、
 // IMPACT_Q_FULL=<impact-q.b64 のある場所> のときだけ。ふだんのテストは小さい木（legacyUpgrade.test.ts）
 import "fake-indexeddb/auto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -19,7 +19,8 @@ import { envVar, nodeFs } from "./helpers/qSmall";
 import { expectDecoded } from "./helpers/thinCheck";
 
 const DIR = envVar("IMPACT_Q_FULL");
-const RUN = PAGE_Q || !!DIR;
+// ページの地図は P2 から既定で入るので、遅いテスト（npm run test:slow: DEEPMAP_SLOW=1）か IMPACT_Q_FULL のときだけ動かす
+const RUN = (PAGE_Q && envVar("DEEPMAP_SLOW") === "1") || !!DIR;
 const SLOW = 600_000;
 
 async function pageMap(): Promise<MapData> {

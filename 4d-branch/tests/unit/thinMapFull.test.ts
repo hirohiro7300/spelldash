@@ -2,7 +2,7 @@
 //   書いて読むと同じ文書（新しい地図・ふつうの利用者・アカウントの形と多い編集）・大きさ（新しい地図 ≤ 8 KB・ふつうの利用者 ≤ 64 KB・
 //   緊急コピー ≤ 100 万文字）・時間（書く ≤ 50 ms・読む ≤ 150 ms。どちらも先に 2 回動かしてから 3 回のうち一番良い値。CI の機械は 2 倍まで）・
 //   基準の文書の指紋（知っている候補の版なら、版の記録の値と同じ）。
-// 動くのは、ページに版 7 の候補を入れたテスト（VITE_IMPACT_Q=1 IMPACT_Q_BUNDLE=<impact-q.b64> npx vitest run …）か、
+// 動くのは、遅いテスト（npm run test:slow。ページに入れた版 7 の地図）か、
 // IMPACT_Q_FULL=<impact-q.b64 のある場所> のときだけ（npm run test:slow もこれを動かす）。ふだんのテストは小さい木（thinMap.test.ts）
 import { beforeAll, describe, expect, it } from "vitest";
 import type { MapData } from "../../src/deepmap/mapData";
@@ -18,7 +18,8 @@ import { checkRoundTrip } from "./helpers/thinCheck";
 import { accountShape, EDIT_KINDS, randomEdits, seeded } from "./helpers/thinEdits";
 
 const DIR = envVar("IMPACT_Q_FULL");
-const RUN = PAGE_Q || !!DIR;
+// ページの地図は P2 から既定で入るので、遅いテスト（npm run test:slow: DEEPMAP_SLOW=1）か IMPACT_Q_FULL のときだけ動かす
+const RUN = (PAGE_Q && envVar("DEEPMAP_SLOW") === "1") || !!DIR;
 const SLOW = 600_000;
 const CI = !!envVar("CI");
 /** 時間の目標（ms。SPEC §7.2 の autosave encode と R0 §10.3）。CI の機械は遅いので 2 倍まで（測った値はいつも書き出す） */

@@ -36,6 +36,7 @@ import { BANKS, composeCard } from "../../src/demo/compose";
 import { checkBaked } from "../../scripts/impact/q/text";
 import { gunzipSync, InflateError } from "../../src/demo/inflate";
 import releaseRec from "../../src/demo/impact-release.json";
+import pageRec from "../../src/demo/impact-q-release.json";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, DevTreeNode, MapData, MapHeader } from "../../src/deepmap/mapData";
 import releasesJson from "../../scripts/impact/releases.json";
@@ -663,17 +664,24 @@ describe("64 ビットの ID（作業メモ SPEC v1 §2.5・D9。版 6 の 32 �
 });
 
 describe("版の記録（scripts/impact/releases.json。足すだけ）", () => {
-  const h = releasesJson as unknown as ReleaseHistory;
+  const real = releasesJson as unknown as ReleaseHistory;
+  /** 版 6 までの記録（その上に仮の版 7・8 を足して点検を確かめる。本物の版 7 は下の 1 つ目の確かめで見る） */
+  const h: ReleaseHistory = { ...real, releases: real.releases.filter((r) => r.release <= 6) };
   /** 記録の例に使う基準の文書の指紋（形だけ。小さい木の指紋は quarterDigest.test.ts） */
   const DIG = "08ywb3s0oh106s";
   /** 本番の形で作った記録の作った形（2,000・±2%・今日の 10 手・never・2 回） */
   const prodBuild = { B: 2000, tol: 0.02, moves: 10, never: true, runs: 2, nodes: 71_619 };
-  it("記録は点検に通り、決まった書き方のままで、最後はアプリが同梱している版 6 と同じ", () => {
-    expect(checkReleaseHistory(h)).toEqual([]);
-    expect(formatHistory(h)).toBe(releasesText);
-    const last = h.releases.at(-1)!;
+  it("記録は点検に通り、決まった書き方のままで、最後はページに入れた版 7 の地図の記録・最後の版 6 までの記録はアプリが同梱している版 6 と同じ", () => {
+    expect(checkReleaseHistory(real)).toEqual([]);
+    expect(formatHistory(real)).toBe(releasesText);
+    const last = real.releases.at(-1)!;
+    const page = pageRec as { release: number; hash: string; digest: string; anchor: string };
+    expect({ release: last.release, hash: last.hash, digest: last.digest, anchor: last.anchor, scheme: last.scheme }).toEqual({ ...page, scheme: "q1" });
+    // 同じ記録をもう一度足そうとしても同じ（版の順番・指紋・基準の文書の指紋が合う）
+    expect(checkReleaseAppend(real, page).verdict).toBe("same");
+    const r6 = real.releases.filter((r) => r.scheme === "v2-json").at(-1)!;
     const rec = releaseRec as ImpactRelease;
-    expect([last.release, last.hash]).toEqual([rec.release, rec.version]);
+    expect([r6.release, r6.hash]).toEqual([rec.release, rec.version]);
   });
 
   it("同じ（版の順番・指紋）は足さずに済み、戻る順番・使い直す順番・使った指紋は断る", () => {
@@ -686,7 +694,7 @@ describe("版の記録（scripts/impact/releases.json。足すだけ）", () => 
     const withR7: ReleaseHistory = { ...h, releases: [...h.releases, { release: 7, hash: "0123456789abcd", scheme: "q1", anchor: "2026-11", build: prodBuild, digest: DIG }] };
     expect(checkReleaseHistory(withR7)).toEqual([]);
     expect(checkReleaseAppend(withR7, { release: 7, hash: "0123456789abce", digest: DIG }).verdict).toBe("refuse");
-    expect(formatHistory(withR7).split("\n").length).toBe(releasesText.split("\n").length + 1);
+    expect(formatHistory(withR7).split("\n").length).toBe(formatHistory(h).split("\n").length + 1);
   });
 
   it("記録の点検は、戻る・同じ順番が 2 つ・同じ指紋が 2 つ・形の違う指紋を見つける", () => {

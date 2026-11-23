@@ -1,20 +1,21 @@
-// ページに入れる 3 か月ごとの地図（版 7 の候補）の切り替え。作業メモ SPEC v1 §10（P2 への切り替え）
+// ページに入れる 3 か月ごとの地図の切り替え。作業メモ SPEC v1 §10（P2 への切り替え）
 //
-// 既定のビルド（今の公開版）は版 6 の地図のまま（src/demo/futureBundle.ts）。ここは何も読まず、PAGE_Q は false。
-// 開発と確かめのビルドだけ、環境変数で 3 か月ごとの地図の候補をページに入れる:
-//   VITE_IMPACT_Q=1 IMPACT_Q_BUNDLE=<impact-q.b64 の絶対パス> npx vite build（vitest も同じ変数を見る）
-// 切り替えの後（P2）は、候補の代わりに src/demo/ に置いた同梱データを既定にし、版 6 の読み方を外す。
+// P2 からは、既定のビルドが版 7 の地図（src/demo/impact-q.b64 と版の記録 src/demo/impact-q-release.json）を入れる（PAGE_Q は true）。
+// 版 6 の地図（src/demo/futureBundle.ts）はページに残す: 保存してあった版 6 の地図を読むときの引き上げと、新しい地図の知らせの「前の版」の差に使う。
+// 切り替え（vite.config.ts の impactQAlias。vitest も同じ変数を見る）:
+//   VITE_IMPACT_Q=0: 地図を入れない（版 6 だけのページ。前の版のページを確かめるテストのため）
+//   VITE_IMPACT_Q=1 IMPACT_Q_BUNDLE=<impact-q.b64 の絶対パス> [IMPACT_Q_RELEASE=<版の記録>]: 生成の候補を入れる
 // 保存（W-store）とアプリ（W-app）は、PAGE_Q と loadPageMap() だけを見て、版 7 の道を足す。
 
 import type { MapData } from "../deepmap/mapData";
 import { decodeBundle } from "./impactBundle";
-// vite.config.ts と vitest.config.ts の別名で、IMPACT_Q_BUNDLE のファイル（無ければ空のファイル）を文字列のまま読む
+// vite.config.ts と vitest.config.ts の別名で、ページに入れる地図のファイル（入れないビルドは空のファイル）を文字列のまま読む
 import qB64 from "@impact-q-bundle?raw";
-// 同じく IMPACT_Q_RELEASE の版の記録（無ければ空の記録 {}）
+// 同じくその地図の版の記録（入れないビルド・記録を渡さない候補は空の記録 {}）
 import qRelease from "@impact-q-release?raw";
 
-/** このビルドが 3 か月ごとの地図（版 7 の候補）をページに入れているか */
-export const PAGE_Q: boolean = import.meta.env.VITE_IMPACT_Q === "1" && qB64.trim().length > 0;
+/** このビルドが 3 か月ごとの地図をページに入れているか（既定は入れる。VITE_IMPACT_Q=0 のビルドだけ入れない） */
+export const PAGE_Q: boolean = import.meta.env.VITE_IMPACT_Q !== "0" && qB64.trim().length > 0;
 
 /** ページに入れた地図の版の記録（src/demo/impact-release.json と同じ形。digest は基準の文書の指紋: 作業メモ SPEC §3.1・§6） */
 export interface PageMapRelease {

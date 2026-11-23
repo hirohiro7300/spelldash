@@ -1,7 +1,7 @@
 // 8 万枚の木（3 か月ごとの地図の本番の形）での保存の道（作業メモ SPEC v1 §6・§7.2、R0 §10.3 の 5・6・7）:
 //   保存先（IndexedDB）に薄い形で書いて開き直すと同じ・地図は要るときだけ読む・アカウントの写しは 1 分割・書き出しは小さい・
 //   「追加する」でページの地図を足しても小さいまま・版 6 の地図を新しい版にしても小さい。時間は書き出しておく（目標は thinMapFull.test.ts が見る）。
-// 動くのは、ページに版 7 の候補を入れたテスト（VITE_IMPACT_Q=1 IMPACT_Q_BUNDLE=<impact-q.b64> npx vitest run …）か、
+// 動くのは、遅いテスト（npm run test:slow。ページに入れた版 7 の地図）か、
 // IMPACT_Q_FULL=<impact-q.b64 のある場所> のときだけ。ふだんのテストは小さい木（thinPaths.test.ts）
 import "fake-indexeddb/auto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -25,7 +25,8 @@ import { expectDecoded } from "./helpers/thinCheck";
 import { accountShape, EDIT_KINDS, randomEdits, seeded } from "./helpers/thinEdits";
 
 const DIR = envVar("IMPACT_Q_FULL");
-const RUN = PAGE_Q || !!DIR;
+// ページの地図は P2 から既定で入るので、遅いテスト（npm run test:slow: DEEPMAP_SLOW=1）か IMPACT_Q_FULL のときだけ動かす
+const RUN = (PAGE_Q && envVar("DEEPMAP_SLOW") === "1") || !!DIR;
 const SLOW = 600_000;
 const AT = "2026-11-19T03:00:00.000Z";
 

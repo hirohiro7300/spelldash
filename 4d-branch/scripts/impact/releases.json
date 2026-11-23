@@ -6,6 +6,7 @@
     { "release": 3, "hash": "bfcx-15fkye7", "scheme": "v2-json", "commit": "f7a4a54", "replaced": [{ "hash": "bl06-12wmu46", "commit": "de02163" }] },
     { "release": 4, "hash": "bont-zy5ms5", "scheme": "v2-json", "commit": "abd7201" },
     { "release": 5, "hash": "bovq-rlr0ge", "scheme": "v2-json", "commit": "954b137" },
-    { "release": 6, "hash": "bvpn-apwrrf", "scheme": "v2-json", "commit": "2d79d50" }
+    { "release": 6, "hash": "bvpn-apwrrf", "scheme": "v2-json", "commit": "2d79d50" },
+    { "release": 7, "hash": "06bl0bo018s0qw", "scheme": "q1", "anchor": "2026-11", "build": { "B": 2000, "tol": 0.02, "moves": 10, "never": true, "runs": 2, "nodes": 77735 }, "digest": "0uvm4yp1slbx85" }
   ]
 }
