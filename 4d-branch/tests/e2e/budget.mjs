@@ -1,8 +1,10 @@
 // E2E: 性能の予算（作業メモ SPEC v1 §7.2・見直し perf-12）を、3 か月ごとの地図（版 7 の候補・約 7.2 万枚）を入れたページで測る
 //   node tests/e2e/budget.mjs
-//   IMPACT_Q_BUNDLE: 地図の同梱データ（impact-q.b64）の場所。無ければ作業メモの deepmap/gen/r7/impact-q.b64
-//   VITE_IMPACT_Q=1 で作業用のフォルダ（BUDGET_DIST。既定は OS の一時フォルダの下）にビルドし、vite preview で開く（E2E_PORT。既定 4520）。
-//   #demo-q（組み立てた地図を保存しない一時表示）で測る。
+//   既定のビルド（P2: ページに版 7 の地図を入れる）を作業用のフォルダ（BUDGET_DIST。既定は OS の一時フォルダの下）に作り、vite preview で開く
+//   （E2E_PORT。既定 4520）。IMPACT_Q_BUNDLE を渡すと、その同梱データで作る（VITE_IMPACT_Q=1）。
+//   BUDGET_BOOT=stored（既定）: 保存してあった物を読む起動の道で測る。合成した版 6 の利用者の文書（tests/fixtures/account-r6.json。本物のデータではない）を
+//   IndexedDB に入れて 1 度開き（読むときに版 7 へ引き上げ、薄い形で保存）、その後の開き直し（保存した薄い形を読む）を測る。
+//   BUDGET_BOOT=demo-q: #demo-q（組み立てた地図を保存しない一時表示）で測る（前の測り方）。
 //   測り方: 入力が届いた瞬間（window の capture のリスナー）から、その入力の後の次のフレームの終わり（rAF の中で置いたタスクが動いた時刻:
 //   そのフレームを描き終えた後）まで。リスナーの仕事を含む。続けて送る入力（変換中の文字）は、フレームの中の決まった所から始めないよう、
 //   1 つごとにフレームの中のばらばらの時刻（0〜16 ms 待つ）から送る（rAF 2 回で測ると、どの 1 文字も 2 フレーム = 33 ms より短く出ない: 見直し perf-12）。
@@ -24,7 +26,9 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..")
 const PORT = Number(process.env.E2E_PORT || 4520);
 const BASE = `http://localhost:${PORT}/`;
 const SCRATCH = "/tmp/claude-0/-home-user-spelldash/342dd9ca-ed44-551f-af59-60da8aff2834/scratchpad/deepmap";
-const BUNDLE = process.env.IMPACT_Q_BUNDLE || path.join(SCRATCH, "gen", "r7", "impact-q.b64");
+const BUNDLE = process.env.IMPACT_Q_BUNDLE || "";
+const BOOT = process.env.BUDGET_BOOT || "stored";
+const FIXTURE = path.join(ROOT, "tests", "fixtures", "account-r6.json");
 const DIST = process.env.BUDGET_DIST || path.join(os.tmpdir(), "4d-branch-budget-dist");
 const ONLY = process.env.BUDGET_ONLY || "";
 const ROUNDS = Number(process.env.BUDGET_ROUNDS || 3);
@@ -50,6 +54,8 @@ const BUDGET = {
   undo: [150, 600],
   deselect: [30, 120],
   adopt: [300, 1200],
+  adoptDecoded: [300, 1200],
+  autosave: [50, 200],
   longTask: [50, 50],
   selectLayout: [null, 5],
   heapBoot: [150, null],
@@ -75,7 +81,9 @@ const LABEL = {
   search: "検索の 1 文字（変換中を含む）",
   undo: "元に戻す（これにするの取り消し）",
   deselect: "これにした後に概要へ戻る（キャンバスで Esc）",
-  adopt: "取り込み（別の端末の内容: 全部の入れ替え。届いた写しは測る前に作る）",
+  adopt: "取り込み（別の端末の内容: 全部の入れ替え。届いた写しは測る前に作る。写しは structuredClone: どのカードも別の物の、一番重い形）",
+  adoptDecoded: "取り込み（届いた写しを薄い形で書いて読み直した物: 本当の同期と同じく、変えていないカードは地図の基準と同じ物）",
+  autosave: "自動保存の書き出し（これにした後の文書を薄い形にする: toStored）",
   longTask: "変更（シナリオ・年収・これにする）を描いた後 3 秒の、一番長い仕事（ms。空いた時間の仕事。変更そのものは数えない）",
   selectLayout: "引き出しを閉じたスマホでカードを選ぶときのレイアウト（ms）",
   heapBoot: "起動後のヒープ（MB。JS・ArrayBuffer・DOM の合計）",
@@ -84,12 +92,15 @@ const LABEL = {
 };
 
 function build() {
-  if (!fs.existsSync(BUNDLE)) throw new Error(`地図の同梱データがありません: ${BUNDLE}（IMPACT_Q_BUNDLE で渡してください）`);
+  if (BUNDLE && !fs.existsSync(BUNDLE)) throw new Error(`地図の同梱データがありません: ${BUNDLE}`);
   if (process.env.BUDGET_DIST && fs.existsSync(path.join(DIST, "index.html"))) return;
-  console.log(`ビルド（VITE_IMPACT_Q=1・${BUNDLE}）→ ${DIST}`);
+  console.log(`ビルド（${BUNDLE ? `VITE_IMPACT_Q=1・${BUNDLE}` : "既定: 版 7 の地図"}）→ ${DIST}`);
+  const env = { ...process.env };
+  if (BUNDLE) Object.assign(env, { VITE_IMPACT_Q: "1", IMPACT_Q_BUNDLE: BUNDLE });
+  else delete env.VITE_IMPACT_Q;
   const r = spawnSync(process.execPath, [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "build", "--outDir", DIST, "--emptyOutDir", "--logLevel", "warn"], {
     cwd: ROOT,
-    env: { ...process.env, VITE_IMPACT_Q: "1", IMPACT_Q_BUNDLE: BUNDLE },
+    env,
     stdio: "inherit",
   });
   if (r.status !== 0) throw new Error("ビルドに失敗しました");
@@ -206,51 +217,113 @@ const median = (xs) => {
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 
-/** 開いて、地図が描かれて触れるまで（起動の時刻はナビゲーションの始まりから） */
-async function boot(browser, profile) {
-  const ctx = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: profile.dpr });
-  await ctx.addInitScript(() => {
-    // 新しい地図の知らせ（版 7）はもう見せた形で測る（一度だけの物。出すと画面の操作を覆う）
-    try {
-      localStorage.setItem("4d-branch:prefs", JSON.stringify({ releaseSheet: 7 }));
-    } catch {
-      /* about:blank */
+/** 計測の道具と設定を入れるページの頭の台本（読み込みのたびに動く） */
+function bootScript() {
+  // 新しい地図の知らせ（版 7）はもう見せた形で測る（一度だけの物。出すと画面の操作を覆う）
+  try {
+    localStorage.setItem("4d-branch:prefs", JSON.stringify({ releaseSheet: 7, onboardingDone: true, futureAutoOpened: true, futureOffered: true, wishlistOffered: true }));
+  } catch {
+    /* about:blank */
+  }
+  // 見取り図が描かれたフレーム（右のパネルの 10 の手をひと目で）を記録する
+  const deepTick = () => {
+    // 起動の途中に先に描いた見取り図（.deep-splash）か、右のパネルの見取り図
+    // 見つけたのは rAF の中（このフレームで描かれる）。そのフレームを描き終えた直後（rAF の中で置いたタスク）の時刻。
+    // 次の rAF を待つと、先に描いた後に続く文書の組み立て（長い 1 つの仕事）の後になってしまう
+    if (document.querySelector(".deep-splash .dm-glance-row, .sidebar-right .deep-ov .dm-glance-row")) {
+      setTimeout(() => (window.__deepPaint ??= performance.now()), 0);
+      return;
     }
-    // 見取り図が描かれたフレーム（右のパネルの 10 の手をひと目で）を記録する
-    const deepTick = () => {
-      // 起動の途中に先に描いた見取り図（.deep-splash）か、右のパネルの見取り図
-      // 見つけたのは rAF の中（このフレームで描かれる）。そのフレームを描き終えた直後（rAF の中で置いたタスク）の時刻。
-      // 次の rAF を待つと、先に描いた後に続く文書の組み立て（長い 1 つの仕事）の後になってしまう
-      if (document.querySelector(".deep-splash .dm-glance-row, .sidebar-right .deep-ov .dm-glance-row")) {
-        setTimeout(() => (window.__deepPaint ??= performance.now()), 0);
-        return;
-      }
-      requestAnimationFrame(deepTick);
-    };
     requestAnimationFrame(deepTick);
-    // 地図が描かれた最初のフレーム（触れる）を記録する
-    const tick = () => {
-      const f = window.__fourD;
-      const app = f && f.app;
-      if (app && app.view && app.view.lastFrameMs > 0 && app.vm.drawNodes.length > 0 && app.vm.impact.active) {
-        window.__firstMapFrame ??= performance.now();
-        // 触れる: 描いた後の次のフレーム（入力を受けられる）
-        requestAnimationFrame(() => (window.__interactive = performance.now()));
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
+  };
+  requestAnimationFrame(deepTick);
+  // 地図が描かれた最初のフレーム（触れる）を記録する
+  const tick = () => {
+    const f = window.__fourD;
+    const app = f && f.app;
+    if (app && app.view && app.view.lastFrameMs > 0 && app.vm.drawNodes.length > 0 && app.vm.impact.active) {
+      window.__firstMapFrame ??= performance.now();
+      // 触れる: 描いた後の次のフレーム（入力を受けられる）
+      requestAnimationFrame(() => (window.__interactive = performance.now()));
+      return;
+    }
     requestAnimationFrame(tick);
-  });
+  };
+  requestAnimationFrame(tick);
+}
+
+/** 合成した版 6 の利用者の文書を、この起点の IndexedDB に入れる（中身の無いページで。アプリはまだ開いていない） */
+async function seedStored(ctx) {
+  const rec = JSON.parse(fs.readFileSync(FIXTURE, "utf8"));
+  await ctx.route(`${BASE}__seed`, (r) => r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: '<!doctype html><meta charset="utf-8"><title>seed</title>' }));
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}__seed`);
+  await page.evaluate(
+    async ({ rec }) => {
+      const db = await new Promise((resolve, reject) => {
+        const r = indexedDB.open("4d-branch", 1);
+        r.onupgradeneeded = () => {
+          const d = r.result;
+          for (const [n, kp] of [["kv"], ["backupMeta", "id"], ["backupData", "id"]]) if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, kp ? { keyPath: kp } : undefined);
+        };
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      await new Promise((resolve, reject) => {
+        const t = db.transaction("kv", "readwrite");
+        t.objectStore("kv").put(rec, "doc");
+        t.objectStore("kv").put({ rev: 1, savedAt: rec.updatedAt, writer: "old-page", docVersion: 1 }, "meta");
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+      });
+      db.close();
+    },
+    { rec },
+  );
+  await page.close();
+}
+
+/** 起動の時刻（ナビゲーションの始まりから）を待って読む */
+async function bootTimes(page) {
+  await page.waitForFunction(() => typeof window.__interactive === "number" && typeof window.__deepPaint === "number", null, { timeout: 180_000, polling: 200 });
+  const t = await page.evaluate(() => ({ boot: window.__interactive, firstPaint: window.__deepPaint, mapPaint: window.__firstMapFrame, nodes: window.__fourD.app.vm.nodeCount, hash: location.hash }));
+  if (t.nodes < 50_000) throw new Error(`地図のカードが少なすぎます（${t.nodes} 枚）。地図を入れたビルドではないかもしれません`);
+  return t;
+}
+
+/**
+ * 開いて、地図が描かれて触れるまで（起動の時刻はナビゲーションの始まりから）。stored: 同じ起点（保存先）の 2 回目からの開き直し
+ * （prev に前の回の物を渡す: 同じページを読み直す）。1 回目は版 6 の文書を引き上げて薄い形で保存する（測らない）
+ */
+async function boot(browser, profile, prev) {
+  if (BOOT === "stored" && prev) {
+    const { ctx, page, cdp, errors } = prev;
+    await page.reload({ waitUntil: "commit" });
+    const t = await bootTimes(page);
+    await page.evaluate(installTools);
+    return { ctx, page, cdp, t, errors };
+  }
+  const ctx = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: profile.dpr });
+  await ctx.addInitScript(bootScript);
+  if (BOOT === "stored") await seedStored(ctx);
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const cdp = await ctx.newCDPSession(page);
+  if (BOOT === "stored") {
+    // 1 回目: 版 6 の文書を読むときに引き上げ、薄い形で保存する（測らない。速さを落とさずに済ませる）
+    await page.goto(BASE, { waitUntil: "commit" });
+    await bootTimes(page);
+    await page.evaluate(() => window.__fourD.persistence.flush());
+    if (profile.cpu > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
+    await page.reload({ waitUntil: "commit" });
+    const t = await bootTimes(page);
+    await page.evaluate(installTools);
+    return { ctx, page, cdp, t, errors };
+  }
   if (profile.cpu > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: profile.cpu });
   await page.goto(`${BASE}#demo-q`, { waitUntil: "commit" });
-  await page.waitForFunction(() => typeof window.__interactive === "number" && typeof window.__deepPaint === "number", null, { timeout: 120_000, polling: 200 });
-  const t = await page.evaluate(() => ({ boot: window.__interactive, firstPaint: window.__deepPaint, mapPaint: window.__firstMapFrame, nodes: window.__fourD.app.vm.nodeCount, demoQ: location.hash }));
-  if (t.nodes < 50_000) throw new Error(`地図のカードが少なすぎます（${t.nodes} 枚）。PAGE_Q のビルドではないかもしれません`);
+  const t = await bootTimes(page);
   await page.evaluate(installTools);
   return { ctx, page, cdp, t, errors };
 }
@@ -310,11 +383,14 @@ async function measureProfile(browser, profile) {
   // 起動（毎回新しいページ）
   let s = null;
   for (let k = 0; k < ROUNDS; k++) {
-    if (s) await s.ctx.close();
-    s = await boot(browser, profile);
+    if (s && BOOT !== "stored") await s.ctx.close();
+    s = await boot(browser, profile, BOOT === "stored" ? s : null);
     push("boot", s.t.boot);
     push("firstPaint", s.t.firstPaint);
   }
+  r.bootPath = BOOT;
+  // 起動で 3 年の影響の形をどこから作ったか（map: 地図の列から・doc: 文書から）と、保存先の形
+  r.lastCompile = await s.page.evaluate(() => window.__fourD.app.vm.engine?.lastCompile ?? null);
   const { page, cdp } = s;
   r.heapParts = [];
   push("heapBoot", await heapMB(cdp, r.heapParts));
@@ -531,6 +607,49 @@ async function measureProfile(browser, profile) {
       window.__fourD.store.undo();
     });
     await page.evaluate(() => window.__budget.frames());
+  }
+
+  // 取り込み（届いた写しを薄い形で書いて読み直した物。本当の同期と同じく、変えていないカードは地図の基準と同じ物: W-app の I4）
+  for (let k = 0; k < ROUNDS; k++) {
+    const ok = await page.evaluate((kk) => {
+      const f = window.__fourD;
+      if (!f.codec) return false;
+      const imp = f.app.vm.impact;
+      const alts = imp.decision.get(imp.root).alts;
+      const id = alts[(kk * 3 + 4) % alts.length];
+      const raw = JSON.parse(JSON.stringify(f.codec.toStored(f.store.doc)));
+      const copy = f.codec.decodeStored(raw);
+      copy.nodes[id] = { ...copy.nodes[id], status: "active" };
+      window.__adoptCopy = copy;
+      return true;
+    }, k);
+    if (!ok) break;
+    await page.evaluate(() => window.__budget.frames());
+    push("adoptDecoded", await page.evaluate(() => window.__budget.time(() => window.__fourD.store.replaceDoc(window.__adoptCopy, "別の端末の内容を読み込む"))));
+    await page.evaluate(() => {
+      window.__adoptCopy = null;
+      window.__fourD.store.undo();
+    });
+    await page.evaluate(() => window.__budget.frames());
+  }
+  // 自動保存の書き出し（これにした後の文書を薄い形にする。保存先に書く時間は数えない: W-app の I6）
+  for (let k = 0; k < ROUNDS; k++) {
+    const ms = await page.evaluate(async (kk) => {
+      const f = window.__fourD;
+      if (!f.codec) return NaN;
+      const imp = f.app.vm.impact;
+      const alts = imp.decision.get(imp.root).alts;
+      f.app.cmd.updateNode(alts[(kk * 5 + 1) % alts.length], { status: "active" }, { label: "これにする" });
+      await window.__budget.frames();
+      await new Promise((r) => setTimeout(r, Math.random() * 16));
+      const t0 = performance.now();
+      f.codec.toStored(f.store.doc);
+      const dt = performance.now() - t0;
+      f.store.undo();
+      await window.__budget.frames();
+      return dt;
+    }, k);
+    push("autosave", ms);
   }
 
   await traceHeap(cdp, "取り込みの後");

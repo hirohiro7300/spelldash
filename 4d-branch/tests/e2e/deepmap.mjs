@@ -1,10 +1,14 @@
 // E2E: 3 か月ごとの地図（版 7）の見取り図・手の詳しい画面・道の画面・年月の目盛り・時間で区切って開く・新しい地図の知らせ・
-// 組み立てた本文を、地図を入れたページ（PAGE_Q のビルド）の #demo-q で確かめる（作業メモ SPEC v1 §5・§4.4・§11）
+// 組み立てた本文を、地図を入れたページ（P2 の既定のビルド）で確かめる（作業メモ SPEC v1 §5・§4.4・§11）
 //   npm run e2e:deepmap
-//   IMPACT_Q_BUNDLE: 地図の同梱データ（impact-q.b64）。無ければ作業メモの deepmap/gen/r7/impact-q.b64
-//   VITE_IMPACT_Q=1 で作業用のフォルダ（DEEPMAP_DIST。既定は OS の一時フォルダの下）にビルドし、vite preview で開く（E2E_PORT。既定 4540）。
+//   保存してあった物を読む起動の道（「保存」の組）: 合成した版 6 の利用者の文書（tests/fixtures/account-r6.json。本物のデータではない）を
+//   IndexedDB に入れて開く（読むときに版 7 へ引き上げる）→ 見取り図・道の画面・一番ありそうな道・目盛り・時間で区切って開く・
+//   新しい地図の知らせ（自分で選んだ・見送ったカードの差・「前の版で決めたこと」）→ 薄い形で保存 → 開き直す（保存した薄い形を読む）。
+//   一時表示 #demo-q（保存しない・組み立てたままの地図）の組は、見せ方の細かい確かめ。
+//   既定のビルドを作業用のフォルダ（DEEPMAP_DIST。既定は OS の一時フォルダの下）に作り、vite preview で開く（E2E_PORT。既定 4540）。
+//   IMPACT_Q_BUNDLE を渡すと、その同梱データで作る（VITE_IMPACT_Q=1）。
 //   DEEPMAP_DIST にビルド済みのフォルダを渡すと、そのまま使う。スマホ（390×844・タッチ）と机（1440×900）で同じ確かめをする。
-//   DEEPMAP_SHOTS にフォルダを渡すと、確かめの途中の画面を撮って残す（deviceScaleFactor 1）。DEEPMAP_PROFILE=390 か 1440 で片方だけ。
+//   DEEPMAP_SHOTS にフォルダを渡すと、確かめの途中の画面を撮って残す（DEEPMAP_DPR。既定 1）。DEEPMAP_PROFILE=390・1440・stored・splash で 1 つだけ。
 //   PW_CHROMIUM でブラウザの場所
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -17,18 +21,23 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..")
 const PORT = Number(process.env.E2E_PORT || 4540);
 const BASE = `http://localhost:${PORT}/`;
 const SCRATCH = "/tmp/claude-0/-home-user-spelldash/342dd9ca-ed44-551f-af59-60da8aff2834/scratchpad/deepmap";
-const BUNDLE = process.env.IMPACT_Q_BUNDLE || path.join(SCRATCH, "gen", "r7", "impact-q.b64");
+const BUNDLE = process.env.IMPACT_Q_BUNDLE || "";
+const FIXTURE = path.join(ROOT, "tests", "fixtures", "account-r6.json");
+const DPR = Number(process.env.DEEPMAP_DPR || 1);
 const DIST = process.env.DEEPMAP_DIST || path.join(os.tmpdir(), "4d-branch-deepmap-dist");
 const SHOTS = process.env.DEEPMAP_SHOTS || "";
 const ONLY = process.env.E2E_ONLY || "";
 
 function build() {
   if (process.env.DEEPMAP_DIST && fs.existsSync(path.join(DIST, "index.html"))) return;
-  if (!fs.existsSync(BUNDLE)) throw new Error(`地図の同梱データがありません: ${BUNDLE}（IMPACT_Q_BUNDLE で渡してください）`);
-  console.log(`ビルド（VITE_IMPACT_Q=1・${BUNDLE}）→ ${DIST}`);
+  if (BUNDLE && !fs.existsSync(BUNDLE)) throw new Error(`地図の同梱データがありません: ${BUNDLE}`);
+  console.log(`ビルド（${BUNDLE ? `VITE_IMPACT_Q=1・${BUNDLE}` : "既定: 版 7 の地図"}）→ ${DIST}`);
+  const env = { ...process.env };
+  if (BUNDLE) Object.assign(env, { VITE_IMPACT_Q: "1", IMPACT_Q_BUNDLE: BUNDLE });
+  else delete env.VITE_IMPACT_Q;
   const r = spawnSync(process.execPath, [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "build", "--outDir", DIST, "--emptyOutDir", "--logLevel", "error"], {
     cwd: ROOT,
-    env: { ...process.env, VITE_IMPACT_Q: "1", IMPACT_Q_BUNDLE: BUNDLE },
+    env,
     stdio: "inherit",
   });
   if (r.status !== 0) throw new Error("ビルドに失敗しました");
@@ -77,7 +86,7 @@ const settle = (page, ms = 250) => page.evaluate((t) => new Promise((r) => setTi
 
 /** #demo-q を開き、地図とパネルができるまで待つ。seedSheet: 新しい地図の知らせを見せた版を設定に入れておく（知らせは出ない） */
 async function open(browser, profile, opts = {}) {
-  const ctx = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: 1, isMobile: profile.mobile, hasTouch: profile.mobile });
+  const ctx = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: DPR, isMobile: profile.mobile, hasTouch: profile.mobile });
   if (opts.seedSheet) {
     await ctx.addInitScript((rel) => {
       try {
@@ -765,6 +774,260 @@ async function runProfile(browser, profile) {
  * 起動の間に先に描く見取り図（読み込み中）: 押せる形に見せず、文書の組み立ての間に押した入力は、組み立ての後に入れ替わったアプリの
  * 同じ位置を押さない（見直し user-12）
  */
+/** 合成した版 6 の利用者の文書を、この起点の IndexedDB に入れる（中身の無いページで。アプリはまだ開いていない） */
+async function seedStored(ctx) {
+  const rec = JSON.parse(fs.readFileSync(FIXTURE, "utf8"));
+  await ctx.route(`${BASE}__seed`, (r) => r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: '<!doctype html><meta charset="utf-8"><title>seed</title>' }));
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}__seed`);
+  await page.evaluate(
+    async ({ rec }) => {
+      const db = await new Promise((resolve, reject) => {
+        const r = indexedDB.open("4d-branch", 1);
+        r.onupgradeneeded = () => {
+          const d = r.result;
+          for (const [n, kp] of [["kv"], ["backupMeta", "id"], ["backupData", "id"]]) if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, kp ? { keyPath: kp } : undefined);
+        };
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      await new Promise((resolve, reject) => {
+        const t = db.transaction("kv", "readwrite");
+        t.objectStore("kv").put(rec, "doc");
+        t.objectStore("kv").put({ rev: 1, savedAt: rec.updatedAt, writer: "old-page", docVersion: 1 }, "meta");
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+      });
+      db.close();
+      localStorage.setItem("4d-branch:prefs", JSON.stringify({ onboardingDone: true, futureAutoOpened: true, futureOffered: true, wishlistOffered: true }));
+    },
+    { rec },
+  );
+  await page.close();
+  return rec;
+}
+
+/** 保存先の本体と見出し（IndexedDB の kv） */
+const storedBody = (page) =>
+  page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const r = indexedDB.open("4d-branch");
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+    const get = (key) =>
+      new Promise((resolve) => {
+        const r = db.transaction("kv", "readonly").objectStore("kv").get(key);
+        r.onsuccess = () => resolve(r.result);
+      });
+    const doc = await get("doc");
+    const meta = await get("meta");
+    db.close();
+    return { version: doc?.version, maps: doc?.maps?.length ?? 0, nodes: doc ? Object.keys(doc.nodes).length : 0, chars: JSON.stringify(doc ?? null).length, meta, sheet: doc?.meta?.releaseSheet ?? null };
+  });
+
+/**
+ * 保存してあった物を読む起動の道（作業メモ SPEC §11 の e2e・W-store の §11.4）: 版 6 の利用者の文書 → 起動で版 7 に引き上げ →
+ * 見取り図・道・一番ありそうな道・目盛り・時間で区切って開く・新しい地図の知らせ（自分のカード・前の版で決めたこと）→ 薄い形で保存 → 開き直す
+ */
+async function storedProfile(browser, profile) {
+  const tag = profile.name;
+  console.log(`\n[${tag}] ${profile.viewport.width}×${profile.viewport.height}${profile.mobile ? "・タッチ" : ""}・保存してあった版 6 の文書から`);
+  const ctx = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: DPR, isMobile: profile.mobile, hasTouch: profile.mobile });
+  const errors = [];
+  let page = null;
+  try {
+    const rec = await seedStored(ctx);
+    page = await ctx.newPage();
+    page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(`console: ${m.text()}`);
+    });
+    const ready = () => page.waitForFunction(() => !!window.__fourD?.app?.vm?.deep?.get(), null, { timeout: 180_000, polling: 200 });
+    await check(`${tag}: 起動で版 7 に引き上げる（id と更新時刻はそのまま・知らせに数・今日は版 7・「前の版で決めたこと」が今日の左）`, async () => {
+      await page.goto(BASE);
+      await ready();
+      const toast = page.locator(".toast .toast-text", { hasText: "3 か月ごとの新しい地図" });
+      await toast.first().waitFor({ timeout: 30_000 });
+      const info = await page.evaluate(() => {
+        const f = window.__fourD;
+        const d = f.store.doc;
+        const deep = f.app.vm.deep.get();
+        const root = d.nodes[deep.root];
+        const groups = Object.values(d.nodes).filter((n) => typeof n.meta?.prevGroup === "number");
+        return { id: d.id, updatedAt: d.updatedAt, release: root?.meta?.futureRelease, annual: root?.meta?.impact?.annual, rootX: root?.x, group: groups.map((g) => g.x), n: f.app.vm.nodeCount };
+      });
+      assert(info.id === rec.id, "文書の id が変わった");
+      assert(info.release === 7 && info.annual === 480, `今日が版 7 でない・年収が引き継がれていない（${JSON.stringify(info)}）`);
+      assert(info.group.length === 1 && info.group[0] < info.rootX, `「前の版で決めたこと」が今日の左に 1 つない（${JSON.stringify(info)}）`);
+      assert(info.n > 50_000, `地図のカードが少ない（${info.n}）`);
+    });
+
+    await check(`${tag}: 新しい地図の知らせ（版 7）に、前の版で選んだ・見送ったカードの差と「前の版で決めたこと」が出る`, async () => {
+      const sheet = page.locator(".rel-sheet");
+      await sheet.waitFor({ timeout: 15_000 });
+      const text = await sheet.innerText();
+      for (const w of ["12 回の判断", "2,000 の分かれ道", "2 年の進め方は無くなった", "前の版で決めたこと"]) assert(text.includes(w), `知らせに「${w}」が無い`);
+      const mineRows = await sheet.locator(".rel-mine tbody tr").count();
+      const mineNone = await sheet.locator(".rel-mine-none").count();
+      assert(mineRows > 0 || mineNone === 1, "前の版で選んだ・見送ったカードの欄が無い");
+      if (mineRows > 0) {
+        const t = await sheet.locator(".rel-mine").innerText();
+        assert(/選んだ手|見送った手/.test(t) && /番目 → |からマイナスに|からプラスに/.test(t), `自分のカードの行に状態か変わった所が無い（${t.slice(0, 200)}）`);
+      }
+      const prevItems = await sheet.locator(".rel-prev-list li").count();
+      assert(prevItems >= 1, "「前の版で決めたこと」のカードが並んでいない");
+      for (const name of ["見取り図を見る", "一番ありそうな道を読む", "前の版で決めたことを見る"]) assert((await sheet.getByRole("button", { name }).count()) === 1, `「${name}」のボタンが無い`);
+      await shot(page, `${tag}-00-release-sheet`);
+      await noOverflow(page, "知らせ");
+      await sheet.getByRole("button", { name: "前の版で決めたことを見る" }).click();
+      await page.waitForFunction(() => !document.querySelector(".modal-backdrop:not(.closing)"));
+      await settle(page, 500);
+      const sel = await page.evaluate(() => {
+        const f = window.__fourD;
+        const id = [...f.ui.selection.nodes][0];
+        return { id, prev: typeof f.store.doc.nodes[id]?.meta?.prevGroup === "number" };
+      });
+      assert(sel.prev, `「前の版で決めたこと」が選ばれていない（${JSON.stringify(sel)}）`);
+      await shot(page, `${tag}-01-prev-group`);
+      const meta = await page.evaluate(() => window.__fourD.store.doc.meta?.releaseSheet ?? null);
+      assert(meta === 7, `見せた版が文書に残っていない（${meta}）`);
+    });
+
+    await check(`${tag}: 見取り図（10 の手）→ 一番ありそうな道（パネルの縦の道）`, async () => {
+      await page.evaluate(() => {
+        const f = window.__fourD;
+        f.ui.clearSelection();
+        f.ui.setPrefs({ rightOpen: true });
+        f.ui.closeDeep();
+      });
+      await settle(page, 400);
+      const ov = page.locator(".sidebar-right .deep-ov");
+      await ov.waitFor();
+      assert((await ov.locator(".dm-glance-row").count()) === 10, "見取り図のひと目の行が 10 でない");
+      await shot(page, `${tag}-02-mitorizu`);
+      const chainBtn = ov.locator("a.dm-btn", { hasText: "一番ありそうな道" }).first();
+      assert((await chainBtn.count()) === 1, "見取り図に一番ありそうな道が無い");
+      await chainBtn.click();
+      await page.locator(".sidebar-right .deep-page.is-path").waitFor();
+      const path = page.locator(".sidebar-right .deep-page.is-path");
+      assert((await path.locator(".dm-tl > li").count()) >= 8, "道の行が少ない");
+      assert((await path.locator(".dm-tl-end").innerText()).includes("2029 年 11 月"), "着いた所が 2029 年 11 月でない");
+      const head = path.locator(".dm-tl > li.is-step .dm-tl-head").nth(1);
+      await head.click();
+      await settle(page);
+      const p0 = await deepPage(page);
+      const alt = path.locator("li.is-open a.dm-alt").first();
+      assert((await alt.count()) === 1, "開いた行に、ほかの結果・手が無い");
+      await alt.click();
+      await page.waitForFunction((n) => window.__fourD.ui.deepPage?.kind === "path" && window.__fourD.ui.deepPage.node !== n, p0.node);
+      await shot(page, `${tag}-03-path`);
+      await noOverflow(page, "道の画面");
+      await page.evaluate(() => window.__fourD.ui.closeDeep());
+      await settle(page);
+    });
+
+    await check(`${tag}: 年月の目盛りがどの拡大率でも出る（今日 2026 年 11 月から）`, async () => {
+      for (const zoom of [1, 0.3, 0.08]) {
+        // 今日に寄せてから拡大率を変える（「前の版で決めたこと」は今日の左で、その辺りには年月の列が無い）
+        await page.evaluate((z) => {
+          const f = window.__fourD;
+          const v = f.app.view;
+          f.app.vm.ensure();
+          const p = f.app.vm.posOf(f.app.vm.deep.get().root);
+          v.camera.zoom = z;
+          v.camera.x = v.width * 0.25 - p.x * z;
+          v.camera.y = v.height * 0.4 - p.y * z;
+          v.cameraChanged();
+        }, zoom);
+        await settle(page, 80);
+        const r = await page.evaluate(() => ({ on: window.__fourD.app.view.rulerShown, texts: window.__fourD.app.view.rulerTexts }));
+        assert(r.on && r.texts.length >= 1, `拡大率 ${zoom} で目盛りが無い`);
+      }
+      await page.evaluate(() => {
+        const f = window.__fourD;
+        f.app.view.fit([f.app.vm.deep.get().root], { animate: false, minZoom: 0.5 });
+      });
+      await settle(page, 150);
+      const t = await page.evaluate(() => window.__fourD.app.view.rulerTexts);
+      assert(t.some((x) => x.startsWith("今日 2026 年 11 月")), `目盛りに今日が無い（${t.join("・")}）`);
+      await shot(page, `${tag}-04-ruler`);
+    });
+
+    await check(`${tag}: 今日を選んで、手ごとに 1 年先まで開く（N 枚・3,000 枚まで）`, async () => {
+      await page.evaluate(() => {
+        const f = window.__fourD;
+        f.app.vm.resetImpactOpen();
+        f.ui.select([f.app.vm.deep.get().root]);
+        f.ui.setPrefs({ rightOpen: true });
+      });
+      await settle(page);
+      const sec = page.locator(".sidebar-right .deep-open-sec");
+      await sec.waitFor();
+      const btn = sec.locator(".deep-open-moves button").first();
+      const label = await btn.innerText();
+      const m = /1 年先まで ([\d,]+) 枚/.exec(label);
+      assert(m, `手ごとのボタンに区切りと枚数が無い（${label}）`);
+      const want = Number(m[1].replace(/,/g, ""));
+      await btn.click();
+      await settle(page, 700);
+      const shown = await page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length));
+      assert(shown >= want && shown <= 3000 + 200, `開いた後のカードの数が合わない（${shown}・ボタンは ${want} 枚）`);
+      await shot(page, `${tag}-05-opened-1y`);
+      await page.evaluate(() => window.__fourD.app.vm.resetImpactOpen());
+      await settle(page);
+    });
+
+    await check(`${tag}: 前の版で書き換えた本文は「前の版のメモ」と出る`, async () => {
+      const id = await page.evaluate(() => {
+        const f = window.__fourD;
+        const deep = f.app.vm.deep.get();
+        // 全体を見てよい: 確かめ
+        const n = Object.values(f.store.doc.nodes).find((x) => x.meta?.prevBody === true && deep.indexOf(x.id) >= 0 && x.body.trim());
+        return n?.id ?? null;
+      });
+      assert(id, "前の版で書き換えた本文を移したカードが無い（試験データに書き換えた本文がある）");
+      await page.evaluate((nid) => {
+        const f = window.__fourD;
+        f.ui.select([nid]);
+        f.ui.setPrefs({ rightOpen: true });
+      }, id);
+      await settle(page, 400);
+      const labels = await page.locator(".sidebar-right .insp-section .insp-label").allInnerTexts();
+      assert(labels.some((x) => x.trim() === "前の版のメモ"), `「前の版のメモ」が無い（${labels.join("・")}）`);
+      await shot(page, `${tag}-06-prev-note`);
+      await page.evaluate(() => window.__fourD.ui.clearSelection());
+    });
+
+    await check(`${tag}: 薄い形で保存し、開き直すと同じ（知らせは出ない・見取り図がある）`, async () => {
+      await page.evaluate(() => window.__fourD.persistence.flush());
+      const b = await storedBody(page);
+      assert(b.version === 2 && b.maps === 1, `保存した本体が薄い形でない（${JSON.stringify(b)}）`);
+      assert(b.meta?.mapRelease === 7 && b.meta?.docVersion === 2, `見出しが版 7 の薄い形でない（${JSON.stringify(b.meta)}）`);
+      assert(b.sheet === 7 && b.chars < 64_000, `保存した本体が大きい・見せた版が無い（${b.chars} 文字・${b.sheet}）`);
+      const before = await page.evaluate(() => ({ id: window.__fourD.store.doc.id, n: window.__fourD.app.vm.nodeCount }));
+      await page.reload();
+      await ready();
+      await settle(page, 1200);
+      const after = await page.evaluate(() => ({ id: window.__fourD.store.doc.id, n: window.__fourD.app.vm.nodeCount, compile: window.__fourD.app.vm.engine.lastCompile }));
+      assert(after.id === before.id && after.n === before.n, `開き直した文書が違う（${JSON.stringify({ before, after })}）`);
+      assert((await page.locator(".rel-sheet").count()) === 0, "開き直したら知らせがもう一度出た");
+      assert((await page.locator(".toast .toast-text", { hasText: "3 か月ごとの新しい地図" }).count()) === 0, "開き直したら引き上げの知らせがもう一度出た");
+      await page.evaluate(() => (window.__fourD.ui.clearSelection(), window.__fourD.ui.setPrefs({ rightOpen: true })));
+      await settle(page, 300);
+      assert((await page.locator(".sidebar-right .deep-ov .dm-glance-row").count()) === 10, "開き直した後に見取り図が無い");
+      console.log(`      開き直した後の 3 年の影響の形: ${after.compile}・保存した本体 ${b.chars} 文字`);
+      await shot(page, `${tag}-07-reopened`);
+    });
+
+    await check(`${tag}: コンソールのエラーが無い`, async () => {
+      assert(errors.length === 0, errors.slice(0, 5).join("\n"));
+    });
+  } finally {
+    await ctx.close();
+  }
+}
+
 async function splashCheck(browser) {
   // スマホ（引き出しの行が、先に描いた見取り図の行と少しずれた所にある: 前の版では、押した行の 1 つ上の手が開いた）
   console.log("\n[起動の見取り図] 390×844・タッチ・CPU 4 倍遅く");
@@ -846,6 +1109,10 @@ async function main() {
     const only = process.env.DEEPMAP_PROFILE || "";
     if (!only || only === "390") await runProfile(browser, { name: "390", viewport: { width: 390, height: 844 }, mobile: true });
     if (!only || only === "1440") await runProfile(browser, { name: "1440", viewport: { width: 1440, height: 900 }, mobile: false });
+    if (!only || only === "stored") {
+      await storedProfile(browser, { name: "保存 390", viewport: { width: 390, height: 844 }, mobile: true });
+      await storedProfile(browser, { name: "保存 1440", viewport: { width: 1440, height: 900 }, mobile: false });
+    }
     if (!only || only === "splash") await splashCheck(browser);
   } finally {
     await browser.close();

@@ -72,8 +72,10 @@ jobs:
       - name: 依存インストール
         run: npm ci
 
-      - name: ビルド
-        run: npm run build
+      # P2 からページは版 7 の地図を入れる。この E2E は前の版（版 6）の未来の道筋の流れも確かめるので、版 6 だけのページ（dist-r6）で動かす
+      # （版 7 のページは e2e-deepmap と Artifact 版の E2E で）
+      - name: ビルド（版 6 だけのページ）
+        run: npm run build:r6
 
       - name: ブラウザのインストール
         run: npx playwright-core install --with-deps chromium
@@ -128,14 +130,39 @@ jobs:
       - name: 依存インストール
         run: npm ci
 
-      - name: ビルド
-        run: npm run build
+      - name: ビルド（版 6 だけのページ。版 6 の地図の 3 年の影響のパネル）
+        run: npm run build:r6
 
       - name: ブラウザのインストール
         run: npx playwright-core install --with-deps chromium
 
       - name: 3 年の影響のパネルの E2E
         run: npm run e2e:impact
+
+  e2e-deepmap:
+    name: 3 か月ごとの地図（版 7）の E2E（保存してあった版 6 の文書の引き上げ・見取り図・道・目盛り・時間で区切って開く・新しい地図の知らせ）
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: 4d-branch
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 4d-branch/package-lock.json
+
+      - name: 依存インストール
+        run: npm ci
+
+      - name: ブラウザのインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: 3 か月ごとの地図の E2E（既定のビルドを作って 390 と 1440 の幅で）
+        run: npm run e2e:deepmap
 
   e2e-preview:
     name: 試し版（3 年の分かれ道）の E2E

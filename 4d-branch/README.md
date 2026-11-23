@@ -43,10 +43,12 @@ npm run dev
 | `npm run build` | 型チェック → `dist/` に静的ファイルを出力 |
 | `npm run preview` | ビルドした物を本番と同じセキュリティヘッダーで確かめる（http://localhost:4178） |
 | `npm test` | 単体テスト（Vitest） |
-| `npm run e2e` | ブラウザでの通しのテスト（Playwright。先に `npm run build`） |
+| `npm run build:r6` | 版 6 の地図だけのページ（`dist-r6/`。P2 から既定のページは版 7 の 3 か月ごとの地図を入れる。前の版の流れを確かめる E2E のため） |
+| `npm run e2e` | ブラウザでの通しのテスト（Playwright。版 6 だけのページで。先に `npm run build:r6`） |
 | `npm run build:artifact` | claude.ai の Artifact 用の 1 枚のページ（`artifact/4d-branch.html`） |
 | `npm run e2e:artifact` | Artifact 版の通しのテスト（偽の `window.claude` で同期・書き出し・スマホの幅） |
-| `npm run e2e:impact` | 右のパネルの「3 年の影響」の通しのテスト（概要・選んだ手・順位・全部ひらく・スマホの引き出し。先に `npm run build`） |
+| `npm run e2e:impact` | 右のパネルの「3 年の影響」（版 6 の地図）の通しのテスト（概要・選んだ手・順位・全部ひらく・スマホの引き出し。先に `npm run build:r6`） |
+| `npm run e2e:deepmap` | 3 か月ごとの地図（版 7）の通しのテスト（保存してあった版 6 の文書の引き上げ・見取り図・道・目盛り・時間で区切って開く・新しい地図の知らせ。既定のビルドを自分で作る） |
 | `npm run check` | 上の全部 |
 | `npm run test:slow` | 遅いテスト（8 万枚の木。`IMPACT_Q_FULL` に生成の書き出しの場所を渡す。作り方は `scripts/test-slow.mjs` の先頭） |
 | `npm run test:tz` | 3 か月ごとの地図の組み立て（`src/demo/quarterDoc.ts`）と基準の文書の指紋を、時差の違う 2 つのプロセス（America/Los_Angeles・Asia/Tokyo）で確かめる（小さい木の指紋は決まった値） |

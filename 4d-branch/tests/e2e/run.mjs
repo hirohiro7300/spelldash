@@ -17,10 +17,12 @@ const SHOTS = process.env.E2E_SHOTS || "";
 let server = null;
 async function startServer() {
   if (process.env.BASE_URL) return;
-  if (!fs.existsSync(path.join(ROOT, "dist", "index.html"))) throw new Error("dist/ がありません。先に npm run build を実行してください");
+  // E2E_DIST: 確かめるビルドの置き場（既定は dist/。版 6 だけのページは npm run build:r6 → dist-r6/）
+  const DIST_DIR = process.env.E2E_DIST || path.join(ROOT, "dist");
+  if (!fs.existsSync(path.join(DIST_DIR, "index.html"))) throw new Error(`${DIST_DIR} がありません。先に npm run build を実行してください`);
   // そのポートでもう別のサーバーが答えている: そのまま確かめると、そのサーバーの（古い・別の）物を確かめてしまう
   if (await fetch(BASE).then(() => true, () => false)) throw new Error(`ポート ${PORT} では別のサーバーがもう答えています（E2E_PORT で変えられます）`);
-  server = spawn(process.execPath, [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "preview", "--port", String(PORT), "--strictPort"], { cwd: ROOT, stdio: "pipe" });
+  server = spawn(process.execPath, [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "preview", "--outDir", DIST_DIR, "--port", String(PORT), "--strictPort"], { cwd: ROOT, stdio: "pipe" });
   // ポートが使われていて起動できなかったのに、そのポートで答える別のサーバーを確かめてしまわないように
   let exited = false;
   server.on("exit", () => (exited = true));

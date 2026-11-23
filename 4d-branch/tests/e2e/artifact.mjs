@@ -1036,6 +1036,24 @@ await check("古い版の地図のまま開き直した端末: 新しい版を�
       const r = Object.values(f.store.doc.nodes).find((n) => n.meta?.forecastRoot === true);
       f.app.cmd.updateNode(r.id, { meta: { ...r.meta, futureVersion: x.version, futureRelease: x.release } });
     }, v);
+  // ページに 3 か月ごとの地図を入れたページ（P2 の既定）: 地図は薄い形で保存し、今日の版の印は読み書きのたびにページの地図の物に
+  // 書き直す（W-store の §2.1）。今日の meta を書き換えても古い版の地図にはならない（版をまたぐ確かめは保存の単体テストと e2e:deepmap の
+  // 保存してあった版 6 の文書から: W-store の §11.5）。ここでは、開き直しても古い版・新しい版と取り違えて知らせないことを確かめる
+  if (typeof now.anchor === "string") {
+    await setVer(R.page, { version: "old", release: 0 });
+    await R.page.evaluate(() => window.__fourD.persistence.flush());
+    await R.page.reload({ waitUntil: "load" });
+    await R.page.waitForFunction(() => Object.values(window.__fourD?.store.doc.nodes ?? {}).some((n) => n.meta?.forecastRoot === true), null, { timeout: 60000 });
+    await R.page.waitForTimeout(3000);
+    const back = await rootMeta(R.page);
+    const toasts = await R.page.evaluate(() => [...document.querySelectorAll(".toast:not(.closing) .toast-text")].map((t) => t.textContent));
+    const newMark = await R.page.evaluate(() => document.querySelector(".zoom-ctl .future-btn")?.classList.contains("has-new"));
+    await R.ctx.close();
+    assert(back.futureVersion === ver.version && back.futureRelease === ver.release, `開き直した今日の版がページの地図の版でない（${JSON.stringify({ version: back.futureVersion, release: back.futureRelease })}）`);
+    assert(!toasts.some((t) => t.includes("未来の道筋の新しい版があります") || t.includes("このページより新しい版")), `版を取り違えたお知らせが出た（${toasts.join(" / ")}）`);
+    assert(newMark === false, "ページの地図と同じ版なのに「新」の印が出ている");
+    return;
+  }
   await setVer(R.page, { version: "old", release: 0 });
   await R.page.evaluate(() => window.__fourD.app.cloud.flush());
   await R.page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });

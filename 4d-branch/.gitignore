@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# 版 6 だけのページ（npm run build:r6。前の版のページを確かめる E2E のため）
+dist-r6/
 test-results/
 # Artifact 用に生成する 1 枚のページ（npm run build:artifact）
 artifact/
