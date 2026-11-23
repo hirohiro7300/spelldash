@@ -7,7 +7,7 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 import { App } from "./app/App";
 import { UiState } from "./app/uiState";
-import { whenIdle } from "./app/idle";
+import { idleSteps, whenIdle } from "./app/idle";
 import { mapForDoc, pageMapDoc, rememberMapDoc } from "./app/futureCache";
 import { buildDemoDoc } from "./demo/demo";
 import { loadImpactBundle } from "./demo/futureBundle";
@@ -16,7 +16,7 @@ import { buildStressDoc } from "./demo/stress";
 import type { MapData } from "./deepmap/mapData";
 import { statusCode } from "./model/impactGraph";
 import type { DocData, GNode } from "./model/types";
-import { decodeStored, enableThinPage, primeThin, setBeforeMapDecode, thinReadable, toStored, watchThinWrites } from "./persist/codec";
+import { decodeStored, enableThinPage, primeThinSteps, setBeforeMapDecode, thinReadable, toStored, watchThinWrites } from "./persist/codec";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
 import { isNarrowScreen } from "./ui/breakpoints";
@@ -117,8 +117,9 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
   const app = new App({ store, ui, persistence, ephemeral, firstRun, bootFallback, notices, mount });
   persistence.attach(() => store.doc);
   // 自動保存の覚えを、起動の後の空いた時間に先に作る（開き直した後の最初の保存が、打っている最中の全部を見る保存にならないように:
-  // 見直し speed-autosave-first）。書けるタブだけ
-  if (PAGE_Q && !ephemeral && !store.readOnly) whenIdle(() => void primeThin(store.doc), 8000);
+  // 見直し speed-autosave-first）。書けるタブだけ。8 万枚を 1 度に見ると長い 1 つの仕事（机で 50 ms・スマホで 0.2 秒ほど）になるので、
+  // 4,000 枚ほどずつ空いた時間に進める（P4）
+  if (PAGE_Q && !ephemeral && !store.readOnly) primeLater(store, 8000);
   if (!ephemeral) {
     if (firstRun) persistence.markDirty();
     void persistence.ensureDailyBackup(store.doc).catch(() => undefined);
@@ -126,6 +127,26 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
   }
   // 確かめ用（E2E・開発者ツール）
   (window as unknown as { __fourD: unknown }).__fourD = { app, store, ui, persistence, codec: { toStored, decodeStored: (raw: unknown) => decodeStored(raw).doc } };
+}
+
+/**
+ * 自動保存の覚えを、空いた時間に少しずつ作る（src/persist/thinMap.ts の primeThinSteps）。作っている途中に文書が書かれたら、作りかけは
+ * 捨て、また空いた時間に今の文書で作り直す（3 回まで。その後は最初の自動保存が全部を見て覚えを作る: 前と同じ）
+ */
+function primeLater(store: Store, timeout: number, tries = 3): void {
+  whenIdle(() => {
+    const s = primeThinSteps(store.doc);
+    if (!s) return;
+    idleSteps(
+      () => {
+        if (!s.step()) return false;
+        if (s.dropped && tries > 1 && !store.readOnly) primeLater(store, 2000, tries - 1);
+        return true;
+      },
+      () => true,
+      1000,
+    );
+  }, timeout);
 }
 
 /** 保存してあった記録の今日の年収（先に描く見取り図に使う。読めなければ空: 見取り図の既定の年収） */

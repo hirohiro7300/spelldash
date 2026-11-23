@@ -29,7 +29,8 @@ import { ForecastPlan, type ForecastResult, type PlanSteps } from "../model/fore
 import { flowOuts, forkKindOf, isFlowEdge, isImpactRoot } from "../model/forks";
 import { DocIndex, isIndexKey } from "../model/docIndex";
 import type { ImpactResult } from "../model/impact";
-import { ImpactEngine } from "../model/impactEngine";
+import { ImpactEngine, type EngineInputs } from "../model/impactEngine";
+import type { Topo } from "../model/impactGraph";
 import { compareImpactKids, outlineLayout } from "../model/impactLayout";
 import { inScenario } from "../model/graph";
 import { isEmptyQuery, parseQuery } from "../model/search";
@@ -41,7 +42,7 @@ import { isNarrowScreen } from "../ui/breakpoints";
 import { DeepState } from "./deepState";
 import { idleSteps, whenIdle } from "./idle";
 import { forgetMapDoc, mapDocOf, rememberMapDoc } from "./futureCache";
-import { emptyDelta, patchScope, ScopeSet, treeAt, type ImpactScopeInfo, type StructDelta, type TreeInfo } from "./scopeSplice";
+import { emptyDelta, patchScope, ScopeSet, treeAt, treeFromTopo, type ImpactScopeInfo, type StructDelta, type TreeInfo } from "./scopeSplice";
 import type { UiState } from "./uiState";
 
 /** 全部の入れ替えを変わった物だけで受けたとき、検索の索引を直す数の上限（多ければ作り直す） */
@@ -237,6 +238,8 @@ export class ViewModel {
   private scopeCache: ImpactScopeInfo | null = null;
   /** 範囲を地図の形から作るために、3 年の影響の計算を呼んでいる途中 */
   private scopeBusy = false;
+  /** エンジンの形から作った範囲と、その形（先の数を、文書の線をたどらずに形の配列から数える: treeInfo） */
+  private scopeTopo: { info: ImpactScopeInfo; topo: Topo } | null = null;
   private treeCache: TreeInfo | null = null;
   private userCache: UserPart | null = null;
   private unreachCache: { key: string; reached: Set<ID> | null } | null = null;
@@ -403,6 +406,7 @@ export class ViewModel {
     const p = patchScope(this.store.doc, this.index, sc, tc, d, v.flow, `${v.topo}|${v.flow}`);
     if (!p) return false;
     this.scopeCache = p.info;
+    this.scopeTopo = null;
     if (p.tree) this.treeCache = p.tree;
     this.patchCounts.scope++;
     const uc = this.userCache;
@@ -616,10 +620,15 @@ export class ViewModel {
    * 題名を書いている所は、それぞれが文書から書き直す）
    */
   get impact(): ImpactResult {
+    return this.engine.result(this.engineInputs());
+  }
+
+  /** 3 年の影響のエンジンに渡す物（今の文書・方針・索引） */
+  private engineInputs(): EngineInputs {
     const doc = this.store.doc;
     const sid0 = this.ui.prefs.scenarioId ?? null;
     const sid = sid0 && doc.scenarios[sid0] ? sid0 : null;
-    return this.engine.result({
+    return {
       doc,
       sid,
       out: () => this.index.out,
@@ -632,7 +641,7 @@ export class ViewModel {
         const fc = this.forecast;
         return { version: this.forecastStamp, of: (id) => fc.reach.get(id)?.p ?? 0 };
       },
-    });
+    };
   }
 
   /**
@@ -1089,7 +1098,9 @@ export class ViewModel {
     const doc = this.store.doc;
     const n = info.order.length;
     const t = { size: new Int32Array(n), clean: new Uint8Array(n), regular: new Uint8Array(n) };
-    for (let p = n - 1; p >= 0; p--) treeAt(doc, this.index, info, t, p);
+    const st = this.scopeTopo;
+    if (st && st.info === info) treeFromTopo(doc, this.index, info, st.topo, t);
+    else for (let p = n - 1; p >= 0; p--) treeAt(doc, this.index, info, t, p);
     const { size, clean, regular } = t;
     const res: TreeInfo = { key, size, clean, regular };
     this.treeCache = res;
@@ -1212,8 +1223,11 @@ export class ViewModel {
     const flow = this.index.version.flow;
     const c = this.scopeCache;
     if (c && c.flow === flow) return c;
+    this.scopeTopo = null;
     const fromMap = this.scopeFromMap(flow);
     if (fromMap) return (this.scopeCache = fromMap);
+    const fromTopo = this.scopeFromTopo(flow);
+    if (fromTopo) return (this.scopeCache = fromTopo);
     const doc = this.store.doc;
     const out = this.index.out;
     const roots = [...this.index.impactRoots].sort();
@@ -1285,6 +1299,49 @@ export class ViewModel {
     regular[0] = 0;
     const v = idx.version;
     this.treeCache = { key: `${v.topo}|${flow}`, size: cm.size, clean: new Uint8Array(n).fill(1), regular };
+    return info;
+  }
+
+  /**
+   * 3 年の影響のエンジンが文書から作った形（compileDocTopo。入口が 1 つ・合流も循環も無い）から範囲を作る（文書を幅優先にたどり直さない。
+   * 番号の表と並びはエンジンの物をそのまま使う: 8 万の ID の表をもう 1 つ作らない）。合流が無ければ、エンジンの並べる順（入口から、
+   * 入ってくる線を数えて減らす順）は、入口から道の線で幅優先にたどった順と、兄弟の並び（文書の出る線の順）まで同じ
+   * （どのノードも入る道の線が 1 本: 親を出たときに数が 0 になる）。たどった親・その線は入る線 1 本の元、歩数は親 + 1。
+   * 保存してあった地図に、前の版で決めたカード（利用者のカード・線）がある起動の道（W-app の I1 の地図の列からの道を使えない）。
+   * 使えない形（入口が 2 つ以上・合流・循環・範囲の外へ出る線・エンジンの計算の中から来た）なら null（今までどおり文書をたどる）
+   */
+  private scopeFromTopo(flow: number): ImpactScopeInfo | null {
+    const idx = this.index;
+    if (this.scopeBusy || idx.impactRoots.size !== 1) return null;
+    let t: Topo | null;
+    this.scopeBusy = true;
+    try {
+      t = this.engine.topoNow(this.engineInputs());
+    } finally {
+      this.scopeBusy = false;
+    }
+    if (!t || t.map || t.merges || t.loose.size || t.tgtLoose.size || t.scopeSize !== t.n || t.rootIds.length !== 1 || t.roots.length !== 1 || t.roots[0] !== 0) return null;
+    const root = t.ids[0]!;
+    if (!idx.impactRoots.has(root)) return null;
+    const n = t.n;
+    const { incOff, incSlot, src, eid } = t;
+    const depth = new Int32Array(n);
+    const parent = new Int32Array(n);
+    const parentEdge: ID[] = new Array(n);
+    parent[0] = -1;
+    parentEdge[0] = "";
+    // 入口へ戻る線は範囲のたどりでは数えない（入口は親を持たない）。ほかのノードは入る線がちょうど 1 本で、元は前の番号
+    for (let i = 1; i < n; i++) {
+      if (incOff[i + 1]! - incOff[i]! !== 1) return null;
+      const s = incSlot[incOff[i]!]!;
+      const p = src[s]!;
+      if (p >= i) return null;
+      parent[i] = p;
+      depth[i] = depth[p]! + 1;
+      parentEdge[i] = eid[s]!;
+    }
+    const info: ImpactScopeInfo = { flow, roots: [root], pos: t.idx, order: t.ids, rootOf: new Int32Array(n), depth, parent, parentEdge };
+    this.scopeTopo = { info, topo: t };
     return info;
   }
 

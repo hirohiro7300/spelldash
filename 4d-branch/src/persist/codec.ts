@@ -60,6 +60,7 @@ export {
   pageMapData,
   pageRelease,
   primeThin,
+  primeThinSteps,
   sectionOf,
   setThinBaseline,
   thinBaseline,

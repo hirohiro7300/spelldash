@@ -54,9 +54,10 @@ const BUDGET = {
   undo: [150, 600],
   deselect: [30, 120],
   adopt: [300, 1200],
-  adoptDecoded: [300, 1200],
+  adoptClone: [null, null],
   autosave: [50, 200],
   longTask: [50, 50],
+  bootLongTask: [50, 200],
   selectLayout: [null, 5],
   heapBoot: [150, null],
   heapUse: [200, null],
@@ -81,10 +82,11 @@ const LABEL = {
   search: "検索の 1 文字（変換中を含む）",
   undo: "元に戻す（これにするの取り消し）",
   deselect: "これにした後に概要へ戻る（キャンバスで Esc）",
-  adopt: "取り込み（別の端末の内容: 全部の入れ替え。届いた写しは測る前に作る。写しは structuredClone: どのカードも別の物の、一番重い形）",
-  adoptDecoded: "取り込み（届いた写しを薄い形で書いて読み直した物: 本当の同期と同じく、変えていないカードは地図の基準と同じ物）",
+  adopt: "取り込み（別の端末の内容: 全部の入れ替え。届いた写しは測る前に作る。写しは本当の同期・ほかのタブ・インポート・復元と同じく、薄い形で書いて読み直した物: 変えていないカードは地図の基準と同じ物）",
+  adoptClone: "（参考・予算なし）取り込みの写しが structuredClone（どのカードも別の物）。どの取り込みの道もこの形を作らない（作業メモ SPEC §7.2: P4 で予算の行を本当の取り込みに直した）",
   autosave: "自動保存の書き出し（これにした後の文書を薄い形にする: toStored）",
   longTask: "変更（シナリオ・年収・これにする）を描いた後 3 秒の、一番長い仕事（ms。空いた時間の仕事。変更そのものは数えない）",
+  bootLongTask: "起動して触れるようになった後の、一番長い仕事（ms。机 10 秒・スマホ 20 秒。自動保存の覚えを先に作る・年収の境目・検索の索引など空いた時間の仕事。起動そのものは数えない。予算は自動保存の書き出しと同じ: P4）",
   selectLayout: "引き出しを閉じたスマホでカードを選ぶときのレイアウト（ms）",
   heapBoot: "起動後のヒープ（MB。JS・ArrayBuffer・DOM の合計）",
   heapUse: "起動 + 10 回これにする + 1 年先まで開いたまま + 検索の後のヒープ（MB。合計）",
@@ -237,6 +239,15 @@ function bootScript() {
     requestAnimationFrame(deepTick);
   };
   requestAnimationFrame(deepTick);
+  // 長い仕事（50 ms 超）を、読み込みの初めから記録する（起動して触れた後の長い仕事: bootLongTask）
+  window.__bootLong = [];
+  try {
+    new PerformanceObserver((l) => {
+      for (const e of l.getEntries()) window.__bootLong.push([e.startTime, e.duration]);
+    }).observe({ type: "longtask" });
+  } catch {
+    /* 見張れない */
+  }
   // 地図が描かれた最初のフレーム（触れる）を記録する
   const tick = () => {
     const f = window.__fourD;
@@ -328,6 +339,9 @@ async function boot(browser, profile, prev) {
   return { ctx, page, cdp, t, errors };
 }
 
+/** 何もせずに待つ（ページの中の時計で。待つ間にページへ何も送らない） */
+const page_wait = (page, ms) => page.waitForTimeout(ms);
+
 /** ヒープ（MB）: JS のヒープ + ArrayBuffer など（型付き配列）+ DOM。parts に内訳 */
 async function heapMB(cdp, parts) {
   await cdp.send("HeapProfiler.enable");
@@ -387,6 +401,15 @@ async function measureProfile(browser, profile) {
     s = await boot(browser, profile, BOOT === "stored" ? s : null);
     push("boot", s.t.boot);
     push("firstPaint", s.t.firstPaint);
+    // 最後の回のほかは、触れるようになった後しばらく何もせずに待ち、その間の一番長い仕事を見る（起動の後の空いた時間の仕事:
+    // 自動保存の覚え・年収の境目・検索の索引など。最後の回はすぐに起動後のヒープを測る: 今までの測り方のまま）
+    if (k < ROUNDS - 1) {
+      const quiet = profile.cpu > 1 ? 20_000 : 10_000;
+      await page_wait(s.page, quiet);
+      const lt = await s.page.evaluate(() => window.__bootLong.filter(([st]) => st >= window.__interactive).map(([st, d]) => [Math.round(st - window.__interactive), Math.round(d)]));
+      push("bootLongTask", lt.length ? Math.max(...lt.map((x) => x[1])) : 0);
+      (r.bootLongTasks ??= []).push(lt);
+    }
   }
   r.bootPath = BOOT;
   // 起動で 3 年の影響の形をどこから作ったか（map: 地図の列から・doc: 文書から）と、保存先の形
@@ -596,7 +619,8 @@ async function measureProfile(browser, profile) {
   }
 
   await traceHeap(cdp, "年収の後");
-  // 取り込み（別の端末の内容が届いた: 全部の入れ替え）。届いた写しは測る前に作る（手を 1 つ選んだ写し）。測った後は元に戻す
+  // （参考・予算なし）取り込みの写しが structuredClone（どのカードも別の物）。どの取り込みの道（アカウント・ほかのタブ・インポート・復元）も
+  // 薄い形を読み直すので、この形は作らない（作業メモ SPEC §7.2・P4）。届いた写しは測る前に作る（手を 1 つ選んだ写し）。測った後は元に戻す
   for (let k = 0; k < ROUNDS; k++) {
     await page.evaluate((kk) => {
       const f = window.__fourD;
@@ -608,7 +632,7 @@ async function measureProfile(browser, profile) {
       window.__adoptCopy = copy;
     }, k);
     await page.evaluate(() => window.__budget.frames());
-    push("adopt", await page.evaluate(() => window.__budget.time(() => window.__fourD.store.replaceDoc(window.__adoptCopy, "別の端末の内容を読み込む"))));
+    push("adoptClone", await page.evaluate(() => window.__budget.time(() => window.__fourD.store.replaceDoc(window.__adoptCopy, "別の端末の内容を読み込む"))));
     await page.evaluate(() => {
       window.__adoptCopy = null;
       window.__fourD.store.undo();
@@ -616,7 +640,7 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => window.__budget.frames());
   }
 
-  // 取り込み（届いた写しを薄い形で書いて読み直した物。本当の同期と同じく、変えていないカードは地図の基準と同じ物: W-app の I4）
+  // 取り込み（§7.2 の行。届いた写しを薄い形で書いて読み直した物。本当の同期と同じく、変えていないカードは地図の基準と同じ物: W-app の I4）
   for (let k = 0; k < ROUNDS; k++) {
     const ok = await page.evaluate((kk) => {
       const f = window.__fourD;
@@ -632,7 +656,7 @@ async function measureProfile(browser, profile) {
     }, k);
     if (!ok) break;
     await page.evaluate(() => window.__budget.frames());
-    push("adoptDecoded", await page.evaluate(() => window.__budget.time(() => window.__fourD.store.replaceDoc(window.__adoptCopy, "別の端末の内容を読み込む"))));
+    push("adopt", await page.evaluate(() => window.__budget.time(() => window.__fourD.store.replaceDoc(window.__adoptCopy, "別の端末の内容を読み込む"))));
     await page.evaluate(() => {
       window.__adoptCopy = null;
       window.__fourD.store.undo();
@@ -845,6 +869,7 @@ async function main() {
     if (r.yearCards) console.log(`${p}: 1 年先まで開いたときに見えるカード ${r.yearCards} 枚（ヒープを測ったときは ${r.heapOpenCards ?? "—"} 枚）`);
     if (r.heapParts?.length) console.log(`${p}: ヒープの内訳（MB: JS / ArrayBuffer など / DOM）${r.heapParts.map((x) => `${x.used.toFixed(1)} / ${x.backing.toFixed(1)} / ${x.embedder.toFixed(1)}`).join(" → ")}`);
     if (r.longTaskCounts) console.log(`${p}: 変更の後 3 秒の長い仕事の数 ${r.longTaskCounts.join(" / ")}（シナリオ・年収・これにする）`);
+    if (r.bootLongTasks) console.log(`${p}: 起動して触れた後の長い仕事（触れてからの ms・長さ）${r.bootLongTasks.map((l) => (l.length ? l.map(([a, d]) => `${a}:${d}`).join(" ") : "無し")).join(" / ")}`);
     if (r.errors?.length) console.log(`${p}: ページのエラー ${r.errors.join(" / ")}`);
   }
   if (process.env.BUDGET_OUT) fs.writeFileSync(process.env.BUDGET_OUT, JSON.stringify({ load, results, fails }, null, 2));

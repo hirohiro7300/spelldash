@@ -85,6 +85,49 @@ export function treeAt(doc: DocData, idx: IndexLinks, info: ImpactScopeInfo, t: 
   t.regular[p] = reg && inDeg === 1 ? 1 : 0;
 }
 
+/** 形の配列（3 年の影響のエンジンが文書から作った物: src/model/impactGraph.ts の Topo の一部） */
+export interface TopoLinks {
+  readonly n: number;
+  readonly off: Int32Array;
+  readonly tgt: Int32Array;
+  readonly incOff: Int32Array;
+}
+
+/**
+ * treeInfo の全部（後ろの番号から treeAt を n 回）を、範囲をエンジンの形から作ったとき（番号が形と同じ: viewModel.ts の scopeFromTopo）に
+ * 文書の線をたどらずに作る。索引の出る線・入る線の数が形の道の線の数と同じノードは、線がどれも形の道の線（範囲の中・木の線・入口へ戻る線
+ * だけが木でない）なので、形の配列だけで treeAt と同じ値を出す。数が違うノード（道でない線・自分への線・範囲の外との線がある）は treeAt
+ */
+export function treeFromTopo(doc: DocData, idx: IndexLinks, info: ImpactScopeInfo, topo: TopoLinks, t: { size: Int32Array; clean: Uint8Array; regular: Uint8Array }): void {
+  const { off, tgt, incOff } = topo;
+  const { order, parent } = info;
+  const { size, clean, regular } = t;
+  for (let p = order.length - 1; p >= 0; p--) {
+    const u = order[p]!;
+    const outN = off[p + 1]! - off[p]!;
+    const inN = incOff[p + 1]! - incOff[p]!;
+    if ((idx.out.get(u)?.length ?? 0) !== outN || (idx.inc.get(u)?.length ?? 0) !== inN) {
+      treeAt(doc, idx, info, t, p);
+      continue;
+    }
+    let reg = true;
+    let cl = true;
+    let sz = 1;
+    for (let s = off[p]!; s < off[p + 1]!; s++) {
+      const q = tgt[s]!;
+      // 道の線で範囲の中（同じ入口）: 止める線。木の線でなければ（入口へ戻る線）木でない
+      if (parent[q] !== p) {
+        reg = false;
+        cl = false;
+      } else if (!regular[q] || !clean[q]) cl = false;
+      else sz += size[q]!;
+    }
+    size[p] = sz;
+    clean[p] = cl ? 1 : 0;
+    regular[p] = reg && inN === 1 ? 1 : 0;
+  }
+}
+
 /** 1 回の変更の、足した・消した物（索引が受けた変更の前と後） */
 export interface StructDelta {
   addN: GNode[];

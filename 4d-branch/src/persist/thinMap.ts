@@ -1193,6 +1193,7 @@ const watched = new Set<WriteSource>();
 export function watchThinWrites(store: WriteSource): () => void {
   watched.add(store);
   store.onWrite = (doc, c, id, gone) => {
+    writeEpoch++;
     const st = encStates.get(doc.nodes);
     if (!st) return;
     (c === "nodes" ? st.dirtyN : st.dirtyE).add(id);
@@ -1405,8 +1406,67 @@ export function primeThin(doc: DocData): boolean {
   return encStates.has(doc.nodes);
 }
 
+/** ストアが文書に書いた回数（覚えを先に作っている途中に書かれたら、作りかけの覚えは捨てる: primeThinSteps） */
+let writeEpoch = 0;
+
+/**
+ * primeThin を、空いた時間に少しずつ進める形（1 歩で 4,000 枚ほど。起動の後に 1 つの長い仕事を作らない: P4。書く物も覚えも primeThin と同じ）。
+ * step() は終わったら true（覚えを作った・作れなかった・途中で捨てた）。途中で文書が書かれた・入れ替わった・ページの地図が替わったら
+ * 続けずに捨てる（作りかけの覚えは残さない。覚えは最後の 1 歩で、書かれていない文書の物として残す）。made は覚えを作ったか。
+ * 覚えがある・作れない文書は null
+ */
+export function primeThinSteps(doc: DocData): { step(): boolean; readonly made: boolean; readonly dropped: boolean } | null {
+  if (!page || !doc.nodes || typeof doc.nodes !== "object" || encStates.has(doc.nodes) || !isWatched(doc)) return null;
+  const nodes = doc.nodes;
+  const edges = doc.edges;
+  const page0 = page;
+  const epoch0 = writeEpoch;
+  const g = encodeFullSteps(doc, true);
+  let made = false;
+  let dropped = false;
+  let done = false;
+  return {
+    get made() {
+      return made;
+    },
+    get dropped() {
+      return dropped;
+    },
+    step(): boolean {
+      if (done) return true;
+      if (writeEpoch !== epoch0 || doc.nodes !== nodes || doc.edges !== edges || page !== page0 || !isWatched(doc)) {
+        done = dropped = true;
+        g.return(null);
+        return true;
+      }
+      try {
+        if (!g.next().done) return false;
+        made = encStates.has(nodes);
+      } catch {
+        // 書けない文書は、保存のときに知らせる（ここでは何もしない）
+      }
+      done = true;
+      return true;
+    },
+  };
+}
+
 /** 文書を薄い形にする（全部を見て）。keep なら、次に変わった所だけ書くための覚えを残す（ストアが書いた所を知らせる文書だけ） */
 function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: ThinStats } | null {
+  const g = encodeFullSteps(doc, keep);
+  let r = g.next();
+  while (!r.done) r = g.next();
+  return r.value;
+}
+
+/** 全部を見る薄い形の 1 歩の大きさ（カード・線をこれだけ見るごとに止まれる。机で数 ms・4 倍遅いスマホで 20 ms ほど） */
+const ENC_STEP = 4095;
+
+/**
+ * encodeFull を、カード・線を ENC_STEP 見るごとに止まりながら進める（止まった所で yield。答えは止まらずに進めた物と同じ）。
+ * 止まっている間に文書が書き換わったら、続けずに捨てること（覚えは最後の 1 歩で残す: primeThinSteps）
+ */
+function* encodeFullSteps(doc: DocData, keep: boolean): Generator<void, { stored: StoredDoc; stats: ThinStats } | null, void> {
   const docNodes = doc.nodes;
   // ノードの入れ物の無い物（文書の形でない物）は、そのまま書く（書き手は作らないが、壊さずに通す）
   if (!docNodes || typeof docNodes !== "object") return null;
@@ -1440,6 +1500,7 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
   const cards = new Array<GNode | undefined>(n);
   let found = 0;
   for (let i = 0; i < n; i++) {
+    if ((i & ENC_STEP) === ENC_STEP) yield;
     const node = docNodes[ids[i]!];
     if (node === undefined) continue;
     if (node === core.nodes[i] || node === lastView?.nodes[i] || node.meta?.key === keys[i]) {
@@ -1453,7 +1514,9 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
   const odd: ID[] = [];
   if (nodeIds.length !== found) {
     let p = 0;
+    let q = 0;
     for (const id of nodeIds) {
+      if ((++q & ENC_STEP) === 0) yield;
       while (p < n && cards[p] === undefined) p++;
       if (p < n && ids[p] === id) {
         p++;
@@ -1560,6 +1623,7 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
   const bundle = new Array<GEdge | undefined>(n);
   let foundE = 0;
   for (let i = 1; i < n; i++) {
+    if ((i & ENC_STEP) === ENC_STEP) yield;
     const c = cards[i];
     if (c === undefined) continue;
     const pc = cards[core.parent[i]!];
@@ -1573,7 +1637,9 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
   const oddEdges: ID[] = [];
   if (edgeIds.length !== foundE) {
     let p = 1;
+    let q = 0;
     for (const id of edgeIds) {
+      if ((++q & ENC_STEP) === 0) yield;
       while (p < n && bundle[p] === undefined) p++;
       if (p < n && eids[p] === id) {
         p++;
@@ -1610,6 +1676,7 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
   // 消したカード: その先の同梱のカードも全部無ければ 0（一番上だけ）、ほかは −1
   const allGone = new Uint8Array(n);
   for (let i = n - 1; i >= 1; i--) {
+    if ((i & ENC_STEP) === ENC_STEP) yield;
     if (cards[i]) continue;
     let gone = 1;
     for (let k = core.kidStart[i]!; k < core.kidStart[i + 1]!; k++)
@@ -1623,6 +1690,7 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
   const nAt = keep ? new Map<number, NodePatch | 0 | -1>() : null;
   const eAt = keep ? new Map<number, EdgePatch | 0>() : null;
   for (let i = 1; i < n; i++) {
+    if ((i & ENC_STEP) === ENC_STEP) yield;
     const c = cards[i];
     const v = view.nodes[i]!;
     if (!c) {
@@ -1642,6 +1710,7 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
     }
   }
   for (let i = 1; i < n; i++) {
+    if ((i & ENC_STEP) === ENC_STEP) yield;
     if (!cards[i] || !cards[core.parent[i]!]) continue;
     const e = bundle[i];
     if (!e) {
