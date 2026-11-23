@@ -366,11 +366,24 @@ function drawDoneMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, a: 
 
 /** たたんだ先のカードの数（「+1,231」: 3 桁ごとに区切る。お金の札「+18万」と読み違えないよう、ほかの数と同じ書き方: 見直し R8） */
 export function hiddenCountText(count: number): string {
-  return `+${count.toLocaleString("ja-JP")}`;
+  // 描くたびに印ごとに toLocaleString を呼ぶと、印の多い画面で 1 枚の絵に数 ms かかる（書式は 1 つを使い回す: 作業メモ perf-8）
+  return `+${countFormat.format(count)}`;
 }
+const countFormat = new Intl.NumberFormat("ja-JP");
+
+/** fitFont の答え（文字・幅・大きさ → 字の大きさ）。同じ印を描くたびに測り直さない（数は限られる。増えすぎたら捨てる） */
+const fitMemo = new Map<string, number>();
+// 字の形を読み終えたら測り直す（読む前の代わりの字で測った大きさを使い続けない）
+if (typeof document !== "undefined") document.fonts?.addEventListener?.("loadingdone", () => fitMemo.clear());
 
 /** 文字が幅 max に収まるまで太字の大きさを下げる（下げすぎない） */
 function fitFont(ctx: CanvasRenderingContext2D, text: string, max: number, size: number): void {
+  const key = `${text}|${max.toFixed(2)}|${size.toFixed(2)}`;
+  const hit = fitMemo.get(key);
+  if (hit !== undefined) {
+    ctx.font = `700 ${hit}px ${CANVAS_FONT}`;
+    return;
+  }
   let px = Math.round(size);
   ctx.font = `700 ${px}px ${CANVAS_FONT}`;
   const min = Math.max(7, Math.round(size * 0.7));
@@ -378,6 +391,8 @@ function fitFont(ctx: CanvasRenderingContext2D, text: string, max: number, size:
     px--;
     ctx.font = `700 ${px}px ${CANVAS_FONT}`;
   }
+  if (fitMemo.size > 4000) fitMemo.clear();
+  fitMemo.set(key, px);
 }
 
 export function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, collapsed: boolean, count: number, color: string, a: number, lod: Lod, zoom: number): void {

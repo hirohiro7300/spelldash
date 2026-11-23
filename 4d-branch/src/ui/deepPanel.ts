@@ -11,7 +11,7 @@
 import "../deepmap/views/views.css";
 import "../styles/deep.css";
 import type { AppContext } from "../app/context";
-import type { DeepCtx } from "../app/deepState";
+import { cardWithDocOdds, type DeepCtx } from "../app/deepState";
 import type { DeepPage } from "../app/uiState";
 import type { Analysis, Overview } from "../deepmap/core";
 import { findFirstMove, findPathToken, kindSlug, moveDetailVM, notesSection, notesVM, overviewVM, parseRoute, pathVM, renderMoveDetail, renderOverview, renderPathPage, ym, type MoveDetailVM, type OverviewVM, type PathVM } from "../deepmap/views";
@@ -635,17 +635,21 @@ export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void
       el.hidden = !ctx || i < 0;
       const n = app.store.doc.nodes[id];
       if (!ctx || i < 0 || !n) return;
-      const k = `${ctx.map.header.hash}|${ctx.annual}|${i}`;
+      // 形か数を書き換えた文書では、書き換えた見込みも鍵に（本文の見込みを「つながり」と同じにする: 見直し R6）
+      const ver = app.vm.engine.version;
+      const k = `${ctx.map.header.hash}|${ctx.annual}|${i}|${ctx.edited ? `${ver.topology}.${ver.numbers}` : ""}`;
       if (k !== shownKey) {
         shownKey = k;
         const t0 = performance.now();
         const t = ctx.text();
+        const own = ctx.edited ? cardWithDocOdds(ctx, app.store.doc, app.vm.index.out, i) : null;
+        const row = own ? own.numbers : t.numbers(i);
+        const bodyText = own ? own.body : t.body(i);
         clear(nums);
-        const row = t.numbers(i);
         for (const x of row) nums.append(h("li", null, x));
         nums.hidden = !row.length;
-        composed = [row.join("・"), t.body(i)].filter((x) => x.length > 0).join("\n");
-        text.textContent = t.body(i) || "（このカードには組み立てた本文が無い）";
+        composed = [row.join("・"), bodyText].filter((x) => x.length > 0).join("\n");
+        text.textContent = bodyText || "（このカードには組み立てた本文が無い）";
         app.vm.deep.timings.composed = performance.now() - t0;
       }
       const ro = app.store.readOnly;

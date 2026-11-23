@@ -302,7 +302,10 @@ async function runProfile(browser, profile) {
       assert(r.dx === 8400, `まとめた行き先が 2029 年 11 月の列にない（入口から ${r.dx}px）`);
       assert(r.cont === true && /標準の続き/.test(r.long), "まとめた行き先への線が「標準の続き」でない");
       await page.evaluate(() => window.__fourD.app.vm.resetImpactOpen());
+      // 狭い画面では右の引き出し（概要）がキャンバスを覆うので、閉じてから目盛りを写す（P2 の確かめ F3）
+      if (profile.mobile) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
       await settle(page);
+      if (profile.mobile) assert(await page.evaluate(() => window.__fourD.app.view.rulerShown), "引き出しを閉じた後に目盛りが無い");
       await shot(page, `${tag}-06-canvas-ruler`);
     });
 
@@ -911,6 +914,16 @@ async function storedProfile(browser, profile) {
       const drawer = await page.evaluate(() => ({ narrow: window.innerWidth <= 860, right: window.__fourD.ui.prefs.rightOpen }));
       assert(!drawer.narrow || !drawer.right, "狭い画面で「前の版で決めたこと」に寄せたのに、右の引き出しがキャンバスを覆っている");
       await shot(page, `${tag}-01-prev-group`);
+      // 見出しのカードは目標ではない: 詳細に種類（目標）と状態（未着手）の欄を出さない（見直し R7）
+      if (drawer.narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
+      await settle(page, 300);
+      const ctl = await page.evaluate(() => {
+        const vis = (el) => !!el && el.getClientRects().length > 0;
+        const body = document.querySelector(".sidebar-right .insp-body-scroll");
+        return { title: body?.querySelector(".insp-title")?.value ?? null, picker: vis(body?.querySelector(".type-picker")), status: vis(body?.querySelector(".select-status")) };
+      });
+      assert(ctl.title === "前の版で決めたこと" && !ctl.picker && !ctl.status, `見出しのカードに種類・状態の欄が出ている（${JSON.stringify(ctl)}）`);
+      if (drawer.narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
       const meta = await page.evaluate(() => window.__fourD.store.doc.meta?.releaseSheet ?? null);
       assert(meta === 7, `見せた版が文書に残っていない（${meta}）`);
     });
@@ -972,6 +985,17 @@ async function storedProfile(browser, profile) {
       await settle(page, 150);
       const t = await page.evaluate(() => window.__fourD.app.view.rulerTexts);
       assert(t.some((x) => x.startsWith("今日 2026 年 11 月")), `目盛りに今日が無い（${t.join("・")}）`);
+      // 狭い画面では右の引き出し（概要）がキャンバスを覆うので、閉じてから目盛りを写す（P2 の確かめ F3）
+      if (profile.mobile) {
+        await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
+        await settle(page, 150);
+        const covered = await page.evaluate(() => {
+          const c = window.__fourD.app.view.canvas.getBoundingClientRect();
+          const el = document.elementFromPoint(c.left + c.width / 2, c.top + 30);
+          return el !== window.__fourD.app.view.canvas;
+        });
+        assert(!covered, "引き出しを閉じても目盛りの所がキャンバスでない");
+      }
       await shot(page, `${tag}-04-ruler`);
     });
 

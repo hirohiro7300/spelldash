@@ -32,6 +32,10 @@ export function buildInspector(app: AppContext): HTMLElement {
   let updaters: Updater[] = [];
   /** 見え方だけの変更（3 年の分かれ道の開閉など）で合わせる物。文書の変更でも updaters から合わせる */
   let viewUpdaters: Updater[] = [];
+  /** 出しているノードの詳細（ノードを 1 つ選んでいるとき） */
+  let panel: NodePanel | null = null;
+  /** 取っておいた概要とノードの詳細（別の物を出している間は置かずに持つ） */
+  const kept = new Map<"none" | "node", { el: HTMLElement; updaters: Updater[]; viewUpdaters: Updater[]; panel: NodePanel | null }>();
 
   const selKey = () => {
     // 3 か月ごとの地図の画面（手の詳しい画面・道の画面）は、選んだ物より前に出す
@@ -66,7 +70,14 @@ export function buildInspector(app: AppContext): HTMLElement {
 
   /** 狭い画面で引き出しを閉じている間に作り直しを頼まれた（開いたときに作る） */
   let pendingForce = false;
+  /** 押して選んだ後の作り直しを、次のフレームの頭に待たせている（requestAnimationFrame の番号） */
+  let pendingSel = 0;
   const render = (force = false) => {
+    // どの作り直しも今の選択から作る: 待たせていた分はここで済む
+    if (pendingSel) {
+      cancelAnimationFrame(pendingSel);
+      pendingSel = 0;
+    }
     // 狭い画面で引き出しを閉じている（置かれていない）間は作らず、開いたときに作る（カードを押すたびに見えないパネルを作らない: 見直し perf-5）
     if (isNarrowScreen() && !ui.prefs.rightOpen) {
       if (force) pendingForce = true;
@@ -81,6 +92,26 @@ export function buildInspector(app: AppContext): HTMLElement {
       for (const u of updaters) u();
       return;
     }
+    // 変換中（IME）の欄を作り直す・別のカードに替える前に、変換を決めさせて文書に入れる（変換中の文字は打つたびには入れていない）
+    const typing = document.activeElement;
+    if (typing instanceof HTMLElement && body.contains(typing) && composingEls.has(typing)) {
+      typing.blur();
+      // 決めた文字を入れた変更で、もう作り直した（同じ物を 2 度作らない）
+      if (key === k && !force) return;
+    }
+    // ノードから別のノードへ（同じ書き手・同じ形のまま）: 欄は作り直さず、カードごとの部分と中身だけ入れ替える
+    // （選ぶたびに詳細の全部を作り直して配置し直すと、机でも 30 ms を超える: 作業メモ perf-8）
+    if (!force && panel && key.startsWith("node:") && k.startsWith("node:") && store.doc.nodes[k.slice(5)]) {
+      // 前のカードの欄に入っていたフォーカスは外す（続けて打った文字が、新しいカードの題名に入らないように。前は欄ごと消えていた）
+      const a = document.activeElement;
+      if (a instanceof HTMLElement && body.contains(a)) a.blur();
+      key = k;
+      body.scrollTop = 0;
+      panel.retarget(k.slice(5));
+      panel.lowerLater();
+      for (const u of updaters) u();
+      return;
+    }
     // 同じ選択のまま作り直す（全部が入れ替わった・書き手が変わった）: フォーカスのあった部品（data-fk の鍵）へ戻す。
     // その部品が無くなっていたら（別の端末でその欄が消えた など）、パネルの中の決まった所へ
     const held = k === key ? heldFocus() : null;
@@ -89,10 +120,25 @@ export function buildInspector(app: AppContext): HTMLElement {
     key = k;
     updaters = [];
     viewUpdaters = [];
+    panel = null;
+    // 作り直しを頼まれた（全部の入れ替え・書き手・閲覧のみ・地図の画面）: 取っておいた概要とノードの詳細も使わない
+    if (force) kept.clear();
     clear(body);
+    // 別の物を出した（道の画面を閉じてカードの詳細へ戻った など）: 前の画面の送った位置のまま、詳細の途中から見せない（見直し user-15）。
+    // 中身を入れる前に（入れた後に送った位置を変えると、その場で全部を配置し直す）
+    if (moved) body.scrollTop = 0;
     const doc = store.doc;
     let page: DeepPageHandle | null = null;
-    if (k.startsWith("deep:") && ui.deepPage) {
+    // 概要とノードの詳細は取っておき、戻ったときに作り直さずに中身だけ合わせる（カードを選ぶ・概要へ戻るたびに全部を作らない: 作業メモ perf-8）
+    const slot = k === "none" ? "none" : k.startsWith("node:") && doc.nodes[k.slice(5)] ? "node" : null;
+    const hit = slot ? kept.get(slot) : undefined;
+    if (hit) {
+      body.append(hit.el);
+      updaters = hit.updaters;
+      viewUpdaters = hit.viewUpdaters;
+      panel = hit.panel;
+      panel?.retarget(k.slice(5), true);
+    } else if (k.startsWith("deep:") && ui.deepPage) {
       page = buildDeepPage(app, ui.deepPage);
       if (page) {
         body.append(page.el);
@@ -101,17 +147,17 @@ export function buildInspector(app: AppContext): HTMLElement {
       } else ui.closeDeep();
     } else if (k.startsWith("node:")) {
       const id = k.slice(5);
-      if (doc.nodes[id]) nodePanel(app, id, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
+      if (doc.nodes[id]) panel = nodePanel(app, id, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     } else if (k.startsWith("edge:")) {
       const id = k.slice(5);
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
     } else if (k.startsWith("multi:")) multiPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     else overviewPanel(app, body, (u) => updaters.push(u));
+    if (slot && !hit && body.firstElementChild instanceof HTMLElement) kept.set(slot, { el: body.firstElementChild, updaters, viewUpdaters, panel });
     headTitle.textContent = k === "none" ? "概要" : k.startsWith("deep:") ? "3 年の分かれ道" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
+    if (moved) panel?.lowerLater();
     for (const u of updaters) u();
-    // 別の物を出した（道の画面を閉じてカードの詳細へ戻った など）: 前の画面の送った位置のまま、詳細の途中から見せない（見直し user-15）
-    if (moved) body.scrollTop = 0;
     back?.();
     settleFocus(held);
     // パネルに入れた後で、道を切り替えた行を同じ位置に（入れる前は位置を測れない）
@@ -121,6 +167,17 @@ export function buildInspector(app: AppContext): HTMLElement {
   ui.on("selection", () => {
     // 選んだ物が変わった（キャンバス・リスト・検索で選んだ）: 3 か月ごとの地図の画面を閉じて、その詳細へ（画面の中から選んだときは閉じない）
     if (ui.deepPage && !ui.deepHeld) ui.closeDeep();
+    // キャンバスを押して選んだ: 詳細は次のフレームの頭で作る。離した後のブラウザの当たり判定（click）が、作りかけの詳細の配置をその場で
+    // やり直させない（選んだカードの光りと詳細は同じフレームに出る。机で 1 回 7〜10 ms: 作業メモ perf-8）。パネルのボタン・キーボードで
+    // 選んだときは今までどおりすぐ作る（押した後にフォーカスを詳細の部品へ移す所がある）
+    const ev = typeof window !== "undefined" ? window.event : undefined;
+    if (ev instanceof PointerEvent && (ev.type === "pointerup" || ev.type === "pointerdown") && ev.target instanceof HTMLCanvasElement) {
+      if (!pendingSel) pendingSel = requestAnimationFrame(() => {
+        pendingSel = 0;
+        render();
+      });
+      return;
+    }
     render();
   });
   // 3 か月ごとの地図の画面を開いた・切り替えた・閉じた
@@ -137,20 +194,27 @@ export function buildInspector(app: AppContext): HTMLElement {
     settleFocus(held);
   });
   ui.on("prefs", (p) => {
-    if (!onlyTimeCursor(p)) render();
+    if (onlyTimeCursor(p)) return;
+    // パネルの開け閉め・幅で、題名と文章の欄の高さを測り直す
+    fitEpoch++;
+    render();
   });
   // 3 年の分かれ道の開閉は見え方だけ（文書の変更は届かない）: 折りたたみのボタンなどをキャンバスでの開閉に合わせる
   ui.on("visual", () => {
+    // 次のフレームで作り直す（前に選んでいた物の欄を合わせても捨てるだけ）
+    if (pendingSel) return;
     for (const u of viewUpdaters) u();
   });
   // 閲覧のみになった・編集できるようになった（別のタブに引き継がれた・引き継いだ・アカウントに新しい版の内容があった）: 欄を作り直す
   store.on("readOnly", () => render(true));
   app.focusInspectorTitle = () => {
+    if (pendingSel) render();
     const t = body.querySelector<HTMLTextAreaElement>(".insp-title");
     t?.focus();
     t?.select();
   };
   app.focusEdgeCondition = () => {
+    if (pendingSel) render();
     const t = body.querySelector<HTMLTextAreaElement>(".edge-condition");
     t?.focus();
   };
@@ -179,13 +243,17 @@ function fitHeight(ta: HTMLTextAreaElement, max?: number): void {
   if (fitRaf) return;
   fitRaf = requestAnimationFrame(() => {
     fitRaf = 0;
-    const list = [...pendingFit].filter(([t]) => t.isConnected);
+    // 置いていない欄（下の欄を次のフレームに回している間・閉じた引き出し）は測らない（高さ 0 と測って縮めない）
+    const list = [...pendingFit].filter(([t]) => t.isConnected && t.getClientRects().length > 0);
     pendingFit.clear();
     for (const [t] of list) t.style.height = "auto";
     const hs = list.map(([t, m]) => Math.min(m ?? 360, t.scrollHeight + 2));
     list.forEach(([t], i) => (t.style.height = `${hs[i]}px`));
   });
 }
+
+/** 変換中（IME）の欄（変換中の文字はまだ文書に入れていない） */
+const composingEls = new WeakSet<Element>();
 
 /** 欄ごとの「まだ文書に入れていない入力があるか」 */
 const unsaved = new WeakMap<Element, () => boolean>();
@@ -232,14 +300,27 @@ function holdFocus(body: HTMLElement): (() => void) | null {
   };
 }
 
-/** 入力のたびに保存し、続けての入力は Undo 1 回にまとめる。欄を離れたらまとめを切る。変換中（IME）だけは入れ終わっていない */
+/**
+ * 入力のたびに保存し、続けての入力は Undo 1 回にまとめる。欄を離れたらまとめを切る。変換中（IME）だけは入れ終わっていない。
+ * 変換中（compositionstart から compositionend まで）の 1 文字ずつは文書に入れない（キャンバス・詳細・検索の作り直しを変換の 1 文字ごとに
+ * しない: 作業メモ perf-9）。変換を決めたとき（compositionend）にその時の欄の中身を入れる（Chrome は compositionend の後に input を
+ * 送らない。送るブラウザでは同じ中身なので、2 度目は何も変えない）。変換中に欄を離れる・作り直すときは、先に変換を決めさせる（詳細の render）
+ */
 function bindText(app: AppContext, el: HTMLInputElement | HTMLTextAreaElement, write: (v: string) => void): void {
   let composing = false;
-  el.addEventListener("compositionstart", () => (composing = true));
-  el.addEventListener("compositionend", () => (composing = false));
+  el.addEventListener("compositionstart", () => {
+    composing = true;
+    composingEls.add(el);
+  });
+  el.addEventListener("compositionend", () => {
+    composing = false;
+    composingEls.delete(el);
+    write(el.value);
+  });
   unsaved.set(el, () => composing);
-  el.addEventListener("input", () => {
+  el.addEventListener("input", (ev) => {
     if (el instanceof HTMLTextAreaElement) fitHeight(el);
+    if (composing || (ev as InputEvent).isComposing) return;
     write(el.value);
   });
   el.addEventListener("blur", () => app.store.history.seal());
@@ -318,16 +399,65 @@ function chipToggle(label: string, color: string | null, on: boolean, onClick: (
 
 // ------------------------------------------------------------ ノード
 
-function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater) => void, pushView: (u: Updater) => void): void {
+/** ノードの詳細（別のノードを選んだら、欄を作り直さずに中身だけ入れ替える: 作業メモ perf-8） */
+interface NodePanel {
+  /** 別のカードにする（again: 同じカードでも、カードごとの部分を作り直す。取っておいた詳細を置き直したとき） */
+  retarget(id: ID, again?: boolean): void;
+  /**
+   * 3 年の分かれ道のカード（上に 3 年の影響の長い欄がある）: 画面の外の下の欄（内訳・結果・同じ判断の手・自分のメモ・時間・条件・タグ・
+   * つながりなど）は、選んだフレームでは置かず、その次に出す（中身は今合わせてある。選んだフレームの配置を上の見える所だけにする: 作業メモ perf-8）
+   */
+  lowerLater(): void;
+}
+
+/** 前に出した物（物の同一性で比べる）と同じか。違えば覚え直して true（作り直す） */
+class RefSeen {
+  private prev: unknown[] | null = null;
+  changed(next: unknown[]): boolean {
+    const p = this.prev;
+    if (p && p.length === next.length && p.every((x, i) => x === next[i])) return false;
+    this.prev = next;
+    return true;
+  }
+  reset(): void {
+    this.prev = null;
+  }
+}
+
+const dayFormat = new Intl.DateTimeFormat("ja-JP");
+const stampFormat = new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** テキストエリアの高さを合わせた時の中身（と、パネルの開け閉めの回数）。同じなら測り直さない（測るたびにパネル全体の配置をやり直す） */
+const fitSeen = new WeakMap<HTMLTextAreaElement, string>();
+/** パネルの開け閉め・幅の変わる設定の回数（変われば測り直す） */
+let fitEpoch = 0;
+function fitChanged(ta: HTMLTextAreaElement, max?: number): void {
+  const k = `${fitEpoch}|${ta.value}`;
+  if (fitSeen.get(ta) === k) return;
+  fitSeen.set(ta, k);
+  fitHeight(ta, max);
+}
+
+function nodePanel(app: AppContext, id0: ID, root: HTMLElement, push: (u: Updater) => void, pushView: (u: Updater) => void): NodePanel {
   const { store, cmd, ui, vm } = app;
+  /** 出しているカード（別のカードを選んだら、欄はそのまま中身だけ入れ替える: retarget） */
+  let id = id0;
   const node = () => store.doc.nodes[id];
   const ro = () => store.readOnly;
   const wrap = h("div", { class: "insp-node" });
   root.append(wrap);
 
   // 種類
-  wrap.append(typePicker(app, () => node()?.type ?? null, (t) => cmd.setType([id], t), push));
+  // 「前の版で決めたこと」の見出しのカードは、まとめの見出しで目標ではない: 種類と状態の欄を出さない（見直し R7）
+  const isGroup = (): boolean => typeof node()?.meta?.prevGroup === "number";
+  const picker = typePicker(app, () => node()?.type ?? null, (t) => cmd.setType([id], t), push);
+  wrap.append(picker);
   const status = statusSelect(app, () => node()?.status ?? null, (s) => cmd.setStatus([id], s), push);
+  push(() => {
+    const g = isGroup();
+    picker.hidden = g;
+    status.hidden = g;
+  });
 
   // タイトル
   const title = h("textarea", { class: "insp-title", placeholder: "タイトル", dataset: { fk: "title" }, attrs: { rows: "1", "aria-label": "タイトル", spellcheck: "false" } });
@@ -350,47 +480,49 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     const prev = meta?.[PREV_BODY_META] === true ? Object.fromEntries(Object.entries(meta).filter(([k]) => k !== PREV_BODY_META)) : null;
     cmd.updateNode(id, prev ? { body: v, meta: prev } : { body: v }, { label: "文章を編集", coalesce: `body:${id}` });
   });
-  const composed = buildComposedBody(app, id, () => bodyTa.focus());
-  // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）。組み立てた本文は、その数のすぐ後に
-  // （狭い画面でも、具体的な文章を 2 画面より下へ押しやらない: 見直し user-11）
-  const impact = buildImpactNodeBlock(app, id, composed?.el ?? null);
-  if (impact) wrap.append(impact.el);
+  // カードごとの部分（組み立てた本文・3 年の影響・3 か月ごとの地図の操作）。別のカードを選んだら、ここだけ作り直す（mountBlocks）
+  let composed: ReturnType<typeof buildComposedBody> = null;
+  let impact: ReturnType<typeof buildImpactNodeBlock> = null;
+  let deepBlock: ReturnType<typeof buildDeepNodeBlock> = null;
   // 3 か月ごとの地図のカード: この先の道を読む・時間で区切って開く（作業メモ SPEC v1 §5.4・§5.5・§5.8）
-  const deepBlock = buildDeepNodeBlock(app, id);
-  if (deepBlock) {
-    wrap.append(deepBlock.el);
-    push(() => deepBlock.update());
-    pushView(() => deepBlock.update());
-  }
+  // 3 年の影響の欄の下にあるので、下の欄を次のフレームに回している間は合わせない（出す前に合わせる）
+  push(() => {
+    if (!lowerTimer) deepBlock?.update();
+  });
+  pushView(() => {
+    if (!lowerTimer) deepBlock?.update();
+  });
   // 未来の道筋: ここに至る見込みと、今日から何歩目か
   const forecastLine = h("div", { class: "insp-forecast", attrs: { role: "status" } });
   forecastLine.hidden = true;
   wrap.append(forecastLine);
-
-  if (composed) {
-    // 3 年の影響の欄の中に入らなかった（範囲の外など）ときだけ、ここに
-    if (!impact) wrap.append(composed.el);
-    push(() => composed.update());
-    bodyTa.placeholder = "自分のメモ（地図の文章とは別に残る）";
-    bodyTa.setAttribute("aria-label", "自分のメモ");
-  }
-  const bodySec = sectionEl(composed ? "自分のメモ" : "文章", bodyTa);
+  // 3 年の影響の欄の中に入らなかった（範囲の外など）組み立てた本文を置く所
+  const composedAt = document.createComment("composed");
+  wrap.append(composedAt);
+  push(() => composed?.update());
+  const bodySec = sectionEl("文章", bodyTa);
   wrap.append(bodySec);
-  if (composed) {
-    // 前の版（版 6 まで）の地図で書き換えた本文を移したメモ: 「前の版のメモ」と言う（地図の文章は上。W-store の §10.5・W-app の I9）
-    const label = bodySec.querySelector(".insp-label")!;
-    const hint = h("p", { class: "insp-hint deep-prev-note" }, "前の版の地図で書き換えた本文を、そのまま残しています。新しい地図の文章は上にあります");
-    bodySec.append(hint);
-    const syncPrev = (): void => {
-      const n = node();
-      const prev = !!n && n.meta?.[PREV_BODY_META] === true && n.body.trim().length > 0;
-      label.textContent = prev ? "前の版のメモ" : "自分のメモ";
-      hint.hidden = !prev;
-      bodyTa.setAttribute("aria-label", prev ? "前の版のメモ" : "自分のメモ");
-    };
-    syncPrev();
-    push(syncPrev);
-  }
+  // 前の版（版 6 まで）の地図で書き換えた本文を移したメモ: 「前の版のメモ」と言う（地図の文章は上。W-store の §10.5・W-app の I9）
+  const bodyLabel = bodySec.querySelector(".insp-label")!;
+  const hint = h("p", { class: "insp-hint deep-prev-note" }, "前の版の地図で書き換えた本文を、そのまま残しています。新しい地図の文章は上にあります");
+  hint.hidden = true;
+  bodySec.append(hint);
+  const syncPrev = (): void => {
+    if (!composed) {
+      bodyLabel.textContent = "文章";
+      hint.hidden = true;
+      bodyTa.placeholder = "メモ・背景・外部の AI と考えたこと…";
+      bodyTa.setAttribute("aria-label", "文章");
+      return;
+    }
+    const n = node();
+    const prev = !!n && n.meta?.[PREV_BODY_META] === true && n.body.trim().length > 0;
+    bodyLabel.textContent = prev ? "前の版のメモ" : "自分のメモ";
+    hint.hidden = !prev;
+    bodyTa.placeholder = "自分のメモ（地図の文章とは別に残る）";
+    bodyTa.setAttribute("aria-label", prev ? "前の版のメモ" : "自分のメモ");
+  };
+  push(syncPrev);
 
   // 期限
   const n0 = node()!;
@@ -413,10 +545,9 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   wrap.append(sectionEl("時間", dates));
 
   // 条件（3 年の分かれ道の選択肢では「やること」として文章の前に）
-  const todo = !!impact?.isAlt;
   const condCount = h("span", { class: "insp-count" });
   const condList = h("div", { class: "cond-list" });
-  const condAdd = h("input", { class: "input input-sm", placeholder: todo ? "やることを追加（Enter）" : "条件を追加（Enter）", dataset: { fk: "cond-add" }, attrs: { "aria-label": todo ? "やることを追加" : "条件を追加" } });
+  const condAdd = h("input", { class: "input input-sm", placeholder: "条件を追加（Enter）", dataset: { fk: "cond-add" }, attrs: { "aria-label": "条件を追加" } });
   // Enter で入れるまでは、書いた文字が入れ終わっていない入力
   unsaved.set(condAdd, () => !!condAdd.value.trim());
   condAdd.addEventListener("keydown", (ev) => {
@@ -426,11 +557,36 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
       condAdd.value = "";
     }
   });
-  const condSec = sectionEl(todo ? "やること" : "条件", condList, condAdd);
-  condSec.querySelector(".insp-label")!.append(condCount);
-  wrap.append(condSec);
-  if (todo) wrap.insertBefore(condSec, bodySec);
+  const condSec = sectionEl("条件", condList, condAdd);
+  const condLabel = condSec.querySelector(".insp-label")!;
+  const condLabelText = document.createTextNode("条件");
+  condLabel.replaceChildren(condLabelText, condCount);
+  // 「やること」でないときの条件の欄の置き場（時間の欄の後）
+  const condAt = document.createComment("conditions");
+  wrap.append(condAt);
   const condRows = new Map<ID, { row: HTMLElement; box: HTMLInputElement; text: HTMLInputElement }>();
+
+  /** カードごとの部分を、今のカード（id）の物にする（初めてと、別のカードを選んだとき） */
+  const mountBlocks = (): void => {
+    composed?.el.remove();
+    impact?.el.remove();
+    deepBlock?.el.remove();
+    composed = buildComposedBody(app, id, () => bodyTa.focus());
+    // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）。組み立てた本文は、その数のすぐ後に
+    // （狭い画面でも、具体的な文章を 2 画面より下へ押しやらない: 見直し user-11）
+    impact = buildImpactNodeBlock(app, id, composed?.el ?? null);
+    if (impact) wrap.insertBefore(impact.el, forecastLine);
+    deepBlock = buildDeepNodeBlock(app, id);
+    if (deepBlock) wrap.insertBefore(deepBlock.el, forecastLine);
+    if (composed && !impact) wrap.insertBefore(composed.el, composedAt);
+    const todo = !!impact?.isAlt;
+    condLabelText.data = todo ? "やること" : "条件";
+    condAdd.placeholder = todo ? "やることを追加（Enter）" : "条件を追加（Enter）";
+    condAdd.setAttribute("aria-label", todo ? "やることを追加" : "条件を追加");
+    if (todo) wrap.insertBefore(condSec, bodySec);
+    else wrap.insertBefore(condSec, condAt);
+  };
+  mountBlocks();
 
   // タグ
   const tagWrap = h("div", { class: "tag-edit" });
@@ -491,15 +647,23 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   };
   pushView(syncCol);
 
+  const projLineSeen = new RefSeen();
+  const tagSeen = new RefSeen();
+  const tagListSeen = new RefSeen();
+  const chipSeen = new RefSeen();
+  const connSeen = new RefSeen();
+  const footSeen = new RefSeen();
+  /** 下の欄を次のフレームに回している（lowerLater）。その間は下の欄の中身も合わせない（出す前に合わせる） */
+  let lowerTimer: ReturnType<typeof setTimeout> | 0 = 0;
   push(() => {
     const n = node();
     if (!n) return;
     const doc = store.doc;
     wrap.style.setProperty("--type-color", NODE_TYPES[n.type].color);
     setValue(title, n.title);
-    fitHeight(title, 140);
+    fitChanged(title, 140);
     setValue(bodyTa, n.body);
-    fitHeight(bodyTa);
+    fitChanged(bodyTa);
     for (const el of [title, bodyTa, due, start, condAdd, tagInput]) el.disabled = ro();
     setValue(due, n.time.due ?? "");
     setValue(start, n.time.start ?? "");
@@ -508,7 +672,8 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     rel.textContent = r ? (n.status === "done" ? `完了（期限 ${formatDate(n.time.due)}）` : r.text) : "期限なし";
     rel.dataset.tone = n.status === "done" ? "done" : (r?.tone ?? "none");
 
-    // 所属の一行
+    // 所属の一行（プロジェクトの物か所属が変わったときだけ作り直す。題名の 1 文字などでは作らない: 作業メモ perf-9）
+    if (projLineSeen.changed([n.projectIds, ...n.projectIds.map((pid) => doc.projects[pid])])) {
     clear(projLine);
     for (const pid of n.projectIds) {
       const p = doc.projects[pid];
@@ -516,9 +681,10 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     }
     if (n.projectIds.length > 1) projLine.append(h("span", { class: "shared-pill", title: "複数のプロジェクトから参照されている共有ノード" }, icon("link", 12), "共有"));
     if (!n.projectIds.length) projLine.append(h("span", { class: "muted-pill" }, "未分類"));
+    }
 
-    // 3 年の影響（数が変わったときだけ作り直す）
-    impact?.update();
+    // 3 年の影響（数が変わったときだけ作り直す。下の欄を次のフレームに回している間は、画面の外の並びの中身も後で作る）
+    impact?.update(lowerTimer !== 0);
 
     // 見込み（予測の入口から届くノードだけ。3 年の分かれ道の中では上の 3 年の影響に出す）
     const fc = vm.forecast;
@@ -539,6 +705,14 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
         );
     }
 
+    if (!lowerTimer) updateLower();
+  });
+
+  /** 下の欄（条件・タグ・プロジェクト・シナリオ・つながり・操作）を今のカードに合わせる */
+  const updateLower = (): void => {
+    const n = node();
+    if (!n) return;
+    const doc = store.doc;
     // 条件（ID ごとに行を残す＝入力中の行を壊さない）
     const met = n.conditions.filter((c) => c.met).length;
     condCount.textContent = n.conditions.length ? `${met}/${n.conditions.length}` : "";
@@ -574,17 +748,23 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
       }
     }
 
-    // タグ
+    // タグ（タグ・候補・閲覧のみが変わったときだけ）
+    if (tagSeen.changed([n.tags, ro()])) {
     clear(tagWrap);
     for (const t of n.tags) {
       const x = h("button", { class: "tag-x", type: "button", ariaLabel: `${t} を外す`, disabled: ro(), onClick: (ev) => (ev.stopPropagation(), cmd.removeTag(id, t)) }, icon("x", 11, 2.2));
       const chip = h("span", { class: "tag-chip static" }, h("button", { class: "tag-link", type: "button", title: `#${t} で検索`, onClick: () => ui.setSearch(`#${t}`) }, `#${t}`), x);
       tagWrap.append(chip);
     }
-    clear(datalist);
-    for (const t of vm.index.tags.slice(0, 40)) if (!n.tags.includes(t.tag)) datalist.append(h("option", { value: t.tag }));
+    }
+    const topTags = vm.index.tags.slice(0, 40);
+    if (tagListSeen.changed([n.tags, ...topTags.map((t) => t.tag)])) {
+      clear(datalist);
+      for (const t of topTags) if (!n.tags.includes(t.tag)) datalist.append(h("option", { value: t.tag }));
+    }
 
     // プロジェクト
+    if (chipSeen.changed([ro(), n.projectIds, doc.projectOrder, ...doc.projectOrder.map((pid) => doc.projects[pid]), n.scenarioIds, doc.scenarioOrder, ...doc.scenarioOrder.map((sid) => doc.scenarios[sid])])) {
     clear(projChips);
     for (const pid of doc.projectOrder) {
       const p = doc.projects[pid];
@@ -601,11 +781,21 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
       if (!s) continue;
       scenChips.append(chipToggle(s.name, s.color, n.scenarioIds.includes(sid), () => cmd.setScenarioOf({ nodes: [id] }, sid), { disabled: ro() }));
     }
+    }
 
-    // つながり
+    // つながり（線・その先のカード・見込みの兄弟の線のどれかが変わったときだけ作り直す。題名の 1 文字ではそのまま: 作業メモ perf-9）
+    const ins = (vm.index.inc.get(id) ?? []).slice();
+    const outs = (vm.index.out.get(id) ?? []).slice();
+    const connRefs: unknown[] = [ro(), ins.length, outs.length];
+    for (const [list, dir] of [[ins, "in"], [outs, "out"]] as const) {
+      for (const eid of list) {
+        const e = doc.edges[eid];
+        connRefs.push(eid, e, e ? doc.nodes[dir === "in" ? e.source : e.target] : undefined, vm.index.cross.has(eid));
+        if (e && edgeProb(e) !== null) connRefs.push(...flowOuts(doc, vm.index.out, e.source));
+      }
+    }
+    if (connSeen.changed(connRefs)) {
     clear(conns);
-    const ins = vm.index.inc.get(id) ?? [];
-    const outs = vm.index.out.get(id) ?? [];
     // 線の見込み。兄弟の見込みの合計が 100% でなければ、数えている見込みも（「77%（ほかと合わせて 46%）」: 見直し R6）
     const probLabel = (e: GEdge, label: string): string => {
       const p = edgeProb(e);
@@ -637,13 +827,44 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     if (ins.length) conns.append(h("div", { class: "conn-head" }, `入る ${ins.length}`), ...ins.map((e) => connRow(e, "in")));
     if (outs.length) conns.append(h("div", { class: "conn-head" }, `出る ${outs.length}`), ...outs.map((e) => connRow(e, "out")));
     if (ins.length >= 2) conns.prepend(h("div", { class: "merge-note" }, icon("merge", 13), `${ins.length} つの道がここで合流しています`));
+    }
     addChild.disabled = ro();
     addTwo.disabled = ro();
     dupBtn.disabled = ro();
     delBtn.disabled = ro();
     syncCol();
-    foot.textContent = `作成 ${new Date(n.createdAt).toLocaleDateString("ja-JP")} · 更新 ${new Date(n.updatedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
-  });
+    if (footSeen.changed([n.createdAt, n.updatedAt])) foot.textContent = `作成 ${dayFormat.format(new Date(n.createdAt))} · 更新 ${stampFormat.format(new Date(n.updatedAt))}`;
+  };
+
+  return {
+    lowerLater(): void {
+      if (!impact || lowerTimer) return;
+      wrap.classList.add("insp-lower-later");
+      lowerTimer = setTimeout(() => {
+        lowerTimer = 0;
+        deepBlock?.update();
+        impact?.fillLater();
+        updateLower();
+        wrap.classList.remove("insp-lower-later");
+        // 置いていなかった間は高さを測れない
+        fitHeight(bodyTa);
+      }, 0);
+    },
+    retarget(next: ID, again = false): void {
+      if (next === id && !again) return;
+      id = next;
+      // 前のカードの書きかけ（Enter で入れる前の条件・タグ）は持ち越さない（前は欄ごと作り直して消えていた）
+      condAdd.value = "";
+      tagInput.value = "";
+      for (const r of condRows.values()) r.row.remove();
+      condRows.clear();
+      colShown = null;
+      for (const seen of [projLineSeen, tagSeen, tagListSeen, chipSeen, connSeen, footSeen]) seen.reset();
+      fitSeen.delete(title);
+      fitSeen.delete(bodyTa);
+      mountBlocks();
+    },
+  };
 }
 
 /** 見込みのある線の兄弟（同じノードから出る道の線）。見込みの合計が 100% でなければ、その合計（ちょうど 100% か見込みが 1 つも無ければ null） */
