@@ -59,6 +59,19 @@ export function horizonOpen(cm: CompiledMap, i: number, h: DeepHorizon): number[
  * 数は先を 1 回なめて、区切りごとにまとめて数える（カードを選ぶたびに作るので、開くカードの並びは作らない: horizonOpen）
  */
 export function deepHorizons(cm: CompiledMap, i: number): DeepHorizon[] {
+  // 形と数の版ごとに覚える（今日・今日の手の区切りは、概要を作るたびに 8 万枚をなめて数えていた: 見直し perf-6）
+  const ver = `${cm.version.topology}|${cm.version.numbers}`;
+  let memo = horizonMemo.get(cm);
+  if (!memo || memo.ver !== ver) horizonMemo.set(cm, (memo = { ver, byCard: new Map() }));
+  let hit = memo.byCard.get(i);
+  if (!hit) memo.byCard.set(i, (hit = countHorizons(cm, i)));
+  return hit;
+}
+
+/** 区切りの数え（カードごとに覚える物: deepHorizons） */
+const horizonMemo = new WeakMap<CompiledMap, { ver: string; byCard: Map<number, DeepHorizon[]> }>();
+
+function countHorizons(cm: CompiledMap, i: number): DeepHorizon[] {
   const m0 = cm.month[i]!;
   const H = cm.H;
   const cands: Array<{ months: number; limit: number; toEnd: boolean; lim: number }> = [];

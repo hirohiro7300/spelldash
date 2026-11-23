@@ -76,7 +76,7 @@ const LABEL = {
   undo: "元に戻す（これにするの取り消し）",
   deselect: "これにした後に概要へ戻る（キャンバスで Esc）",
   adopt: "取り込み（別の端末の内容: 全部の入れ替え。届いた写しは測る前に作る）",
-  longTask: "変更（シナリオ・年収・これにする）の後 3 秒の、一番長い仕事（ms）",
+  longTask: "変更（シナリオ・年収・これにする）を描いた後 3 秒の、一番長い仕事（ms。空いた時間の仕事。変更そのものは数えない）",
   selectLayout: "引き出しを閉じたスマホでカードを選ぶときのレイアウト（ms）",
   heapBoot: "起動後のヒープ（MB。JS・ArrayBuffer・DOM の合計）",
   heapUse: "起動 + 10 回これにする + 1 年先まで開いたまま + 検索の後のヒープ（MB。合計）",
@@ -168,19 +168,26 @@ function installTools() {
       out.push(performance.now() - t0);
       return out;
     },
-    /** 長い仕事（50 ms 超）を見張る。stop で、見張っていた間の長い仕事の時間の並び */
+    /**
+     * 長い仕事（50 ms 超）を見張る。from（その時刻より後に始まった仕事だけ。変更そのものを受ける仕事は数えない）を mark で決め、
+     * stop で、見張っていた間の長い仕事の時間の並び
+     */
     watchLong() {
       const list = [];
+      let from = Infinity;
       let po = null;
       try {
         po = new PerformanceObserver((l) => {
-          for (const e of l.getEntries()) list.push(e.duration);
+          for (const e of l.getEntries()) if (e.startTime >= from) list.push(e.duration);
         });
         po.observe({ type: "longtask", buffered: false });
       } catch {
         /* 見張れない */
       }
       return {
+        mark() {
+          from = performance.now();
+        },
         stop() {
           po?.disconnect();
           return list;
@@ -514,6 +521,11 @@ async function measureProfile(browser, profile) {
   const longAfter = async (fn) => {
     await page.evaluate(() => (window.__long = window.__budget.watchLong()));
     await fn();
+    // 変更を受けて描いたフレームの後から数える（変更そのものの時間は、その行の予算で見る）
+    await page.evaluate(async () => {
+      await window.__budget.afterFrame();
+      window.__long.mark();
+    });
     await page.waitForTimeout(3000);
     const list = await page.evaluate(() => window.__long.stop());
     push("longTask", list.length ? Math.max(...list) : 0);
