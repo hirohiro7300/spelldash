@@ -12,7 +12,7 @@ import type { AppContext } from "../app/context";
 import type { DeepCtx } from "../app/deepState";
 import { idleSteps } from "../app/idle";
 import { worthOf, type MoveCounts, type MoveSummary } from "../deepmap/core";
-import { destSection, destVM, worthText, ym as ymOfMap } from "../deepmap/views";
+import { destSection, destVM, WORTH_LABEL, WORTH_NONE, worthText, ym as ymOfMap } from "../deepmap/views";
 import { futureData } from "../demo/futureBundle";
 import { formatPercent } from "../model/forecast";
 import { IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, type AltInfo, type ImpactResult, type SalaryFlips } from "../model/impact";
@@ -925,10 +925,12 @@ function famRow(app: AppContext, imp: ImpactResult, r: FamRowData, kind: "worth"
 function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
   const span = horizonText(imp.horizon);
-  sec.append(h("h3", { class: "insp-label" }, `${span}でやる価値が大きい手`, h("span", { class: "insp-count" }, "ずっと使わない場合との差")));
   const deep = deepOf(app, imp);
-  if (deep && deep.map.header.never) {
-    // 3 か月ごとの地図: 見取り図と同じ k(fam)（生成の見積もり never._all − never[fam]）と、同じ「ほぼ差なし」の大きさ（見直し user-2）。
+  // 3 か月ごとの地図は見取り図と同じ札の名前（「やらない場合との差」は「この手をやらない」と読める: 作業メモ reader-12）
+  const q = !!(deep && deep.map.header.never);
+  sec.append(h("h3", { class: "insp-label" }, `${span}でやる価値が大きい手`, h("span", { class: "insp-count" }, q ? WORTH_LABEL : "ずっと使わない場合との差")));
+  if (deep && q) {
+    // 3 か月ごとの地図: 見取り図と同じ k(fam)（生成の見積もり never._all − never[fam]）と、同じ「ほぼ無し」の大きさ（見直し user-2）。
     // 逆にたどる計算は要らない（数は地図に書いてある）
     const a = deep.analysis();
     const noise = deep.overview().worthNoise;
@@ -936,12 +938,12 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
       .worth.filter((w) => w.k >= noise)
       .slice(0, WORTH_LIMIT);
     if (!rows.length) {
-      sec.append(h("p", { class: "imp-note" }, `どの手の種類も、ずっと使わない場合との差は誤差の範囲（${formatMan(noise, false)}未満）`));
+      sec.append(h("p", { class: "imp-note" }, `どの手の種類も、${WORTH_LABEL}は${WORTH_NONE}（誤差の範囲: ${formatMan(noise, false)}未満）`));
       return;
     }
     const list = h("div", { class: "imp-rank-list" });
     for (const w of rows) list.append(famRow(app, imp, { fam: w.fam, value: w.k, instances: w.instances, project: w.project }, "worth", seen));
-    sec.append(list, h("p", { class: "imp-note" }, `見取り図の「${span}やらない場合との差」と同じ数（${formatMan(noise, false)}未満は誤差の範囲なので出さない）。押すたびに、その手が出てくる所を来る見込みの高い順に地図で見せる`));
+    sec.append(list, h("p", { class: "imp-note" }, `見取り図の「${WORTH_LABEL}」と同じ数（${formatMan(noise, false)}未満は誤差の範囲なので出さない）。押すたびに、その手が出てくる所を来る見込みの高い順に地図で見せる`));
     return;
   }
   if (imp.counts.nodes <= FLIP_SYNC_NODES) while (!worthStep(imp));
@@ -1311,8 +1313,8 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
   const mv = deep && info.decision === imp.root ? moveOf(deep, id) : null;
   if (!info.isBase && info.delta !== null) {
     if (deep) {
-      // 3 か月ごとの地図: 見取り図と同じ「この種類を 3 年やらない場合との差」（今日の手だけ。判断ごとの「やらない場合」は別の問いなので出さない: 見直し user-2）
-      if (mv && mv.worth !== null) facts.append(li(`この種類の手を ${span}やらない場合との差 `, h("b", null, worthText(mv.worth, deep.overview().worthNoise))));
+      // 3 か月ごとの地図: 見取り図と同じ札の名前・同じ数（k(fam)。今日の手だけ。判断ごとの「やらない場合」は別の問いなので出さない: 見直し user-2）
+      if (mv && mv.worth !== null) facts.append(li(`${WORTH_LABEL} `, h("b", null, worthText(mv.worth, deep.overview().worthNoise))));
     } else {
       const fam = typeof n.meta?.fam === "string" ? (n.meta.fam as string) : typeof n.meta?.ak === "string" ? (n.meta.ak as string) : null;
       const never = fam ? imp.never(fam).card.get(id) : undefined;

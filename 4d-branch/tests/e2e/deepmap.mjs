@@ -433,7 +433,7 @@ async function runProfile(browser, profile) {
       assert(matched >= 8, `見取り図の行とキャンバスの手の名前が合わない（${matched} 行）`);
     });
 
-    await check(`${tag}: 今日の手のカードの「この種類を 3 年やらない場合との差」は見取り図と同じ数（判断ごとの別の問いは出さない: 見直し user-2）`, async () => {
+    await check(`${tag}: 今日の手のカードの「この種類が使えることの値打ち」は見取り図と同じ名前・同じ数（判断ごとの別の問いは出さない: 見直し user-2）`, async () => {
       await showOverview();
       const rows = await page.evaluate(() => [...document.querySelectorAll(".sidebar-right .deep-ov a.dm-row")].map((a) => ({ name: a.querySelector(".dm-row-name")?.textContent?.trim(), pills: [...a.querySelectorAll(".dm-row-pills .dm-pill-wrap")].map((x) => x.textContent?.trim()) })));
       const id = await page.evaluate(() => {
@@ -449,10 +449,11 @@ async function runProfile(browser, profile) {
       const name = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].title.trim(), id);
       const row = rows.find((x) => x.name?.startsWith(name));
       assert(row, `見取り図に「${name}」の行が無い`);
-      const worthPill = row.pills.find((x) => x.includes("やらない"));
-      const line = facts.split("\n").find((x) => x.includes("やらない場合との差"));
-      assert(line && worthPill, `やらない場合との差が無い（カード ${line}・見取り図 ${worthPill}）`);
-      if (worthPill.includes("ほぼ差なし")) assert(line.includes("ほぼ差なし"), `見取り図は「ほぼ差なし」なのにカードは ${line}`);
+      const worthPill = row.pills.find((x) => x.includes("値打ち"));
+      // 名前と数は同じ項目（li）の中。見た目で行が分かれることがあるので、項目ごとに読む
+      const line = await page.evaluate(() => [...document.querySelectorAll(".sidebar-right .imp-facts li")].map((li) => li.textContent?.replace(/\s+/g, " ").trim() ?? "").find((x) => x.includes("この種類が使えることの値打ち")));
+      assert(line && worthPill, `値打ちが無い（カード ${line}・見取り図 ${worthPill}）`);
+      if (worthPill.includes("ほぼ無し")) assert(line.includes("ほぼ無し"), `見取り図は「ほぼ無し」なのにカードは ${line}`);
       else assert(Math.abs(num(line.replace(/^[^+\-−\d]*/, "")) - num(worthPill.replace(/^[^+\-−\d]*/, ""))) < 0.6, `カード ${line} と見取り図 ${worthPill} が違う`);
     });
 
