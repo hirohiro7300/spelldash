@@ -78,6 +78,13 @@ export function prevEdgeText(n: GNode): string | null {
   return parts.length ? `前の版で直した線: ${parts.join("・")}` : null;
 }
 
+/**
+ * 知らせの見出しの下の一行。「カード 77,735 枚」は 1 かたまりで折り返す（390 の幅で「枚」だけが次の行に落ちていた: P2 の確かめ F4）
+ */
+export function sheetSubtitle(at: string, cards: number): HTMLElement {
+  return h("span", null, `${at}時点の地図・`, h("span", { style: { "white-space": "nowrap" } }, `カード ${num(cards)} 枚`));
+}
+
 /** 知らせを出す（閉じたら onClose）。decided: 前の版で選んだ・見送ったカードの鍵の読み替え（この起動で地図を新しい版で読んだときだけ） */
 export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?: DecidedCards; notices?: readonly string[]; onClose?: () => void } = {}): void {
   const map = ctx.map;
@@ -176,7 +183,7 @@ export function openReleaseSheet(app: AppContext, ctx: DeepCtx, opts: { decided?
         ),
       )
     : null;
-  const m = openModal({ title: "新しい地図になった（版 7）", subtitle: `${ym(map, 0)}時点の地図・カード ${num(cm.n)} 枚`, width: 560, className: "rel-sheet", onClose: opts.onClose ?? (() => undefined), icon: "split" });
+  const m = openModal({ title: "新しい地図になった（版 7）", subtitle: sheetSubtitle(ym(map, 0), cm.n), width: 560, className: "rel-sheet", onClose: opts.onClose ?? (() => undefined), icon: "split" });
   // 起動の知らせ（引き上げで移した・残したカードの数など）。お知らせにすると、この知らせの上に長く重なるので、ここに出す（見直し R2）
   const notices = opts.notices?.length ? h("div", { class: "rel-notices", role: "note" }, ...opts.notices.map((t) => h("p", null, t))) : null;
   m.body.append(

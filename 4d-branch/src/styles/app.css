@@ -1502,6 +1502,26 @@ button.tag-chip:hover {
 .insp-section {
   margin-top: 18px;
 }
+/*
+ * 詳細の下の方（画面の外）の欄は、見えるまで配置と描画を後回しにする（カードを選ぶたびに 500 個ほどの要素を全部配置し直すと、
+ * 机でも 10 ms を超える: 作業メモ perf-8）。描画の切り取りで、中の欄・ボタンのフォーカスの輪が欠けないように、切り取りの外側に余白
+ */
+.insp-node > .insp-section,
+.insp-node > .deep-node,
+.imp-node-body > .imp-split,
+.imp-node-body > .imp-outs,
+.imp-node-body > .imp-sibs {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
+  overflow-clip-margin: 8px;
+}
+/* 選んだフレームでは置かない下の欄（次のフレームで出す: src/ui/inspector.ts の lowerLater） */
+.insp-node.insp-lower-later > .imp-node ~ :not(.insp-forecast),
+.insp-node.insp-lower-later .imp-node-body > .imp-split,
+.insp-node.insp-lower-later .imp-node-body > .imp-outs,
+.insp-node.insp-lower-later .imp-node-body > .imp-sibs {
+  display: none;
+}
 .insp-label {
   display: flex;
   align-items: center;

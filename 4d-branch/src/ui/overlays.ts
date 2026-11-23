@@ -202,7 +202,7 @@ function setShellInert(on: boolean): void {
   else shell.removeAttribute("inert");
 }
 
-export function openModal(opts: { title: string; subtitle?: string; width?: number; className?: string; onClose?: () => void; icon?: string }): ModalHandle {
+export function openModal(opts: { title: string; subtitle?: string | Node; width?: number; className?: string; onClose?: () => void; icon?: string }): ModalHandle {
   closeMenus();
   const layer = document.getElementById("overlay-root") ?? document.body;
   const prevFocus = document.activeElement as HTMLElement | null;

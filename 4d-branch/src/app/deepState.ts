@@ -20,7 +20,9 @@ import { impactNodeId64 } from "../demo/impact";
 import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
 import { loadPageMap, PAGE_Q, pageMapIfLoaded } from "../demo/pageBundle";
 import { compiledMapOf, statusCode } from "../model/impactGraph";
-import type { DocData, GNode, ID } from "../model/types";
+import type { DocData, GEdge, GNode, ID } from "../model/types";
+import { edgeProb } from "../model/forecast";
+import { chanceWeights, isFlowEdge } from "../model/forks";
 import { Emitter } from "../store/emitter";
 import type { Store } from "../store/store";
 import { mapOfBuiltDoc } from "./futureCache";
@@ -63,6 +65,62 @@ export function deepText(map: MapData, annual: number, a?: Analysis): DeepText {
   if (a) textMemoA.set(a, text);
   else textMemo.set(map, { annual, text });
   return text;
+}
+
+/**
+ * 書き換えた見込みで組み立てたカード i の文章（見直し R6: 「つながり」の線の見込みを書き換えても、組み立てた本文が地図の元の見込みを
+ * 言い続けていた）。結果の見込みは文書の線の見込みを兄弟の合計で割った物（「つながり」のかっこの中の、数えている見込みと同じ）。
+ * 本文が読んだ見込みがどれも地図と同じなら null（ふつうの組み立てた文章を使う）。お金の数は地図の元の数のまま（見取り図と道と同じ）
+ */
+export function cardWithDocOdds(ctx: DeepCtx, doc: DocData, out: ReadonlyMap<ID, readonly ID[]>, i: number): Card | null {
+  const map = ctx.map;
+  const memo = new Map<number, number>();
+  let differs = false;
+  const pOf = (o: number): number => {
+    const hit = memo.get(o);
+    if (hit !== undefined) return hit;
+    const base = map.p(o);
+    let v = base;
+    const par = o > 0 ? map.parent(o) : -1;
+    const role = map.role(o);
+    // 見込みがあるのは結果（状態・行き先）だけ。手（判断の子）と今日は地図のまま
+    if (par >= 0 && (role === "s" || role === "e")) {
+      const pid = ctx.idOf(par);
+      const id = ctx.idOf(o);
+      if (doc.nodes[pid] && doc.nodes[id]) {
+        const sibs: GEdge[] = [];
+        for (const eid of out.get(pid) ?? []) {
+          const e = doc.edges[eid];
+          if (e && isFlowEdge(e) && e.source !== e.target && doc.nodes[e.target]) sibs.push(e);
+        }
+        const j = sibs.findIndex((e) => e.target === id);
+        // 兄弟のどれかの見込みを書き換えた（地図の見込みと違う・地図に無い線に見込みがある）ときだけ、文書の見込みで数える
+        const same = sibs.every((e) => {
+          const k = ctx.indexOf(e.target);
+          return k >= 0 && map.parent(k) === par ? edgeProb(e) === map.p(k) : edgeProb(e) === null;
+        });
+        if (j >= 0 && !same) v = Math.round(chanceWeights(sibs)[j]! * 100);
+      }
+    }
+    if (v !== base) differs = true;
+    memo.set(o, v);
+    return v;
+  };
+  // 先に、本文が見込みを言う近くの結果（今日からのカードの道の上の判断の結果・このカードの子と孫）を確かめる。どれも地図のままなら
+  // 組み立て直さない（形を変えた文書では選ぶたびに来る。組み立て直しは道の覚えから作るので重い）
+  const near: number[] = [];
+  for (let x = i; x >= 0; x = x > 0 ? map.parent(x) : -1) {
+    near.push(x);
+    if (x === 0) break;
+  }
+  const kids = (x: number): number[] => Array.from({ length: map.childCount(x) }, (_, k) => map.child(x, k));
+  const fams = new Set<number>(near);
+  for (const c of kids(i)) fams.add(c);
+  for (const f of fams) for (const c of kids(f)) pOf(c);
+  if (!differs) return null;
+  const view: MapData = Object.create(map, { p: { value: pOf } });
+  const card = composeCard(view, i, { annual: ctx.annual, rt: textRuntime(ctx.analysis()) });
+  return card;
 }
 
 /** 文書の 3 年の分かれ道が同梱の地図のとき、画面に渡す物 */

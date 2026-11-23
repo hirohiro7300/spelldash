@@ -2546,7 +2546,12 @@ function nextParts(c: Ctx, n: number, p: number, trace: string[]): { head: strin
 }
 
 /** 今日の手の名前（地図の手の名前。今のままは「今のまま」） */
-const firstName = (c: Ctx, a: number): string => (c.map.isBase(a) ? "今のまま" : listName(c, a));
+/**
+ * 今日の手の名前（「今日の『…』から数えて」）: 見取り図・道の画面の今日の手の行と同じ、そのカードの題。地図の手の種類の名前
+ * （「転職活動をする」）にすると、題に言い換えのある手（fc_switch は「給与の上がる転職先を探す」とも）で、1 つの画面に同じ手の
+ * 名前が 2 つ並ぶ（P2 の確かめ F1）
+ */
+const firstName = (c: Ctx, a: number): string => (c.map.isBase(a) ? "今のまま" : titleOf(c, a, []));
 
 /** 道の最初の状態（今日の手の結果。3 か月目）の覚え */
 function firstStateLink(link: Link): Link | null {

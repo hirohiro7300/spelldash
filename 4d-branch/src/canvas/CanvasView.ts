@@ -46,6 +46,17 @@ interface Box {
   h: number;
 }
 
+/** 選んだ物を変えてから、線の流れの動きを始めるまで（ms） */
+const FLOW_HOLD_MS = 250;
+
+/** 画面の px の箱 */
+interface LabelBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 /** 縮小したときの目印（画面の大きさで描く名前） */
 interface ScreenLabel {
   x: number;
@@ -112,6 +123,12 @@ export class CanvasView {
 
   private readonly ctx: CanvasRenderingContext2D;
   private scheduled = false;
+  /**
+   * 選んだ物を変えた直後は、線の流れの動きを少し待ってから始める（この時刻まで。選んだ直後のフレームは詳細の欄も作るので、続けて毎フレーム
+   * 描き直すと、選んだ後の最初のフレームが次の描き直しに押し出される: 作業メモ perf-8）。動かない線はすぐ描く
+   */
+  private flowHold = 0;
+  private flowTimer: ReturnType<typeof setTimeout> | 0 = 0;
   private camAnim: { from: { x: number; y: number; zoom: number }; to: { x: number; y: number; zoom: number }; start: number; ms: number } | null = null;
   private labelBoxes: Box[] = [];
   private stubBoxes: Box[] = [];
@@ -139,6 +156,9 @@ export class CanvasView {
     store.on("change", () => this.requestRender());
     ui.on("visual", () => this.requestRender());
     ui.on("hover", () => this.requestRender());
+    ui.on("selection", () => {
+      this.flowHold = performance.now() + FLOW_HOLD_MS;
+    });
     ui.on("expand", (ids) => this.revealOpened(ids));
   }
 
@@ -688,6 +708,8 @@ export class CanvasView {
     };
     const screenLabels: ScreenLabel[] = [];
     const impLabels: ScreenLabel[] = [];
+    /** 縮小したときに描いた 3 年の分かれ道のカード（画面の px）。目印の文がほかのカード（真ん中の差の札）に重ならないように（P2 の確かめ F2） */
+    const cardBoxes: LabelBox[] = [];
     const ranks =
       imp.active && (lod === "low" || lod === "dot")
         ? fcNow
@@ -728,6 +750,7 @@ export class CanvasView {
       if (card) {
         drawImpactNode(ctx, n, p.x, p.y, opts, card, pills ? pillBox : null);
         if (pills && pillBox.w > 0 && card.pill) pills.push({ id, text: card.pill, x: pillBox.x * z + cam.x, y: pillBox.y * z + cam.y, w: pillBox.w * z, h: pillBox.h * z, font: pillBox.font * z });
+        if (lod === "low") cardBoxes.push({ x0: (p.x - HALF_W) * z + cam.x, y0: (p.y - HALF_H) * z + cam.y, x1: (p.x + HALF_W) * z + cam.x, y1: (p.y + HALF_H) * z + cam.y });
         if (lod === "low" || lod === "dot") {
           // 縮小したときの目印: 選択中 > 検索の当たり > 今日の選択肢 > ★ の選択肢 > 見込みの高い行き先（一番小さくしたときは今日と行き先 5 つ）
           const r = selected ? 0 : nv.match ? 1 : (ranks?.get(id) ?? -1);
@@ -757,7 +780,7 @@ export class CanvasView {
 
     // 画面の大きさで描く文字（縮小したときのタイトル・目印）
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80);
+    if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80, cardBoxes);
     if (screenLabels.length) this.drawScreenLabels(screenLabels, 80);
     // 年月の目盛り（3 か月ごとの地図。どの拡大率でも画面の上に固定: 作業メモ SPEC v1 §5.6・user-7・user-15）
     this.setRuler(quarter && imp.root ? this.drawRuler(imp.root, doc) : false);
@@ -786,7 +809,16 @@ export class CanvasView {
     }
     this.frames++;
     for (const fn of this.renderListeners) fn();
-    if (this.camAnim || animating) this.requestRender();
+    if (this.camAnim) this.requestRender();
+    else if (animating) {
+      const wait = this.flowHold - performance.now();
+      if (wait <= 0) this.requestRender();
+      else if (!this.flowTimer)
+        this.flowTimer = setTimeout(() => {
+          this.flowTimer = 0;
+          this.requestRender();
+        }, wait);
+    }
   }
 
   /** 見込みを空いた時間に数えるよう頼んだ（数え終えるまで重ねて頼まない） */
@@ -880,7 +912,7 @@ export class CanvasView {
     return next === Infinity ? undefined : (next - x) * this.camera.zoom - 10;
   }
 
-  private drawScreenLabels(items: ScreenLabel[], cap: number): void {
+  private drawScreenLabels(items: ScreenLabel[], cap: number, cards: readonly LabelBox[] = []): void {
     const ctx = this.ctx;
     const z = this.camera.zoom;
     const cam = this.camera;
@@ -888,7 +920,25 @@ export class CanvasView {
     ctx.font = `650 12px ${CANVAS_FONT}`;
     ctx.lineJoin = "round";
     items.sort((a, b) => a.rank - b.rank || b.alpha - a.alpha);
-    const placed: Array<{ x0: number; y0: number; x1: number; y1: number }> = [];
+    const placed: LabelBox[] = [];
+    // カードの箱を縦 40 px ごとの帯に分けて引く（目印 80 個 × 見えるカード数百を全部比べない）
+    const BAND = 40;
+    const bands = new Map<number, LabelBox[]>();
+    for (const b of cards) {
+      for (let r = Math.floor(b.y0 / BAND); r <= Math.floor(b.y1 / BAND); r++) {
+        let list = bands.get(r);
+        if (!list) bands.set(r, (list = []));
+        list.push(b);
+      }
+    }
+    const hits = (b: LabelBox, list: Iterable<LabelBox>): boolean => {
+      for (const q of list) if (q.x0 < b.x1 && q.x1 > b.x0 && q.y0 < b.y1 && q.y1 > b.y0) return true;
+      return false;
+    };
+    const onCard = (b: LabelBox): boolean => {
+      for (let r = Math.floor(b.y0 / BAND); r <= Math.floor(b.y1 / BAND); r++) if (hits(b, bands.get(r) ?? [])) return true;
+      return false;
+    };
     let shown = 0;
     for (const it of items) {
       if (shown >= cap) break;
@@ -903,28 +953,46 @@ export class CanvasView {
         text = clipToWidth(ctx, text, it.maxW - dw);
         if (!text) continue;
       }
-      const w = ctx.measureText(text).width;
-      const left = it.left ? sx - HALF_W * z : sx - (w + dw) / 2;
-      const box = { x0: left - 4, y0: sy - 14, x1: left + w + dw + 4, y1: sy + 4 };
+      let w = ctx.measureText(text).width;
+      let left = it.left ? sx - HALF_W * z : sx - (w + dw) / 2;
+      let base = sy;
+      let box = { x0: left - 4, y0: base - 14, x1: left + w + dw + 4, y1: base + 4 };
+      // カードの上の目印が、上の行のカード（真ん中の差の札）に重なる（縮小して行が詰まったとき）: カードの左に、真ん中の高さで出す。
+      // そこも空いていなければ出さない（選んだカードの目印は今までどおり上に出す）
+      if (it.rank > 0 && it.left && cards.length && onCard(box)) {
+        const cy = it.y * z + cam.y;
+        const room = Math.min(it.maxW ?? 160, 160);
+        const t2 = clipToWidth(ctx, text, room - dw);
+        if (!t2) continue;
+        const w2 = ctx.measureText(t2).width;
+        const right = sx - HALF_W * z - 6;
+        const alt = { x0: right - w2 - dw - 4, y0: cy - 10, x1: right + 2, y1: cy + 8 };
+        if (onCard(alt) || placed.some((b) => b.x0 < alt.x1 && b.x1 > alt.x0 && b.y0 < alt.y1 && b.y1 > alt.y0)) continue;
+        text = t2;
+        w = w2;
+        left = right - w2 - dw;
+        base = cy + 4;
+        box = alt;
+      }
       if (it.rank > 0 && placed.some((b) => b.x0 < box.x1 && b.x1 > box.x0 && b.y0 < box.y1 && b.y1 > box.y0)) continue;
       placed.push(box);
       shown++;
       this.debugHeads?.push({ text, x0: left, x1: left + w + dw, maxW: it.maxW ?? null });
       if (it.dot) {
         ctx.beginPath();
-        ctx.arc(left + 4, sy - 4, 4.5, 0, Math.PI * 2);
+        ctx.arc(left + 4, base - 4, 4.5, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(7,9,13,0.92)";
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(left + 4, sy - 4, 3.5, 0, Math.PI * 2);
+        ctx.arc(left + 4, base - 4, 3.5, 0, Math.PI * 2);
         ctx.fillStyle = rgba(it.dot, Math.max(0.5, it.alpha));
         ctx.fill();
       }
       ctx.strokeStyle = "rgba(7,9,13,0.92)";
       ctx.lineWidth = 4;
-      ctx.strokeText(text, left + dw, sy);
+      ctx.strokeText(text, left + dw, base);
       ctx.fillStyle = rgba(it.color, Math.max(0.4, it.alpha));
-      ctx.fillText(text, left + dw, sy);
+      ctx.fillText(text, left + dw, base);
     }
   }
 }

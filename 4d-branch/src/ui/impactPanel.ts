@@ -514,7 +514,9 @@ function flipNote(app: AppContext, imp: ImpactResult, seen: Seen): HTMLElement {
       if (f) show(f);
       return !!f;
     },
-    () => note.isConnected && app.vm.impact === imp,
+    // 外れていても続ける（概要は取っておいて置き直すので、外れている間に止めると「計算中」のまま残る: 作業メモ perf-8）。
+    // 数えた所は結果ごとに覚えるので、作り直した次のパネルも同じ所から続く
+    () => app.vm.impact === imp,
     // 急がない（「計算中」と出している）。短い時間切れだと、起動の最初のフレームの前に割り込む
     2000,
   );
@@ -907,7 +909,8 @@ function famRow(app: AppContext, imp: ImpactResult, r: FamRowData, kind: "worth"
       onClick: () => {
         if (!n) return;
         goTo(app, r.instances[cycleNext(imp, key, n)]!, true);
-        if (n >= 2 && next.isConnected) showNext();
+        // 概要は選んだ後も取っておいて戻ったときに置き直す（作り直さない: 作業メモ perf-8）ので、外れていても次の番号に合わせる
+        if (n >= 2) showNext();
       },
     },
     h("span", { class: "imp-rank-title" }, area ? areaChip(area) : null, h("span", { class: "imp-rank-name" }, label)),
@@ -934,8 +937,9 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
   if (!fc) {
     sec.append(h("p", { class: "imp-note imp-worth-wait", attrs: { "aria-busy": "true" } }, "手の種類ごとの差を計算中…"));
     sec.classList.add("is-busy");
+    // 外れていても入れる（概要は取っておいて置き直すので、外れている間に数え終えると「計算中」のまま残る: 作業メモ perf-8）
     app.vm.warmForecast(() => {
-      if (sec.isConnected && app.vm.impact === imp) fillWorth(app, imp, sec, seen);
+      if (app.vm.impact === imp) fillWorth(app, imp, sec, seen);
     });
     return;
   }
@@ -969,7 +973,8 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
         fillWorth(app, imp, sec, seen);
         return true;
       },
-      () => sec.isConnected && app.vm.impact === imp,
+      // 外れていても続ける（取っておいた概要を置き直したときに「計算中」のまま残さない: 作業メモ perf-8）
+      () => app.vm.impact === imp,
     );
     return;
   }
@@ -993,8 +998,9 @@ function fillAvoid(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
   const fc = app.vm.forecastIfReady();
   if (!fc) {
     sec.hidden = true;
+    // 外れていても入れる（取っておいた概要を置き直したときに欄が出ないまま残さない: 作業メモ perf-8）
     app.vm.warmForecast(() => {
-      if (sec.isConnected && app.vm.impact === imp) fillAvoid(app, imp, sec, seen);
+      if (app.vm.impact === imp) fillAvoid(app, imp, sec, seen);
     });
     return;
   }
@@ -1402,7 +1408,9 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
 
   // 同じ判断の手（比べる）。狭い画面は上の 3 つ（と今の手）だけ
   if (dec && dec.alts.length > 1) {
-    wrap.append(h("div", { class: "imp-sibs" }, h("h3", { class: "insp-label" }, "同じ判断の手", h("span", { class: "insp-count" }, `${dec.alts.length} 個・${span}の影響の順`)), decisionList(app, imp, info.decision, seen, { current: id, closeDrawer: false, limit: isNarrowScreen() ? 3 : undefined })));
+    // 並びは画面の外（下の欄）なので、詳細が下の欄を後に回しているときは中身を後で作る
+    const sibs = h("div", { class: "imp-sibs" }, h("h3", { class: "insp-label" }, "同じ判断の手", h("span", { class: "insp-count" }, `${dec.alts.length} 個・${span}の影響の順`)));
+    wrap.append(lazyFill(sibs, () => decisionList(app, imp, info.decision, seen, { current: id, closeDrawer: false, limit: isNarrowScreen() ? 3 : undefined })));
   }
 }
 
@@ -1481,7 +1489,18 @@ function rootBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement,
  * 3 年の分かれ道の中のノードの詳細（今日・選択肢・結果・行き先）。範囲の外なら null（今までの詳細だけ）。
  * isAlt: 選択肢（やることのチェックリストを本文の前に出す）
  */
-export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement | null = null): { el: HTMLElement; update(): void; isAlt: boolean } | null {
+/**
+ * 作り直すときに後で中身を入れる欄（同じ判断の手の並び）。詳細が下の欄を次のフレームに回している間（lazyLists が配列）は、入れ物だけ
+ * 置いて中身を作る関数をためる（作業メモ perf-8）
+ */
+let lazyLists: Array<() => void> | null = null;
+function lazyFill(box: HTMLElement, fill: () => Node): HTMLElement {
+  if (lazyLists) lazyLists.push(() => box.isConnected && box.append(fill()));
+  else box.append(fill());
+  return box;
+}
+
+export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement | null = null): { el: HTMLElement; update(lazy?: boolean): void; isAlt: boolean; fillLater(): void } | null {
   const imp0 = app.vm.impact;
   if (!imp0.active || !imp0.scope.has(id)) return null;
   const isRoot = imp0.root === id;
@@ -1491,10 +1510,17 @@ export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement 
   const el = h("div", { class: `imp-node${isRoot ? " is-root" : isAlt ? " is-alt" : " is-outcome"}` }, head ? head.el : null, body);
   let last: ImpactResult | null = null;
   let seen = new Seen();
+  /** 後で中身を入れる欄（lazy で作り直したとき） */
+  let later: Array<() => void> = [];
   return {
     el,
     isAlt,
-    update() {
+    fillLater() {
+      const list = later;
+      later = [];
+      for (const f of list) f();
+    },
+    update(lazy = false) {
       const imp = app.vm.impact;
       if (!imp.active || !imp.scope.has(id) || !app.store.doc.nodes[id]) {
         el.hidden = true;
@@ -1509,9 +1535,15 @@ export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement 
       seen = new Seen();
       const fk = focusKeyIn(body);
       clear(body);
-      if (imp.root === id) rootBody(app, imp, id, body, seen, slot);
-      else if (imp.alt.has(id)) altBody(app, imp, id, body, seen, slot);
-      else outcomeBody(app, imp, id, body, seen, slot);
+      later = [];
+      lazyLists = lazy ? later : null;
+      try {
+        if (imp.root === id) rootBody(app, imp, id, body, seen, slot);
+        else if (imp.alt.has(id)) altBody(app, imp, id, body, seen, slot);
+        else outcomeBody(app, imp, id, body, seen, slot);
+      } finally {
+        lazyLists = null;
+      }
       if (fk !== null) refocus(body, fk);
     },
   };

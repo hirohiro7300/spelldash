@@ -893,6 +893,43 @@ async function main() {
     await page.evaluate(() => window.__fourD.ui.clearSelection());
   }
 
+  await check("題名の欄の変換中（IME）の 1 文字ずつは文書に入れず詳細も作り直さない。変換を決めたら入れる（作業メモ perf-9）", async () => {
+    const imp = await impactOf(page);
+    const alt = imp.alts.find((x) => !x.isBase && x.delta !== null).id;
+    await page.evaluate((id) => window.__fourD.ui.select([id]), alt);
+    await page.waitForTimeout(150);
+    const r = await page.evaluate(async (id) => {
+      const f = window.__fourD;
+      const el = document.querySelector(".insp-title");
+      const base = el.value;
+      const rev0 = f.store.revision;
+      const row0 = document.querySelector(".imp-node .imp-node-body > *");
+      const frame = () => new Promise((res) => requestAnimationFrame(() => setTimeout(res, 0)));
+      el.focus();
+      el.dispatchEvent(new CompositionEvent("compositionstart", { data: "", bubbles: true }));
+      for (const v of [`${base}て`, `${base}てん`, `${base}てんし`]) {
+        el.value = v;
+        el.dispatchEvent(new InputEvent("input", { data: v, inputType: "insertCompositionText", isComposing: true, bubbles: true }));
+        await frame();
+      }
+      const during = { rev: f.store.revision, title: f.store.doc.nodes[id].title, same: !!row0 && document.querySelector(".imp-node .imp-node-body > *") === row0 };
+      // Chrome は compositionend の後に input を送らない（決めた文字は compositionend の時の欄の中身）
+      el.value = `${base}転`;
+      el.dispatchEvent(new CompositionEvent("compositionend", { data: "転", bubbles: true }));
+      await frame();
+      const after = { rev: f.store.revision, title: f.store.doc.nodes[id].title, focus: document.activeElement === el };
+      el.blur();
+      return { base, rev0, during, after };
+    }, alt);
+    assert(r.during.rev === r.rev0 && r.during.title === r.base, `変換中の文字を文書に入れた ${JSON.stringify(r)}`);
+    assert(r.during.same, "変換中の 1 文字で 3 年の影響の欄を作り直した");
+    assert(r.after.rev > r.rev0 && r.after.title === `${r.base}転` && r.after.focus, `変換を決めた文字が入らない ${JSON.stringify(r)}`);
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    await page.waitForTimeout(150);
+    assert((await page.evaluate((id) => window.__fourD.store.doc.nodes[id].title, alt)) === r.base, "元に戻すで題名が戻らない");
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
   await check("詳細で題名を書き換えると、3 年の影響は計算し直さず、パネルの行の題名はすぐ変わる", async () => {
     const u0 = await undoCount(page);
     try {

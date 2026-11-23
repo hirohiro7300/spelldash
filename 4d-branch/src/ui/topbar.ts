@@ -217,7 +217,8 @@ function mainMenu(app: AppContext): MenuEntry[] {
 
 function buildSearch(app: AppContext): HTMLElement {
   const { ui, store, vm } = app;
-  const input = h("input", { class: "search-input", type: "search", placeholder: "検索（#タグ も可）", attrs: { "aria-label": "ノードを検索", autocomplete: "off", spellcheck: "false" } });
+  // 置き文字は短く（390 の幅・机の欄でも「検索（#タグ も」で切れていた: P2 の確かめ F4）。#タグ でも探せることは title で
+  const input = h("input", { class: "search-input", type: "search", placeholder: "検索・#タグ", title: "ノードを検索（#タグ でタグも）", attrs: { "aria-label": "ノードを検索", autocomplete: "off", spellcheck: "false" } });
   const count = h("span", { class: "search-count" });
   const kbd = h("kbd", { class: "search-kbd" }, `${MOD}K`);
   const results = h("div", { class: "search-results", role: "listbox" });
