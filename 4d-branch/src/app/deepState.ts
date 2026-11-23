@@ -263,10 +263,21 @@ export class DeepState {
     const topo = this.vm.index.version.topo;
     const c = this.docIds;
     if (c && c.map === map && c.nodes === doc.nodes && c.topo === topo) return { ids: c.ids, rev: () => c.rev, hashed: false };
+    // 多くのカードは鍵の指紋の ID のまま（引き上げで前の ID を引き継いだカードだけが違う）: まず番号ごとに鍵の指紋の ID を引き、
+    // 見つからない番号だけを、鍵の指紋でない ID のカードの鍵から埋める（7 万の鍵を表で引かない）
     const ids = hashed.slice();
     const seen = new Uint8Array(map.n);
+    const taken = new Set<ID>();
+    for (let i = 0; i < map.n; i++) {
+      const n = doc.nodes[hashed[i]!];
+      if (n && n.meta?.key === map.key(i)) {
+        seen[i] = 1;
+        taken.add(hashed[i]!);
+      }
+    }
     // 全体を見てよい: ID が鍵の指紋と違う地図（版 6 から引き上げた地図など）で、文書の形が変わったときに 1 回
     for (const id in doc.nodes) {
+      if (taken.has(id)) continue;
       const k = doc.nodes[id]!.meta?.key;
       if (typeof k !== "string") continue;
       const i = map.indexOfKey(k);

@@ -398,6 +398,13 @@ async function measureProfile(browser, profile) {
   const closePanels = () => page.evaluate(() => window.__fourD.ui.setPrefs({ leftOpen: false, rightOpen: false }));
   const openRight = () => page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
   if (narrow) await closePanels();
+  // 保存してあった起動は、前に見ていた所（保存したカメラ）から始まる: 今日と今日の手に寄せてから測る（#demo-q は最初からそこ）
+  await page.evaluate(() => {
+    const f = window.__fourD;
+    const imp = f.app.vm.impact;
+    f.ui.clearSelection();
+    f.app.view.fit([imp.root, ...imp.decision.get(imp.root).alts], { animate: false, minZoom: 0.3 });
+  });
   await page.waitForTimeout(300);
 
   // カードを選ぶ（キャンバスを押す）。狭い画面（引き出しは閉じている）は、その間のレイアウトの時間も（見直し perf-5）
