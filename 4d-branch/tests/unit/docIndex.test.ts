@@ -6,6 +6,7 @@ import { dayNumber } from "../../src/model/dates";
 import { DocIndex } from "../../src/model/docIndex";
 import { isImpactRoot } from "../../src/model/forks";
 import { buildIndex } from "../../src/model/graph";
+import { computeForecast } from "../../src/model/forecast";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
 import { createEmptyDoc, makeEdge, makeNode, makeProject, makeScenario } from "../../src/model/schema";
@@ -295,5 +296,73 @@ describe("文書の索引: 変わった物だけ直しても、いちから作�
     store.transact("道", (tx) => tx.addEdge(makeEdge({ id: "fl", source: id, target: syn.users[1]!, relation: "leads" })));
     expect(ix.version.flow).toBeGreaterThan(v1.flow);
     expect(indexDiff(ix, store.doc)).toEqual([]);
+  });
+});
+
+// 見直し data-1: 作り直し（数の形の鍵を足した）の前に受け取った出る線・入る線は、前の文書の並びを正しく引き続ける（Map だった時と同じ）。
+// 番号の表をその場で振り直すと、消したノードの穴の後ろが 1 つずつずれて、隣のノードの並びを返していた
+describe("文書の索引: 作り直しの前に受け取った出る線・入る線", () => {
+  it("消したノードの穴の後で作り直しても、受け取った out・inc は前と同じ並びを返す", () => {
+    const doc = createEmptyDoc();
+    for (const id of ["a", "b", "c", "d"]) doc.nodes[id] = makeNode({ id, title: id });
+    doc.edges["ab"] = makeEdge({ id: "ab", source: "a", target: "b" });
+    doc.edges["bc"] = makeEdge({ id: "bc", source: "b", target: "c" });
+    doc.edges["cd"] = makeEdge({ id: "cd", source: "c", target: "d" });
+    const store = new Store(doc);
+    const ix = new DocIndex(store.doc);
+    store.on("change", (info) => ix.apply(store.doc, info));
+    store.transact("del", (tx) => tx.deleteNode("a"));
+    const out = ix.out;
+    const inc = ix.inc;
+    const keysBefore = [...out.keys()];
+    // 流れでない数の形の鍵の線を足す: apply → reorder → 同じ文書で作り直す（線は作り直しの前に今の並びへつなぐので、
+    // 受け取った並びにも入る。Map だった時と同じ）
+    store.transact("sup", (tx) => tx.addEdge(makeEdge({ id: "7", source: "d", target: "b", relation: "supports" })));
+    expect(ix.out).not.toBe(out);
+    const ref = buildIndex(store.doc);
+    for (const id of ["b", "c", "d"]) {
+      // 穴の後ろのノードも、隣のノードの並びでなく自分の並びを返す
+      expect(out.get(id), `held out ${id}`).toEqual(ref.out.get(id));
+      expect(inc.get(id), `held inc ${id}`).toEqual(ref.inc.get(id));
+      expect(ix.out.get(id)).toEqual(ref.out.get(id));
+      expect(ix.inc.get(id)).toEqual(ref.inc.get(id));
+    }
+    expect(out.get("a")).toBeUndefined();
+    expect([...out.keys()]).toEqual(keysBefore);
+    expect(out.size).toBe(3);
+    expect(ix.out.get("a")).toBeUndefined();
+  });
+
+  it("予測を少しずつ作っている途中で数の形の鍵の支える線を足しても、予測は computeForecast と同じ", async () => {
+    const doc = createEmptyDoc();
+    const N = 7000;
+    doc.nodes.r = makeNode({ id: "r", title: "today", meta: { forecastRoot: true } as never });
+    doc.nodes.x = makeNode({ id: "x", title: "x" });
+    let prev = "r";
+    for (let i = 0; i < N; i++) {
+      const id = `n${i}`;
+      doc.nodes[id] = makeNode({ id, title: id, type: i === N - 1 ? "result" : "action" });
+      doc.edges[`e${i}`] = makeEdge({ id: `e${i}`, source: prev, target: id, relation: "leads" });
+      if (i % 3 === 0) {
+        doc.nodes[`s${i}`] = makeNode({ id: `s${i}`, title: `s${i}`, type: "result" });
+        doc.edges[`se${i}`] = makeEdge({ id: `se${i}`, source: id, target: `s${i}`, relation: "leads", meta: { prob: 0.3 } as never });
+      }
+      prev = id;
+    }
+    const store = new Store(doc);
+    const ui = new UiState(structuredClone(DEFAULT_PREFS));
+    ui.persistPrefs = false;
+    const vm = new ViewModel(store, ui);
+    store.transact("del", (tx) => tx.deleteNode("x")); // 前の方に穴
+    expect(vm.forecastIfReady()).toBeNull();
+    let done = false;
+    vm.warmForecast(() => (done = true));
+    await new Promise((r) => setTimeout(r, 5));
+    store.transact("sup", (tx) => tx.addEdge(makeEdge({ id: "7", source: "n5", target: "n9", relation: "supports" })));
+    for (let k = 0; k < 400 && !done; k++) await new Promise((r) => setTimeout(r, 2));
+    expect(done).toBe(true);
+    const ref = computeForecast(store.doc, buildIndex(store.doc).out, null);
+    const pickR = (f: { reach: ReadonlyMap<ID, { p: number }> }) => [...f.reach.entries()].map(([k, v]) => [k, Math.round(v.p * 1e9)] as const).sort();
+    expect(pickR(vm.forecast)).toEqual(pickR(ref));
   });
 });

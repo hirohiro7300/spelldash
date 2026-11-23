@@ -204,7 +204,8 @@ function diffKeys<T>(a: Record<ID, T>, b: Record<ID, T>): Set<ID> {
  * ノード → 線の ID の並び（出る線・入る線）。Map と同じ読み口で、ノードのキーの順の番号の表（DocIndex の nodeSeq）で番号を引き、
  * 番号ごとの配列に持つ（7.7 万枚で、同じ鍵の Map を 2 つ持たない: 3.5 MB。作り直しでも 15 万回の Map への書き込みをしない: P4）。
  * 鍵の順は番号の表に入れた順（DocIndex は番号の表と並びを同じ所で足し・消すので、Map に入れた順と同じ）。
- * 番号の表に無いノードには入れない（DocIndex は先に番号を振る）
+ * 番号の表に無いノードには入れない（DocIndex は先に番号を振る）。DocIndex は作り直しで番号の表を新しくする（前の表を振り直さない）ので、
+ * 作り直しの前に受け取った物は前の文書の並びを引き続ける
  */
 export class SeqLists implements Map<ID, ID[]> {
   private count = 0;
@@ -310,7 +311,7 @@ export class DocIndex implements GraphIndex {
    * キーの順の番号（文書の for…in の順。足したキーは大きい番号）と、前に見た物（変わったかを比べる元）。
    * 番号の表 1 つと、番号ごとの配列（Map を 1 つにして、作り直しを軽くする）
    */
-  private readonly nodeSeq = new Map<ID, number>();
+  private nodeSeq = new Map<ID, number>();
   private nodeAt: Array<GNode | undefined> = [];
   private readonly edgeSeq = new Map<ID, number>();
   private edgeAt: Array<GEdge | undefined> = [];
@@ -430,7 +431,9 @@ export class DocIndex implements GraphIndex {
     this.impactRoots.clear();
     this.collapsedNodes.clear();
     this.collapsedEdges.clear();
-    this.nodeSeq.clear();
+    // 番号の表は入れ替える（中で振り直さない）: 作り直しの前に受け取った出る線・入る線（SeqLists）は前の表と前の並びを持ち続け、
+    // 前の文書を正しく引く（Map だった時と同じ。予測の組み立てが止まりながら持つ: 見直し data-1）
+    this.nodeSeq = new Map();
     this.edgeSeq.clear();
     this.nodeAt = [];
     this.edgeAt = [];
