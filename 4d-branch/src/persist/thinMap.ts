@@ -1460,10 +1460,149 @@ function encodeFull(doc: DocData, keep: boolean): { stored: StoredDoc; stats: Th
 }
 
 /** 全部を見る薄い形の 1 歩の大きさ（カード・線をこれだけ見るごとに止まれる。机で数 ms・4 倍遅いスマホで 20 ms ほど） */
-const ENC_STEP = 4095;
+const ENC_CHUNK = 4096;
+
+// encodeFullSteps の 1 歩ずつの中身（カード・線を [from, to) だけ見る）。重い繰り返しは止まれる関数（function*）の外の、ふつうの関数に置く
+// （止まれる関数の中の繰り返しは、同じ物でも 1 割ほど遅かった: 8 万枚の書く 40〜43 ms → 45〜48 ms。thinMapFull.test.ts の書く ≤ 50 ms）
+
+/** 基準の ID で引いたカード（[from, to)）を cards に入れ、見つけた数を返す。今日は今日のカードの形の物だけ */
+function cardsIn(core: Core, docNodes: DocData["nodes"], lastView: View | undefined, cards: Array<GNode | undefined>, from: number, to: number): number {
+  const { ids, keys, nodes } = core;
+  let found = 0;
+  for (let i = from; i < to; i++) {
+    const node = docNodes[ids[i]!];
+    if (node === undefined) continue;
+    if (node === nodes[i] || node === lastView?.nodes[i] || node.meta?.key === keys[i]) {
+      if (i === 0 && !isPageRoot(core, node)) continue;
+      cards[i] = node;
+      found++;
+    }
+  }
+  return found;
+}
 
 /**
- * encodeFull を、カード・線を ENC_STEP 見るごとに止まりながら進める（止まった所で yield。答えは止まらずに進めた物と同じ）。
+ * 文書の ID の並び list の [from, to) を、入れた順に基準の番号（have が埋まっている所）と突き合わせ、合わない物を odd に足す
+ * （順が合わない物だけ表を引く）。p は突き合わせている基準の番号で、続きの p を返す
+ */
+function oddIn(list: readonly ID[], from: number, to: number, p: number, n: number, have: ReadonlyArray<unknown>, ids: readonly ID[], index: IndexOf<ID>, odd: ID[]): number {
+  for (let q = from; q < to; q++) {
+    const id = list[q]!;
+    while (p < n && have[p] === undefined) p++;
+    if (p < n && ids[p] === id) {
+      p++;
+      continue;
+    }
+    const i = index.get(id);
+    if (i !== undefined && have[i] !== undefined && ids[i] === id) continue;
+    odd.push(id);
+  }
+  return p;
+}
+
+/** 親からの同梱の線（[from, to)）: 基準の ID で引いて両端が合う物を bundle に入れ、見つけた数を返す */
+function bundleIn(core: Core, cards: ReadonlyArray<GNode | undefined>, docEdges: DocData["edges"], bundle: Array<GEdge | undefined>, from: number, to: number): number {
+  const { eids, parent } = core;
+  let found = 0;
+  for (let i = from; i < to; i++) {
+    const c = cards[i];
+    if (c === undefined) continue;
+    const pc = cards[parent[i]!];
+    if (pc === undefined) continue;
+    const e = docEdges[eids[i]!];
+    if (e !== undefined && e.target === c.id && e.source === pc.id) {
+      bundle[i] = e;
+      found++;
+    }
+  }
+  return found;
+}
+
+/** 消したカード（hi から lo まで、後ろの番号から）: その先の同梱のカードも全部無ければ allGone を 1 */
+function goneIn(core: Core, cards: ReadonlyArray<GNode | undefined>, allGone: Uint8Array, hi: number, lo: number): void {
+  const { kidStart, kids } = core;
+  for (let i = hi; i >= lo; i--) {
+    if (cards[i]) continue;
+    let gone = 1;
+    for (let k = kidStart[i]!; k < kidStart[i + 1]!; k++)
+      if (!allGone[kids[k]!]) {
+        gone = 0;
+        break;
+      }
+    allGone[i] = gone;
+  }
+}
+
+/** 地図のカードの変更（[from, to)） */
+function nodePatchesIn(
+  core: Core,
+  view: View,
+  base: MapBase,
+  cards: ReadonlyArray<GNode | undefined>,
+  allGone: Uint8Array,
+  nPatch: Record<string, NodePatch | 0 | -1>,
+  nAt: Map<number, NodePatch | 0 | -1> | null,
+  nid: Record<string, ID>,
+  stats: ThinStats,
+  from: number,
+  to: number,
+): void {
+  const { keys, parent } = core;
+  for (let i = from; i < to; i++) {
+    const c = cards[i];
+    const v = view.nodes[i]!;
+    if (!c) {
+      if (allGone[i]) {
+        if (!allGone[parent[i]!]) (nPatch[keys[i]!] = 0), nAt?.set(i, 0), stats.tombs++;
+      } else (nPatch[keys[i]!] = -1), nAt?.set(i, -1), stats.tombs++;
+      continue;
+    }
+    stats.cards++;
+    if (c.id !== v.id) (nid[keys[i]!] = c.id), stats.nid++;
+    if (c === v) continue;
+    const p = cardPatch(core, view, base, c, v, i, stats);
+    if (p) {
+      nPatch[keys[i]!] = p;
+      nAt?.set(i, p);
+      stats.patched++;
+    }
+  }
+}
+
+/** 地図の線の変更（[from, to)） */
+function edgePatchesIn(
+  core: Core,
+  view: View,
+  base: MapBase,
+  cards: ReadonlyArray<GNode | undefined>,
+  bundle: ReadonlyArray<GEdge | undefined>,
+  ePatch: Record<string, EdgePatch | 0>,
+  eAt: Map<number, EdgePatch | 0> | null,
+  eid: Record<string, ID>,
+  stats: ThinStats,
+  from: number,
+  to: number,
+): void {
+  const { keys, parent } = core;
+  for (let i = from; i < to; i++) {
+    if (!cards[i] || !cards[parent[i]!]) continue;
+    const e = bundle[i];
+    if (!e) {
+      ePatch[keys[i]!] = 0;
+      eAt?.set(i, 0);
+      stats.edgeTombs++;
+      continue;
+    }
+    const v = view.edges[i]!;
+    if (e.id !== v.id) (eid[keys[i]!] = e.id), stats.eid++;
+    if (e === v) continue;
+    const p = edgePatch(view, base, e, v);
+    if (p) (ePatch[keys[i]!] = p), eAt?.set(i, p), stats.patchedEdges++;
+  }
+}
+
+/**
+ * encodeFull を、カード・線を ENC_CHUNK 見るごとに止まりながら進める（止まった所で yield。答えは止まらずに進めた物と同じ）。
  * 止まっている間に文書が書き換わったら、続けずに捨てること（覚えは最後の 1 歩で残す: primeThinSteps）
  */
 function* encodeFullSteps(doc: DocData, keep: boolean): Generator<void, { stored: StoredDoc; stats: ThinStats } | null, void> {
@@ -1499,32 +1638,18 @@ function* encodeFullSteps(doc: DocData, keep: boolean): Generator<void, { stored
   /** 番号ごとのカード（同じ鍵が 2 つ以上なら、後で選ぶまで候補） */
   const cards = new Array<GNode | undefined>(n);
   let found = 0;
-  for (let i = 0; i < n; i++) {
-    if ((i & ENC_STEP) === ENC_STEP) yield;
-    const node = docNodes[ids[i]!];
-    if (node === undefined) continue;
-    if (node === core.nodes[i] || node === lastView?.nodes[i] || node.meta?.key === keys[i]) {
-      if (i === 0 && !isPageRoot(core, node)) continue;
-      cards[i] = node;
-      found++;
-    }
+  for (let s = 0; s < n; s += ENC_CHUNK) {
+    if (s) yield;
+    found += cardsIn(core, docNodes, lastView, cards, s, Math.min(n, s + ENC_CHUNK));
   }
   // 文書の鍵を 1 回だけ数え、入れた順に基準のカードと突き合わせる（順が合わない物だけ表を引く）。合わない物が、利用者のノードか、ID の違うカード
   const nodeIds = Object.keys(docNodes);
   const odd: ID[] = [];
   if (nodeIds.length !== found) {
     let p = 0;
-    let q = 0;
-    for (const id of nodeIds) {
-      if ((++q & ENC_STEP) === 0) yield;
-      while (p < n && cards[p] === undefined) p++;
-      if (p < n && ids[p] === id) {
-        p++;
-        continue;
-      }
-      const i = core.idIndex.get(id);
-      if (i !== undefined && cards[i] !== undefined && ids[i] === id) continue;
-      odd.push(id);
+    for (let s = 0; s < nodeIds.length; s += ENC_CHUNK) {
+      if (s) yield;
+      p = oddIn(nodeIds, s, Math.min(nodeIds.length, s + ENC_CHUNK), p, n, cards, ids, core.idIndex, odd);
     }
   }
   const dups = new Map<number, GNode[]>();
@@ -1622,32 +1747,16 @@ function* encodeFullSteps(doc: DocData, keep: boolean): Generator<void, { stored
   // ---- 親からの同梱の線: 基準の ID で引いて両端が合う物。ほかは、親のカードから子のカードへの指紋（c0）のある線（ID が違う同梱の線）
   const bundle = new Array<GEdge | undefined>(n);
   let foundE = 0;
-  for (let i = 1; i < n; i++) {
-    if ((i & ENC_STEP) === ENC_STEP) yield;
-    const c = cards[i];
-    if (c === undefined) continue;
-    const pc = cards[core.parent[i]!];
-    if (pc === undefined) continue;
-    const e = docEdges[eids[i]!];
-    if (e !== undefined && e.target === c.id && e.source === pc.id) {
-      bundle[i] = e;
-      foundE++;
-    }
+  for (let s = 1; s < n; s += ENC_CHUNK) {
+    if (s > 1) yield;
+    foundE += bundleIn(core, cards, docEdges, bundle, s, Math.min(n, s + ENC_CHUNK));
   }
   const oddEdges: ID[] = [];
   if (edgeIds.length !== foundE) {
     let p = 1;
-    let q = 0;
-    for (const id of edgeIds) {
-      if ((++q & ENC_STEP) === 0) yield;
-      while (p < n && bundle[p] === undefined) p++;
-      if (p < n && eids[p] === id) {
-        p++;
-        continue;
-      }
-      const i = core.eidIndex.get(id);
-      if (i !== undefined && bundle[i] !== undefined && eids[i] === id) continue;
-      oddEdges.push(id);
+    for (let s = 0; s < edgeIds.length; s += ENC_CHUNK) {
+      if (s) yield;
+      p = oddIn(edgeIds, s, Math.min(edgeIds.length, s + ENC_CHUNK), p, n, bundle, eids, core.eidIndex, oddEdges);
     }
   }
   const userEdges: ID[] = [];
@@ -1675,55 +1784,20 @@ function* encodeFullSteps(doc: DocData, keep: boolean): Generator<void, { stored
   if (!root) (nPatch[keys[0]!] = -1), stats.tombs++;
   // 消したカード: その先の同梱のカードも全部無ければ 0（一番上だけ）、ほかは −1
   const allGone = new Uint8Array(n);
-  for (let i = n - 1; i >= 1; i--) {
-    if ((i & ENC_STEP) === ENC_STEP) yield;
-    if (cards[i]) continue;
-    let gone = 1;
-    for (let k = core.kidStart[i]!; k < core.kidStart[i + 1]!; k++)
-      if (!allGone[core.kids[k]!]) {
-        gone = 0;
-        break;
-      }
-    allGone[i] = gone;
+  for (let s = n - 1; s >= 1; s -= ENC_CHUNK) {
+    if (s < n - 1) yield;
+    goneIn(core, cards, allGone, s, Math.max(1, s - ENC_CHUNK + 1));
   }
   // 番号ごとの変更（次に変わった所だけ書くときの覚え）
   const nAt = keep ? new Map<number, NodePatch | 0 | -1>() : null;
   const eAt = keep ? new Map<number, EdgePatch | 0>() : null;
-  for (let i = 1; i < n; i++) {
-    if ((i & ENC_STEP) === ENC_STEP) yield;
-    const c = cards[i];
-    const v = view.nodes[i]!;
-    if (!c) {
-      if (allGone[i]) {
-        if (!allGone[core.parent[i]!]) (nPatch[keys[i]!] = 0), nAt?.set(i, 0), stats.tombs++;
-      } else (nPatch[keys[i]!] = -1), nAt?.set(i, -1), stats.tombs++;
-      continue;
-    }
-    stats.cards++;
-    if (c.id !== v.id) (nid[keys[i]!] = c.id), stats.nid++;
-    if (c === v) continue;
-    const p = cardPatch(core, view, base, c, v, i, stats);
-    if (p) {
-      nPatch[keys[i]!] = p;
-      nAt?.set(i, p);
-      stats.patched++;
-    }
+  for (let s = 1; s < n; s += ENC_CHUNK) {
+    if (s > 1) yield;
+    nodePatchesIn(core, view, base, cards, allGone, nPatch, nAt, nid, stats, s, Math.min(n, s + ENC_CHUNK));
   }
-  for (let i = 1; i < n; i++) {
-    if ((i & ENC_STEP) === ENC_STEP) yield;
-    if (!cards[i] || !cards[core.parent[i]!]) continue;
-    const e = bundle[i];
-    if (!e) {
-      ePatch[keys[i]!] = 0;
-      eAt?.set(i, 0);
-      stats.edgeTombs++;
-      continue;
-    }
-    const v = view.edges[i]!;
-    if (e.id !== v.id) (eid[keys[i]!] = e.id), stats.eid++;
-    if (e === v) continue;
-    const p = edgePatch(view, base, e, v);
-    if (p) (ePatch[keys[i]!] = p), eAt?.set(i, p), stats.patchedEdges++;
+  for (let s = 1; s < n; s += ENC_CHUNK) {
+    yield;
+    edgePatchesIn(core, view, base, cards, bundle, ePatch, eAt, eid, stats, s, Math.min(n, s + ENC_CHUNK));
   }
   // ---- 丸ごと書くノードと線（今日を先に）。利用者の線が指す地図のカードには印
   const nodesOut: Record<ID, GNode> = {};
