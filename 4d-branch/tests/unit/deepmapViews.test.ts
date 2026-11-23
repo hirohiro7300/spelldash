@@ -412,6 +412,10 @@ describe("手の詳しい画面・道の画面", () => {
     expect(s0.outcomes.map((o) => o.name)).toEqual(["全部可", "SpellDash だけ", "どちらも不可"]);
     expect(s0.outcomes.filter((o) => o.current).map((o) => o.name)).toEqual(["SpellDash だけ"]);
     expect(s0.outcomes.every((o) => o.current || (o.href === pathHash(a.cm.map, o.node) && /^[+−±]/.test(o.diffText ?? "")))).toBe(true);
+    // 札の差は、行に出した 3 年の合計どうしの差（本文の「N 万円少ない」と同じ丸め: 文章の波 1a の B1）
+    const shownTotal = (t: string): number => Number(/3 年の合計の見込み ([\d,.]+) 万円/.exec(t)![1]!.replace(/,/g, ""));
+    const cur = s0.outcomes.find((o) => o.current)!;
+    for (const o of s0.outcomes.filter((x) => !x.current)) expect(o.diffText).toBe(manDelta(shownTotal(o.valueText!) - shownTotal(cur.valueText!)));
     // 結果の差は、この道の結果との差と書く（作業メモ user-9）・お金の行は結果の月（作業メモ user-12）
     // 結果の年月はその結果の状態の月（答えが届く月は本文が言う。作業メモ truth-8）
     expect(s0.outcomesHead).toBe("この手の結果（2027 年 2 月の時点・この道との 3 年の合計の差）");

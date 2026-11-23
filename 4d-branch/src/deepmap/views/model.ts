@@ -76,6 +76,7 @@ import {
   placeText,
   safeName,
   shareList,
+  shownMan,
   SMALL_DELTA_TEXT,
   WORTH_LABEL,
   WORTH_NOISE,
@@ -1184,7 +1185,8 @@ function stepVM(a: Analysis, pv: PathView, r: PathRow, k: number, text: TextSour
       const c = cm.kids[s]!;
       const current = c === r.outcome;
       const total = a.money.acc[c]! + a.pi.V[c]!;
-      const diff = total - r.total;
+      // 札の差は、行に出した 3 年の合計どうしの差（丸めた数の差。本文の「N 万円少ない」と同じ数: 文章の波 1a の B1）
+      const diff = shownMan(total) - shownMan(r.total);
       const name = outcomeName(map, c);
       const share = pct(cm.w[c]!);
       const tags = (cm.flags[c]! & F_SUM) !== 0 ? ["標準の続きの見積もり"] : [];

@@ -21,6 +21,14 @@ function manBody(a: number): string {
   return a < 9.95 ? (Math.round(a * 10) / 10).toFixed(1).replace(/\.0$/, "") : num(a);
 }
 
+/**
+ * 画面に出す万円の数（10 未満は小数 1 桁、それ以上は整数に丸めた値）。2 つの水準の差を言うときは、出した数どうしの差にする
+ * （カードの本文の「N 万円少ない」と、その下の札の「+N 万円」が同じ数になる。本文の組み立ての shownMan と同じ決まり: src/demo/compose/compose.ts）
+ */
+export function shownMan(x: number): number {
+  return Math.abs(x) >= 9.95 ? Math.round(x) : Math.round(x * 10) / 10;
+}
+
 /** 万円の水準（「1,269 万円」「4.1 万円」） */
 export function man(x: number): string {
   if (!Number.isFinite(x)) return "—";
