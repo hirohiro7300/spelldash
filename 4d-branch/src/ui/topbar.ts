@@ -9,6 +9,7 @@ import type { SaveStatus } from "../persist/persistence";
 import { isCompactTopbar } from "./breakpoints";
 import { MOD, clear, h } from "./dom";
 import { icon } from "./icons";
+import { placeLabel } from "./impactPanel";
 import { menuFromButton, type MenuEntry } from "./overlays";
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
@@ -194,7 +195,7 @@ function mainMenu(app: AppContext): MenuEntry[] {
     { label: "名前を変更…", icon: "tag", disabled: ro, run: () => app.renameDoc() },
     { label: `やりたいことリスト（${WISHLIST_SIZE_LABEL}）を読み込む…`, icon: "goal", disabled: ro, run: () => app.loadWishlist() },
     { label: "未来の道筋（仕事・3 年）を読み込む…", icon: "split", disabled: ro, run: () => app.loadFuture() },
-    { label: "未来の道筋だけを新しい版に差し替える…", icon: "swap", disabled: ro || !Object.values(app.store.doc.nodes).some((n) => n.meta?.forecastRoot === true), run: () => void app.swapFuture() },
+    { label: "未来の道筋だけを新しい版に差し替える…", icon: "swap", disabled: ro || app.vm.index.forecastRoots.size === 0, run: () => void app.swapFuture() },
     { label: "デモを読み込む（置き換え）", icon: "sparkle", disabled: ro, run: () => void app.loadDemo() },
     { label: "空のドキュメントにする", icon: "reset", disabled: ro, run: () => void app.newEmptyDoc() },
     "sep",
@@ -222,35 +223,70 @@ function buildSearch(app: AppContext): HTMLElement {
   const results = h("div", { class: "search-results", role: "listbox" });
   results.hidden = true;
   let active = 0;
-  let items: ID[] = [];
+  /** 行（3 か月ごとの地図の、題・年月・親の手が同じカードは 1 行にまとめる: 見直し user-6・gaps-11） */
+  let items: Array<{ key: string; ids: ID[]; where: string | null }> = [];
+  /** まとめた行の、次に出すカードの番号（言葉ごと） */
+  let cursor = new Map<string, number>();
+  let cursorQuery = "";
 
   const render = () => {
     vm.ensure();
+    // 当たりは上の 50 件だけ並べ、数は全部（言葉と中身が同じなら前の答え: 作業メモ perf-9）
     const hits = vm.searchHits;
-    count.textContent = ui.search.trim() ? `${hits.length} 件` : "";
+    count.textContent = ui.search.trim() ? `${vm.searchCount.toLocaleString("ja-JP")} 件` : "";
     kbd.hidden = !!ui.search || document.activeElement === input;
     clear(results);
-    items = hits.slice(0, 50).map((x) => x.id);
+    if (cursorQuery !== ui.search) {
+      cursorQuery = ui.search;
+      cursor = new Map();
+    }
+    const deep = vm.impact.likeBasis ? vm.deep.get() : null;
+    const byKey = new Map<string, { key: string; ids: ID[]; where: string | null }>();
+    items = [];
+    for (const x of hits.slice(0, 50)) {
+      const n = store.doc.nodes[x.id];
+      if (!n) continue;
+      const where = placeLabel(app, deep, x.id);
+      const key = where ? `${n.title}\u0000${where}` : `\u0001${x.id}`;
+      let g = byKey.get(key);
+      if (!g) {
+        byKey.set(key, (g = { key, ids: [], where }));
+        items.push(g);
+      }
+      g.ids.push(x.id);
+    }
     if (!ui.search.trim() || document.activeElement !== input) {
       results.hidden = true;
       return;
     }
     results.hidden = false;
+    // 3 年の分かれ道があるときは、カードの本文（組み立てた文章）は探さないことを伝える
+    const note = vm.index.impactRoots.size ? h("div", { class: "search-note" }, "地図のカードは題名・ひとこと・結果の名前・判断の文で探します（組み立てた本文は探しません）") : null;
     if (items.length === 0) {
       results.append(h("div", { class: "search-empty" }, "見つかりません"));
+      if (note) results.append(note);
       return;
     }
     active = Math.min(active, items.length - 1);
-    items.forEach((id, i) => {
+    items.forEach((g, i) => {
+      const k = (cursor.get(g.key) ?? 0) % g.ids.length;
+      const id = g.ids[k]!;
       const n = store.doc.nodes[id]!;
       const colors = n.projectIds.map((p) => store.doc.projects[p]?.color).filter((c): c is string => !!c);
+      const title = n.title || "（無題）";
       const row = h(
         "button",
-        { class: `search-row${i === active ? " active" : ""}`, type: "button", role: "option", attrs: { "aria-selected": String(i === active) } },
+        { class: `search-row${i === active ? " active" : ""}`, type: "button", role: "option", title: g.where ? `${g.where} → ${title}` : title, attrs: { "aria-selected": String(i === active) } },
         h("span", { class: `type-chip type-${n.type}` }, icon(n.type, 13)),
-        h("span", { class: "search-title" }, n.title || "（無題）"),
+        // 3 か月ごとの地図のカード: 「2027 年 2 月・転職活動をする → 転職せず」（同じ題名のカードを見分ける）
+        h("span", { class: "search-title" }, g.where ? h("span", { class: "search-where" }, `${g.where} → `) : null, title),
         ui.prefs.view === "map" && vm.node(id).hidden ? h("span", { class: "search-hidden", title: "折りたたみや表示の絞り込みで隠れています。選ぶと表示します", attrs: { role: "img", "aria-label": "隠れています" } }, icon("eyeOff", 13)) : null,
-        h("span", { class: "search-meta" }, ...colors.slice(0, 4).map((c) => h("span", { class: "dot", style: { background: c } })), n.time.due ? h("span", { class: "search-due" }, formatDate(n.time.due)) : null),
+        h(
+          "span",
+          { class: "search-meta" },
+          ...colors.slice(0, 4).map((c) => h("span", { class: "dot", style: { background: c } })),
+          g.ids.length > 1 ? h("span", { class: "search-due search-group", title: "同じ題名・年月・親の手のカード。押すたびに 1 枚ずつ" }, `${g.ids.length} 枚・${k + 1} 枚目`) : n.time.due && !g.where ? h("span", { class: "search-due" }, formatDate(n.time.due)) : null,
+        ),
       );
       row.addEventListener("pointerdown", (ev) => ev.preventDefault());
       row.addEventListener("click", () => go(i));
@@ -260,11 +296,20 @@ function buildSearch(app: AppContext): HTMLElement {
       });
       results.append(row);
     });
+    if (vm.searchCount > items.length) results.append(h("div", { class: "search-note" }, `ほか ${(vm.searchCount - items.length).toLocaleString("ja-JP")} 件（言葉を足すと絞れます）`));
+    if (note) results.append(note);
   };
 
   const go = (i: number) => {
-    const id = items[i];
-    if (!id) return;
+    const g = items[i];
+    if (!g) return;
+    // まとめた行: 押すたびに次のカードへ（最後の次は最初）
+    const k = (cursor.get(g.key) ?? 0) % g.ids.length;
+    const id = g.ids[k]!;
+    if (g.ids.length > 1) {
+      cursor.set(g.key, (k + 1) % g.ids.length);
+      requestAnimationFrame(render);
+    }
     if (ui.prefs.view === "map") app.cmd.revealNode(id); // 折りたたみや絞り込みで隠れていたら出す
     ui.select([id]);
     if (ui.prefs.view === "map") app.view.centerOn(id);

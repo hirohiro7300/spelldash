@@ -25,6 +25,7 @@ import { offerImpactSalary } from "../ui/impactPanel";
 import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
+import { openReleaseSheet } from "../ui/releaseSheet";
 import { startTour } from "../ui/onboarding";
 import { closeMenus, closeToasts, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
@@ -252,9 +253,14 @@ export class App implements AppContext {
     opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
 
     // ---- 配線
-    this.store.on("change", () => {
+    this.store.on("change", (info) => {
       this.syncEmpty();
       this.syncFutureNew();
+      this.syncDeep();
+      // 全部が入れ替わったら、検索の索引は空いた時間に作り直す（初めての検索の 1 文字を待たせない）
+      if (info.full) this.warmSearchSoon();
+      // 版 7 の地図: 選び直した後の見取り図の計算を空いた時間に（概要へ戻るのを待たせない: 見直し perf-6）
+      if (!info.positionsOnly) this.vm.deep.prewarmSoon();
     });
     this.persistence.on("writer", (w) => {
       this.renderBanner();
@@ -287,6 +293,12 @@ export class App implements AppContext {
     this.applyPrefs({});
     this.syncEmpty();
     this.syncFutureNew();
+    this.syncDeep();
+    // ページに入れた 3 か月ごとの地図を読み終えた（後から読んだとき）: パネルの幅と、最初の見取り図・新しい地図の知らせ
+    this.vm.deep.onReady(() => {
+      this.syncDeep();
+      this.offerDeep();
+    });
     this.renderBanner();
     this.ui.persistPrefs = !this.ephemeral;
 
@@ -308,7 +320,10 @@ export class App implements AppContext {
       this.autoOpenFuture();
       // 3 年の分かれ道を初めて見せた後、年収がまだ仮なら一度だけ知らせる
       offerImpactSalary(this);
+      // 3 か月ごとの地図（版 7）: 広い画面は見取り図を見せて始め、新しい地図の知らせを一度だけ
+      this.offerDeep();
       this.afterTour = () => void this.askPersistOnce();
+      this.warmSearchSoon();
     });
     void this.refreshLastBackup();
   }
@@ -346,15 +361,92 @@ export class App implements AppContext {
     }
   }
 
-  private syncEmpty(): void {
-    this.emptyHint.hidden = Object.keys(this.store.doc.nodes).length > 0;
+  /** 検索の索引を、手が空いたときに作っておく（requestIdleCallback。無ければ少し後に） */
+  private warmSearchSoon(): void {
+    const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    if (ric) ric(() => this.vm.warmSearch(), { timeout: 4000 });
+    else setTimeout(() => this.vm.warmSearch(), 1500);
   }
 
-  /** 古い版の未来の道筋があれば、「未来の道筋」のボタンに「新」の印（断って聞かれなくなっても、新しい版にできると分かる。入口だけを見るので軽い） */
+  /** 3 か月ごとの地図（版 7）があるか（右のパネルを少し広く・狭い画面の引き出しは幅いっぱいに。src/styles/deep.css） */
+  private syncDeep(): void {
+    const on = !!this.vm.deep.get();
+    if (this.shell.classList.contains("has-deep") === on) return;
+    this.shell.classList.toggle("has-deep", on);
+    setTimeout(() => this.view.resize(), 60);
+  }
+
+  /** 新しい地図の知らせを出した（この起動で。待っている間に重ねて出さない） */
+  private deepOffered = false;
+
+  /**
+   * 3 か月ごとの地図（版 7）があれば、右のパネルに見取り図を見せて始める（何も選ばない概要の先頭。広い画面はパネル、
+   * スマホは最初の 1 枚として引き出しに: 作業メモ SPEC v1 §5.1・§5.9・user-1・user-5）。
+   * 新しい地図の知らせは版ごとに一度だけ（表示の設定 releaseSheet。どの道で地図が入っても: 作業メモ SPEC §5.9・user-5）。
+   * 初めての人のようこそ画面・操作ガイド・確認の途中は、閉じるまで待つ
+   */
+  private offerDeep(): void {
+    if (this.deepOffered || this.newerShown) return;
+    const ctx = this.vm.deep.get();
+    if (!ctx) return;
+    this.deepOffered = true;
+    if (!this.ui.prefs.rightOpen && !this.ui.selection.nodes.size) this.ui.setPrefs({ rightOpen: true });
+    // 文章の組み立ての、地図ごとに 1 回の下ごしらえ（道の覚え・数え）を空いた時間に済ませる（初めてカードを選ぶ 1 回を待たせない）
+    const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    const warm = (): void => {
+      const c = this.vm.deep.get();
+      if (!c) return;
+      // ノードの ID → 地図の番号の表と、文章の組み立ての下ごしらえ
+      c.indexOf(c.idOf(0));
+      c.text().card(0);
+    };
+    if (ric) ric(warm, { timeout: 3000 });
+    else setTimeout(warm, 1500);
+    const rel = ctx.map.header.release;
+    const seen = Math.max(this.ui.prefs.releaseSheet, typeof this.ui.storedPrefs().releaseSheet === "number" ? this.ui.storedPrefs().releaseSheet! : 0);
+    if (rel < 7 || seen >= rel) return;
+    const show = (): void => {
+      if (this.newerShown) return;
+      if (modalOpen() || document.querySelector(".tour")) {
+        setTimeout(show, 800);
+        return;
+      }
+      const now = this.vm.deep.get();
+      if (!now) return;
+      this.ui.setPrefs({ releaseSheet: rel });
+      openReleaseSheet(this, now);
+    };
+    setTimeout(show, 300);
+  }
+
+  private syncEmpty(): void {
+    // ノードの数は索引が持つ（文書をなめない。作業メモ perf-4・gaps-8）
+    this.emptyHint.hidden = this.vm.nodeCount > 0;
+  }
+
+  /** 「新」の印の材料（予測の入口のノードの版）と、そのときの答え */
+  private futureNewKey = "";
+  private futureNewOn = false;
+
+  /**
+   * 古い版の未来の道筋があれば、「未来の道筋」のボタンに「新」の印（断って聞かれなくなっても、新しい版にできると分かる）。
+   * 入口のノードだけを見る（索引が覚えている入口。入口のノードが変わったときだけ確かめ直す）
+   */
   private syncFutureNew(): void {
     const btn = this.futureBtn;
     if (!btn) return;
-    const on = hasStaleFuture(this.store.doc, futureVersion(), futureRelease());
+    const idx = this.vm.index;
+    const key = `${idx.version.roots}|${idx.source === this.store.doc}|${futureVersion()}|${futureRelease()}`;
+    if (key !== this.futureNewKey) {
+      this.futureNewKey = key;
+      const nodes: DocData["nodes"] = {};
+      for (const id of idx.forecastRoots) {
+        const n = this.store.doc.nodes[id];
+        if (n) nodes[id] = n;
+      }
+      this.futureNewOn = hasStaleFuture({ ...this.store.doc, nodes }, futureVersion(), futureRelease());
+    }
+    const on = this.futureNewOn;
     if (btn.classList.contains("has-new") === on) return;
     btn.classList.toggle("has-new", on);
     btn.title = on ? `${FUTURE_BTN_TITLE}（新しい版があります）` : FUTURE_BTN_TITLE;
@@ -402,7 +494,7 @@ export class App implements AppContext {
         history.replaceState(null, "", location.pathname + location.search.replace(/[?&](stress|demo)(=[^&]*)?/g, "").replace(/^&/, "?"));
         location.reload();
       });
-      add("info", "layers", `性能確認用の一時表示です（${Object.keys(this.store.doc.nodes).length.toLocaleString("ja-JP")} ノード）。変更は保存されず、ふだんのデータにも触れません。`, back);
+      add("info", "layers", `性能確認用の一時表示です（${this.vm.nodeCount.toLocaleString("ja-JP")} ノード）。変更は保存されず、ふだんのデータにも触れません。`, back);
       return;
     }
     if (!per.writer) {
@@ -951,6 +1043,7 @@ export class App implements AppContext {
     this.ui.select([]);
     this.ui.setPrefs({ projectFilter: [], scenarioId: null, timeCursor: null });
     this.ui.setSearch("");
+    // 全体を見てよい: 入れ替えた直後に 1 回だけ（変更のたびではない）
     const all = Object.keys(this.store.doc.nodes);
     this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, all) : undefined, { minZoom: opts.fitMinZoom });
     toast(opts.done ?? `${label}しました`, { tone: "ok", action: this.cmd.undoAction() });
@@ -967,11 +1060,13 @@ export class App implements AppContext {
     const mark = this.futureMarkFor(doc);
     if (mark) this.store.doc.meta = { ...this.store.doc.meta, ...mark };
     void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
+    // 全体を見てよい: 追加の取り込みの前と後に 1 回ずつ（変更のたびではない）
     const before = new Set(Object.keys(this.store.doc.nodes));
     // ページの地図を足すときは同梱のカードの ID をそのまま（薄い形を小さく: gaps-1）。薄い形を読み書きするページでは、
     // 今の地図と同じ鍵の今日を持つ地図は足さない（版によらず。足したカードと線だけを今の地図につなぐ: safety-9）
     const res = mergeDocs(this.store.doc, doc, { ...(holdsPageMap(doc) ? { keepIds: true } : {}), ...(thinReadable() ? { skipSameMaps: true } : {}) });
     this.store.replaceDoc(res.doc, label);
+    // 全体を見てよい: 同じ取り込みの後の 1 回
     const added = Object.keys(this.store.doc.nodes).filter((id) => !before.has(id));
     this.ui.select(opts.select === false ? [] : added);
     this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, added) : added, { minZoom: opts.fitMinZoom });
@@ -1035,7 +1130,10 @@ export class App implements AppContext {
    * 自分で書いた内容があれば、追加か入れ替えかを選ぶ確認を出す
    */
   async showFuture(): Promise<void> {
-    const root = Object.values(this.store.doc.nodes).find((x) => x.meta?.forecastRoot === true);
+    // 予測の入口（索引が覚えている。文書の順で最初の物）
+    const idx = this.vm.index;
+    const rootId = this.vm.forecastRootIds().sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b))[0];
+    const root = rootId ? this.store.doc.nodes[rootId] : undefined;
     if (root) {
       if (this.ui.prefs.view !== "map") this.ui.setPrefs({ view: "map" });
       // 絞り込み・シナリオで隠れていたら「薄くする」にして出す（検索で選んだときと同じ）
@@ -1355,7 +1453,7 @@ export class App implements AppContext {
     if (this.ephemeral) return;
     const show = (): void => {
       if (this.store.readOnly) return;
-      if (!Object.values(this.store.doc.nodes).some((x) => x.meta?.forecastRoot === true)) return;
+      if (!this.vm.index.forecastRoots.size) return;
       const st = this.futureState();
       if (st.newer.length) return this.tellNewerFuture();
       const v = futureVersion();
@@ -1603,6 +1701,7 @@ export class App implements AppContext {
         const yielding = how === "remote" && isFreshFuture(this.store.doc);
         // 入れ替える前に見ていた未来の道筋の今日の位置（同じ所にまだあるなら、見ている場所はそのままにする）
         const rootAt = (d: DocData) => {
+          // 全体を見てよい: 届いた文書（ストアの文書ではない）の入口を、取り込むときに 1 回探す
           const r = Object.values(d.nodes).find((n) => n.meta?.forecastRoot === true);
           return r ? { x: r.x, y: r.y, v: r.meta?.futureVersion } : null;
         };

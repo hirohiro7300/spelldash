@@ -4,15 +4,16 @@
 import type { ViewModel } from "../app/viewModel";
 import type { UiState } from "../app/uiState";
 import { NODE_TYPES } from "../model/constants";
-import { edgeProb, formatPercent } from "../model/forecast";
-import { IMPACT_FIRST_ZOOM, IMPACT_ROW } from "../model/impactLayout";
+import { edgeProb, formatPercent, type ForecastResult } from "../model/forecast";
+import { quarterSpanText, ymText } from "../deepmap/core/time";
+import { IMPACT_FIRST_ZOOM, IMPACT_ROW, impactColX } from "../model/impactLayout";
 import { todayStr } from "../model/dates";
-import type { GNode, ID, Relation } from "../model/types";
+import type { DocData, GNode, ID, Relation } from "../model/types";
 import type { Store } from "../store/store";
 import { h } from "../ui/dom";
 import { Camera } from "./camera";
 import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, gridPattern, lodFor, rgba, type Lod } from "./draw";
-import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, rectsIntersect, type EdgeGeom } from "./geometry";
+import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, labelMaxW, rectsIntersect, type EdgeGeom } from "./geometry";
 import { ImpactCards, binStroke } from "./impactCards";
 import { drawImpactNode, type PillRect } from "./impactDraw";
 import { onPixelRatioChange } from "./pixelRatio";
@@ -61,6 +62,8 @@ interface ScreenLabel {
   dot: string | null;
   /** カードの左端にそろえる（3 年の分かれ道。列ごとに目印の頭がそろい、左の列の目印と重なりにくい） */
   left?: boolean;
+  /** 文の幅の上限（画面の px。次の列のカードの手前まで。超えたら「…」で切る: 見直し user-9） */
+  maxW?: number;
 }
 
 /** 描いた札（画面座標。E2E の確かめ用。debugPills を [] にしたときだけ集める） */
@@ -76,6 +79,8 @@ export interface PillDebug {
 }
 
 const PORT_SCREEN_R = 7;
+/** 年月の目盛りの帯の高さ（画面の px） */
+const RULER_H = 26;
 /** 折りたたみの印を押せる大きさ（3 年の分かれ道。画面の px。指でも押せる大きさ） */
 const BADGE_TOUCH_PX = 44;
 const ORIGIN = { x: 0, y: 0 };
@@ -100,6 +105,8 @@ export class CanvasView {
   insets = { left: 40, right: 48, top: 60, bottom: 60 };
   /** 確かめ用（E2E）: [] にすると、描くたびに 3 年の分かれ道の選択肢の札の位置を集め直す。ふだんは null（集めない） */
   debugPills: PillDebug[] | null = null;
+  /** 描いた縮小したときの目印（画面座標の左右と、使えた幅の上限）。E2E の確かめ用（[] にしたときだけ集める: 見直し user-9） */
+  debugHeads: Array<{ text: string; x0: number; x1: number; maxW: number | null }> | null = null;
   /** 確かめ用（E2E の性能）: true なら描いた後に 1 画素読み、絵を描き終えるまで待ってから時間を測る（描く命令だけでなく塗りまで） */
   rasterFlush = false;
 
@@ -362,10 +369,14 @@ export class CanvasView {
     const sy1 = maxY * z + y;
     let dx = 0;
     let dy = 0;
-    if (sx1 - sx0 > R - L) dx = L - sx0;
+    // 収まらない向きは、開き始めたカード（ids の先頭）を目印に: 横はそのカードを左の端に（次の列が見える）、縦はそのカードを真ん中に
+    // （開いた物の左上に合わせると、縦に長い開き方では、今日から遠い上の枝だけが見える: 見直し user-8）
+    const ax = (anchor.x - HALF_W) * z + x;
+    const ay = anchor.y * z + y;
+    if (sx1 - sx0 > R - L) dx = L + 16 - ax;
     else if (sx0 < L) dx = L - sx0;
     else if (sx1 > R) dx = R - sx1;
-    if (sy1 - sy0 > B - T) dy = T - sy0;
+    if (sy1 - sy0 > B - T) dy = (T + B) / 2 - ay;
     else if (sy0 < T) dy = T - sy0;
     else if (sy1 > B) dy = B - sy1;
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && z === cam.zoom) return;
@@ -430,6 +441,8 @@ export class CanvasView {
 
   hitTest(sx: number, sy: number): Hit {
     this.vm.ensure();
+    // 上に固定した年月の目盛りの帯（3 か月ごとの地図）は、下のカードを押さない
+    if (this.rulerShown && sy < RULER_H) return { kind: "empty" };
     const z = this.camera.zoom;
     const w = this.camera.toWorld(sx, sy);
     const lod = lodFor(z);
@@ -579,7 +592,9 @@ export class CanvasView {
     let animating = false;
 
     // 接続
-    const labels: Array<{ id: ID; g: EdgeGeom; text: string; rel: Relation; alpha: number; emph: boolean; color?: string; maxW?: number; bold?: boolean }> = [];
+    const labels: Array<{ id: ID; g: EdgeGeom; text: string; rel: Relation; alpha: number; emph: boolean; color?: string; maxW?: number; bold?: boolean; start?: boolean }> = [];
+    // 3 か月ごとの地図（版 7）: 選び方の道をどの拡大率でも強め、札は列の間に収め、まとめた行き先への線は破線（作業メモ SPEC v1 §5.6）
+    const quarter = imp.active && cards.quarterly(imp, doc);
     for (const eid of vm.drawEdges) {
       const e = doc.edges[eid]!;
       const g = this.geomBetween(e.source, e.target);
@@ -591,16 +606,19 @@ export class CanvasView {
       if (ie) {
         // 3 年の分かれ道: 判断の線は控えめ（★ の線を強く・基準の線は薄く）、結果の線はその結果の色で、見込みの太さ。
         // 縮小すると、選び方の道（π）だけを濃く
-        const pi = imp.piEdges.has(eid);
-        const k = lod === "low" ? (pi ? 1 : 0.25) : lod === "dot" ? (pi ? 0.8 : 0.1) : ie.alpha;
-        drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: false, offScenario: ev.offScenario, flowT, style: ie.style, styleAlpha: k });
+        const pi = imp.onPiEdge(e);
+        const near = lod === "full" || lod === "compact";
+        const k = lod === "low" ? (pi ? 1 : 0.25) : lod === "dot" ? (pi ? 0.8 : 0.1) : quarter ? (pi ? 1 : ie.alpha * 0.6) : ie.alpha;
+        const style = quarter && pi && near ? cards.emph(ie.style) : ie.style;
+        drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: false, offScenario: ev.offScenario, flowT, style, styleAlpha: k, dash: ie.cont });
         if (flowT !== null && (ev.path || selected) && lod !== "low" && lod !== "dot") animating = true;
         if (lod === "full" || lod === "compact") {
           if (ie.kind === "chance") {
             // 「35%」（大きく見ているとき・選んだ・ホバーは「35%｜判断の線」）
             const long = lod === "full" || selected || hovered;
             const text = long ? ie.long : ie.pct;
-            if (text && ((prefs.showLabels && ev.alpha > 0.25) || selected || hovered)) labels.push({ id: eid, g, text, rel: e.relation, alpha: Math.max(ev.alpha, selected || hovered ? 1 : 0), emph: selected || hovered || ev.path, color: ie.color, maxW: 170, bold: !long });
+            const maxW = quarter ? labelMaxW(g, z, ie.cont ? 150 : 170) : 170;
+            if (text && ((prefs.showLabels && ev.alpha > 0.25) || selected || hovered)) labels.push({ id: eid, g, text, rel: e.relation, alpha: Math.max(ev.alpha, selected || hovered ? 1 : 0), emph: selected || hovered || ev.path, color: ie.color, maxW, bold: !long, start: ie.cont });
           } else if (selected || hovered) {
             // 判断の線にはふだん札を付けない（自分で書いた説明は、選んだ・ホバーしたときだけ）
             const text = e.condition.trim() || e.label.trim();
@@ -634,7 +652,7 @@ export class CanvasView {
       }
     }
     this.labelBoxes = [];
-    for (const l of labels) this.labelBoxes.push({ id: l.id, ...drawEdgeLabel(ctx, l.g, l.text, l.rel, l.alpha, l.emph, z, l.color ? { color: l.color, maxW: l.maxW, bold: l.bold } : {}) });
+    for (const l of labels) this.labelBoxes.push({ id: l.id, ...drawEdgeLabel(ctx, l.g, l.text, l.rel, l.alpha, l.emph, z, l.color ? { color: l.color, maxW: l.maxW, bold: l.bold, start: l.start } : {}) });
 
     // 接続をつくっている途中の線
     const cp = this.connect;
@@ -659,10 +677,13 @@ export class CanvasView {
     }
 
     // ノード
-    const fc = vm.forecast;
+    // 見込み（P_path）は、読む所が出たときだけ作る（3 年の分かれ道のカードは使わない。8 万枚の地図では計画を作るのに 4 倍遅いスマホで
+    // 0.5 秒かかり、起動の最初のフレームを待たせる: 見直し perf-7）
+    let fcMemo: ForecastResult | null = null;
+    const fcOf = (): ForecastResult => (fcMemo ??= vm.forecast);
     const screenLabels: ScreenLabel[] = [];
     const impLabels: ScreenLabel[] = [];
-    const ranks = imp.active && (lod === "low" || lod === "dot") ? cards.labelRank(imp, doc, (id) => fc.reach.get(id)?.p ?? 0) : null;
+    const ranks = imp.active && (lod === "low" || lod === "dot") ? cards.labelRank(imp, doc, (id) => fcOf().reach.get(id)?.p ?? 0) : null;
     const pillBox = this.pillTmp;
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
@@ -692,7 +713,7 @@ export class CanvasView {
         collapsed: nv.collapsed,
         showBadge: this.badgeVisible(id, lod),
         today,
-        reach: fc.active ? fc.reach.get(id)?.p : undefined,
+        reach: card ? undefined : fcOf().active ? fcOf().reach.get(id)?.p : undefined,
       };
       if (card) {
         drawImpactNode(ctx, n, p.x, p.y, opts, card, pills ? pillBox : null);
@@ -700,15 +721,17 @@ export class CanvasView {
         if (lod === "low" || lod === "dot") {
           // 縮小したときの目印: 選択中 > 検索の当たり > 今日の選択肢 > ★ の選択肢 > 見込みの高い行き先（一番小さくしたときは今日と行き先 5 つ）
           const r = selected ? 0 : nv.match ? 1 : (ranks?.get(id) ?? -1);
-          const text = lod === "dot" ? card.dotLabel || card.label : card.label;
+          // 選択肢は、カードの真ん中に差を描いているとき（low・19% 以上）は題名だけ（同じ差を 2 度出さない: 見直し user-9）
+          const deltaShown = lod === "low" && z >= 0.19 && card.role === "alt" && !!card.low && !!card.labelTitle;
+          const text = lod === "dot" ? card.dotLabel || card.label : deltaShown ? card.labelTitle : card.label;
           if (r >= 0 && text && (lod === "low" || r <= 1 || card.role === "root" || card.role === "end")) {
-            impLabels.push({ x: p.x, y: p.y, text, color: "#EEF1F7", alpha: nv.alpha, rank: card.role === "root" && lod === "dot" ? -1 : r, dot: card.role === "root" ? null : binStroke(card.bin), left: true });
+            impLabels.push({ x: p.x, y: p.y, text, color: "#EEF1F7", alpha: nv.alpha, rank: card.role === "root" && lod === "dot" ? -1 : r, dot: card.role === "root" ? null : binStroke(card.bin), left: true, maxW: lod === "low" ? this.nextColumnGap(id, p.x) : undefined });
           }
         }
         continue;
       }
       drawNode(ctx, n, p.x, p.y, opts);
-      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fc.active ? fc.reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
+      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fcOf().active ? fcOf().reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
     }
     // つまみ
     if (lod === "full" || lod === "compact") {
@@ -726,6 +749,8 @@ export class CanvasView {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80);
     if (screenLabels.length) this.drawScreenLabels(screenLabels, 80);
+    // 年月の目盛り（3 か月ごとの地図。どの拡大率でも画面の上に固定: 作業メモ SPEC v1 §5.6・user-7・user-15）
+    this.setRuler(quarter && imp.root ? this.drawRuler(imp.root, doc) : false);
 
     // 範囲選択
     const m = this.marquee;
@@ -746,6 +771,71 @@ export class CanvasView {
     if (this.camAnim || animating) this.requestRender();
   }
 
+  /** 目盛りを描いている（キャンバスの上のお知らせの帯を目盛りの下へ: src/styles/deep.css）。確かめ用に描いた目盛りの文字 */
+  rulerShown = false;
+  rulerTexts: string[] = [];
+
+  private setRuler(on: boolean): void {
+    if (on === this.rulerShown) return;
+    this.rulerShown = on;
+    this.root.parentElement?.classList.toggle("has-ruler", on);
+  }
+
+  /**
+   * 年月の目盛り: 画面の上に固定した帯に、地図の列ごとの年月（判断・結果の列は「2027 年 2 月」、手の列は「12 月〜2 月の手」）。
+   * 列は入口（今日）の位置から（impactColX。月から決めた列と同じ）。重なる文字は出さない（判断の列を先に置く）。描いたら true
+   */
+  private drawRuler(root: ID, doc: DocData): boolean {
+    const r = doc.nodes[root];
+    const anchor = r?.meta?.anchor;
+    if (!r || typeof anchor !== "string" || !this.vm.hasOverlay(root)) return false;
+    const rp = this.vm.posOf(root)!;
+    const ctx = this.ctx;
+    const cam = this.camera;
+    const z = cam.zoom;
+    const W = this.width;
+    const H = RULER_H;
+    ctx.fillStyle = "rgba(9,12,18,0.92)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(0, H - 1, W, 1);
+    const texts: string[] = [];
+    const placed: Array<[number, number]> = [];
+    const free = (a: number, b: number) => !placed.some(([x0, x1]) => a < x1 + 10 && b > x0 - 10);
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    // 判断・結果の列（年月）を先に、間が空いていれば手の列（その 3 か月）
+    for (const pass of [0, 1]) {
+      ctx.font = pass === 0 ? `650 11px ${CANVAS_FONT}` : `500 10.5px ${CANVAS_FONT}`;
+      for (let d = pass; d <= 24; d += 2) {
+        const sx = (rp.x + impactColX(d)) * z + cam.x;
+        if (sx < -160 || sx > W + 160) continue;
+        let text: string;
+        try {
+          text = pass === 0 ? ymText(anchor, (d / 2) * 3) : `${quarterSpanText(anchor, ((d - 1) / 2) * 3)}の手`;
+        } catch {
+          return false;
+        }
+        if (d === 0) text = `今日 ${text}`;
+        if (d === 24) text = `${text}（3 年後）`;
+        const w = ctx.measureText(text).width;
+        // 端の列は画面の中へ寄せる（入口の列が左の端にあっても「今日」が切れない）
+        const x0 = Math.max(6, Math.min(W - w - 6, sx - w / 2));
+        if (!free(x0, x0 + w)) continue;
+        placed.push([x0, x0 + w]);
+        texts.push(text);
+        ctx.fillStyle = pass === 0 ? "rgba(221,227,238,0.95)" : "rgba(150,160,178,0.9)";
+        ctx.fillText(text, x0, H / 2 + 0.5);
+        // 列の真ん中の小さな目印
+        ctx.fillStyle = pass === 0 ? "rgba(165,151,255,0.85)" : "rgba(150,160,178,0.5)";
+        ctx.fillRect(Math.round(sx) - 0.5, H - 5, 1, 4);
+      }
+    }
+    ctx.textBaseline = "alphabetic";
+    this.rulerTexts = texts;
+    return true;
+  }
+
   /** ふつうの地図の目印の文（題名。未来の道筋の行き先などは見込みを添える）。ctx.font は呼ぶ側で 12px にしておく */
   private plainText(n: GNode, reach: number | undefined): string {
     const title = wrapText(this.ctx, n.title.trim() || "（無題）", 180, 1)[0] ?? "";
@@ -753,6 +843,22 @@ export class CanvasView {
   }
 
   /** 縮小したときの目印（画面の大きさで）。重なる名前は出さない（大事なものから置く）。cap まで */
+  /**
+   * カード id（x は中心の世界座標）の目印の文が使える幅（画面の px）: 見えている子のカード（次の列）の左の端まで。
+   * 見えている子が無ければ上限なし（undefined）
+   */
+  private nextColumnGap(id: ID, x: number): number | undefined {
+    let next = Infinity;
+    for (const eid of this.vm.index.out.get(id) ?? []) {
+      const e = this.store.doc.edges[eid];
+      if (!e || !this.vm.hasOverlay(e.target) || this.vm.node(e.target).hidden) continue;
+      const q = this.vm.posOf(e.target);
+      if (q && q.x > x && q.x < next) next = q.x;
+    }
+    // 目印はカードの左の端から始まる: 使える幅 = 次の列のカードの左の端 − このカードの左の端 − すき間
+    return next === Infinity ? undefined : (next - x) * this.camera.zoom - 10;
+  }
+
   private drawScreenLabels(items: ScreenLabel[], cap: number): void {
     const ctx = this.ctx;
     const z = this.camera.zoom;
@@ -768,14 +874,21 @@ export class CanvasView {
       const sx = it.x * z + cam.x;
       const sy = (it.y - HALF_H) * z + cam.y - 6;
       if (sx < -100 || sx > this.width + 100 || sy < -20 || sy > this.height + 20) continue;
-      const text = it.text ?? this.plainText(it.n!, it.reach);
-      const w = ctx.measureText(text).width;
       const dw = it.dot ? 12 : 0;
+      let text = it.text ?? this.plainText(it.n!, it.reach);
+      // 次の列のカードの手前で切る（入りきらないほど狭ければ出さない）
+      if (it.maxW !== undefined) {
+        if (it.maxW - dw < 28) continue;
+        text = clipToWidth(ctx, text, it.maxW - dw);
+        if (!text) continue;
+      }
+      const w = ctx.measureText(text).width;
       const left = it.left ? sx - HALF_W * z : sx - (w + dw) / 2;
       const box = { x0: left - 4, y0: sy - 14, x1: left + w + dw + 4, y1: sy + 4 };
       if (it.rank > 0 && placed.some((b) => b.x0 < box.x1 && b.x1 > box.x0 && b.y0 < box.y1 && b.y1 > box.y0)) continue;
       placed.push(box);
       shown++;
+      this.debugHeads?.push({ text, x0: left, x1: left + w + dw, maxW: it.maxW ?? null });
       if (it.dot) {
         ctx.beginPath();
         ctx.arc(left + 4, sy - 4, 4.5, 0, Math.PI * 2);
@@ -793,4 +906,18 @@ export class CanvasView {
       ctx.fillText(text, left + dw, sy);
     }
   }
+}
+
+/** 文を幅 maxW（画面の px。今の文字の形で測る）に収める。入りきらなければ後ろを「…」にする */
+export function clipToWidth(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
+  if (ctx.measureText(text).width <= maxW) return text;
+  const chars = Array.from(text);
+  let lo = 0;
+  let hi = chars.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(`${chars.slice(0, mid).join("")}…`).width <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? `${chars.slice(0, lo).join("")}…` : "";
 }

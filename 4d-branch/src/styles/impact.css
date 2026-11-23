@@ -257,6 +257,9 @@
 .imp-mark.is-star {
   color: #f2c14e;
 }
+.imp-mark.is-rec {
+  color: #c9a85a;
+}
 .imp-mark.is-picked {
   color: var(--ok);
 }
@@ -362,6 +365,9 @@
   flex: none;
   margin-top: 3px;
   color: var(--accent-2);
+}
+.imp-flip.is-busy {
+  color: var(--text-3);
 }
 
 /* ---- 手の種類・大事な判断の行（3 年でやる価値が大きい手・避けたい手・この先の大事な判断） */
@@ -517,6 +523,30 @@
   font-size: 12.5px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- 3 か月ごとの地図の「くわしい数」（前の版の欄をたたむ: 見直し user-5） */
+.imp-more {
+  border-top: 1px solid var(--line-1, rgba(255, 255, 255, 0.08));
+  padding-top: 10px;
+}
+.imp-more > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.5;
+}
+.imp-more-body {
+  display: grid;
+  gap: 18px;
+  margin-top: 12px;
+}
+.imp-flips:empty {
+  display: none;
+}
+.imp-dest .dm-dest {
+  margin: 0;
 }
 
 /* ---- 前提・見方 */

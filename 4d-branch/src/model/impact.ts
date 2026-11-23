@@ -7,7 +7,18 @@
 //   結果     : 見込み（%）で重みを付けた平均
 //   判断     : 選んだ手（進行中・完了）があればその中で、無ければ見送った手を除いて一番良い手を選ぶ（π）
 // 各選択肢の「3 年の影響」Δ = その手の値 − 同じ判断の「今のまま」（meta.base）の値。どちらもその後は一番良い選び方をする。
+// 手に q（比べ方をそろえた見積もり）がある地図（版 7）では、画面に出す差（Δ・内訳・幅・判断の差）は、手と今のままの両方に
+// 比べ方をそろえた値（q か、まとめた手の値）があれば、その差（作業メモ SPEC v1 D2・truth-2・見直し user-1・equiv-1。見取り図の
+// 「今やる vs 3 か月待つ」と同じ数）。木の値（その後は一番良い選び方）は、一番良い手と選び方の道（π）を決めるのにだけ使う。
 // 計算は O(ノード + 線)。1,800 ノードで数 ms。
+//
+// アプリが使うのは型付き配列の計算（./impactEngine.ts。文書の変わった所に応じて組み直し・入れ直し・計算し直しを分ける）。
+// ここの computeImpact は、その答えの決まり（基準の作り）で、同じ答えになるかのテスト（tests/unit/impactEngine*.test.ts）と生成の点検だけが使う。
+// 逆にたどる・前へ流す計算（backward・forward）と組み直した形（Compiled）は、エンジンもそのまま使う（足す順まで同じ数になる）。
+// ★ の決まり（作業メモ SPEC v1 §5.6・見直し user-10・truth-2）: 手に q（比べ方をそろえた見積もり）がある地図（版 7）では、
+//   一番の手（木の値）が、ほかの手より q の見積もりで max(10 万円, 判断の幅の 3 割) 以上良いときだけ ★。
+//   ≒（ほぼ同じ）は、★ が無いとき、一番の手との差が 10 万円未満の手（一番の手そのものには付けない。見直し user-7・equiv-3）。
+//   どの判断でも一番の手に控えめな「おすすめ」の印（AltInfo.rec）。q の無い地図（版 6）は前のまま（2 位より 10 万円以上で ★・おすすめの印なし）
 
 import type { ForecastResult } from "./forecast";
 import { chanceWeights, flowOuts, forkKindOf, impactConfigOf, impactScope, isImpactRoot, primaryImpactRoot, type ForkKind } from "./forks";
@@ -24,6 +35,8 @@ export const IMPACT_ANNUAL_MIN = 100;
 export const IMPACT_ANNUAL_MAX = 3000;
 /** ★（おすすめ）を付ける差（2 位より何万円良ければ）。差がこれより小さい手は「≒ ほぼ同じ」（数はモデルの目安なので、小さな差で 1 つに決めない） */
 export const IMPACT_STAR_LEAD = 10;
+/** q のある地図の ★: 判断の幅（比べ方をそろえた値の一番上と一番下の差）のこの割合以上（かつ IMPACT_STAR_LEAD 以上）良ければ ★ */
+export const IMPACT_STAR_SHARE = 0.3;
 /** 「悪くなる」と数える差（万円）。色の「ほぼ同じ」（3 万円未満）より悪い結果だけを数える */
 export const BAD_EPS = 3;
 
@@ -47,9 +60,14 @@ export interface AltInfo {
   allowed: boolean;
   picked: boolean;
   dropped: boolean;
-  /** 3 年の影響（万円）。基準が無い・数が出せないときは null */
+  /** 3 年の影響（万円）。基準が無い・数が出せないときは null。q のある地図は比べ方をそろえた値の差（deltaBasis） */
   delta: number | null;
-  /** 影響の内訳 [本業, 広告運用・独立, SpellDash] */
+  /**
+   * 差の出し方: "q" 比べ方をそろえた値（q・まとめた手の値）どうし / "tree" 地図の値（その後は一番良い選び方）どうし。
+   * q の無い地図はいつも "tree"。差が出なければ null
+   */
+  deltaBasis: DeltaBasis | null;
+  /** 影響の内訳 [本業, 広告運用・独立, SpellDash]（delta と同じ出し方。足すと delta） */
   deltaV: Vec3 | null;
   /** 3 年後の月の稼ぎの差（万円/月） */
   dR: number | null;
@@ -60,10 +78,15 @@ export interface AltInfo {
   bin: number;
   /** ★ おすすめ・≒ ほぼ同じ */
   mark: "star" | "tie" | null;
+  /** その判断の一番良い手（控えめな「おすすめ」の印。q のある地図だけ。候補が 2 つ以上の判断） */
+  rec: boolean;
   /** 先に数の出ない所がある */
   partial: boolean;
   outcomes: AltOutcome[];
 }
+
+/** 差の出し方（AltInfo.deltaBasis） */
+export type DeltaBasis = "q" | "tree";
 
 export interface DecisionInfo {
   /** 選択肢（表示の順） */
@@ -73,7 +96,10 @@ export interface DecisionInfo {
   best: ID | null;
   /** 計算で選ぶ手（自分で選んだ手があればその中で一番良い手） */
   chosen: ID | null;
-  /** この判断で最大どれだけ差が出るか（一番良い手 − 今のまま） */
+  /**
+   * この判断で最大どれだけ差が出るか（一番良い手 − 今のまま）。q のある地図は、選べる手（方針に入り・見送りでない）の
+   * 画面に出す差（delta）の一番大きい物（一覧の数と食い違わない）
+   */
   stakes: number | null;
   spread: [number, number] | null;
 }
@@ -107,36 +133,57 @@ export interface NeverResult {
   /** その手を 3 年間ずっとやらない場合と比べた今日の値の差 */
   k: number | null;
   /** 手ごとの「ずっとやらない」場合との差 */
-  card: Map<ID, number>;
+  card: ReadonlyMap<ID, number>;
+}
+
+/** 年収で今日の一番が入れ替わる所 */
+export interface SalaryFlips {
+  below: SalaryFlip | null;
+  above: SalaryFlip | null;
+}
+
+/** そのカードの先（自分を含む）の数（形と分かれ道の種類だけで決まる。作業メモ perf-14・user-13・truth-18） */
+export interface ImpactRipple {
+  /** 判断（手が 2 つ以上） */
+  decisions: number;
+  /** 出来事の分かれ（結果が 2 つ以上の手） */
+  splits: number;
+  /** 行き先（先の無いカード） */
+  ends: number;
+  /** そのうち、まとめた行き先（標準の続きの見積もり） */
+  sumEnds: number;
 }
 
 export interface ImpactResult {
   active: boolean;
   root: ID | null;
-  scope: Set<ID>;
+  /** 範囲（入口からたどれるノード。循環に入って数えないノードも含む） */
+  scope: ReadonlySet<ID>;
   annual: number;
   /** 年収が入っている（false なら仮の値） */
   annualSet: boolean;
   S: number;
   tail: number;
   horizon: number;
-  kind: Map<ID, ForkKind>;
-  month: Map<ID, number>;
+  kind: ReadonlyMap<ID, ForkKind>;
+  month: ReadonlyMap<ID, number>;
   /** その時点から horizon までの稼ぎ（その後は一番良い選び方） */
-  value: Map<ID, number>;
-  valueV: Map<ID, Vec3>;
+  value: ReadonlyMap<ID, number>;
+  valueV: ReadonlyMap<ID, Vec3>;
   /** horizon での月の稼ぎ（万円/月） */
-  rate: Map<ID, number>;
+  rate: ReadonlyMap<ID, number>;
   /** 今日からそこまでの稼ぎ */
-  acc: Map<ID, number>;
+  acc: ReadonlyMap<ID, number>;
   /** おすすめ（または自分）の選び方でそこに来る見込み */
-  pPi: Map<ID, number>;
-  partial: Set<ID>;
-  alt: Map<ID, AltInfo>;
-  decision: Map<ID, DecisionInfo>;
-  outcome: Map<ID, AltOutcome & { alt: ID }>;
+  pPi: ReadonlyMap<ID, number>;
+  partial: ReadonlySet<ID>;
+  alt: ReadonlyMap<ID, AltInfo>;
+  decision: ReadonlyMap<ID, DecisionInfo>;
+  outcome: ReadonlyMap<ID, AltOutcome & { alt: ID }>;
   /** 選び方の道の上の線 */
-  piEdges: Set<ID>;
+  piEdges: ReadonlySet<ID>;
+  /** 線が選び方の道の上か（piEdges.has(e.id) と同じ。線の物から引くので、描くたびに線の ID の表を作らない） */
+  onPiEdge(e: { id: ID; target: ID }): boolean;
   vRoot: number | null;
   vSQ: number | null;
   rRoot: number | null;
@@ -146,21 +193,54 @@ export interface ImpactResult {
   counts: { nodes: number; decisions: number; options: number; forks: number; ends: number };
   /** 自分で選んだ手がある */
   hasPicks: boolean;
+  /** 手に q（比べ方をそろえた見積もり）がある地図（★ の決まりとおすすめの印がそれに従う） */
+  likeBasis: boolean;
+  /**
+   * 方針（シナリオ）を選んでいるが、数は方針で絞っていない（q のある地図: 地図の先の選び方は方針を見ずに作ったので、絞ると
+   * 年 3 の判断で今のままだけが残るなど数が正しくない。作業メモ SPEC §5.11・gaps-12）。方針の外の手は AltInfo.allowed = false の印と薄さだけ
+   */
+  scenarioFree: boolean;
   /** 年収を変えると今日の一番が入れ替わる所（遅延計算） */
-  salaryFlips(): { below: SalaryFlip | null; above: SalaryFlip | null };
+  salaryFlips(): SalaryFlips;
+  /** salaryFlips がもう出ていればその答え、まだなら null（計算しない） */
+  salaryFlipsReady(): SalaryFlips | null;
+  /** salaryFlips の計算を、逆にたどる計算 1 回分だけ進める。済んだら答え、まだなら null（画面を描いた後に少しずつ進める: 作業メモ perf-8） */
+  salaryFlipsStep(): SalaryFlips | null;
   /** その種類の手を 3 年間ずっとやらない場合（遅延計算） */
   never(fam: string): NeverResult;
   /** 手の種類（基準を除く） */
   families(): string[];
+  /** おすすめの選び方（自分で選んだ手を外し、見送りはそのまま、方針で絞らない）での今日の値（遅延計算） */
+  recommended(): number | null;
+  /** 選択肢の ID（alt の鍵と同じ物）。AltInfo を作らずに順位を作るため */
+  altIds(): readonly ID[];
+  /** alt.get(id)?.delta と同じ（AltInfo を作らない） */
+  deltaOf(id: ID): number | null;
+  /** alt.get(id)?.mark と同じ（AltInfo を作らない） */
+  markOf(id: ID): AltInfo["mark"];
+  /** alt.get(id)?.isBase と同じ */
+  isBaseOf(id: ID): boolean;
+  /** 判断の ID（decision の鍵と同じ物） */
+  decisionIds(): readonly ID[];
+  /** decision.get(id)?.stakes と同じ（DecisionInfo を作らない） */
+  stakesOf(id: ID): number | null;
+  /** decision.get(id)?.best と同じ */
+  bestOf(id: ID): ID | null;
+  /** そのカードの先の判断・出来事の分かれ・行き先の数（範囲の外は null） */
+  ripple(id: ID): ImpactRipple | null;
 }
 
-const LEAF = 0;
-const PASS = 1;
-const CHANCE = 2;
-const DECISION = 3;
-const KIND_NAMES: ForkKind[] = ["leaf", "pass", "chance", "decision"];
+export const LEAF = 0;
+export const PASS = 1;
+export const CHANCE = 2;
+export const DECISION = 3;
+export const KIND_NAMES: readonly ForkKind[] = ["leaf", "pass", "chance", "decision"];
 
-interface Compiled {
+/**
+ * 組み直した形（型付き配列）。ノードは並べる順（親は子より前）、線は元のノードごとの続いた番号（off）。
+ * ここの compile と、エンジンの 2 つの作り方（./impactGraph.ts）が同じ物を作る
+ */
+export interface Compiled {
   ids: ID[];
   idx: Map<ID, number>;
   kind: Uint8Array;
@@ -187,9 +267,15 @@ interface Compiled {
   incOff: Int32Array;
   incSlot: Int32Array;
   src: Int32Array;
+  /** 手の q（比べ方をそろえた見積もり。[給与の月数, 広告運用 万円, SpellDash 万円] を 3 つずつ。無ければ NaN） */
+  q: Float64Array;
+  /** まとめた手（meta.stub。その値はそのまま q と同じ見積もり方: 標準の続きの見積もり） */
+  stub: Uint8Array;
+  /** q のある手がある（★ の決まり・おすすめの印・画面に出す差） */
+  likeBasis: boolean;
 }
 
-interface Pass {
+export interface Pass {
   V: Float64Array;
   def: Uint8Array;
   R: Float64Array;
@@ -201,6 +287,8 @@ interface Pass {
 
 /** 範囲が無いときの結果（active = false） */
 export const emptyImpact = (): ImpactResult => emptyResult();
+
+const NO_FLIPS: SalaryFlips = Object.freeze({ below: null, above: null });
 
 const emptyResult = (): ImpactResult => ({
   active: false,
@@ -231,12 +319,27 @@ const emptyResult = (): ImpactResult => ({
   dist: null,
   counts: { nodes: 0, decisions: 0, options: 0, forks: 0, ends: 0 },
   hasPicks: false,
+  likeBasis: false,
+  scenarioFree: false,
+  onPiEdge: () => false,
   salaryFlips: () => ({ below: null, above: null }),
+  salaryFlipsReady: () => NO_FLIPS,
+  salaryFlipsStep: () => NO_FLIPS,
   never: () => ({ k: null, card: new Map() }),
   families: () => [],
+  recommended: () => null,
+  altIds: () => [],
+  deltaOf: () => null,
+  markOf: () => null,
+  isBaseOf: () => false,
+  decisionIds: () => [],
+  stakesOf: () => null,
+  bestOf: () => null,
+  ripple: () => null,
 });
 
-function vec3(v: unknown): Vec3 | null {
+/** 3 つの数の配列（文字の数も Number で読む。読めなければ null。computeImpact の読み方） */
+export function vec3(v: unknown): Vec3 | null {
   if (!Array.isArray(v) || v.length !== 3) return null;
   const a = v.map(Number);
   return a.every((x) => Number.isFinite(x)) ? [a[0]!, a[1]!, a[2]!] : null;
@@ -247,7 +350,7 @@ export function validAnnual(x: unknown): x is number {
   return typeof x === "number" && Number.isFinite(x) && x >= IMPACT_ANNUAL_MIN && x <= IMPACT_ANNUAL_MAX;
 }
 
-function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: ID | null, H: number, rootIds: ID[]): Compiled {
+export function compile(doc: DocData, out: Map<ID, ID[]>, scope: ReadonlySet<ID>, scenarioId: ID | null, H: number, rootIds: ID[]): Compiled {
   // 並べる順（入口から。入口へ戻る線は数えない。循環に入ったノードは外す）
   const rootSet = new Set(rootIds);
   const outsAll = new Map<ID, ReturnType<typeof flowOuts>>();
@@ -283,6 +386,9 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
   const isBase = new Uint8Array(n);
   const noData = new Uint8Array(n);
   const fam: string[] = new Array<string>(n);
+  const q = new Float64Array(n * 3).fill(NaN);
+  const stub = new Uint8Array(n);
+  let likeBasis = false;
   const off = new Int32Array(n + 1);
   let slots = 0;
   for (let i = 0; i < n; i++) {
@@ -316,6 +422,14 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
     isBase[i] = node.meta?.base === true ? 1 : 0;
     noData[i] = list.length === 0 && vec3(node.meta?.rr) === null && typeof node.meta?.ak !== "string" && node.meta?.end !== true && !node.meta?.forecastRoot ? 1 : 0;
     fam[i] = typeof node.meta?.fam === "string" ? (node.meta.fam as string) : typeof node.meta?.ak === "string" ? (node.meta.ak as string) : "";
+    stub[i] = node.meta?.stub === true ? 1 : 0;
+    const qv = vec3(node.meta?.q);
+    if (qv) {
+      q[i * 3] = qv[0];
+      q[i * 3 + 1] = qv[1];
+      q[i * 3 + 2] = qv[2];
+      likeBasis = true;
+    }
     const fp = firstParent[i]!;
     const m = node.meta?.m;
     let ti: number;
@@ -386,19 +500,33 @@ function compile(doc: DocData, out: Map<ID, ID[]>, scope: Set<ID>, scenarioId: I
     fill[j]!++;
   }
   const roots = rootIds.map((r) => idx.get(r)).filter((x): x is number => x !== undefined);
-  return { ids, idx, kind, t, rr, off, tgt, eid, w, er, allowed, base, stat, rank, isBase, noData, fam, roots, rvKey, rvCat, incOff, incSlot, src };
+  return { ids, idx, kind, t, rr, off, tgt, eid, w, er, allowed, base, stat, rank, isBase, noData, fam, roots, rvKey, rvCat, incOff, incSlot, src, q, stub, likeBasis };
 }
 
-/** 逆にたどる（mode 0: ふつう・1: ずっと今のまま・2: その種類の手を使わない） */
-function backward(c: Compiled, S: number, tail: number, H: number, mode: 0 | 1 | 2, fam: string | null): Pass {
+/** 計算 1 回分の入れ物（ノードの数の大きさ。scratch に渡すと、新しく作らずにこれへ書く） */
+export function newPass(n: number): Pass {
+  return { V: new Float64Array(n * 3), def: new Uint8Array(n), R: new Float64Array(n), RV: new Float64Array(n * 3), partial: new Uint8Array(n), pi: new Int32Array(n).fill(-1), best: new Int32Array(n).fill(-1) };
+}
+
+/**
+ * 逆にたどる（mode 0: ふつう・1: ずっと今のまま・2: その種類の手を使わない）。
+ * lo・hi を渡すと、その番号の間だけ数える（深さ優先の順の木で、あるカードの先だけを数えるとき。間の外のノードは数が出ない扱い）。
+ * scratch を渡すと、その入れ物の [lo, hi) を消して書く（数だけを取り出して捨てる計算が、地図の大きさの配列を毎回作らない・残さない:
+ * 見直し perf-2・perf-3）。間の外の所は前の中身のまま（読まない）
+ */
+export function backward(c: Compiled, S: number, tail: number, H: number, mode: 0 | 1 | 2, fam: string | null, lo = 0, hi = c.ids.length, scratch: Pass | null = null): Pass {
   const n = c.ids.length;
-  const V = new Float64Array(n * 3);
-  const RV = new Float64Array(n * 3);
-  const R = new Float64Array(n);
-  const def = new Uint8Array(n);
-  const partial = new Uint8Array(n);
-  const pi = new Int32Array(n).fill(-1);
-  const best = new Int32Array(n).fill(-1);
+  const out = scratch && scratch.def.length === n ? scratch : newPass(n);
+  if (out === scratch) {
+    out.V.fill(0, lo * 3, hi * 3);
+    out.RV.fill(0, lo * 3, hi * 3);
+    out.R.fill(0, lo, hi);
+    out.def.fill(0, lo, hi);
+    out.partial.fill(0, lo, hi);
+    out.pi.fill(-1, lo, hi);
+    out.best.fill(-1, lo, hi);
+  }
+  const { V, RV, R, def, partial, pi, best } = out;
   const q = (s: number, j: number): number => S * c.er[s * 3]! + c.er[s * 3 + 1]! + c.er[s * 3 + 2]! + V[j * 3]! + V[j * 3 + 1]! + V[j * 3 + 2]!;
   const better = (s: number, qs: number, b: number, qb: number): boolean => {
     if (b < 0) return true;
@@ -409,7 +537,7 @@ function backward(c: Compiled, S: number, tail: number, H: number, mode: 0 | 1 |
     if (c.isBase[js] !== c.isBase[jb]) return c.isBase[js] === 1;
     return c.rank[js]! < c.rank[jb]!;
   };
-  for (let i = n - 1; i >= 0; i--) {
+  for (let i = hi - 1; i >= lo; i--) {
     const k = c.kind[i]!;
     const a = c.off[i]!;
     const b = c.off[i + 1]!;
@@ -494,11 +622,11 @@ function backward(c: Compiled, S: number, tail: number, H: number, mode: 0 | 1 |
     pi[i] = piS;
     best[i] = bestS;
   }
-  return { V, def, R, RV, partial, pi, best };
+  return out;
 }
 
 /** 選び方に沿って前へ流す（入口 = 1） */
-function forward(c: Compiled, p: Pass): Float64Array {
+export function forward(c: Compiled, p: Pass): Float64Array {
   const n = c.ids.length;
   const P = new Float64Array(n);
   // 入口が 2 つ以上でも、流すのは数字を出す入口（先頭）からだけ
@@ -532,11 +660,11 @@ function forward(c: Compiled, p: Pass): Float64Array {
   return P;
 }
 
-function sumV(V: Float64Array, i: number): number {
+export function sumV(V: Float64Array, i: number): number {
   return V[i * 3]! + V[i * 3 + 1]! + V[i * 3 + 2]!;
 }
 
-function weightedQuantile(items: Array<{ v: number; w: number }>, q: number): number {
+export function weightedQuantile(items: Array<{ v: number; w: number }>, q: number): number {
   const sorted = [...items].sort((a, b) => a.v - b.v);
   const total = sorted.reduce((s, x) => s + x.w, 0);
   if (!(total > 0)) return 0;
@@ -548,8 +676,156 @@ function weightedQuantile(items: Array<{ v: number; w: number }>, q: number): nu
   return sorted[sorted.length - 1]!.v;
 }
 
+/** 判断の ★・≒・おすすめの元（decisionMarks）。並べた候補の最初が一番良い手（木の値） */
+export interface DecisionMarks {
+  /** 一番良い手（木の値）の線 */
+  b1: number;
+  /** ★ を付ける（一番の手が、決まりの差 starThr 以上良い） */
+  star: boolean;
+  /** ★ の決まりの差（q の無い地図は IMPACT_STAR_LEAD、q のある地図は max(IMPACT_STAR_LEAD, 幅の 3 割)） */
+  starThr: number;
+  /** ≒ の基準: 一番の手の値（比べ方をそろえた値か木の値）と、≒ にする差（どちらの地図も IMPACT_STAR_LEAD） */
+  ref: number;
+  thr: number;
+  /** 比べ方をそろえた値（q）で比べた */
+  like: boolean;
+}
+
 /**
- * 3 年の影響を計算する。fc は同じ文書・同じシナリオの見込み（P_path と範囲に使う）。
+ * 判断の ★ の決まり。sorted は候補（方針に入り・見送りでなく・数が出る手。数字なしの手は選んだときだけ）を木の値 q の大きい順
+ * （同じなら今のまま、次に並びの前）に並べた物、l はその手の比べ方をそろえた値（q のある手は q の見積もり、無い手は木の値）。
+ * 候補が 2 つ未満なら null（印を付けない）。
+ *   like でない（q の無い地図）: 1 位と 2 位の木の値の差が IMPACT_STAR_LEAD 以上で ★、そうでなければ 1 位から IMPACT_STAR_LEAD 以内が ≒（今までどおり）
+ *   like（q のある地図）: 1 位（木の値）の l と、ほかの候補の l の一番大きい物の差が max(IMPACT_STAR_LEAD, 候補の l の幅 × IMPACT_STAR_SHARE)
+ *   以上で ★（作業メモ SPEC v1 §5.6）。そうでなければ 1 位の l から IMPACT_STAR_LEAD 未満の手が ≒（1 位そのものには付けない。
+ *   幅の 3 割を ≒ に使うと、大きく悪い手が 1 つあるだけで +1 万円の手まで「ほぼ同じ」になる: 見直し user-7・equiv-3）
+ */
+export function decisionMarks(sorted: ReadonlyArray<{ s: number; q: number; l: number }>, like: boolean): DecisionMarks | null {
+  if (sorted.length < 2) return null;
+  const b1 = sorted[0]!;
+  if (!like) return { b1: b1.s, star: b1.q - sorted[1]!.q >= IMPACT_STAR_LEAD, starThr: IMPACT_STAR_LEAD, ref: b1.q, thr: IMPACT_STAR_LEAD, like: false };
+  let hi = -Infinity;
+  let lo = Infinity;
+  let second = -Infinity;
+  for (let k = 0; k < sorted.length; k++) {
+    const l = sorted[k]!.l;
+    if (l > hi) hi = l;
+    if (l < lo) lo = l;
+    if (k > 0 && l > second) second = l;
+  }
+  const starThr = Math.max(IMPACT_STAR_LEAD, IMPACT_STAR_SHARE * (hi - lo));
+  return { b1: b1.s, star: b1.l - second >= starThr, starThr, ref: b1.l, thr: IMPACT_STAR_LEAD, like: true };
+}
+
+/** その手の印。value はその手の値（m.like なら比べ方をそろえた値、そうでなければ木の値。数が出なければ null）、ok は方針に入り見送りでない */
+export function optionMark(m: DecisionMarks | null, s: number, value: number | null, ok: boolean): AltInfo["mark"] {
+  if (!m) return null;
+  if (m.star) return s === m.b1 ? "star" : null;
+  // q のある地図: 一番の手（◎）には ≒ を付けない（≒ は「◎ との差が小さい」）
+  if (m.like && s === m.b1) return null;
+  return value !== null && ok && m.ref - value < m.thr ? "tie" : null;
+}
+
+/**
+ * 手 j の比べ方をそろえた値（画面に出す差の元。計算の芯の likeValue と同じ）: q があれば S·q0 + q1 + q2、
+ * まとめた手（stub）なら木の値 tree（その値がもう標準の続きの見積もり）、どちらでもなければ null
+ */
+export function likeValueOf(c: Pick<Compiled, "q" | "stub">, j: number, S: number, tree: number | null): number | null {
+  const q0 = c.q[j * 3]!;
+  if (!Number.isNaN(q0)) return S * q0 + c.q[j * 3 + 1]! + c.q[j * 3 + 2]!;
+  return c.stub[j] ? tree : null;
+}
+
+/**
+ * 画面に出す差（AltInfo.delta）と、その出し方。qs・qb は手 j と比べる元 jb の木の値（Q。数が出なければ null → 差も null）。
+ * q のある地図（like）: 両方に比べ方をそろえた値があればその差（"q"）、無ければ木の値の差（"tree"。計算の芯の deltaBetween と同じ）。
+ * q の無い地図: いつも木の値の差（今までどおり）
+ */
+export function shownDelta(c: Pick<Compiled, "q" | "stub">, S: number, like: boolean, j: number, qs: number | null, jb: number, qb: number | null): { d: number; basis: DeltaBasis } | null {
+  if (qs === null || qb === null) return null;
+  if (like) {
+    const lj = likeValueOf(c, j, S, qs);
+    const lb = likeValueOf(c, jb, S, qb);
+    if (lj !== null && lb !== null) return { d: lj - lb, basis: "q" };
+  }
+  return { d: qs - qb, basis: "tree" };
+}
+
+/** 比べ方をそろえた値の内訳（q: [S·q0, q1, q2]、まとめた手: 木の値の内訳 tree）。どちらでもなければ null */
+export function likeVecOf(c: Pick<Compiled, "q" | "stub">, j: number, S: number, tree: Vec3): Vec3 | null {
+  const q0 = c.q[j * 3]!;
+  if (!Number.isNaN(q0)) return [S * q0, c.q[j * 3 + 1]!, c.q[j * 3 + 2]!];
+  return c.stub[j] ? tree : null;
+}
+
+/** 手の比べ方をそろえた値（q があれば S·q0 + q1 + q2、無ければ木の値 tree） */
+export function likeOf(q: Float64Array, j: number, S: number, tree: number): number {
+  const q0 = q[j * 3]!;
+  return Number.isNaN(q0) ? tree : S * q0 + q[j * 3 + 1]! + q[j * 3 + 2]!;
+}
+
+/** 候補の並べ方（木の値の大きい順。1e-9 以内なら今のまま、次に並びの前。computeImpact の ★ の並べ方） */
+export function compareCands(c: Pick<Compiled, "tgt" | "isBase" | "rank">, x: { s: number; q: number }, y: { s: number; q: number }): number {
+  if (Math.abs(x.q - y.q) > 1e-9) return y.q - x.q;
+  const jx = c.tgt[x.s]!;
+  const jy = c.tgt[y.s]!;
+  if (c.isBase[jx] !== c.isBase[jy]) return c.isBase[jy]! - c.isBase[jx]!;
+  return c.rank[jx]! - c.rank[jy]!;
+}
+
+/** 年収で今日の一番が入れ替わる所を、逆にたどる計算 1 回ごとに止まりながら探す（bestAt(年収) が 1 回の計算） */
+export function* salaryFlipSteps(annual: number, cur: number, bestAt: (a: number) => number, idOf: (j: number) => ID): Generator<void, SalaryFlips, void> {
+  const flips: SalaryFlips = { below: null, above: null };
+  if (cur < 0) return flips;
+  // 上: 20 万円ごとに見て、入れ替わったら境目を詰める
+  let prev = annual;
+  for (let a = Math.floor(annual / 20) * 20 + 20; a <= 1000; a += 20) {
+    const alt = bestAt(a);
+    yield;
+    if (alt !== cur) {
+      let lo = prev;
+      let hi = a;
+      let altHi = alt;
+      for (let k = 0; k < 14 && hi - lo > 0.5; k++) {
+        const m = (lo + hi) / 2;
+        const am = bestAt(m);
+        yield;
+        if (am === cur) lo = m;
+        else (hi = m), (altHi = am);
+      }
+      // 境目は今の年収から遠い側の 10 万円に丸める（「X より上なら」がいつも正しい）
+      if (altHi >= 0) flips.above = { annual: Math.ceil(hi / 10) * 10, alt: idOf(altHi) };
+      break;
+    }
+    prev = a;
+  }
+  // 下（1,000 万円より上は 100 万円ごと）
+  const gridBelow = (x: number): number => (x > 1000 ? Math.ceil(x / 100) * 100 - 100 : Math.ceil(x / 20) * 20 - 20);
+  prev = annual;
+  for (let a = gridBelow(annual); a >= 200; a = gridBelow(a)) {
+    const alt = bestAt(a);
+    yield;
+    if (alt !== cur) {
+      let lo = a;
+      let hi = prev;
+      let altLo = alt;
+      for (let k = 0; k < 14 && hi - lo > 0.5; k++) {
+        const m = (lo + hi) / 2;
+        const am = bestAt(m);
+        yield;
+        if (am === cur) hi = m;
+        else (lo = m), (altLo = am);
+      }
+      if (altLo >= 0) flips.below = { annual: Math.floor(lo / 10) * 10, alt: idOf(altLo) };
+      break;
+    }
+    prev = a;
+  }
+  return flips;
+}
+
+/**
+ * 3 年の影響を計算する（基準の作り。アプリは ./impactEngine.ts）。fc は同じ文書・同じシナリオの見込み（P_path と範囲に使う）。
  * 範囲（v2 の入口）が無ければ active = false
  */
 export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResult | null, scenarioId: ID | null = null): ImpactResult {
@@ -570,6 +846,9 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   const H = cfg.horizon;
   const sid = scenarioId && doc.scenarios[scenarioId] ? scenarioId : null;
   const c = compile(doc, out, scope, sid, H, rootIds);
+  // q のある地図（版 7）: 数は方針で絞らない（方針の外の手は印だけ。作業メモ SPEC §5.11・gaps-12）
+  const shown = c.likeBasis && sid !== null ? c.allowed : null;
+  if (shown) c.allowed = new Uint8Array(shown.length).fill(1);
   const n = c.ids.length;
   const main = backward(c, S, tail, H, 0, null);
   const P = forward(c, main);
@@ -577,6 +856,18 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   const Psq = forward(c, sq);
 
   const res = emptyResult();
+  const kindM = new Map<ID, ForkKind>();
+  const monthM = new Map<ID, number>();
+  const valueM = new Map<ID, number>();
+  const valueVM = new Map<ID, Vec3>();
+  const rateM = new Map<ID, number>();
+  const accM = new Map<ID, number>();
+  const pPiM = new Map<ID, number>();
+  const partialS = new Set<ID>();
+  const altM = new Map<ID, AltInfo>();
+  const decisionM = new Map<ID, DecisionInfo>();
+  const outcomeM = new Map<ID, AltOutcome & { alt: ID }>();
+  const piEdgesS = new Set<ID>();
   res.active = true;
   res.root = rootIds[0]!;
   res.scope = scope;
@@ -585,6 +876,21 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   res.S = S;
   res.tail = tail;
   res.horizon = H;
+  res.likeBasis = c.likeBasis;
+  res.scenarioFree = shown !== null;
+  res.kind = kindM;
+  res.month = monthM;
+  res.value = valueM;
+  res.valueV = valueVM;
+  res.rate = rateM;
+  res.acc = accM;
+  res.pPi = pPiM;
+  res.partial = partialS;
+  res.alt = altM;
+  res.decision = decisionM;
+  res.outcome = outcomeM;
+  res.piEdges = piEdgesS;
+  res.onPiEdge = (e) => piEdgesS.has(e.id);
   const W = (s: number): Vec3 => [S * c.er[s * 3]!, c.er[s * 3 + 1]!, c.er[s * 3 + 2]!];
   const Wsum = (s: number): number => S * c.er[s * 3]! + c.er[s * 3 + 1]! + c.er[s * 3 + 2]!;
   const Q = (pass: Pass, s: number): number | null => {
@@ -600,8 +906,8 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   for (let i = 0; i < n; i++) {
     const id = c.ids[i]!;
     const k = c.kind[i]!;
-    res.kind.set(id, KIND_NAMES[k]!);
-    res.month.set(id, c.t[i]!);
+    kindM.set(id, KIND_NAMES[k]!);
+    monthM.set(id, c.t[i]!);
     const deg = c.off[i + 1]! - c.off[i]!;
     if (deg >= 2) forks++;
     if (k === DECISION) {
@@ -610,12 +916,12 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
     }
     if (k === LEAF) ends++;
     if (main.def[i]) {
-      res.value.set(id, sumV(main.V, i));
-      res.valueV.set(id, [main.V[i * 3]!, main.V[i * 3 + 1]!, main.V[i * 3 + 2]!]);
-      res.rate.set(id, main.R[i]!);
-      if (main.partial[i]) res.partial.add(id);
+      valueM.set(id, sumV(main.V, i));
+      valueVM.set(id, [main.V[i * 3]!, main.V[i * 3 + 1]!, main.V[i * 3 + 2]!]);
+      rateM.set(id, main.R[i]!);
+      if (main.partial[i]) partialS.add(id);
     }
-    if (P[i]! > 0) res.pPi.set(id, P[i]!);
+    if (P[i]! > 0) pPiM.set(id, P[i]!);
   }
   res.counts = { nodes: scope.size, decisions, options, forks, ends };
 
@@ -625,7 +931,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   for (const r of c.roots) Adef[r] = 1;
   for (let i = 0; i < n; i++) {
     if (c.roots.includes(i)) {
-      res.acc.set(c.ids[i]!, 0);
+      accM.set(c.ids[i]!, 0);
       continue;
     }
     let sw = 0;
@@ -647,7 +953,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
     if (!cnt) continue;
     A[i] = sw > 0 ? sv / sw : plain / cnt;
     Adef[i] = 1;
-    res.acc.set(c.ids[i]!, A[i]!);
+    accM.set(c.ids[i]!, A[i]!);
   }
 
   /**
@@ -723,36 +1029,41 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
     const altIds: Array<{ id: ID; rank: number; delta: number | null }> = [];
     let minD = Infinity;
     let maxD = -Infinity;
-    // ★: 見送りを除いた候補（シナリオに入るもの）で上位 2 つ（同じ値なら今のまま、次に並びの前）
-    const cands: Array<{ s: number; q: number }> = [];
+    // ★: 見送りを除いた候補（シナリオに入るもの）で上位（同じ値なら今のまま、次に並びの前）。q のある地図は比べ方をそろえた値で差を見る
+    const cands: Array<{ s: number; q: number; l: number }> = [];
     for (let s = a; s < b; s++) {
       const j = c.tgt[s]!;
       if (j < 0) continue;
       if (c.stat[j] === 1) hasPicks = true;
       const qs = Q(main, s);
       if (qs === null || !c.allowed[s] || c.stat[j] === 2 || (c.noData[j] && c.stat[j] !== 1)) continue;
-      cands.push({ s, q: qs });
+      cands.push({ s, q: qs, l: likeOf(c.q, j, S, qs) });
     }
-    cands.sort((x, y) => {
-      if (Math.abs(x.q - y.q) > 1e-9) return y.q - x.q;
-      const jx = c.tgt[x.s]!;
-      const jy = c.tgt[y.s]!;
-      if (c.isBase[jx] !== c.isBase[jy]) return c.isBase[jy]! - c.isBase[jx]!;
-      return c.rank[jx]! - c.rank[jy]!;
-    });
-    const b1 = cands[0]?.s ?? -1;
-    const q1 = cands[0]?.q ?? 0;
-    const b2 = cands[1]?.s ?? -1;
-    const q2 = cands[1]?.q ?? 0;
+    cands.sort((x, y) => compareCands(c, x, y));
+    const marks = decisionMarks(cands, c.likeBasis);
+    // 画面に出す差（q のある地図は比べ方をそろえた値どうし）。判断の差（stakes）は、選べる手の差の一番大きい物
+    let stakesShown: number | null = null;
+    for (const cd of cands) {
+      const j = c.tgt[cd.s]!;
+      const sd = c.noData[j] || jBase < 0 ? null : shownDelta(c, S, c.likeBasis, j, cd.q, jBase, qBase);
+      if (sd && (stakesShown === null || sd.d > stakesShown)) stakesShown = sd.d;
+    }
     for (let s = a; s < b; s++) {
       const j = c.tgt[s]!;
       if (j < 0) continue;
       const altId = c.ids[j]!;
-      if (res.alt.has(altId)) continue;
+      if (altM.has(altId)) continue;
       const qs = Q(main, s);
-      const delta = qs !== null && qBase !== null && !c.noData[j] ? qs - qBase : null;
+      const sd = c.noData[j] || jBase < 0 ? null : shownDelta(c, S, c.likeBasis, j, qs, jBase, qBase);
+      const delta = sd ? sd.d : null;
       let deltaV: Vec3 | null = null;
-      if (delta !== null && jBase >= 0) {
+      if (sd && sd.basis === "q") {
+        const ws = W(s);
+        const wb = W(bs);
+        const vj = likeVecOf(c, j, S, [ws[0] + main.V[j * 3]!, ws[1] + main.V[j * 3 + 1]!, ws[2] + main.V[j * 3 + 2]!])!;
+        const vb = likeVecOf(c, jBase, S, [wb[0] + main.V[jBase * 3]!, wb[1] + main.V[jBase * 3 + 1]!, wb[2] + main.V[jBase * 3 + 2]!])!;
+        deltaV = [vj[0] - vb[0], vj[1] - vb[1], vj[2] - vb[2]];
+      } else if (delta !== null && jBase >= 0) {
         const ws = W(s);
         const wb = W(bs);
         deltaV = [ws[0] + main.V[j * 3]! - wb[0] - main.V[jBase * 3]!, ws[1] + main.V[j * 3 + 1]! - wb[1] - main.V[jBase * 3 + 1]!, ws[2] + main.V[j * 3 + 2]! - wb[2] - main.V[jBase * 3 + 2]!];
@@ -806,13 +1117,9 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
         pBad = delta < -BAD_EPS ? 1 : 0;
         worst = delta;
       }
-      // ★: 2 位より 10 万円以上良い一番の手。差が小さければ、一番の手から 10 万円以内の手はどれも ≒
-      let mark: AltInfo["mark"] = null;
-      if (b1 >= 0 && b2 >= 0) {
-        const qs0 = Q(main, s);
-        if (s === b1 && q1 - q2 >= IMPACT_STAR_LEAD) mark = "star";
-        else if (q1 - q2 < IMPACT_STAR_LEAD && qs0 !== null && c.allowed[s] && c.stat[j] !== 2 && q1 - qs0 < IMPACT_STAR_LEAD) mark = "tie";
-      }
+      // ★: 決まりの差（q の無い地図は 10 万円）以上良い一番の手。差が小さければ、一番の手からその差の内の手はどれも ≒
+      const value = qs === null ? null : marks?.like ? likeOf(c.q, j, S, qs) : qs;
+      const mark = optionMark(marks, s, value, c.allowed[s] === 1 && c.stat[j] !== 2);
       // 基準（今のまま）は自分と比べるので、悪くなる見込みは出さない
       if (c.isBase[j]) {
         pBad = null;
@@ -822,21 +1129,23 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
         decision: c.ids[d]!,
         edge: c.eid[s]!,
         isBase: c.isBase[j] === 1,
-        allowed: c.allowed[s] === 1,
+        allowed: (shown ?? c.allowed)[s] === 1,
         picked: c.stat[j] === 1,
         dropped: c.stat[j] === 2,
         delta,
+        deltaBasis: sd ? sd.basis : null,
         deltaV,
         dR,
         pBad,
         worst,
         bin: impactBin(delta),
         mark,
+        rec: !!marks?.like && s === marks.b1,
         partial: main.partial[j] === 1,
         outcomes,
       };
-      res.alt.set(altId, info);
-      for (const o of outcomes) if (o.node && !res.outcome.has(o.node)) res.outcome.set(o.node, { ...o, alt: altId });
+      altM.set(altId, info);
+      for (const o of outcomes) if (o.node && !outcomeM.has(o.node)) outcomeM.set(o.node, { ...o, alt: altId });
       if (delta !== null) (minD = Math.min(minD, delta)), (maxD = Math.max(maxD, delta));
       altIds.push({ id: altId, rank: c.rank[j]!, delta });
     }
@@ -844,12 +1153,12 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
     const bestS = main.best[d]!;
     const piS = main.pi[d]!;
     const qBest = bestS >= 0 ? Q(main, bestS) : null;
-    res.decision.set(c.ids[d]!, {
+    decisionM.set(c.ids[d]!, {
       alts: altIds.map((x) => x.id),
       base: jBase >= 0 ? c.ids[jBase]! : null,
       best: bestS >= 0 ? c.ids[c.tgt[bestS]!]! : null,
       chosen: piS >= 0 ? c.ids[c.tgt[piS]!]! : null,
-      stakes: qBest !== null && qBase !== null ? qBest - qBase : null,
+      stakes: c.likeBasis && stakesShown !== null ? stakesShown : qBest !== null && qBase !== null ? qBest - qBase : null,
       spread: minD <= maxD ? [minD, maxD] : null,
     });
   }
@@ -861,9 +1170,9 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
     const k = c.kind[i]!;
     if (k === DECISION) {
       const s = main.pi[i]!;
-      if (s >= 0) res.piEdges.add(c.eid[s]!);
+      if (s >= 0) piEdgesS.add(c.eid[s]!);
     } else if (k === CHANCE || k === PASS) {
-      for (let s = c.off[i]!; s < c.off[i + 1]!; s++) if (c.tgt[s]! >= 0 && main.def[c.tgt[s]!]) res.piEdges.add(c.eid[s]!);
+      for (let s = c.off[i]!; s < c.off[i + 1]!; s++) if (c.tgt[s]! >= 0 && main.def[c.tgt[s]!]) piEdgesS.add(c.eid[s]!);
     }
   }
 
@@ -887,80 +1196,27 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   }
   endItems.sort((x, y) => y.p - x.p || y.tot - x.tot);
   res.ends = endItems;
-  if (endItems.length && res.vSQ !== null) {
-    const items = endItems.map((e) => ({ v: e.tot, w: e.p }));
-    const total = items.reduce((s, x) => s + x.w, 0);
-    const mean = items.reduce((s, x) => s + x.v * x.w, 0) / total;
-    const bins = new Array<number>(9).fill(0);
-    let worse = 0;
-    for (const x of items) {
-      bins[impactBin(x.v - res.vSQ) + 4] = bins[impactBin(x.v - res.vSQ) + 4]! + (x.w / total);
-      if (x.v < res.vSQ - BAD_EPS) worse += x.w / total;
-    }
-    const sqBins = new Array<number>(9).fill(0);
-    const sqTotal = sqItems.reduce((s, x) => s + x.w, 0);
-    for (const x of sqItems) {
-      const k = impactBin(x.v - res.vSQ) + 4;
-      sqBins[k] = sqBins[k]! + (sqTotal > 0 ? x.w / sqTotal : 0);
-    }
-    res.dist = { mean, p10: weightedQuantile(items, 0.1), p50: weightedQuantile(items, 0.5), p90: weightedQuantile(items, 0.9), pWorse: worse, bins, sqBins };
-  }
+  res.dist = distOf(endItems, sqItems, res.vSQ);
 
-  // 遅延計算: 年収で今日の一番が入れ替わる所・その種類の手をずっとやらない場合
-  let flips: { below: SalaryFlip | null; above: SalaryFlip | null } | null = null;
+  // 遅延計算: 年収で今日の一番が入れ替わる所・その種類の手をずっとやらない場合・おすすめの選び方の値
+  let flips: SalaryFlips | null = null;
   res.salaryFlips = () => {
     if (flips) return flips;
-    flips = { below: null, above: null };
-    if (r0 === undefined) return flips;
+    if (r0 === undefined) return (flips = { below: null, above: null });
     const bestAt = (a: number): number => {
       const p2 = backward(c, a / 12, tail, H, 0, null);
       const s = p2.best[r0]!;
       return s >= 0 ? c.tgt[s]! : -1;
     };
     const cur = main.best[r0]! >= 0 ? c.tgt[main.best[r0]!]! : -1;
-    if (cur < 0) return flips;
-    // 上: 20 万円ごとに見て、入れ替わったら境目を詰める
-    let prev = annual;
-    for (let a = Math.floor(annual / 20) * 20 + 20; a <= 1000; a += 20) {
-      const alt = bestAt(a);
-      if (alt !== cur) {
-        let lo = prev;
-        let hi = a;
-        let altHi = alt;
-        for (let k = 0; k < 14 && hi - lo > 0.5; k++) {
-          const m = (lo + hi) / 2;
-          const am = bestAt(m);
-          if (am === cur) lo = m;
-          else (hi = m), (altHi = am);
-        }
-        // 境目は今の年収から遠い側の 10 万円に丸める（「X より上なら」がいつも正しい）
-        if (altHi >= 0) flips.above = { annual: Math.ceil(hi / 10) * 10, alt: c.ids[altHi]! };
-        break;
-      }
-      prev = a;
-    }
-    // 下（1,000 万円より上は 100 万円ごと）
-    const gridBelow = (x: number): number => (x > 1000 ? Math.ceil(x / 100) * 100 - 100 : Math.ceil(x / 20) * 20 - 20);
-    prev = annual;
-    for (let a = gridBelow(annual); a >= 200; a = gridBelow(a)) {
-      const alt = bestAt(a);
-      if (alt !== cur) {
-        let lo = a;
-        let hi = prev;
-        let altLo = alt;
-        for (let k = 0; k < 14 && hi - lo > 0.5; k++) {
-          const m = (lo + hi) / 2;
-          const am = bestAt(m);
-          if (am === cur) hi = m;
-          else (lo = m), (altLo = am);
-        }
-        if (altLo >= 0) flips.below = { annual: Math.floor(lo / 10) * 10, alt: c.ids[altLo]! };
-        break;
-      }
-      prev = a;
-    }
+    const steps = salaryFlipSteps(annual, cur, bestAt, (j) => c.ids[j]!);
+    let r = steps.next();
+    while (!r.done) r = steps.next();
+    flips = r.value;
     return flips;
   };
+  res.salaryFlipsReady = () => flips;
+  res.salaryFlipsStep = () => res.salaryFlips();
   const neverCache = new Map<string, NeverResult>();
   res.never = (f: string) => {
     const hit = neverCache.get(f);
@@ -984,12 +1240,76 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   };
   res.families = () => {
     const set = new Set<string>();
-    for (const [id, info] of res.alt) {
+    for (const [id, info] of altM) {
       if (info.isBase) continue;
       const j = c.idx.get(id);
       if (j !== undefined && c.fam[j]) set.add(c.fam[j]!);
     }
     return [...set];
   };
+  // おすすめの選び方: 自分で選んだ手（進行中・完了）を外し（見送りはそのまま）、方針でも絞らずに数え直した今日の値
+  let rec: { v: number | null } | null = null;
+  res.recommended = () => {
+    if (rec) return rec.v;
+    const nodes = { ...doc.nodes };
+    for (const id of scope) {
+      const x = nodes[id];
+      if (x && (x.status === "active" || x.status === "done")) nodes[id] = { ...x, status: "open" };
+    }
+    rec = { v: computeImpact({ ...doc, nodes }, out, null, null).vRoot };
+    return rec.v;
+  };
+  res.altIds = () => [...altM.keys()];
+  res.deltaOf = (id) => altM.get(id)?.delta ?? null;
+  res.markOf = (id) => altM.get(id)?.mark ?? null;
+  res.isBaseOf = (id) => altM.get(id)?.isBase === true;
+  res.decisionIds = () => [...decisionM.keys()];
+  res.stakesOf = (id) => decisionM.get(id)?.stakes ?? null;
+  res.bestOf = (id) => decisionM.get(id)?.best ?? null;
+  // 先の数: 並べる順の後ろから、子（後ろの番号の物だけ。入口へ戻る線は数えない）の数を足す
+  let rip: Int32Array | null = null;
+  res.ripple = (id) => {
+    const i = c.idx.get(id);
+    if (i === undefined) return null;
+    if (!rip) {
+      rip = new Int32Array(n * 4);
+      for (let x = n - 1; x >= 0; x--) {
+        const k = c.kind[x]!;
+        const deg = c.off[x + 1]! - c.off[x]!;
+        if (k === DECISION && deg >= 2) rip[x * 4]!++;
+        if (k === CHANCE && deg >= 2) rip[x * 4 + 1]!++;
+        if (k === LEAF) {
+          rip[x * 4 + 2]!++;
+          if (doc.nodes[c.ids[x]!]?.meta?.sum === true) rip[x * 4 + 3]!++;
+        }
+        for (let s = c.off[x]!; s < c.off[x + 1]!; s++) {
+          const y = c.tgt[s]!;
+          if (y > x) for (let f = 0; f < 4; f++) rip[x * 4 + f] = rip[x * 4 + f]! + rip[y * 4 + f]!;
+        }
+      }
+    }
+    return { decisions: rip[i * 4]!, splits: rip[i * 4 + 1]!, ends: rip[i * 4 + 2]!, sumEnds: rip[i * 4 + 3]! };
+  };
   return res;
+}
+
+/** 3 年後の分布（行き先の見込みの順の並び endItems と、ずっと今のままの行き先の並び sqItems から） */
+export function distOf(endItems: readonly ImpactEnd[], sqItems: ReadonlyArray<{ v: number; w: number }>, vSQ: number | null): ImpactDist | null {
+  if (!endItems.length || vSQ === null) return null;
+  const items = endItems.map((e) => ({ v: e.tot, w: e.p }));
+  const total = items.reduce((s, x) => s + x.w, 0);
+  const mean = items.reduce((s, x) => s + x.v * x.w, 0) / total;
+  const bins = new Array<number>(9).fill(0);
+  let worse = 0;
+  for (const x of items) {
+    bins[impactBin(x.v - vSQ) + 4] = bins[impactBin(x.v - vSQ) + 4]! + (x.w / total);
+    if (x.v < vSQ - BAD_EPS) worse += x.w / total;
+  }
+  const sqBins = new Array<number>(9).fill(0);
+  const sqTotal = sqItems.reduce((s, x) => s + x.w, 0);
+  for (const x of sqItems) {
+    const k = impactBin(x.v - vSQ) + 4;
+    sqBins[k] = sqBins[k]! + (sqTotal > 0 ? x.w / sqTotal : 0);
+  }
+  return { mean, p10: weightedQuantile(items, 0.1), p50: weightedQuantile(items, 0.5), p90: weightedQuantile(items, 0.9), pWorse: worse, bins, sqBins };
 }

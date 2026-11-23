@@ -49,6 +49,8 @@ function sameValue(a: unknown, b: unknown): boolean {
 
 export class Tx {
   private incident: Map<ID, Set<ID>> | null = null;
+  /** このトランザクションで変えた線を、その線の前と後の両端のノードごとに（索引から答えるとき、変えた所だけ確かめ直す） */
+  private readonly delta = new Map<ID, Set<ID>>();
 
   constructor(
     private readonly store: Store,
@@ -66,14 +68,39 @@ export class Tx {
     if (ex) ex.after = after;
     else this.entry.entities.set(key, { c, id, before, after });
     this.info[c].add(id);
+    if (c === "edges") {
+      for (const e of [before as GEdge | undefined, after as GEdge | undefined]) {
+        if (!e) continue;
+        for (const n of [e.source, e.target]) {
+          let s = this.delta.get(n);
+          if (!s) this.delta.set(n, (s = new Set()));
+          s.add(id);
+        }
+      }
+    }
   }
 
   private structural(): void {
     this.info.positionsOnly = false;
   }
 
-  /** ノード → 接続（ノードの削除で使う。このトランザクションの中だけ持つ） */
+  /**
+   * ノード → 接続（ノードの削除・線の重なりの確かめで使う）。
+   * ストアに索引（incidence: トランザクションの始めの文書の、そのノードの線）があれば、それにこのトランザクションで変えた線だけを
+   * 足し引きする（O(そのノードの線 + 変えた線)。作業メモ perf-15）。無ければ、このトランザクションの中だけ全部の線から作って持つ
+   */
   private incidentOf(id: ID): Set<ID> {
+    const base = this.incident ? null : this.store.incidence?.(id);
+    if (base) {
+      const set = new Set<ID>();
+      const touched = this.info.edges;
+      for (const eid of base) if (!touched.has(eid)) set.add(eid);
+      for (const eid of this.delta.get(id) ?? []) {
+        const e = this.doc.edges[eid];
+        if (e && (e.source === id || e.target === id)) set.add(eid);
+      }
+      return set;
+    }
     if (!this.incident) {
       this.incident = new Map();
       for (const eid in this.doc.edges) {
@@ -301,6 +328,12 @@ export class Store {
   readonly history = new History();
   /** 変更のたびに増える（キャッシュの鍵に使う） */
   revision = 0;
+  /**
+   * ノード → そのノードの線（出る線・入る線）を、最後の変更の知らせの後の文書で答える索引（見え方の計算が変更のたびに直して持つ）。
+   * あればトランザクションの中の「ノードの線」はこれと、そのトランザクションで変えた線だけから求める（全部の線をなめない）。
+   * 索引が最後の変更をまだ受けていなければ null を返す（そのトランザクションは全部の線から作る）
+   */
+  incidence: ((id: ID) => Iterable<ID> | null) | null = null;
   private readonly emitter = new Emitter<StoreEvents>();
   private current: Tx | null = null;
   private ro = false;

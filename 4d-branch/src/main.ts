@@ -7,6 +7,7 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 import { App } from "./app/App";
 import { UiState } from "./app/uiState";
+import { pageMapDoc } from "./app/futureCache";
 import { buildDemoDoc } from "./demo/demo";
 import { loadImpactBundle } from "./demo/futureBundle";
 import { loadPageMap, PAGE_Q, PAGE_Q_RELEASE } from "./demo/pageBundle";
@@ -16,15 +17,21 @@ import { enableThinPage, thinReadable } from "./persist/codec";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
 import { isNarrowScreen } from "./ui/breakpoints";
+import { paintDeepSplash } from "./ui/deepSplash";
 import { showNewerScreen } from "./ui/newerScreen";
 
-/** 表示の切り替え。claude.ai の Artifact ではクエリ文字列が渡らないので #stress-2000 ・ #demo も受ける */
-function readMode(): { stress: number; demo: boolean } {
+/**
+ * 表示の切り替え。claude.ai の Artifact ではクエリ文字列が渡らないので #stress-2000 ・ #demo も受ける。
+ * #demo-q: ページに 3 か月ごとの地図（版 7 の候補）を入れたビルドだけ、その地図を組み立てた一時表示（保存の新しい形ができるまでの確かめの道。
+ * 入っていないビルドではふつうのデモ）
+ */
+function readMode(): { stress: number; demo: boolean; demoQ: boolean } {
   const params = new URLSearchParams(location.search);
   const hash = location.hash.replace(/^#/, "");
   const m = /^stress-(\d{1,5})$/.exec(hash);
   const stress = Math.max(0, Math.min(20000, Number(params.get("stress") || (m ? m[1] : 0)) || 0));
-  return { stress, demo: params.has("demo") || hash === "demo" };
+  const demoQ = hash === "demo-q";
+  return { stress, demo: params.has("demo") || hash === "demo" || demoQ, demoQ };
 }
 
 async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
@@ -38,7 +45,7 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
   if (!opts.reopen)
     window.addEventListener("hashchange", () => {
       const next = readMode();
-      if (next.stress !== mode.stress || next.demo !== mode.demo) location.reload();
+      if (next.stress !== mode.stress || next.demo !== mode.demo || next.demoQ !== mode.demoQ) location.reload();
     });
   // ページに 3 か月ごとの地図を入れたビルド: 薄い形を読み書きする（地図はまだ読まない。保存してあった物に地図があれば、読むときに読む）。
   // 版の記録に基準の文書の指紋があれば、起動で数え直さない（7 万枚で約 0.4 秒: 見直し code-2）
@@ -56,6 +63,8 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
   /** 保存してあった内容を読めず、代わりの内容（デモ・バックアップ）で始めた（アカウントの同期で、古い手元として扱う） */
   let bootFallback = false;
   if (mode.stress > 0) doc = buildStressDoc(mode.stress);
+  // 3 か月ごとの地図は、8 万枚の文書を組み立てる前に見取り図だけを先に描く
+  else if (mode.demoQ) doc = (await pageMapDoc((m) => paintDeepSplash(mount, m))) ?? buildDemoDoc();
   else if (ephemeral) doc = buildDemoDoc();
   else {
     await persistence.acquireWriter();

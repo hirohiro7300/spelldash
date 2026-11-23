@@ -9,11 +9,15 @@
 // パネルの入れ物（tabindex=-1）に置く（続く Enter・Space で黙って選ばず、Tab・Backspace もキャンバスへ届かない）
 
 import type { AppContext } from "../app/context";
+import type { DeepCtx } from "../app/deepState";
+import { idleSteps } from "../app/idle";
+import { worthOf, type MoveCounts, type MoveSummary } from "../deepmap/core";
+import { destSection, destVM, worthText, ym as ymOfMap } from "../deepmap/views";
 import { futureData } from "../demo/futureBundle";
 import { formatPercent } from "../model/forecast";
-import { computeImpact, IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, type AltInfo, type ImpactResult } from "../model/impact";
+import { IMPACT_ANNUAL_MAX, IMPACT_ANNUAL_MIN, IMPACT_DEFAULT_ANNUAL, IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, type AltInfo, type ImpactResult, type SalaryFlips } from "../model/impact";
 import { formatMan, formatShare, IMPACT_FILL, IMPACT_INK, IMPACT_NEUTRAL_RING, impactBin } from "../model/impactFormat";
-import { cachedWorthRanking, famLabel, hasFamLabel, keyDecisions } from "../model/impactRank";
+import { cachedAvoidRanking, cachedWorthRanking, famLabel, hasFamLabel, keyDecisions, worthReady, worthStep } from "../model/impactRank";
 import {
   altMetaParts,
   areaOf,
@@ -41,6 +45,7 @@ import {
 } from "../model/impactText";
 import type { DocData, GEdge, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
+import { deepOpenActions, openKey } from "./deepPanel";
 import { clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { modalOpen, toast } from "./overlays";
@@ -63,38 +68,80 @@ function scenarioName(app: AppContext): string | null {
   return (sid && app.store.doc.scenarios[sid]?.name) || null;
 }
 
+/**
+ * 数を絞った方針の名前（3 か月ごとの地図は数を方針で絞らない: その方針の名前の付いた数は出さない。作業メモ SPEC v1 §5.11・gaps-12）。
+ * 選んでいない・絞っていなければ null
+ */
+function scenarioOfValues(app: AppContext, imp: ImpactResult): string | null {
+  return imp.scenarioFree ? null : scenarioName(app);
+}
+
+/** 方針を選んでいるが数は絞っていないことの注記（3 か月ごとの地図で方針を選んでいるときだけ） */
+function scenarioFreeNote(app: AppContext, imp: ImpactResult): string | null {
+  const scen = scenarioName(app);
+  if (!imp.scenarioFree || !scen) return null;
+  return `「${scen}」の方針で絞った 3 年の稼ぎと差は出さない（この地図の先の選び方は方針を見ずに作ったので、絞ると数が正しくない）。方針の外の手は薄くしている`;
+}
+
+/** 3 か月ごとの地図で、自分で選んだまとめた手（この先は標準の続きの見積もり）が道の上にある（作業メモ SPEC v1 §5.12・user-20） */
+function summaryPicked(app: AppContext, imp: ImpactResult): boolean {
+  return imp.hasPicks && !!app.vm.deep.get()?.pickedSummary();
+}
+
+/** 「この先は標準の続きの平均」 */
+const SUMMARY_PICK_TEXT = "この先は標準の続きの平均（選んだ手の先は、標準の選び方で続けた多くの道の平均。1 本の道の数ではない）";
+
+// ------------------------------------------------------------ 3 か月ごとの地図（版 7）
+
+/** 3 か月ごとの地図（q のある地図で、文書の地図が同梱の地図）なら、見取り図と同じ数を出す物。無ければ null */
+function deepOf(app: AppContext, imp: ImpactResult): DeepCtx | null {
+  return imp.likeBasis ? app.vm.deep.get() : null;
+}
+
+/** 今日の手 id の見取り図の行（今日の手でなければ null） */
+function moveOf(ctx: DeepCtx, id: ID): MoveSummary | null {
+  const i = ctx.indexOf(id);
+  if (i < 0) return null;
+  return ctx.overview().moves.find((m) => m.node === i) ?? null;
+}
+
+/** 見取り図の数の 1 行（判断・出来事の分かれ → 2029 年 11 月の行き先・見込み 1% 以上・標準の続きの見積もり: 作業メモ SPEC v1 §5.1・truth-18） */
+function countsText(c: MoveCounts, endYm: string): string {
+  return `判断 ${groupDigits(c.decisions)} 回・出来事の分かれ ${groupDigits(c.splits)} → ${endYm}の行き先 ${groupDigits(c.reachEnds)}（見込み 1% 以上 ${groupDigits(c.reachEnds1)}）・標準の続きの見積もり ${groupDigits(c.sumEnds)}`;
+}
+
+/** 地図の終わりの年月（「2029 年 11 月」） */
+const endYmOf = (ctx: DeepCtx): string => ymOfMap(ctx.map, ctx.cm.H);
+
+/**
+ * 地図のカードの居場所の名前（「2027 年 2 月・転職活動をする」: 年月と親のカードの題名。同じ題名の行を見分ける: 見直し user-6・gaps-11）。
+ * 3 か月ごとの地図のカードでなければ null
+ */
+export function placeLabel(app: AppContext, ctx: DeepCtx | null, id: ID): string | null {
+  if (!ctx) return null;
+  const i = ctx.indexOf(id);
+  if (i <= 0) return null;
+  const p = ctx.place(i);
+  const parent = p.parent > 0 ? app.store.doc.nodes[ctx.idOf(p.parent)] : undefined;
+  const pt = parent ? (parent.title.trim() || "（無題）").replace(/\s+/g, " ") : null;
+  return pt ? `${p.ym}・${Array.from(pt).length > 18 ? `${Array.from(pt).slice(0, 17).join("")}…` : pt}` : p.ym;
+}
+
 /** 今の選び方の名前（「おすすめの選び方」「あなたの選び方」「早期独立の方針」） */
 function whoText(app: AppContext, imp: ImpactResult): string {
-  const scen = scenarioName(app);
+  const scen = scenarioOfValues(app, imp);
   return scen ? `${scen}の方針` : imp.hasPicks ? "あなたの選び方" : "おすすめの選び方";
 }
 
 // ------------------------------------------------------------ おすすめの値（自分で選んだ手・方針を外した 3 年の稼ぎ）
 
-const bestCache = new WeakMap<ImpactResult, number | null>();
-
 /**
  * おすすめの選び方での 3 年の稼ぎ。自分で選んだ手（進行中・完了）も方針も無ければ今の値そのもの。
- * あれば、選んだ手を外し（見送りはそのまま）方針でも絞らずに計算し直す（数が変わるまで覚えておく）
+ * あれば、選んだ手を外し（見送りはそのまま）方針でも絞らない 1 回の計算（エンジンが結果ごとに覚える。作業メモ perf-5）
  */
-function recommendedValue(app: AppContext, imp: ImpactResult, scenario: boolean): number | null {
+function recommendedValue(imp: ImpactResult, scenario: boolean): number | null {
   if (!imp.hasPicks && !scenario) return imp.vRoot;
-  const hit = bestCache.get(imp);
-  if (hit !== undefined) return hit;
-  const doc = app.store.doc;
-  const nodes = { ...doc.nodes };
-  for (const id of imp.scope) {
-    const n = nodes[id];
-    if (n && (n.status === "active" || n.status === "done")) nodes[id] = { ...n, status: "open" };
-  }
-  let v: number | null = null;
-  try {
-    v = computeImpact({ ...doc, nodes }, app.vm.index.out, null, null).vRoot;
-  } catch {
-    v = null;
-  }
-  bestCache.set(imp, v);
-  return v;
+  return imp.recommended();
 }
 
 // ------------------------------------------------------------ 書いた文の元・フォーカス
@@ -306,13 +353,22 @@ function areaChip(a: AreaInfo): HTMLElement {
   return h("span", { class: "imp-area", style: { "--c": a.color } }, a.label);
 }
 
-/** ★（おすすめ）・≒（ほぼ同じ）・✓（選んだ手） */
-function markOf(info: AltInfo): { text: string; label: string } {
+/**
+ * ★（おすすめ）・◎（おすすめ: q のある地図の一番良い手。★ でないとき）・≒（ほぼ同じ）・✓（選んだ手）。
+ * q のある地図の ≒ は、◎ との差が 10 万円未満（言葉にその幅を書く: 見直し user-7）
+ */
+function markOf(info: AltInfo, like = false): { text: string; label: string } {
   const marks: Array<[string, string]> = [];
   if (info.picked) marks.push(["✓", "選んだ手"]);
   if (info.mark === "star") marks.push(["★", "おすすめ"]);
-  else if (info.mark === "tie") marks.push(["≒", "ほぼ同じ"]);
+  else if (info.rec) marks.push(["◎", "おすすめ"]);
+  if (info.mark === "tie") marks.push(["≒", like ? `ほぼ同じ（◎ との差が ${IMPACT_STAR_LEAD} 万円未満）` : "ほぼ同じ"]);
   return { text: marks.map((m) => m[0]).join(""), label: marks.map((m) => m[1]).join("・") };
+}
+
+/** 印の部品の class（★ は金、◎ は控えめな金、✓ は緑） */
+function markClass(info: AltInfo): string {
+  return `imp-mark${info.mark === "star" ? " is-star" : info.rec ? " is-rec" : ""}${info.picked ? " is-picked" : ""}`;
 }
 
 const li = (...children: Child[]): HTMLElement => h("li", null, ...children);
@@ -341,7 +397,7 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, seen: See
   const info = imp.alt.get(id);
   if (!n || !info) return null;
   const area = areaOf(n, doc);
-  const mark = markOf(info);
+  const mark = markOf(info, imp.likeBasis);
   const hours = typeof n.meta?.h === "number" && Number.isFinite(n.meta.h) ? (n.meta.h as number) : null;
   // 2 行目: 部品ごとに折り返さない（「月+3.4万」の途中で切らない。部品のあいだでだけ折り返す）
   const parts: Array<{ text: string; keep: boolean }> = [];
@@ -355,7 +411,9 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, seen: See
     if (i > 0) meta.append(metaSep(parts[i - 1]!.text));
     meta.append(h("span", { class: p.keep ? "imp-meta-part" : "" }, p.text));
   });
-  const title = seen.title(doc, id) || "（無題）";
+  const written = seen.title(doc, id) || "（無題）";
+  // 3 か月ごとの地図の比べる元は「この 3 か月は今のまま」（地図の題名のままのときだけ。作業メモ SPEC v1 §5.10・user-11）
+  const title = info.isBase && imp.likeBasis && written === "今のまま" ? "この 3 か月は今のまま" : written;
   const short = typeof n.meta?.short === "string" ? (n.meta.short as string).trim() : "";
   const value = info.isBase ? "基準" : info.delta === null ? "数字なし" : formatMan(info.delta);
   return h(
@@ -368,7 +426,7 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, seen: See
       attrs: { "aria-current": opts.current ? "true" : null },
       onClick: () => opts.onGo(id),
     },
-    h("span", { class: `imp-mark${info.mark === "star" ? " is-star" : ""}${info.picked ? " is-picked" : ""}` }, mark.text),
+    h("span", { class: markClass(info) }, mark.text),
     h(
       "span",
       { class: "imp-alt-title" },
@@ -382,25 +440,85 @@ function altRow(app: AppContext, imp: ImpactResult, id: ID, d: Domain, seen: See
   );
 }
 
-/** 判断の選択肢の表（3 年の影響の順。差の棒は同じ範囲） */
-function decisionList(app: AppContext, imp: ImpactResult, decisionId: ID, seen: Seen, opts: { current?: ID; closeDrawer: boolean }): HTMLElement {
+/**
+ * 判断の選択肢の表（3 年の影響の順。差の棒は同じ範囲）。limit: 上からその数（と今の手）だけ出し、残りは「ほか N 個を見る」で開く
+ * （狭い画面で、カードの文章を下へ押しやらない: 見直し user-11）
+ */
+function decisionList(app: AppContext, imp: ImpactResult, decisionId: ID, seen: Seen, opts: { current?: ID; closeDrawer: boolean; limit?: number }): HTMLElement {
   const list = h("div", { class: "imp-alt-list" });
   const dec = imp.decision.get(decisionId);
   if (!dec) return list;
   const ids = byDelta(imp, dec.alts);
   const d = divergingDomain(ids.map((id) => imp.alt.get(id)?.delta ?? null));
-  for (const id of ids) {
-    const row = altRow(app, imp, id, d, seen, { current: id === opts.current, onGo: (x) => goTo(app, x, opts.closeDrawer) });
-    if (row) list.append(row);
+  const limit = opts.limit ?? Infinity;
+  const shown = ids.filter((id, k) => k < limit || id === opts.current);
+  const rest = ids.length - shown.length;
+  const add = (list2: ID[]) => {
+    for (const id of list2) {
+      const row = altRow(app, imp, id, d, seen, { current: id === opts.current, onGo: (x) => goTo(app, x, opts.closeDrawer) });
+      if (row) list.append(row);
+    }
+  };
+  add(shown);
+  if (rest > 0) {
+    const more = h(
+      "button",
+      {
+        class: "imp-link imp-alt-more",
+        type: "button",
+        dataset: { fk: `alt-more:${decisionId}` },
+        onClick: () => {
+          clear(list);
+          add(ids);
+        },
+      },
+      `ほか ${rest} 個を見る`,
+    );
+    list.append(more);
   }
   return list;
 }
 
-/** 年収で今日の一番が入れ替わる所 */
+/** これより小さい地図は、年収の境目をその場で数える（版 6 の 1,533 枚: 40 回ほどの計算で数 ms） */
+const FLIP_SYNC_NODES = 4000;
+
+
+/**
+ * 年収で今日の一番が入れ替わる所。大きい地図では、パネルを描いた後に、手が空いたときに逆にたどる計算 1 回ずつ進め、
+ * その間は「計算中」の行を出す（作業メモ perf-8）。数が変わってパネルを作り直したら（この行が外れたら）、そこで止める
+ */
 function flipNote(app: AppContext, imp: ImpactResult, seen: Seen): HTMLElement {
-  const lines = flipTexts(imp.salaryFlips(), (id) => seen.title(app.store.doc, id) || "（無題）");
-  if (!lines.length) lines.push("年収が 200〜1,000 万円のどこでも、いちばんの手は同じ");
-  return h("div", { class: "imp-flip" }, icon("swap", 13), h("div", null, ...lines.map((l) => h("div", null, l))));
+  const body = h("div");
+  const note = h("div", { class: "imp-flip" }, icon("swap", 13), body);
+  const show = (f: SalaryFlips): void => {
+    const lines = flipTexts(f, (id) => seen.title(app.store.doc, id) || "（無題）");
+    if (!lines.length) lines.push("年収が 200〜1,000 万円のどこでも、いちばんの手は同じ");
+    clear(body);
+    body.append(...lines.map((l) => h("div", null, l)));
+    note.classList.remove("is-busy");
+    note.removeAttribute("aria-busy");
+  };
+  const ready = imp.salaryFlipsReady() ?? (imp.counts.nodes <= FLIP_SYNC_NODES ? imp.salaryFlips() : null);
+  if (ready) {
+    show(ready);
+    return note;
+  }
+  body.append(h("div", { class: "imp-flip-wait" }, "年収で一番の手が入れ替わる所を計算中…"));
+  note.classList.add("is-busy");
+  note.setAttribute("aria-busy", "true");
+  // 空いた時間の内に 1 回の計算ずつ（空いた時間が長ければ続けて。作り直した・数が変わったらやめる: 次のパネルが自分で始める。
+  // 同じ版なら途中から続く: 見直し perf-8）
+  idleSteps(
+    () => {
+      const f = imp.salaryFlipsStep();
+      if (f) show(f);
+      return !!f;
+    },
+    () => note.isConnected && app.vm.impact === imp,
+    // 急がない（「計算中」と出している）。短い時間切れだと、起動の最初のフレームの前に割り込む
+    2000,
+  );
+  return note;
 }
 
 // ------------------------------------------------------------ 年収
@@ -589,7 +707,8 @@ function impactHeader(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
   const main = h("p", { class: "imp-hl-main" });
   const sub = h("p", { class: "imp-hl-sub" });
   const counts = h("p", { class: "imp-counts" });
-  const el = h("section", { class: "imp-sec imp-head" }, title, salary.el, main, sub, counts);
+  const note = h("p", { class: "imp-note imp-head-note" });
+  const el = h("section", { class: "imp-sec imp-head" }, title, salary.el, main, sub, note, counts);
   return {
     el,
     update(imp) {
@@ -599,14 +718,21 @@ function impactHeader(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
       const span = horizonText(imp.horizon);
       title.textContent = `${span}の影響（${from && to ? `${from} → ${to}・` : ""}税引き前）`;
       salary.update(imp);
-      const scen = scenarioName(app);
-      const hl = headlineOf({ horizon: imp.horizon, value: imp.vRoot, statusQuo: imp.vSQ, best: recommendedValue(app, imp, !!scen), picks: imp.hasPicks, scenario: scen });
+      const scen = scenarioOfValues(app, imp);
+      const hl = headlineOf({ horizon: imp.horizon, value: imp.vRoot, statusQuo: imp.vSQ, best: recommendedValue(imp, !!scen), picks: imp.hasPicks, scenario: scen });
+      const notes = [scenarioFreeNote(app, imp), summaryPicked(app, imp) ? SUMMARY_PICK_TEXT : null].filter((x): x is string => !!x);
+      note.textContent = notes.join("。");
+      note.hidden = !notes.length;
       clear(main);
       if (hl) main.append(`${hl.lead} `, h("b", null, hl.value), hl.vsBest);
       else main.append(`${span}の稼ぎを計算できません（今日から先に数字の無い所があります）`);
       sub.textContent = hl?.sub ?? "";
       sub.hidden = !hl?.sub;
-      counts.textContent = `判断 ${groupDigits(imp.counts.decisions)} · 選択肢 ${groupDigits(imp.counts.options)} · ${span}後の行き先 ${groupDigits(imp.counts.ends)}`;
+      // 3 か月ごとの地図: 見取り図と同じ数（まとめた行き先を行き先に数えない: 作業メモ SPEC v1 §5.1・gaps-15・見直し user-5）
+      const deep = deepOf(app, imp);
+      counts.textContent = deep
+        ? `今日から ${countsText(deep.overview().counts, endYmOf(deep))}`
+        : `判断 ${groupDigits(imp.counts.decisions)} · 選択肢 ${groupDigits(imp.counts.options)} · ${span}後の行き先 ${groupDigits(imp.counts.ends)}`;
     },
   };
 }
@@ -642,24 +768,56 @@ function premisesSection(): HTMLElement {
   return h("section", { class: "imp-sec imp-premise" }, det, h("p", { class: "imp-note" }, "数字はモデルの目安です"));
 }
 
-function legendSection(): HTMLElement {
+/** 見方（q のある地図では ★ と ◎ の決まりが違う: likeBasis） */
+function legendSection(): { el: HTMLElement; update(imp: ImpactResult): void } {
   const sample = (bin: number, text: string, chip = false) => h("span", { class: `imp-pill imp-pill-sm${chip ? " is-chip" : ""}`, attrs: { "aria-hidden": "true" }, style: chip ? { "--b": fill(bin) } : { background: fill(bin), color: IMPACT_INK[bin] ?? "#F0EFEC" } }, text);
-  return h(
+  const star = h("span");
+  const pillText = h("span", null, "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）");
+  const el = h(
     "section",
     { class: "imp-sec imp-legend" },
     h("h3", { class: "insp-label" }, "見方"),
     h(
       "ul",
       { class: "imp-legend-list" },
-      li(sample(2, "+65万"), h("span", null, "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）")),
+      li(sample(2, "+65万"), pillText),
       li(sample(1, "35%", true), h("span", null, "% の札: その結果になる見込み。色はその結果の良し悪し（今のままと比べて）")),
-      li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "★"), h("span", null, `★ おすすめ（2 位より ${IMPACT_STAR_LEAD} 万円以上良い）・≒ 一番から ${IMPACT_STAR_LEAD} 万円以内・✓ 選んだ手`)),
+      li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "★"), star),
       li(h("span", { class: "imp-legend-key", attrs: { "aria-hidden": "true" } }, "月"), h("span", null, "月+2.1万: 3 年後の月の稼ぎの差")),
     ),
   );
+  const share = Math.round(IMPACT_STAR_SHARE * 10);
+  return {
+    el,
+    update(imp) {
+      // 3 か月ごとの地図の差は「今やる vs 3 か月待つ」（作業メモ SPEC v1 §5.10・user-11・truth-4）
+      pillText.textContent = imp.likeBasis
+        ? "塗りの数字: 今やる場合と、3 か月待ってから選ぶ場合の、3 年の稼ぎの差（比べる元は「この 3 か月は今のまま」。どの手も、その後は標準の選び方で続けた見積もりどうし）"
+        : "塗りの数字: その手を今やると、3 年の稼ぎが今のままよりどれだけ変わるか（どちらもその後は一番良い選び方）";
+      star.textContent = imp.likeBasis
+        ? `★ はっきりおすすめ（同じ見積もり方で、ほかの手より ${IMPACT_STAR_LEAD} 万円以上、かつその判断の差の幅の ${share} 割以上良い）・◎ おすすめ（その判断の一番良い手）・≒ ほぼ同じ（◎ との差が ${IMPACT_STAR_LEAD} 万円未満）・✓ 選んだ手`
+        : `★ おすすめ（2 位より ${IMPACT_STAR_LEAD} 万円以上良い）・≒ 一番から ${IMPACT_STAR_LEAD} 万円以内・✓ 選んだ手`;
+    },
+  };
 }
 
-function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
+/**
+ * 今日の手の先の数の行（q のある地図の今日の手だけ）。3 か月ごとの地図は見取り図と同じ数と言い方（おすすめの選び方で着く行き先と、
+ * 地図にある行き先の全部を両方の名前で: 見直し user-5・truth-18）。それ以外は地図の形の数（作業メモ perf-14）
+ */
+function rippleLine(imp: ImpactResult, id: ID, info: AltInfo, mv: MoveSummary | null, ctx: DeepCtx | null): HTMLElement | null {
+  if (!imp.likeBasis || info.decision !== imp.root) return null;
+  if (mv && ctx) {
+    const c = mv.counts;
+    return li(`この先: ${countsText(c, endYmOf(ctx))}。地図にある行き先は全部で ${groupDigits(c.ends)}（うち標準の続きの見積もり ${groupDigits(c.sumEnds)}）`);
+  }
+  const r = imp.ripple(id);
+  if (!r) return null;
+  const est = r.sumEnds ? `（うち標準の続きで見積もり ${groupDigits(r.sumEnds)}）` : "";
+  return li(`この先: 判断 ${groupDigits(r.decisions)} か所・出来事の分かれ ${groupDigits(r.splits)}・行き先 ${groupDigits(r.ends)}${est}`);
+}
+
+function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen, flips = true): void {
   clear(sec);
   sec.append(h("h3", { class: "insp-label" }, "今決めること", h("span", { class: "insp-count" }, `${horizonText(imp.horizon)}の影響の順`)));
   const root = imp.root;
@@ -667,7 +825,15 @@ function fillDecide(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: 
     sec.append(h("p", { class: "imp-note" }, "今日の選択肢がありません"));
     return;
   }
-  sec.append(decisionList(app, imp, root, seen, { closeDrawer: true }), flipNote(app, imp, seen));
+  sec.append(decisionList(app, imp, root, seen, { closeDrawer: true }));
+  if (flips) sec.append(flipNote(app, imp, seen));
+}
+
+/** 年収で今日の一番が入れ替わる所だけの欄（3 か月ごとの地図の概要: 見取り図に無い物） */
+function fillFlips(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
+  clear(sec);
+  if (!imp.root || !imp.decision.get(imp.root)?.alts.length) return;
+  sec.append(flipNote(app, imp, seen));
 }
 
 // ------------------------------------------------------------ 順位（3 年でやる価値が大きい手・避けたい手・この先の大事な判断）
@@ -723,8 +889,12 @@ function famRow(app: AppContext, imp: ImpactResult, r: FamRowData, kind: "worth"
   const value = formatMan(r.value);
   const where = `地図に ${groupDigits(n)} か所`;
   const next = h("span", { class: "imp-meta-part imp-rank-next" });
+  const deep = deepOf(app, imp);
   const showNext = () => {
-    next.textContent = `次: ${cycleAt(imp, key, n) + 1} / ${groupDigits(n)}`;
+    const k = cycleAt(imp, key, n);
+    // 3 か月ごとの地図: 次に見せる所の年月と親の手（同じ名前の手が何か所にもある: 見直し user-6）
+    const where = placeLabel(app, deep, r.instances[k]!);
+    next.textContent = `次: ${k + 1} / ${groupDigits(n)}${where ? `（${where}）` : ""}`;
   };
   if (n >= 2) showNext();
   return h(
@@ -746,11 +916,51 @@ function famRow(app: AppContext, imp: ImpactResult, r: FamRowData, kind: "worth"
   );
 }
 
-/** 「3 年でやる価値が大きい手」: 手の種類ごとに、ずっと使わない場合との差が 1 万円以上の物を、大きい順に 5 つまで */
+/**
+ * 「3 年でやる価値が大きい手」: 手の種類ごとに、ずっと使わない場合との差が 1 万円以上の物を、大きい順に 5 つまで。
+ * 種類ごとに逆にたどる計算が 1 回要る（8 万枚で 1 回数 ms〜10 ms）。大きい地図では、パネルを描いた後に、手が空いたときに
+ * 1 種類ずつ数え、その間は「計算中」の行を出す（シナリオ・年収・選んだ手の変更で、入力から次の画面までを待たせない: 作業メモ perf-4）。
+ * 数が変わってパネルを作り直したら（この欄が外れたら）、そこで止める
+ */
 function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
   const span = horizonText(imp.horizon);
   sec.append(h("h3", { class: "insp-label" }, `${span}でやる価値が大きい手`, h("span", { class: "insp-count" }, "ずっと使わない場合との差")));
+  const deep = deepOf(app, imp);
+  if (deep && deep.map.header.never) {
+    // 3 か月ごとの地図: 見取り図と同じ k(fam)（生成の見積もり never._all − never[fam]）と、同じ「ほぼ差なし」の大きさ（見直し user-2）。
+    // 逆にたどる計算は要らない（数は地図に書いてある）
+    const a = deep.analysis();
+    const noise = deep.overview().worthNoise;
+    const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast, (fam) => worthOf(a, fam))
+      .worth.filter((w) => w.k >= noise)
+      .slice(0, WORTH_LIMIT);
+    if (!rows.length) {
+      sec.append(h("p", { class: "imp-note" }, `どの手の種類も、ずっと使わない場合との差は誤差の範囲（${formatMan(noise, false)}未満）`));
+      return;
+    }
+    const list = h("div", { class: "imp-rank-list" });
+    for (const w of rows) list.append(famRow(app, imp, { fam: w.fam, value: w.k, instances: w.instances, project: w.project }, "worth", seen));
+    sec.append(list, h("p", { class: "imp-note" }, `見取り図の「${span}やらない場合との差」と同じ数（${formatMan(noise, false)}未満は誤差の範囲なので出さない）。押すたびに、その手が出てくる所を来る見込みの高い順に地図で見せる`));
+    return;
+  }
+  if (imp.counts.nodes <= FLIP_SYNC_NODES) while (!worthStep(imp));
+  if (!worthReady(imp)) {
+    sec.append(h("p", { class: "imp-note imp-worth-wait", attrs: { "aria-busy": "true" } }, "手の種類ごとの差を計算中…"));
+    sec.classList.add("is-busy");
+    // 作り直した・数が変わった: やめる（次のパネルが自分で始める。同じ結果なら数えた所から続く）
+    idleSteps(
+      () => {
+        if (!worthStep(imp)) return false;
+        sec.classList.remove("is-busy");
+        fillWorth(app, imp, sec, seen);
+        return true;
+      },
+      () => sec.isConnected && app.vm.impact === imp,
+    );
+    return;
+  }
+  sec.classList.remove("is-busy");
   const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast)
     .worth.filter((w) => w.k >= WORTH_MIN)
     .slice(0, WORTH_LIMIT);
@@ -766,7 +976,7 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
 /** 「避けたい手」: 出てくる所の差の平均（来る見込みで重み付け）が −15 万円以下の種類を、悪い順に 3 つまで。無ければ欄ごと出さない */
 function fillAvoid(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
-  const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast).avoid.slice(0, AVOID_LIMIT);
+  const rows = cachedAvoidRanking(app.store.doc, imp, app.vm.forecast).slice(0, AVOID_LIMIT);
   sec.hidden = !rows.length;
   if (!rows.length) return;
   sec.append(h("h3", { class: "insp-label" }, "避けたい手", h("span", { class: "insp-count" }, "出てくる所の差の平均")));
@@ -787,8 +997,11 @@ function fillKeys(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Se
   if (!rows.length) return;
   sec.append(h("h3", { class: "insp-label" }, "この先の大事な判断", h("span", { class: "insp-count" }, "来る見込み × 差の大きさの順")));
   const list = h("div", { class: "imp-rank-list" });
+  const deep = deepOf(app, imp);
   for (const k of rows) {
-    const title = seen.title(doc, k.id) || "（無題）";
+    // 3 か月ごとの地図: 同じ題名の判断を見分けるため、年月と親の手を前に（見直し user-6）
+    const where = placeLabel(app, deep, k.id);
+    const title = `${where ? `${where} → ` : ""}${seen.title(doc, k.id) || "（無題）"}`;
     const p = `来る見込み ${formatShare(k.p)}`;
     const stakes = `この判断で最大 ${formatMan(k.stakes)}の差`;
     const best = k.best && doc.nodes[k.best] ? seen.title(doc, k.best) || "（無題）" : null;
@@ -834,7 +1047,7 @@ function fillDist(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
     sec.append(h("p", { class: "imp-note" }, "分布を出せません（今日から先に数字の無い所があります）"));
     return;
   }
-  const scen = scenarioName(app);
+  const scen = scenarioOfValues(app, imp);
   const label = scen ? `${scen}の方針` : imp.hasPicks ? "あなたの選び方" : "おすすめ";
   const lo = formatMan(d.p10, false);
   const hi = formatMan(d.p90, false);
@@ -845,12 +1058,27 @@ function fillDist(app: AppContext, imp: ImpactResult, sec: HTMLElement): void {
     scaleLegend(),
     h("p", { class: "imp-dist-text" }, `平均 ${formatMan(d.mean, false)}（${formatMan(d.mean - imp.vSQ)}）· 10〜90%: ${range} · 今のままより悪くなる ${formatShare(d.pWorse)}`),
   );
+  if (summaryPicked(app, imp)) sec.append(h("p", { class: "imp-note" }, SUMMARY_PICK_TEXT));
 }
+
+/** 今日から（おすすめの選び方）の行き先の種類の、次に見せる番号（地図ごと。作り直しても続きから） */
+const endCursors = new WeakMap<DeepCtx["map"], Map<string, number>>();
 
 function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
   const doc = app.store.doc;
   const span = horizonText(imp.horizon);
+  const deep = deepOf(app, imp);
+  if (deep) {
+    // 3 か月ごとの地図: 行き先を種類ごとにまとめる（見込みの合計・N 通りの道・押すと 1 本ずつ道の画面へ: 作業メモ SPEC v1 §5.7・見直し user-5・user-14）
+    sec.append(h("h3", { class: "insp-label" }, `${endYmOf(deep)}の行き先`, h("span", { class: "insp-count" }, `${whoText(app, imp)}で来る見込み・種類ごと`)));
+    let cursor = endCursors.get(deep.map);
+    if (!cursor) endCursors.set(deep.map, (cursor = new Map()));
+    const vm = destVM(deep.analysis(), null);
+    const box = h("div", { class: "dm-host imp-dest" }, destSection(vm, { cursor, onPick: (row, k) => app.ui.openDeep({ kind: "path", node: row.ends[k]! }) }));
+    sec.append(box);
+    return;
+  }
   sec.append(h("h3", { class: "insp-label" }, `${span}後の行き先`, h("span", { class: "insp-count" }, `${whoText(app, imp)}で来る見込み`)));
   const LIMIT = 10;
   const vSQ = imp.vSQ;
@@ -879,9 +1107,15 @@ function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Se
     );
 }
 
-/** 概要（何も選んでいないとき）。3 年の分かれ道が無ければ隠し、update は false を返す */
+/**
+ * 概要（何も選んでいないとき）。3 年の分かれ道が無ければ隠し、update は false を返す。
+ * 3 か月ごとの地図（版 7）は、見取り図（上の欄）に無い物だけを出す: 見出し（年収・あなたの選び方・注記・数）と年収の境目。
+ * 前の版の欄（今決めること・やる価値・避けたい手・大事な判断・分布・行き先・見方・前提）は「くわしい数」にたたみ、
+ * 開いたときに作る（見取り図と同じ数・同じ言葉で。起動と選び直しで作らない: 見直し user-5・perf-6・perf-7）
+ */
 export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(): boolean } {
   const head = impactHeader(app);
+  const flips = h("section", { class: "imp-sec imp-flips" });
   const decide = h("section", { class: "imp-sec imp-decide" });
   const worth = h("section", { class: "imp-sec imp-worth" });
   const avoid = h("section", { class: "imp-sec imp-avoid" });
@@ -891,10 +1125,73 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
   // 3 年の分かれ道だけを見え方で開く（文書・履歴・保存・同期は変えない。自分で折りたたんだ所はそのまま）
   const expandBtn = h("button", { class: "btn btn-sm", type: "button", title: "3 年の分かれ道を全部ひらく", dataset: { fk: "expand" }, onClick: () => app.vm.setImpactOpen(app.vm.impactBranches()) }, icon("expand", 14), "全部ひらく");
   const resetBtn = h("button", { class: "btn btn-sm", type: "button", title: "開いている所を最初の形に戻す", dataset: { fk: "reset-open" }, onClick: () => resetCommand(app)?.(app.vm.impact.root) }, icon("collapse", 14), "最初の形に戻す");
-  const el = h("div", { class: "imp-overview" }, head.el, decide, worth, avoid, keys, dist, ends, premisesSection(), legendSection(), h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn));
+  // 3 か月ごとの地図（版 7）は「全部ひらく」の代わりに、今日から時間で区切って開く（枚数つき。作業メモ SPEC v1 §5.8）
+  const deepOpen = h("div", { class: "imp-deep-open" });
+  let deepOpenKey = "";
+  const legend = legendSection();
+  const premise = premisesSection();
+  const actions = h("div", { class: "btn-row imp-actions" }, expandBtn, resetBtn);
+  // 3 か月ごとの地図の「くわしい数」（開いたときに中を作る）
+  const moreBody = h("div", { class: "imp-more-body" });
+  const more = h("details", { class: "imp-more" }, h("summary", { dataset: { fk: "imp-more" } }, "くわしい数（今決めること・やる価値・避けたい手・大事な判断・分布・行き先・見方）"), moreBody);
+  const el = h("div", { class: "imp-overview" });
   el.hidden = true;
   let last: ImpactResult | null = null;
   let seen = new Seen();
+  /** 並べ方（3 か月ごとの地図か） */
+  let layout: "q" | "plain" | null = null;
+  /** くわしい数の中身を、今の結果でまだ作っていない */
+  let moreDirty = true;
+  const sections = [decide, worth, avoid, keys, dist, ends];
+  const place = (q: boolean): void => {
+    const want = q ? "q" : "plain";
+    if (layout === want) return;
+    layout = want;
+    clear(el);
+    clear(moreBody);
+    if (q) {
+      moreBody.append(...sections, legend.el, premise);
+      el.append(head.el, flips, more, deepOpen, actions);
+    } else el.append(head.el, ...sections, premise, legend.el, deepOpen, actions);
+    moreDirty = true;
+  };
+  /** 欄を今の結果で作る（3 か月ごとの地図のくわしい数は、開いているときだけ） */
+  const fill = (imp: ImpactResult, q: boolean): void => {
+    // キーボードで操作していた行（data-fk の鍵）は、作り直した後も同じ行へ。無くなったら同じ欄の最初の行、欄ごと無くなったら概要の最初の部品へ
+    let at: { sec: HTMLElement; key: string } | null = null;
+    for (const sec of [flips, ...sections]) {
+      const key = focusKeyIn(sec);
+      if (key !== null) {
+        at = { sec, key };
+        break;
+      }
+    }
+    if (q) {
+      fillFlips(app, imp, flips, seen);
+      moreDirty = !more.open;
+    }
+    if (!q || more.open) {
+      fillDecide(app, imp, decide, seen, !q);
+      fillWorth(app, imp, worth, seen);
+      fillAvoid(app, imp, avoid, seen);
+      fillKeys(app, imp, keys, seen);
+      fillDist(app, imp, dist);
+      fillEnds(app, imp, ends, seen);
+    }
+    if (at && !refocus(at.sec, at.key)) focusFirst(el);
+  };
+  more.addEventListener("toggle", () => {
+    if (!more.open || !moreDirty) return;
+    const imp = app.vm.impact;
+    if (!imp.active) return;
+    moreDirty = false;
+    fillDecide(app, imp, decide, seen, false);
+    fillWorth(app, imp, worth, seen);
+    fillAvoid(app, imp, avoid, seen);
+    fillKeys(app, imp, keys, seen);
+    fillDist(app, imp, dist);
+    fillEnds(app, imp, ends, seen);
+  });
   return {
     el,
     update() {
@@ -904,28 +1201,27 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
         last = null;
         return false;
       }
+      const deep = app.vm.deep.get();
+      const q = !!deep && imp.likeBasis;
+      place(q);
       head.update(imp);
+      legend.update(imp);
       resetBtn.hidden = !resetCommand(app);
+      expandBtn.hidden = !!deep;
+      deepOpen.hidden = !deep;
+      // 開いた後の枚数は見えているカードで変わる（開閉・選択で作り直す。見え方の版）
+      const dk = deep ? openKey(app, deep) : "";
+      if (dk !== deepOpenKey) {
+        deepOpenKey = dk;
+        clear(deepOpen);
+        const row = deep ? deepOpenActions(app, deep, 0) : null;
+        if (row) deepOpen.append(row);
+      }
       // 数が変わった・書いた題名が変わった（題名の入力）ときだけ作り直す
       if (imp !== last || seen.changed(app.store.doc)) {
         last = imp;
         seen = new Seen();
-        // キーボードで操作していた行（data-fk の鍵）は、作り直した後も同じ行へ。無くなったら同じ欄の最初の行、欄ごと無くなったら概要の最初の部品へ
-        let at: { sec: HTMLElement; key: string } | null = null;
-        for (const sec of [decide, worth, avoid, keys, ends]) {
-          const key = focusKeyIn(sec);
-          if (key !== null) {
-            at = { sec, key };
-            break;
-          }
-        }
-        fillDecide(app, imp, decide, seen);
-        fillWorth(app, imp, worth, seen);
-        fillAvoid(app, imp, avoid, seen);
-        fillKeys(app, imp, keys, seen);
-        fillDist(app, imp, dist);
-        fillEnds(app, imp, ends, seen);
-        if (at && !refocus(at.sec, at.key)) focusFirst(el);
+        fill(imp, q);
       }
       return true;
     },
@@ -970,7 +1266,7 @@ function picksRow(app: AppContext, id: ID, info: AltInfo): HTMLElement {
   return h("div", { class: "imp-picks" }, pick, drop, redo);
 }
 
-function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen): void {
+function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen, slot: HTMLElement | null = null): void {
   const doc = app.store.doc;
   const n = doc.nodes[id];
   const info = imp.alt.get(id);
@@ -980,7 +1276,10 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
   const ro = app.store.readOnly;
   // 3 年の影響
   if (info.isBase) {
-    wrap.append(h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ:`), deltaPill(0, { base: true, size: "lg" })), h("p", { class: "imp-note" }, "同じ判断のほかの手の数は、この手（この期間は何も足さない）と比べた差"));
+    wrap.append(
+      h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ:`), deltaPill(0, { base: true, size: "lg" })),
+      h("p", { class: "imp-note" }, imp.likeBasis ? "この 3 か月は今のまま（3 か月待ってから選ぶ）。同じ判断のほかの手の数は、これと比べた差" : "同じ判断のほかの手の数は、この手（この期間は何も足さない）と比べた差"),
+    );
   } else if (dec && dec.base === null) {
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "基準（今のまま）が無いので差を出せません")));
     if (!ro) wrap.append(h("div", { class: "imp-picks" }, h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `base:${id}` }, onClick: () => pressed(() => app.cmd.updateNode(id, { meta: { ...n.meta, base: true } }, { label: "基準にする" })) }, "これを基準にする")));
@@ -988,28 +1287,48 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
     wrap.append(h("p", { class: "imp-warn" }, icon("alert", 13), h("span", null, "数字なし（結果と見込みを足すと計算します）")));
   } else {
     wrap.append(
-      h("p", { class: "imp-hl" }, h("span", null, `${span}の稼ぎ: 今のままより`), deltaPill(info.delta, { size: "lg", text: `${info.partial ? "≈" : ""}${yen(info.delta)}` })),
-      h("p", { class: "imp-note" }, "（この期間に何もせず、その後は一番良い選び方をした場合と比べて）"),
+      h("p", { class: "imp-hl" }, h("span", null, imp.likeBasis ? `${span}の稼ぎ: 3 か月待つより` : `${span}の稼ぎ: 今のままより`), deltaPill(info.delta, { size: "lg", text: `${info.partial ? "≈" : ""}${yen(info.delta)}` })),
+      h(
+        "p",
+        { class: "imp-note" },
+        imp.likeBasis
+          ? info.deltaBasis === "tree"
+            ? "（今やる場合と、この 3 か月は今のままにして 3 か月待ってから選ぶ場合の、3 年の稼ぎの差。この手には見積もりが無いので、どちらもその後は一番良い選び方をした地図の値どうし）"
+            : "（今やる場合と、この 3 か月は今のままにして 3 か月待ってから選ぶ場合の、3 年の稼ぎの差。どちらもその後は標準の選び方で続けた見積もりどうし）"
+          : "（この期間に何もせず、その後は一番良い選び方をした場合と比べて）",
+      ),
     );
   }
-  const mark = markOf(info);
-  if (mark.text) wrap.append(h("p", { class: "imp-badges" }, h("span", { class: `imp-mark${info.mark === "star" ? " is-star" : ""}${info.picked ? " is-picked" : ""}` }, mark.text), h("span", null, mark.label)));
-  if (!info.allowed) wrap.append(h("p", { class: "imp-note" }, "選んでいる方針の外の手です（計算では選びません）"));
+  const mark = markOf(info, imp.likeBasis);
+  if (mark.text) wrap.append(h("p", { class: "imp-badges" }, h("span", { class: markClass(info) }, mark.text), h("span", null, mark.label)));
+  // 方針の外の手: 数を方針で絞っていない地図（版 7）では、計算はこの手も選ぶ（薄くしているだけ: 見直し equiv-5）
+  if (!info.allowed) wrap.append(h("p", { class: "imp-note" }, imp.scenarioFree ? "選んでいる方針の外の手（地図では薄くしている。この地図の差と 3 年の稼ぎは方針で絞っていない）" : "選んでいる方針の外の手です（計算では選びません）"));
   wrap.append(picksRow(app, id, info));
 
   // 数
   const facts = h("ul", { class: "imp-facts" });
+  const deep = deepOf(app, imp);
+  const mv = deep && info.decision === imp.root ? moveOf(deep, id) : null;
   if (!info.isBase && info.delta !== null) {
-    const fam = typeof n.meta?.fam === "string" ? (n.meta.fam as string) : typeof n.meta?.ak === "string" ? (n.meta.ak as string) : null;
-    const never = fam ? imp.never(fam).card.get(id) : undefined;
-    if (never !== undefined && Number.isFinite(never)) facts.append(li(`この手を ${span}間ずっとやらない場合と比べると `, h("b", null, yen(never))));
+    if (deep) {
+      // 3 か月ごとの地図: 見取り図と同じ「この種類を 3 年やらない場合との差」（今日の手だけ。判断ごとの「やらない場合」は別の問いなので出さない: 見直し user-2）
+      if (mv && mv.worth !== null) facts.append(li(`この種類の手を ${span}やらない場合との差 `, h("b", null, worthText(mv.worth, deep.overview().worthNoise))));
+    } else {
+      const fam = typeof n.meta?.fam === "string" ? (n.meta.fam as string) : typeof n.meta?.ak === "string" ? (n.meta.ak as string) : null;
+      const never = fam ? imp.never(fam).card.get(id) : undefined;
+      if (never !== undefined && Number.isFinite(never)) facts.append(li(`この手を ${span}間ずっとやらない場合と比べると `, h("b", null, yen(never))));
+    }
     if (info.dR !== null) facts.append(li(`${span}後の月の稼ぎ: `, h("b", null, `月 ${yen(info.dR)}`)));
     const risk = riskText(info.pBad, info.worst);
     if (risk) facts.append(li(risk));
   }
+  const ripple = rippleLine(imp, id, info, mv, deep);
+  if (ripple) facts.append(ripple);
   const hrs = n.meta?.h;
   if (typeof hrs === "number" && Number.isFinite(hrs)) facts.append(li(hoursText(hrs)));
   if (facts.children.length) wrap.append(facts);
+  // 3 か月ごとの地図の文章（組み立てた本文）は数のすぐ後（具体的な文章を、内訳・結果・ほかの手の下に押しやらない: 見直し user-11）
+  if (slot) wrap.append(slot);
   if (!imp.annualSet && !info.isBase) {
     wrap.append(
       h(
@@ -1059,13 +1378,13 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
     wrap.append(sec);
   }
 
-  // 同じ判断の手（比べる）
+  // 同じ判断の手（比べる）。狭い画面は上の 3 つ（と今の手）だけ
   if (dec && dec.alts.length > 1) {
-    wrap.append(h("div", { class: "imp-sibs" }, h("h3", { class: "insp-label" }, "同じ判断の手", h("span", { class: "insp-count" }, `${dec.alts.length} 個・${span}の影響の順`)), decisionList(app, imp, info.decision, seen, { current: id, closeDrawer: false })));
+    wrap.append(h("div", { class: "imp-sibs" }, h("h3", { class: "insp-label" }, "同じ判断の手", h("span", { class: "insp-count" }, `${dec.alts.length} 個・${span}の影響の順`)), decisionList(app, imp, info.decision, seen, { current: id, closeDrawer: false, limit: isNarrowScreen() ? 3 : undefined })));
   }
 }
 
-function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen): void {
+function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen, slot: HTMLElement | null = null): void {
   const doc = app.store.doc;
   const n = doc.nodes[id];
   if (!n) return;
@@ -1091,6 +1410,7 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
   wrap.append(facts);
   const line = stateLine(n.meta?.st, n.meta?.rr);
   if (line) wrap.append(h("p", { class: "imp-state" }, h("b", null, "その時: "), line));
+  if (slot) wrap.append(slot);
 
   // 目印（今日からここまでの、運で分かれた所）
   const steps = trailOf(doc, app.vm.index.inc, id, (x) => imp.kind.get(x) === "chance", (x) => imp.scope.has(x));
@@ -1128,7 +1448,8 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
   }
 }
 
-function rootBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen): void {
+function rootBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen, slot: HTMLElement | null = null): void {
+  if (slot) wrap.append(slot);
   const dec = imp.decision.get(id);
   if (!dec || !dec.alts.length) return;
   wrap.append(h("div", { class: "imp-sibs imp-decide" }, h("h3", { class: "insp-label" }, "今決めること", h("span", { class: "insp-count" }, `${horizonText(imp.horizon)}の影響の順`)), decisionList(app, imp, id, seen, { closeDrawer: true }), flipNote(app, imp, seen)));
@@ -1138,7 +1459,7 @@ function rootBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement,
  * 3 年の分かれ道の中のノードの詳細（今日・選択肢・結果・行き先）。範囲の外なら null（今までの詳細だけ）。
  * isAlt: 選択肢（やることのチェックリストを本文の前に出す）
  */
-export function buildImpactNodeBlock(app: AppContext, id: ID): { el: HTMLElement; update(): void; isAlt: boolean } | null {
+export function buildImpactNodeBlock(app: AppContext, id: ID, slot: HTMLElement | null = null): { el: HTMLElement; update(): void; isAlt: boolean } | null {
   const imp0 = app.vm.impact;
   if (!imp0.active || !imp0.scope.has(id)) return null;
   const isRoot = imp0.root === id;
@@ -1166,9 +1487,9 @@ export function buildImpactNodeBlock(app: AppContext, id: ID): { el: HTMLElement
       seen = new Seen();
       const fk = focusKeyIn(body);
       clear(body);
-      if (imp.root === id) rootBody(app, imp, id, body, seen);
-      else if (imp.alt.has(id)) altBody(app, imp, id, body, seen);
-      else outcomeBody(app, imp, id, body, seen);
+      if (imp.root === id) rootBody(app, imp, id, body, seen, slot);
+      else if (imp.alt.has(id)) altBody(app, imp, id, body, seen, slot);
+      else outcomeBody(app, imp, id, body, seen, slot);
       if (fk !== null) refocus(body, fk);
     },
   };

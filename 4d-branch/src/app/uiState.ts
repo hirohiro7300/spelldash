@@ -9,6 +9,14 @@ export type ViewMode = "map" | "list";
 export type EdgeMode = "all" | "selection" | "cross";
 export type ListSortKey = "due" | "title" | "type" | "status" | "updated";
 
+/**
+ * 3 か月ごとの地図（版 7）の、右のパネル（狭い画面では引き出し）に出す画面（作業メモ SPEC v1 §5.2〜§5.5・§5.7）。
+ * move: 今日の手の詳しい画面（扇・分かれ道の帯・進め方・行き先）。f は地図の番号。
+ * path: そのカードを通る道（今日から 2029 年 11 月まで 3 か月に 1 行）。node は地図の番号。open: 開いている行の鍵。
+ * 見取り図そのものは、何も選んでいないときの概要の先頭（ページではない）
+ */
+export type DeepPage = { kind: "move"; f: number } | { kind: "path"; node: number; open?: string[]; align?: { key: string; top: number } };
+
 export interface Prefs {
   view: ViewMode;
   /** 選んでいるプロジェクト（空 = すべて） */
@@ -55,6 +63,8 @@ export interface Prefs {
    * 入口が無ければ最初の形（狭い画面は今日だけ・広い画面は今日と 10 の選択肢）
    */
   impactOpen: Record<ID, ID[]>;
+  /** 新しい地図の知らせ（版 7 の 12 段・2,000 の分かれ道・差の比べ方）を見せた版（futureRelease。見せたら以後は出さない） */
+  releaseSheet: number;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -84,6 +94,7 @@ export const DEFAULT_PREFS: Prefs = {
   persistAsked: false,
   lastType: "action",
   impactOpen: {},
+  releaseSheet: 0,
 };
 
 export interface CameraState {
@@ -101,6 +112,8 @@ export interface UiEvents {
   visual: void;
   /** 3 年の分かれ道でノードを開いた（キャンバスが、開いた子が見える所へ寄る） */
   expand: ID[];
+  /** 右のパネルの 3 か月ごとの地図の画面（手の詳しい画面・道の画面）が変わった */
+  deep: DeepPage | null;
 }
 
 /** 時点（再生中は毎フレーム変わる）だけの変更か。パネルの作り直しはしない（押したボタンが差し替わってクリックが消えるため） */
@@ -174,6 +187,7 @@ function loadPrefs(): Prefs {
     if (p.timeCursor != null && !isDateStr(p.timeCursor)) p.timeCursor = null;
     const prefs: Prefs = { ...structuredClone(DEFAULT_PREFS), ...p, sections: { ...DEFAULT_PREFS.sections, ...(p.sections ?? {}) }, listSort: { ...DEFAULT_PREFS.listSort, ...(p.listSort ?? {}) } };
     prefs.impactOpen = cleanImpactOpen(p.impactOpen);
+    if (typeof prefs.releaseSheet !== "number" || !Number.isFinite(prefs.releaseSheet)) prefs.releaseSheet = 0;
     if (mark) prefs.futureAutoOpened = true;
     // 前の版が設定の中に書いた断った版は、別の場所がまだ無ければ一度だけ移す
     if (typeof p.futureDeclined === "string" && p.futureDeclined && storedDeclined() === null) writeDeclined(p.futureDeclined);
@@ -190,6 +204,11 @@ export class UiState {
   search = "";
   /** 一時表示（?stress など）では設定を保存しない */
   persistPrefs = true;
+  /** 右のパネルに出している 3 か月ごとの地図の画面（無ければ選んだ物の詳細か概要）。前の画面の並び（戻る） */
+  deepPage: DeepPage | null = null;
+  private deepStack: DeepPage[] = [];
+  /** この間の選択の変更では、3 か月ごとの地図の画面を閉じない（画面の中から選ぶとき） */
+  private deepHold = 0;
   private readonly emitter = new Emitter<UiEvents>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -276,6 +295,54 @@ export class UiState {
     } catch {
       /* 保存できなくても動く */
     }
+  }
+
+  // ---- 3 か月ごとの地図の画面（右のパネル・狭い画面の引き出し）
+
+  /**
+   * 画面を開く。push: 今の画面を戻る先に積む（手の詳しい画面から道へ）。そうでなければ置き換える（道の切り替え）。
+   * 開いたら右のパネルも開く（狭い画面では引き出し）
+   */
+  openDeep(page: DeepPage, opts: { push?: boolean } = {}): void {
+    if (opts.push && this.deepPage) this.deepStack.push(this.deepPage);
+    if (!opts.push && !this.deepPage) this.deepStack = [];
+    this.deepPage = page;
+    if (!this.prefs.rightOpen) this.setPrefs({ rightOpen: true });
+    this.emitter.emit("deep", page);
+  }
+
+  /** 1 つ前の画面へ（無ければ閉じて、選んだ物の詳細か概要へ） */
+  backDeep(): void {
+    this.deepPage = this.deepStack.pop() ?? null;
+    this.emitter.emit("deep", this.deepPage);
+  }
+
+  /** 画面を閉じる（選んだ物の詳細か概要へ） */
+  closeDeep(): void {
+    if (!this.deepPage && !this.deepStack.length) return;
+    this.deepPage = null;
+    this.deepStack = [];
+    this.emitter.emit("deep", null);
+  }
+
+  /** 開いている道の画面の、開いている行と位置を覚え直す（作り直したときに戻すため。知らせは出さない） */
+  rememberDeep(page: DeepPage): void {
+    if (this.deepPage && this.deepPage.kind === page.kind) this.deepPage = page;
+  }
+
+  /** fn の間の選択の変更では、3 か月ごとの地図の画面を閉じない */
+  holdDeep<T>(fn: () => T): T {
+    this.deepHold++;
+    try {
+      return fn();
+    } finally {
+      this.deepHold--;
+    }
+  }
+
+  /** 選択の変更で画面を閉じてよいか（画面の中から選んだ間は閉じない） */
+  get deepHeld(): boolean {
+    return this.deepHold > 0;
   }
 
   // ---- 選択

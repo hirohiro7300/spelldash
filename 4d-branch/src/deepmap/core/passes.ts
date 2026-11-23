@@ -336,7 +336,7 @@ export function deltaBetween(pass: Pass, j: number, b: number): Delta | null {
   return Number.isFinite(vj) && Number.isFinite(vb) ? { d: vj - vb, basis: "tree" } : null;
 }
 
-/** 手ごとの今のままとの差（地図の値。アプリの AltInfo.delta と同じ）。手でない・今のままが無い・数が出せなければ NaN */
+/** 手ごとの今のままとの差（地図の値どうし。q の無い地図のアプリの AltInfo.delta と同じ。q のある地図のアプリの差は deltaBetween）。手でない・今のままが無い・数が出せなければ NaN */
 export function optionDeltas(pass: Pass): Float64Array {
   const { n, role, kidOff, kids, flags } = pass.cm;
   const out = new Float64Array(n).fill(NaN);

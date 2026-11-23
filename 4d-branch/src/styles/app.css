@@ -626,6 +626,14 @@ kbd {
 .search-due {
   margin-left: 4px;
 }
+/* 3 か月ごとの地図のカードの居場所（年月・親の手。題名の前に控えめに: 見直し user-6） */
+.search-where {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.search-group {
+  white-space: nowrap;
+}
 .search-hidden {
   flex: none;
   display: inline-flex;
@@ -642,6 +650,13 @@ kbd {
   padding: 12px;
   color: var(--text-3);
   text-align: center;
+}
+/* 当たりの残りの数・探す所の説明（組み立てた本文は探さない） */
+.search-note {
+  padding: 6px 12px 8px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 .save-status {
@@ -3054,6 +3069,11 @@ textarea.input {
   }
   .app-shell:not(.right-closed) .sidebar-right {
     right: 0;
+  }
+  /* 閉じた引き出しは置かない（幅 0 の列で 1 文字ずつ折り返した 1 万 px の高さのレイアウトを、カードを押すたびにしない: 見直し perf-5） */
+  .app-shell.left-closed .sidebar-left,
+  .app-shell.right-closed .sidebar-right {
+    display: none;
   }
   .scenario-side .bottom-label {
     display: none;

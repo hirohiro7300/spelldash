@@ -1,6 +1,7 @@
 // 操作（作成・接続・分岐・合流・削除…）。キャンバス・詳細・キーボード・右クリックはすべてここを呼ぶ
 
 import { NODE_TYPES, PROJECT_COLORS, RELATIONS, SCENARIO_COLORS, STATUSES } from "../model/constants";
+import { DEEP_OPEN_CAP, deepHorizons, horizonOpen } from "../model/deepOpen";
 import { flowOuts, isFlowEdge, isImpactRoot } from "../model/forks";
 import { newId } from "../model/ids";
 import { childSpot, findFreeSpot, mergeSpot } from "../model/layout";
@@ -273,15 +274,34 @@ export class Commands {
    * 閲覧のみのタブで 3 年の分かれ道があれば、見え方だけを開き、文書には触れない（閲覧のみのお知らせも出さない）
    */
   expandAll(): void {
-    const view = this.vm.impactBranches();
+    const deep = this.vm.deep.get();
+    let view: ID[];
+    if (deep) {
+      // 3 か月ごとの地図（約 7 万枚）は全部は開かない: キャンバスの上限（全体で 3,000 枚）に入る区切りまで、今日から時間で区切って開く
+      // （作業メモ SPEC v1 §5.8・user-12・gaps-17）。先は見取り図と道の画面で読む
+      this.vm.ensure();
+      const users = this.vm.userNodeIds().length;
+      const hs = deepHorizons(deep.cm, 0);
+      const fit = [...hs].reverse().find((x) => x.count + 1 + users <= DEEP_OPEN_CAP) ?? null;
+      view = fit ? horizonOpen(deep.cm, 0, fit).map((i) => deep.idOf(i)) : [];
+      const n = (v: number) => v.toLocaleString("ja-JP");
+      this.hooks.toast(
+        fit
+          ? `3 年の分かれ道は全部（${n(deep.cm.n)} 枚）は開けないので、今日から${fit.toEnd ? "最後" : `${fit.months / 12} 年先`}まで開いた（${n(fit.count)} 枚）。その先は右の「3 年の見取り図」と道の画面で読める`
+          : `3 年の分かれ道は全部（${n(deep.cm.n)} 枚）は開けない。右の「3 年の見取り図」と道の画面で読める`,
+        { tone: "info", ms: 7000 },
+      );
+    } else view = this.vm.impactBranches();
     this.vm.setImpactOpen(view);
     if (this.store.readOnly && view.length) return;
-    const ns = Object.values(this.doc.nodes).filter((n) => n.collapsed && !this.vm.inImpact(n.id));
-    const es = Object.values(this.doc.edges).filter((e) => e.collapsed);
+    // 文書で折りたたんだノード・線は索引が覚えている（文書をなめない。文書の順に開く）
+    const idx = this.vm.index;
+    const ns = [...idx.collapsedNodes].filter((id) => this.doc.nodes[id]?.collapsed && !this.vm.inImpact(id)).sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
+    const es = [...idx.collapsedEdges].filter((id) => this.doc.edges[id]?.collapsed).sort((a, b) => idx.edgeOrder(a) - idx.edgeOrder(b));
     if (!ns.length && !es.length) return;
     this.store.transact("すべて展開", (tx) => {
-      ns.forEach((n) => tx.updateNode(n.id, { collapsed: false }));
-      es.forEach((e) => tx.updateEdge(e.id, { collapsed: false }));
+      ns.forEach((id) => tx.updateNode(id, { collapsed: false }));
+      es.forEach((id) => tx.updateEdge(id, { collapsed: false }));
     });
   }
 
@@ -343,14 +363,29 @@ export class Commands {
     }
     if (!below.size) return [];
     // 消した後も残るノードから道の線（消す線は通らない）で届く物は残す。たどり始めは入口と、消すノード・候補のどちらでもないノード
-    // （別の選択肢からも合流する物、自分の親 P → W のある自分のノード W とその先 など）
+    // （別の選択肢からも合流する物、自分の親 P → W のある自分のノード W とその先 など）。候補の外のノードは全部たどり始めなので、
+    // 候補に入ってくる道の線のうち、元が候補でも消すノードでもない物の先から、候補の中だけをたどればよい（文書をなめない）
     const goneE = new Set(es);
     const reach = new Set<ID>();
     const queue: ID[] = [];
-    for (const id in doc.nodes) if (!gone.has(id) && (!below.has(id) || isImpactRoot(doc.nodes[id]))) (reach.add(id), queue.push(id));
+    const inc = this.vm.index.inc;
+    for (const id of below) {
+      if (isImpactRoot(doc.nodes[id])) {
+        reach.add(id);
+        queue.push(id);
+        continue;
+      }
+      for (const eid of inc.get(id) ?? []) {
+        const e = doc.edges[eid];
+        if (!e || !isFlowEdge(e) || e.source === e.target || goneE.has(e.id) || gone.has(e.source) || below.has(e.source) || !doc.nodes[e.source]) continue;
+        reach.add(id);
+        queue.push(id);
+        break;
+      }
+    }
     while (queue.length) {
       for (const e of flowOuts(doc, out, queue.pop()!)) {
-        if (goneE.has(e.id) || gone.has(e.target) || reach.has(e.target)) continue;
+        if (goneE.has(e.id) || gone.has(e.target) || reach.has(e.target) || !below.has(e.target)) continue;
         reach.add(e.target);
         queue.push(e.target);
       }
@@ -372,9 +407,19 @@ export class Commands {
       map.set(n.id, id);
       // 写しは見えている位置の近くに（3 年の分かれ道のカードは重ねる位置。文書の位置は全部開いた形の所で遠い）
       const at = this.vm.hasOverlay(n.id) ? this.vm.posOf(n.id)! : n;
-      return makeNode({ ...n, id, x: at.x + 40, y: at.y + 40, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: without(n.meta, COPY_DROP_NODE) });
+      // 3 か月ごとの地図のカードの本文は見せるときに組み立てる物なので、写しには今の年収で組み立てた文章（数の行と本文）を入れ、
+      // 自分のメモはその後に残す（写しは地図の外のカードになり、組み立て直されない。作業メモ SPEC v1 §4.4）
+      const made = this.vm.deep.materialize(n.id);
+      const body = made === null ? n.body : n.body.trim() ? `${made}\n\n${n.body}` : made;
+      return makeNode({ ...n, id, x: at.x + 40, y: at.y + 40, body, conditions: n.conditions.map((c) => ({ ...c, id: newId("c") })), createdAt: undefined, updatedAt: undefined, collapsed: false, meta: without(n.meta, COPY_DROP_NODE) });
     });
-    const inner = Object.values(this.doc.edges).filter((e) => map.has(e.source) && map.has(e.target));
+    // 写すノードの間の線（写すノードの出る線だけを見る。文書の順）
+    const idx = this.vm.index;
+    const inner = nodes
+      .flatMap((n) => idx.out.get(n.id) ?? [])
+      .map((eid) => this.doc.edges[eid])
+      .filter((e): e is GEdge => !!e && map.has(e.source) && map.has(e.target))
+      .sort((a, b) => idx.edgeOrder(a.id) - idx.edgeOrder(b.id));
     const ok = this.store.transact(nodes.length === 1 ? "複製" : `${nodes.length} 件を複製`, (tx) => {
       copies.forEach((c) => tx.addNode(c));
       inner.forEach((e) => tx.addEdge(makeEdge({ ...e, id: newId("e"), source: map.get(e.source)!, target: map.get(e.target)!, createdAt: undefined, updatedAt: undefined, meta: without(e.meta, COPY_DROP_EDGE) })));
@@ -466,7 +511,7 @@ export class Commands {
   reverseEdge(id: ID): void {
     const e = this.doc.edges[id];
     if (!e) return;
-    const reversed = Object.values(this.doc.edges).some((x) => x.source === e.target && x.target === e.source);
+    const reversed = (this.vm.index.out.get(e.target) ?? []).some((x) => this.doc.edges[x]?.target === e.source);
     if (reversed) {
       this.hooks.toast("逆向きの接続がすでにあるため、向きを反転できません");
       return;
@@ -497,7 +542,7 @@ export class Commands {
   async deleteProject(id: ID): Promise<void> {
     const p = this.doc.projects[id];
     if (!p) return;
-    const count = Object.values(this.doc.nodes).filter((n) => n.projectIds.includes(id)).length;
+    const count = new Set(this.vm.index.projectNodes.get(id) ?? []).size;
     const ok = await this.hooks.confirm({
       title: `プロジェクト「${p.name}」を削除`,
       body: `ノード ${count} 件は削除されず、このプロジェクトへの所属だけが外れます。あとから「元に戻す」で戻せます。`,

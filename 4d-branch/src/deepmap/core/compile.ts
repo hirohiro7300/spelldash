@@ -26,9 +26,12 @@ export const F_SUM = 4;
 export const F_Q = 8;
 /** 確かめるだけの事実（会社の答えなど）を知る結果 */
 export const F_RV = 16;
-/** まとめた行き先の中身（mix）がある */
+/**
+ * まとめた行き先の中身（mix）がある。形を作るときには付けない（mix・cont は問うたびに中身を写して返すので、7 万枚で数十 ms とごみが出る）。
+ * 数は has.mix・has.cont（初めて読んだときに数える）
+ */
 export const F_MIX = 32;
-/** まとめた行き先の後の目安（cont）がある */
+/** まとめた行き先の後の目安（cont）がある（F_MIX と同じく、形を作るときには付けない） */
 export const F_CONT = 64;
 
 export interface CompiledMap {
@@ -275,11 +278,27 @@ function fillNumbers(cm: CompiledMap, map: MapData): void {
     return ki;
   };
   for (const k of Object.keys(header.kinds)) famOfKind(k);
-  const has = cm.has as { q: number; mix: number; cont: number; never: boolean };
-  has.q = 0;
-  has.mix = 0;
-  has.cont = 0;
-  has.never = !!header.never && typeof header.never === "object" && Array.isArray(header.never._all);
+  // mix・cont の数は初めて読んだときに数える（アプリの計算と見取り図の多くは読まない。作業メモ perf-1 の起動の時間）
+  const lazy = { mix: -1, cont: -1 };
+  const countOf = (f: "mix" | "cont"): number => {
+    if (lazy[f] < 0) {
+      let c = 0;
+      for (let i = 0; i < n; i++) if (role[i]! >= ROLE_S && (f === "mix" ? map.mix(i) : map.cont(i))) c++;
+      lazy[f] = c;
+    }
+    return lazy[f];
+  };
+  const has = {
+    q: 0,
+    get mix(): number {
+      return countOf("mix");
+    },
+    get cont(): number {
+      return countOf("cont");
+    },
+    never: !!header.never && typeof header.never === "object" && Array.isArray(header.never._all),
+  };
+  (cm as { has: CompiledMap["has"] }).has = has;
   for (let i = 0; i < n; i++) {
     const r = role[i]!;
     const par = parent[i]!;
@@ -335,8 +354,6 @@ function fillNumbers(cm: CompiledMap, map: MapData): void {
           f |= F_RV;
         }
         if (r === ROLE_E && map.sum(i)) f |= F_SUM;
-        if (map.mix(i)) (f |= F_MIX), has.mix++;
-        if (map.cont(i)) (f |= F_CONT), has.cont++;
       }
     }
     flags[i] = f;

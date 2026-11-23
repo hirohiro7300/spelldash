@@ -380,7 +380,10 @@ describe("アプリの計算（computeImpact）と計算の芯（src/deepmap/cor
       [540, null],
       [540, "s_early"],
     ] as const) {
-      const a = analyze(cm, annual, { status: statusArray(cm, map, status), allowed: scenario ? scenarioMask(cm, scenario) : null });
+      // q のある地図（版 7）では、アプリは方針（シナリオ）で数を絞らない（方針の外の手は印だけ: 作業メモ SPEC v1 §5.11・gaps-12）。
+      // 計算の芯も方針で絞らずに比べる（q の無い地図だけ方針の選べる手で絞る）
+      const allowed = scenario && !cm.has.q ? scenarioMask(cm, scenario) : null;
+      const a = analyze(cm, annual, { status: statusArray(cm, map, status), allowed });
       compare(map, a, appRun(doc, map, annual, { status, scenario }));
     }
   });

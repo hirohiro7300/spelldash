@@ -424,8 +424,12 @@ export function appParity(map: MapData, annuals: readonly number[]): { parities:
         const par = map.parent(i);
         let base = -1;
         for (let k = 0; k < map.childCount(par); k++) if (map.isBase(map.child(par, k))) base = map.child(par, k);
-        const got = im.alt.get(ids[i]!)?.delta;
         if (base < 0) continue;
+        // 地図の値（木の値）どうしの差。アプリの AltInfo.delta は、q のある地図では比べ方をそろえた値（q）の差なので、値の表から
+        // （アプリの画面の差が見取り図と同じ数になった: 見直し user-1・equiv-1）
+        const vi = im.value.get(ids[i]!);
+        const vb = im.value.get(ids[base]!);
+        const got = vi !== undefined && vb !== undefined ? vi - vb : undefined;
         alts++;
         const want = ref.V[i]! - ref.V[base]!;
         const d = got === undefined || got === null ? Infinity : Math.abs(got - want);

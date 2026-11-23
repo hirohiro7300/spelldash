@@ -15,6 +15,16 @@
   --dm-cols: minmax(210px, 1fr) minmax(200px, 0.95fr) minmax(260px, 1.05fr) minmax(250px, 1.2fr);
 }
 
+/*
+ * 広い画面の並べ方は、画面の幅ではなく入れ物（.dm-host）の幅で決める（コンテナークエリ）。試し版はページの真ん中の列、
+ * アプリは右のパネル・スマホの引き出しが入れ物なので、アプリの狭いパネルの中では、画面が広くても狭い並べ方になる。
+ * 境目は、試し版の入れ物が画面より左右 16px ずつ狭いぶん（32px）下げてある（試し版は画面の幅で決めていた時と同じ見た目）
+ */
+.dm-host {
+  container: dm / inline-size;
+  min-width: 0;
+}
+
 /* ------------------------------------------------------------ 共通 */
 .dm-h2 {
   margin: 0;
@@ -556,13 +566,13 @@
   color: var(--text-3);
 }
 /* 広い画面は列の見出しがあるので、分布の見出しは出さない */
-@media (min-width: 1100px) {
+@container dm (min-width: 1068px) {
   .dm-row-dist-head {
     display: none;
   }
 }
 /* 狭い画面: 判断・行き先の数の 1 行は手の詳しい画面にだけ（カードを短く） */
-@media (max-width: 719.98px) {
+@container dm (max-width: 687.98px) {
   .dm-row-counts {
     display: none;
   }
@@ -765,7 +775,7 @@
   height: 12px;
   background: #ffffff;
 }
-@media (min-width: 720px) {
+@container dm (min-width: 688px) {
   .dm-glance-row,
   .dm-glance-axis {
     grid-template-columns: minmax(150px, 240px) 84px minmax(0, 1fr);
@@ -809,7 +819,7 @@
 }
 
 /* 広い画面: 4 列に並べる（列の見出しを出す） */
-@media (min-width: 1100px) {
+@container dm (min-width: 1068px) {
   .dm-cols {
     display: grid;
     grid-template-columns: var(--dm-cols) 12px;
@@ -886,7 +896,7 @@
   flex-wrap: wrap;
   gap: 6px 16px;
 }
-@media (min-width: 1100px) {
+@container dm (min-width: 1068px) {
   .dm-move-head {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
     align-items: start;
@@ -970,7 +980,7 @@
   font-size: 12px;
   color: var(--text-3);
 }
-@media (min-width: 640px) {
+@container dm (min-width: 608px) {
   .dm-out {
     grid-template-columns: minmax(0, 1fr) 46px minmax(0, 1.6fr);
     grid-template-areas: "name pct total";
@@ -992,7 +1002,7 @@
   border: 1px solid var(--line);
   background: var(--bg-panel);
 }
-@media (min-width: 1100px) {
+@container dm (min-width: 1068px) {
   .dm-move-grid {
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
     grid-template-areas:
@@ -1350,7 +1360,7 @@
   padding: 10px 0;
   border-top: 1px solid var(--line);
 }
-@media (min-width: 560px) {
+@container dm (min-width: 528px) {
   .dm-plan-row {
     grid-template-columns: 112px minmax(0, 1fr);
     gap: 14px;
@@ -1367,7 +1377,7 @@
   gap: 1px 10px;
   font-variant-numeric: tabular-nums;
 }
-@media (min-width: 560px) {
+@container dm (min-width: 528px) {
   .dm-plan-when {
     display: grid;
     align-content: start;
@@ -1560,7 +1570,7 @@
   min-width: 0;
   max-width: 860px;
 }
-@media (min-width: 1100px) {
+@container dm (min-width: 1068px) {
   .dm-pathv-layout {
     grid-template-columns: minmax(0, 1fr) 360px;
     grid-template-areas: "main side";
@@ -1989,7 +1999,7 @@
 .dm-tl-alt-label {
   margin-right: 0.4em;
 }
-@media (min-width: 720px) {
+@container dm (min-width: 688px) {
   .dm-tl-head {
     grid-template-columns: 128px minmax(0, 1fr) 20px;
     column-gap: 12px;
@@ -2246,7 +2256,7 @@
 .dm-tl-card-head .dm-tl-tag.is-est {
   margin-right: 6px;
 }
-@media (min-width: 720px) {
+@container dm (min-width: 688px) {
   .dm-tl-lightrow {
     grid-template-columns: 128px minmax(0, 1fr);
     column-gap: 12px;

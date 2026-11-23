@@ -1,0 +1,348 @@
+/*
+ * 右のパネル（狭い画面では引き出し）の 3 か月ごとの地図（版 7）の画面。src/ui/deepPanel.ts
+ * 見取り図・手の詳しい画面・道の画面の中身は試し版と同じ見た目（src/deepmap/views/views.css）。ここはパネルの中の外枠だけ。
+ * 3 か月ごとの地図があるとき、右のパネルは少し広く（広い画面）、狭い画面の引き出しは画面の幅いっぱい（390px で読む画面）
+ */
+
+/* パネルの幅: 見取り図・道の画面は 390px の画面で読む形なので、広い画面でもそれに近い幅に */
+:root:has(.app-shell.has-deep) {
+  --right-w: 420px;
+}
+@media (max-width: 1280px) {
+  :root:has(.app-shell.has-deep) {
+    --right-w: 380px;
+  }
+}
+@media (max-width: 860px) {
+  .app-shell.has-deep:not(.right-closed) .sidebar-right {
+    width: 100vw;
+    left: 0;
+  }
+  .app-shell.has-deep .insp-body-scroll {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+  }
+}
+
+/* 見取り図（概要の先頭） */
+.deep-ov {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 26px;
+  min-width: 0;
+}
+.deep-ov[hidden],
+.deep-node[hidden],
+.deep-body[hidden] {
+  display: none;
+}
+/* 試し版の見出しの大きさは、パネルの中では一段小さく */
+.deep-ov .dm-h2,
+.deep-page .dm-h2 {
+  font-size: 18px;
+}
+/* 判断・出来事の分かれ・行き先の数の 1 行（正直な数: 作業メモ SPEC v1 §5.1・truth-18）は、パネルの中でも行に出す（試し版は狭い画面で手の詳しい画面にだけ） */
+.deep-ov .dm-row-counts {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.deep-notes {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.deep-notes > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.deep-note {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-2);
+  background: var(--bg-elev);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.deep-note p {
+  margin: 0;
+}
+
+/* パネルの中のページ（手の詳しい画面・道の画面） */
+.deep-page {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.deep-bar {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -14px -4px 0;
+  padding: 8px 4px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--line);
+}
+.deep-bar-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deep-back,
+.deep-close {
+  min-height: 44px;
+  min-width: 44px;
+}
+.deep-page-body {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+/* パネルの上の「戻る」で戻るので、試し版の戻るリンクは出さない */
+.deep-page .dm-back {
+  display: none;
+}
+.deep-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.deep-tools:empty {
+  display: none;
+}
+
+/* カードの詳細の、この先の道・時間で区切って開く */
+.deep-node {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.deep-node-btns,
+.deep-open-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.deep-node-btns .btn,
+.deep-open-row .btn {
+  min-height: 40px;
+  white-space: normal;
+  text-align: left;
+}
+.deep-open-sec {
+  display: grid;
+  gap: 6px;
+}
+.deep-open.is-map {
+  border-style: dashed;
+}
+/* 今日の「手ごとに開く」「今日から全部」の見出し（見直し user-8） */
+.deep-open-note {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.deep-open-moves .btn {
+  min-height: 34px;
+  font-size: 12px;
+}
+
+/* 組み立てた本文（読むだけ） */
+.deep-body {
+  display: grid;
+  gap: 8px;
+}
+.deep-nums {
+  margin: 0;
+}
+.deep-nums[hidden] {
+  display: none;
+}
+.deep-body-text {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  color: var(--text-1);
+}
+.deep-body-note {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.deep-body .btn[hidden],
+.deep-body-unfold[hidden] {
+  display: none;
+}
+/* 写した後は最初の 3 行だけ（自分のメモに同じ文章がある: 見直し user-3） */
+.deep-body-text.is-folded {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+.deep-body-unfold {
+  justify-self: start;
+}
+/* 狭い画面: 同じ判断の手の「ほか N 個を見る」 */
+.imp-alt-more {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+/* 新しい地図の知らせ（版 7。src/ui/releaseSheet.ts） */
+.rel-points {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding-left: 1.2em;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+.rel-points b {
+  color: var(--text-1);
+  font-weight: 650;
+}
+.rel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.rel-table caption {
+  caption-side: top;
+  text-align: left;
+  padding-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.rel-table th,
+.rel-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: baseline;
+}
+.rel-table thead th {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-align: right;
+}
+.rel-table thead th:first-child,
+.rel-table tbody th {
+  text-align: left;
+}
+.rel-table tbody th {
+  font-weight: 600;
+  color: var(--text-1);
+}
+.rel-table td {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.rel-table td:last-child {
+  color: var(--text-1);
+  font-weight: 650;
+}
+.rel-tag {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--warn);
+}
+.rel-foot {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+/* キャンバスの上に年月の目盛りを描いているとき（3 か月ごとの地図）: お知らせの帯は目盛りの下へ */
+.center.has-ruler .banner-area {
+  top: 36px;
+}
+
+/* 起動の途中に先に描く見取り図（src/ui/deepSplash.ts）。アプリの画面ができたら入れ替わる */
+.deep-splash {
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-app);
+  color: var(--text-1);
+  padding: 14px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px));
+}
+.deep-splash-head {
+  max-width: 720px;
+  margin: 0 auto 12px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.deep-splash-body {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.deep-splash .dm-overview {
+  display: grid;
+  gap: 14px;
+}
+/* 読み込みの間は押せる形に見せない（リンクの色・押せる印を消して少し薄く: 見直し user-12） */
+.deep-splash .dm-glance-row {
+  cursor: default;
+  opacity: 0.72;
+}
+.deep-splash .dm-glance-row .dm-glance-name,
+.deep-splash .dm-glance-row.is-pi .dm-glance-name {
+  color: var(--text-2);
+}
+.deep-splash-busy {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-weight: 600;
+  animation: deep-splash-pulse 1.4s ease-in-out infinite;
+}
+@keyframes deep-splash-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .deep-splash-busy {
+    animation: none;
+  }
+}
+
+/* 方針の外の今日の手（見取り図の数は方針で絞らないので、行は残して薄くする: 作業メモ SPEC v1 §5.11・見直し user-13） */
+.deep-ov a.dm-glance-row.is-off,
+.deep-ov a.dm-row.is-off {
+  opacity: 0.45;
+}
+.deep-ov a.dm-row.is-off .dm-row-name::after {
+  content: "（方針の外）";
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-left: 4px;
+}

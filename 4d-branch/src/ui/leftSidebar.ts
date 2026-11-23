@@ -125,8 +125,8 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
   };
 
   const render = () => {
-    vm.ensure();
     const doc = store.doc;
+    seen = { members: vm.index.version.members, projectOrder: doc.projectOrder, scenarioOrder: doc.scenarioOrder };
     const prefs = ui.prefs;
     const filter = new Set(prefs.projectFilter.filter((p) => doc.projects[p]));
     root.querySelector<HTMLElement>('[data-section="projects"]')!.classList.toggle("collapsed", !prefs.sections.projects);
@@ -139,9 +139,9 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
     addProjectBtn.disabled = store.readOnly;
     addScenarioBtn.disabled = store.readOnly;
 
-    // プロジェクト
+    // プロジェクト（数は索引が持つ。文書をなめない: 作業メモ perf-4・gaps-8）
     clear(projectList);
-    const total = Object.keys(doc.nodes).length;
+    const total = vm.nodeCount;
     const allRow = h(
       "button",
       { class: `side-row${filter.size === 0 ? " active" : ""}`, type: "button", role: "option", attrs: { "aria-selected": String(filter.size === 0) }, title: "すべてのプロジェクトを表示" },
@@ -155,7 +155,7 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
       const p = doc.projects[pid];
       if (!p) continue;
       const count = vm.index.projectNodes.get(pid)?.length ?? 0;
-      const sharedCount = (vm.index.projectNodes.get(pid) ?? []).filter((n) => vm.index.shared.has(n)).length;
+      const sharedCount = vm.index.sharedIn.get(pid) ?? 0;
       const on = filter.has(pid);
       const more = h("button", { class: "row-more icon-btn icon-btn-xs", type: "button", ariaLabel: `${p.name} のメニュー`, title: "メニュー" }, icon("more", 15));
       more.addEventListener("click", (ev) => {
@@ -292,8 +292,14 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
     );
   };
 
+  // 描き直すのは、一覧に出す物（数・タグ・プロジェクトとシナリオの中身と並び）が変わったときだけ（題名・状態などの編集では描き直さない）
+  let seen = { members: -1, projectOrder: null as unknown, scenarioOrder: null as unknown };
   store.on("change", (info) => {
-    if (!info.positionsOnly) render();
+    if (info.positionsOnly) return;
+    const doc = store.doc;
+    const members = vm.index.version.members;
+    if (!info.full && !info.projects.size && !info.scenarios.size && members === seen.members && doc.projectOrder === seen.projectOrder && doc.scenarioOrder === seen.scenarioOrder) return;
+    render();
   });
   ui.on("prefs", (p) => {
     if (!onlyTimeCursor(p)) render();

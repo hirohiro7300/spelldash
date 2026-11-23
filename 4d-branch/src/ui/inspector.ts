@@ -6,8 +6,10 @@ import { onlyTimeCursor } from "../app/uiState";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
 import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from "../model/dates";
 import type { GEdge, GNode, ID } from "../model/types";
-import { MOD, autosize, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
+import { isNarrowScreen } from "./breakpoints";
+import { MOD, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
+import { buildComposedBody, buildDeepNodeBlock, buildDeepOverview, buildDeepPage, type DeepPageHandle } from "./deepPanel";
 import { buildImpactNodeBlock, buildImpactOverview, focusLost, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
 import { edgeProb, formatPercent } from "../model/forecast";
@@ -30,6 +32,9 @@ export function buildInspector(app: AppContext): HTMLElement {
   let viewUpdaters: Updater[] = [];
 
   const selKey = () => {
+    // 3 か月ごとの地図の画面（手の詳しい画面・道の画面）は、選んだ物より前に出す
+    const pg = ui.deepPage;
+    if (pg) return pg.kind === "move" ? `deep:move:${pg.f}` : `deep:path:${pg.node}`;
     const s = ui.selection;
     if (s.nodes.size === 0 && s.edges.size === 0) return "none";
     if (s.nodes.size === 1 && s.edges.size === 0) return `node:${[...s.nodes][0]}`;
@@ -57,7 +62,18 @@ export function buildInspector(app: AppContext): HTMLElement {
     park.focus({ preventScroll: true });
   };
 
+  /** 狭い画面で引き出しを閉じている間に作り直しを頼まれた（開いたときに作る） */
+  let pendingForce = false;
   const render = (force = false) => {
+    // 狭い画面で引き出しを閉じている（置かれていない）間は作らず、開いたときに作る（カードを押すたびに見えないパネルを作らない: 見直し perf-5）
+    if (isNarrowScreen() && !ui.prefs.rightOpen) {
+      if (force) pendingForce = true;
+      return;
+    }
+    if (pendingForce) {
+      pendingForce = false;
+      force = true;
+    }
     const k = selKey();
     if (k === key && !force) {
       for (const u of updaters) u();
@@ -67,12 +83,21 @@ export function buildInspector(app: AppContext): HTMLElement {
     // その部品が無くなっていたら（別の端末でその欄が消えた など）、パネルの中の決まった所へ
     const held = k === key ? heldFocus() : null;
     const back = k === key ? holdFocus(body) : null;
+    const moved = k !== key;
     key = k;
     updaters = [];
     viewUpdaters = [];
     clear(body);
     const doc = store.doc;
-    if (k.startsWith("node:")) {
+    let page: DeepPageHandle | null = null;
+    if (k.startsWith("deep:") && ui.deepPage) {
+      page = buildDeepPage(app, ui.deepPage);
+      if (page) {
+        body.append(page.el);
+        const pg = page;
+        updaters.push(() => pg.update());
+      } else ui.closeDeep();
+    } else if (k.startsWith("node:")) {
       const id = k.slice(5);
       if (doc.nodes[id]) nodePanel(app, id, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     } else if (k.startsWith("edge:")) {
@@ -80,14 +105,26 @@ export function buildInspector(app: AppContext): HTMLElement {
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
     } else if (k.startsWith("multi:")) multiPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     else overviewPanel(app, body, (u) => updaters.push(u));
-    headTitle.textContent = k === "none" ? "概要" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
+    headTitle.textContent = k === "none" ? "概要" : k.startsWith("deep:") ? "3 年の分かれ道" : k.startsWith("edge:") ? "接続の詳細" : k.startsWith("multi:") ? "まとめて編集" : "ノードの詳細";
     headSub.textContent = store.readOnly ? "閲覧のみ" : "";
     for (const u of updaters) u();
+    // 別の物を出した（道の画面を閉じてカードの詳細へ戻った など）: 前の画面の送った位置のまま、詳細の途中から見せない（見直し user-15）
+    if (moved) body.scrollTop = 0;
     back?.();
     settleFocus(held);
+    // パネルに入れた後で、道を切り替えた行を同じ位置に（入れる前は位置を測れない）
+    page?.settle();
   };
 
-  ui.on("selection", () => render());
+  ui.on("selection", () => {
+    // 選んだ物が変わった（キャンバス・リスト・検索で選んだ）: 3 か月ごとの地図の画面を閉じて、その詳細へ（画面の中から選んだときは閉じない）
+    if (ui.deepPage && !ui.deepHeld) ui.closeDeep();
+    render();
+  });
+  // 3 か月ごとの地図の画面を開いた・切り替えた・閉じた
+  ui.on("deep", () => render(true));
+  // ページに入れた 3 か月ごとの地図を読み終えた（見取り図・カードの詳細を出し直す）
+  app.vm.deep.onReady(() => render(true));
   store.on("change", (info) => {
     // 消えた要素を選んでいたら外す（別の端末の内容を取り込んで、選んでいたノード・線が無くなった など）。
     // そのときパネルの中にあったフォーカス（入力していた欄・キーボードで操作していた部品）は、作り直した後にパネルの中の決まった所へ
@@ -125,14 +162,26 @@ function sectionEl(title: string, ...children: Array<Node | null>): HTMLElement 
   return h("section", { class: "insp-section" }, h("h3", { class: "insp-label" }, title), ...children);
 }
 
+/** 次のフレームで高さを合わせるテキストエリア（と高さの上限） */
+const pendingFit = new Map<HTMLTextAreaElement, number | undefined>();
+let fitRaf = 0;
+
 /**
  * テキストエリアの高さを中身に合わせる。閉じている右のパネル（狭い画面の引き出しも）の中では幅がほとんど無く、
- * 高く測ったまま開いた後も残る。パネルを開く知らせはパネルが広がる前に届くので、次のフレーム（広がった後）にもう一度合わせる
+ * 高く測ったまま開いた後も残る。パネルを開く知らせはパネルが広がる前に届くので、次のフレーム（広がった後）に合わせる。
+ * 合わせるのは次のフレームの描く前に、その時の物をまとめて 1 回（先に全部を auto にしてから測る: 測るたびに配置を
+ * やり直さない。選ぶ・1 文字のたびに何度も配置をやり直すと、スマホで 100 ms 以上かかる: 作業メモ perf-4・perf-12）
  */
 function fitHeight(ta: HTMLTextAreaElement, max?: number): void {
-  autosize(ta, max);
-  requestAnimationFrame(() => {
-    if (ta.isConnected) autosize(ta, max);
+  pendingFit.set(ta, max);
+  if (fitRaf) return;
+  fitRaf = requestAnimationFrame(() => {
+    fitRaf = 0;
+    const list = [...pendingFit].filter(([t]) => t.isConnected);
+    pendingFit.clear();
+    for (const [t] of list) t.style.height = "auto";
+    const hs = list.map(([t, m]) => Math.min(m ?? 360, t.scrollHeight + 2));
+    list.forEach(([t], i) => (t.style.height = `${hs[i]}px`));
   });
 }
 
@@ -188,7 +237,7 @@ function bindText(app: AppContext, el: HTMLInputElement | HTMLTextAreaElement, w
   el.addEventListener("compositionend", () => (composing = false));
   unsaved.set(el, () => composing);
   el.addEventListener("input", () => {
-    if (el instanceof HTMLTextAreaElement) autosize(el);
+    if (el instanceof HTMLTextAreaElement) fitHeight(el);
     write(el.value);
   });
   el.addEventListener("blur", () => app.store.history.seal());
@@ -291,18 +340,34 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
   const projLine = h("div", { class: "insp-projline" });
   wrap.append(h("div", { class: "insp-meta" }, status, projLine));
-  // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）
-  const impact = buildImpactNodeBlock(app, id);
+  // 文章（3 か月ごとの地図のカードは、組み立てた本文を読むだけで上に出し、下の欄は自分のメモ: 作業メモ SPEC v1 §4.4・safety-10）
+  const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", dataset: { fk: "body" }, attrs: { rows: "3", "aria-label": "文章" } });
+  bindText(app, bodyTa, (v) => cmd.updateNode(id, { body: v }, { label: "文章を編集", coalesce: `body:${id}` }));
+  const composed = buildComposedBody(app, id, () => bodyTa.focus());
+  // 3 年の分かれ道の中のノード: 3 年の影響・見込み・目印（下の「ここに至る見込み」の代わり）。組み立てた本文は、その数のすぐ後に
+  // （狭い画面でも、具体的な文章を 2 画面より下へ押しやらない: 見直し user-11）
+  const impact = buildImpactNodeBlock(app, id, composed?.el ?? null);
   if (impact) wrap.append(impact.el);
+  // 3 か月ごとの地図のカード: この先の道を読む・時間で区切って開く（作業メモ SPEC v1 §5.4・§5.5・§5.8）
+  const deepBlock = buildDeepNodeBlock(app, id);
+  if (deepBlock) {
+    wrap.append(deepBlock.el);
+    push(() => deepBlock.update());
+    pushView(() => deepBlock.update());
+  }
   // 未来の道筋: ここに至る見込みと、今日から何歩目か
   const forecastLine = h("div", { class: "insp-forecast", attrs: { role: "status" } });
   forecastLine.hidden = true;
   wrap.append(forecastLine);
 
-  // 文章
-  const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", dataset: { fk: "body" }, attrs: { rows: "3", "aria-label": "文章" } });
-  bindText(app, bodyTa, (v) => cmd.updateNode(id, { body: v }, { label: "文章を編集", coalesce: `body:${id}` }));
-  const bodySec = sectionEl("文章", bodyTa);
+  if (composed) {
+    // 3 年の影響の欄の中に入らなかった（範囲の外など）ときだけ、ここに
+    if (!impact) wrap.append(composed.el);
+    push(() => composed.update());
+    bodyTa.placeholder = "自分のメモ（地図の文章とは別に残る）";
+    bodyTa.setAttribute("aria-label", "自分のメモ");
+  }
+  const bodySec = sectionEl(composed ? "自分のメモ" : "文章", bodyTa);
   wrap.append(bodySec);
 
   // 期限
@@ -777,6 +842,18 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
 
 // ------------------------------------------------------------ 何も選んでいない
 
+/** 未来の道筋（v1）の分かれ道の数（見込みの結果ごとに 1 回数える） */
+const forkCounts = new WeakMap<object, number>();
+function forkCount(fc: { reach: ReadonlyMap<ID, unknown> }, doc: { nodes: Record<ID, GNode> }): number {
+  let c = forkCounts.get(fc);
+  if (c === undefined) {
+    c = 0;
+    for (const id of fc.reach.keys()) if (doc.nodes[id]?.type === "branch") c++;
+    forkCounts.set(fc, c);
+  }
+  return c;
+}
+
 function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void): void {
   const { store, vm, ui } = app;
   const wrap = h("div", { class: "insp-overview" });
@@ -784,11 +861,13 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
   const stats = h("div", { class: "stat-grid" });
   const bars = h("div", { class: "type-bars" });
   const insight = h("div", { class: "insight" });
+  // 3 か月ごとの地図（版 7）: 3 年の見取り図を先頭に（作業メモ SPEC v1 §5.1）
+  const deep = buildDeepOverview(app);
   // 3 年の分かれ道（v2）: 3 年の影響・今決めること・分布・行き先（あれば下の「行き先の見込み」の代わり）
   const impact = buildImpactOverview(app);
   // 未来の道筋: 行き先（その先が無いノード）の見込み
   const ends = h("div", { class: "forecast-ends" });
-  wrap.append(impact.el, ends, stats, bars, insight);
+  wrap.append(deep.el, impact.el, ends, stats, bars, insight);
   wrap.append(
     h(
       "div",
@@ -807,18 +886,20 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
       h("button", { class: "btn btn-sm", type: "button", onClick: () => app.startTour() }, icon("help", 14), "操作ガイドを見る"),
     ),
   );
+  // 数はどれも索引から（文書をなめない。作業メモ perf-4・gaps-8）。プロジェクトをまたぐノードは見え方の計算が覚えている物
   push(() => {
-    vm.ensure();
     const doc = store.doc;
-    const nodes = Object.values(doc.nodes);
+    const idx = vm.index;
+    deep.update();
     const impactShown = impact.update();
     clear(ends);
-    const fc = vm.forecast;
-    ends.hidden = impactShown || !fc.active || !fc.ends.length;
-    if (!impactShown && fc.active && fc.ends.length) {
+    // 見込みの行き先は 3 年の影響を出していないときだけ（出しているときは見込みの計画を作らない: 8 万枚の地図の起動を待たせない。見直し perf-7）
+    const fc = impactShown ? null : vm.forecast;
+    ends.hidden = !fc || !fc.active || !fc.ends.length;
+    if (fc && fc.active && fc.ends.length) {
       const sid = ui.prefs.scenarioId;
       const scen = sid ? doc.scenarios[sid] : undefined;
-      const forks = [...fc.reach.keys()].filter((id) => doc.nodes[id]?.type === "branch").length;
+      const forks = forkCount(fc, doc);
       ends.append(
         h("h3", { class: "insp-label" }, "行き先の見込み", scen ? h("span", { class: "insp-count" }, `${scen.name}を選んだ場合`) : null),
         h("div", { class: "muted small forecast-sub" }, `今日から最長 ${fc.longest} 歩・分かれ道 ${forks} 個。線の % を直すと計算し直します`),
@@ -843,15 +924,15 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
     clear(stats);
     const stat = (label: string, value: number, hint: string, iconName: string) => h("div", { class: "stat", title: hint }, h("span", { class: "stat-icon" }, icon(iconName, 14)), h("span", { class: "stat-value" }, value.toLocaleString("ja-JP")), h("span", { class: "stat-label" }, label));
     stats.append(
-      stat("ノード", nodes.length, "目標・行動・分岐・結果", "layers"),
-      stat("接続", Object.keys(doc.edges).length, "方向と関係を持つ線", "link"),
-      stat("共有ノード", vm.index.shared.size, "2 つ以上のプロジェクトに属するノード", "merge"),
-      stat("プロジェクト間の線", vm.index.cross.size, "別のプロジェクトへ影響する線", "sparkle"),
+      stat("ノード", idx.nodeCount, "目標・行動・分岐・結果", "layers"),
+      stat("接続", idx.edgeCount, "方向と関係を持つ線", "link"),
+      stat("共有ノード", idx.shared.size, "2 つ以上のプロジェクトに属するノード", "merge"),
+      stat("プロジェクト間の線", idx.cross.size, "別のプロジェクトへ影響する線", "sparkle"),
     );
     clear(bars);
-    const total = Math.max(1, nodes.length);
+    const total = Math.max(1, idx.nodeCount);
     for (const t of NODE_TYPE_ORDER) {
-      const c = nodes.filter((n) => n.type === t).length;
+      const c = idx.typeCounts[t] ?? 0;
       bars.append(
         h(
           "div",
@@ -862,13 +943,14 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
         ),
       );
     }
-    // いちばん多くのプロジェクトに効いている行動（相乗効果の目安。計算はせず、所属と線の数だけ）
+    // いちばん多くのプロジェクトに効いている行動（相乗効果の目安。計算はせず、所属と線の数だけ）。3 年の分かれ道のカードは除く
+    // （地図のカードはどれも 3 つの領域に属する。見え方の計算が形・所属の版ごとに覚えている）
     clear(insight);
-    const hubs = nodes
-      .map((n) => ({ n, reach: new Set([...(vm.index.out.get(n.id) ?? [])].flatMap((eid) => doc.nodes[doc.edges[eid]!.target]!.projectIds)).size, outs: vm.index.out.get(n.id)?.length ?? 0 }))
-      .filter((x) => x.n.projectIds.length > 1 || x.reach > 1)
-      .sort((a, b) => b.n.projectIds.length + b.reach - (a.n.projectIds.length + a.reach) || b.outs - a.outs)
-      .slice(0, 3);
+    const hubs = vm
+      .hubs(3)
+      .map((id) => doc.nodes[id])
+      .filter((n): n is GNode => !!n)
+      .map((n) => ({ n }));
     if (hubs.length) {
       insight.append(h("h3", { class: "insp-label" }, "プロジェクトをまたぐノード"));
       for (const x of hubs) {

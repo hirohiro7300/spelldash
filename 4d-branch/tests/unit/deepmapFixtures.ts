@@ -8,7 +8,7 @@
 
 import { expect } from "vitest";
 import { buildImpactDoc, impactNodeId, type ImpactAltX, type ImpactBNode, type ImpactBundle, type ImpactOutX, type ImpactRootX, type ImpactSt, type R3 } from "../../src/demo/impact";
-import { optionDeltas, overview, ROLE_A, valueParts, type Analysis, type CompiledMap } from "../../src/deepmap/core";
+import { baseOf, deltaBetween, optionDeltas, overview, ROLE_A, valueParts, type Analysis, type CompiledMap } from "../../src/deepmap/core";
 import type { DevTree, DevTreeNode, MapData, MapHeader, MapMix } from "../../src/deepmap/mapData";
 import { computeForecast } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
@@ -357,7 +357,14 @@ export function compare(map: MapData, a: Analysis, app: AppRun): { options: numb
       const info = res.alt.get(nid);
       if (info) {
         options++;
-        close(Number.isFinite(deltas[i]!) ? deltas[i]! : null, info.delta, `差 ${key}`);
+        // 画面に出す差: アプリの文書に q がある地図（版 7）は、両方の手に比べ方をそろえた値（q・まとめた手の値）があればその差、
+        // 無ければ地図の値（木の値）の差（計算の芯の deltaBetween。木の値の差が出ない手は、アプリも差を出さない: 見直し user-1・equiv-1）。
+        // q の無い文書（今日の同梱データの形に直した物など）は木の値の差
+        const tree = Number.isFinite(deltas[i]!) ? deltas[i]! : null;
+        const b = baseOf(cm, cm.parent[i]!);
+        const want = tree !== null && b >= 0 && res.likeBasis ? deltaBetween(a.pi, i, b) : null;
+        close(res.likeBasis ? (want ? want.d : null) : tree, info.delta, `差 ${key}`);
+        if (want) expect([key, info.deltaBasis]).toEqual([key, want.basis]);
       }
     } else if (cm.kidOff[i] !== cm.kidOff[i + 1]) {
       const d = res.decision.get(nid);

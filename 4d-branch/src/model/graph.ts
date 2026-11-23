@@ -1,5 +1,6 @@
 // 派生データ（保存しない）: 隣接・プロジェクトの所属・タグ・共有ノード・交差リンク。設計: docs/DESIGN.md §3.7
-// 変更のたびに O(ノード + 接続) で作り直す（5,000 要素でも 1 ms 程度）
+// buildIndex は全部から作る（O(ノード + 接続)）。アプリは変更のたびに作り直さず、変わった物だけ直す ./docIndex.ts を使う
+// （同じ中身。buildIndex はその基準と、1 回だけ作る所で使う）
 
 import type { DocData, GEdge, GNode, ID } from "./types";
 
