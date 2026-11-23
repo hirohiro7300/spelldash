@@ -172,9 +172,10 @@ export class App implements AppContext {
     this.bootDoc = { id: d0.id, updatedAt: d0.updatedAt, fallback: !!opts.bootFallback && !opts.ephemeral };
     // 起動したときの手元の地図の版の順番は、保存してあった形の物（前の版の地図をページの地図に引き上げて読んでも、前の版: アカウントの突き合わせで、
     // まだ送っていない変更がどの版の地図の上で書かれた物かを見る。safety-2）
-    this.bootMapRelease = storedMapReleaseOf(d0) ?? mapReleaseOf(d0);
-    this.bootRecorded = this.recordBootDoc();
     this.vm = new ViewModel(this.store, this.ui);
+    // 予測の入口だけを見る（索引が持っている入口の一覧: 8 万枚の文書の鍵を数え直さない。答えは mapReleaseOf と同じ）
+    this.bootMapRelease = storedMapReleaseOf(d0) ?? rootsRelease(d0, this.vm.index.forecastRoots);
+    this.bootRecorded = this.recordBootDoc();
     this.view = new CanvasView(this.store, this.ui, this.vm);
     this.cmd = new Commands(this.store, this.ui, this.vm, {
       toast: (t, o) => toast(t, o),
@@ -1882,4 +1883,16 @@ export class App implements AppContext {
     this.ui.setPrefs({ persistAsked: true });
     await this.persistence.requestPersist();
   }
+}
+
+/** 予測の入口（meta.forecastRoot のノード）のうち、一番新しい地図の版の順番（無ければ null。src/persist/cloud.ts の mapReleaseOf と同じ答え） */
+function rootsRelease(doc: DocData, roots: Iterable<ID>): number | null {
+  let best: number | null = null;
+  for (const id of roots) {
+    const n = doc.nodes[id];
+    if (n?.meta?.forecastRoot !== true) continue;
+    const r = n.meta.futureRelease;
+    if (typeof r === "number" && Number.isFinite(r) && (best === null || r > best)) best = r;
+  }
+  return best;
 }

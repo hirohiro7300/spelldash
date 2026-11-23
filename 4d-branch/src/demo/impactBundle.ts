@@ -253,6 +253,47 @@ const copyBand = (b: MapBand): MapBand => {
 export interface BundleMapData extends MapData {
   /** カード i の鍵の最後の区切り（同じ番号は同じ文字列） */
   seg(i: number): string;
+  /**
+   * 同じ中身の行の番号（組み立てが、同じ中身の部品を 1 つにするのに使う: 中身を作って比べずに、番号で引く。見直し perf-1）。
+   * st・rr は同じ番号なら st(i)・rr(i) が同じ中身。ln・rv・band は表の番号（0 は無し）で、同じ番号なら同じ中身
+   */
+  rowKey(i: number, what: "st" | "rr" | "ln" | "rv" | "band"): number;
+}
+
+/** 列の値の組が同じ行に同じ番号を付ける（最初に出た順に 0, 1, …） */
+function internRows(n: number, cols: readonly Int32Array[]): Int32Array {
+  const out = new Int32Array(n);
+  const first: number[] = [];
+  const table = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    let h = 0x811c9dc5;
+    for (const c of cols) h = Math.imul(h ^ c[i]!, 0x01000193);
+    h &= 0x3fffffff;
+    const bucket = table.get(h);
+    let id = -1;
+    if (bucket)
+      for (const k of bucket) {
+        const r = first[k]!;
+        let same = true;
+        for (const c of cols)
+          if (c[r] !== c[i]) {
+            same = false;
+            break;
+          }
+        if (same) {
+          id = k;
+          break;
+        }
+      }
+    if (id < 0) {
+      id = first.length;
+      first.push(i);
+      if (bucket) bucket.push(id);
+      else table.set(h, [id]);
+    }
+    out[i] = id;
+  }
+  return out;
 }
 
 /**
@@ -509,10 +550,30 @@ export function decodeBundleBytes(bytes: Uint8Array): BundleMapData {
     return arr;
   };
 
+  // 同じ中身の行の番号（初めて問われたときに作る）
+  let stKeys: Int32Array | null = null;
+  let rrKeys: Int32Array | null = null;
+  const rowKey = (i: number, what: "st" | "rr" | "ln" | "rv" | "band"): number => {
+    N(i);
+    switch (what) {
+      case "st":
+        return (stKeys ??= internRows(n, [jpp, ...stCols, fl]))[i]!;
+      case "rr":
+        return (rrKeys ??= internRows(n, rr))[i]!;
+      case "ln":
+        return isOut(i) ? ln[sub[i]!]! : 0;
+      case "rv":
+        return isOut(i) ? rv[sub[i]!]! : 0;
+      case "band":
+        return band[i]!;
+    }
+  };
+
   return {
     header,
     n,
     seg: (i) => S.seg.get(seg[N(i)]!),
+    rowKey,
     parent: (i) => parent[N(i)]!,
     childCount: (i) => kidOff[N(i) + 1]! - kidOff[i]!,
     child: (i, k) => {

@@ -48,6 +48,7 @@ import type { MapBand, MapData, MapRole, MapTodo } from "../deepmap/mapData";
 import { isDateStr } from "../model/dates";
 import { SCHEMA, SCHEMA_VERSION } from "../model/schema";
 import type { Condition, DocData, GEdge, GNode, ID, Meta, NodeTime, NodeType, Project, Scenario } from "../model/types";
+import type { BundleMapData } from "./impactBundle";
 import { quarterIdTable } from "./quarterIds";
 import { edgeTextPrint, fnv36, fnv64x36, IMPACT_AREAS, IMPACT_SCENARIOS, IMPACT_TITLE, impactTagsOf, type ImpactLine, type ImpactSt, type R3 } from "./impact";
 
@@ -333,6 +334,13 @@ export function buildQuarterParts(map: MapData, opts: QuarterDocOpts): QuarterPa
       return fz(o);
     },
   );
+  // 同梱データの読み手の、同じ中身の行の番号ごとの共有の部品（無ければ中身で引く）
+  const rowKey = (map as Partial<BundleMapData>).rowKey;
+  const stBy: ImpactSt[] = [];
+  const rrBy: R3[] = [];
+  const bandBy: MapBand[] = [];
+  const lnBy: ImpactLine[] = [];
+  const rvBy: Array<[string, string]> = [];
   // 期限とタグ（役割と月ごと）
   const optTime = new Map<number, NodeTime>();
   const outTime = new Map<number, NodeTime>();
@@ -516,10 +524,20 @@ export function buildQuarterParts(map: MapData, opts: QuarterDocOpts): QuarterPa
       const q = map.q(i);
       if (q) meta.q = [q[0], q[1], q[2]];
     } else {
-      const s0 = map.st(i);
-      const st = stPool.of(hashSt(s0), s0);
-      const r0 = map.rr(i);
-      const rr = r3Pool.of(hashR3(r0), r0);
+      let st: ImpactSt;
+      let rr: R3;
+      if (rowKey) {
+        // 同梱データの読み手: 同じ中身の行は同じ番号（中身を作って数えて比べるのは番号ごとに 1 回）
+        const ks = rowKey.call(map, i, "st");
+        st = stBy[ks] ??= ((s0) => stPool.of(hashSt(s0), s0))(map.st(i));
+        const kr = rowKey.call(map, i, "rr");
+        rr = rrBy[kr] ??= ((r0) => r3Pool.of(hashR3(r0), r0))(map.rr(i));
+      } else {
+        const s0 = map.st(i);
+        st = stPool.of(hashSt(s0), s0);
+        const r0 = map.rr(i);
+        rr = r3Pool.of(hashR3(r0), r0);
+      }
       if (code === 0) {
         const never: Record<string, R3> = {};
         for (const f of Object.keys(h.never)) {
@@ -547,8 +565,15 @@ export function buildQuarterParts(map: MapData, opts: QuarterDocOpts): QuarterPa
           b0: B0,
         };
       } else {
-        const b0 = map.band(i);
-        const band = b0 ? bandPool.of(hashPair(hashPair(SEED, b0.cl), b0.pu), b0) : null;
+        const kb = rowKey ? rowKey.call(map, i, "band") : -1;
+        let band: MapBand | null;
+        if (kb === 0) band = null;
+        else if (kb > 0 && bandBy[kb] !== undefined) band = bandBy[kb]!;
+        else {
+          const b0 = map.band(i);
+          band = b0 ? bandPool.of(hashPair(hashPair(SEED, b0.cl), b0.pu), b0) : null;
+          if (kb > 0 && band) bandBy[kb] = band;
+        }
         const r = rank[i]!;
         if (code === 2) meta = band ? { fork: "decision", m, short, st, rr, band, rank: r, key, t0, b0: B0 } : { fork: "decision", m, short, st, rr, rank: r, key, t0, b0: B0 };
         else if (map.sum(i)) meta = band ? { end: true, sum: true, m, short, st, rr, band, rank: r, key, t0, b0: B0 } : { end: true, sum: true, m, short, st, rr, rank: r, key, t0, b0: B0 };
@@ -587,14 +612,19 @@ export function buildQuarterParts(map: MapData, opts: QuarterDocOpts): QuarterPa
       const condition = str(map.line(i));
       const prob = map.p(i);
       const e = map.e(i);
-      const l = map.ln(i);
-      const x = map.rv(i);
+      const kl = rowKey ? rowKey.call(map, i, "ln") : -1;
+      const kv = rowKey ? rowKey.call(map, i, "rv") : -1;
+      const l = kl === 0 ? null : kl > 0 && lnBy[kl] !== undefined ? lnBy[kl]! : map.ln(i);
+      const x = kv === 0 ? null : kv > 0 && rvBy[kv] !== undefined ? rvBy[kv]! : map.rv(i);
       const r: R3 = [e[0], e[1], e[2]];
       const c0 = c0Of(label, condition);
       let emeta: Meta;
-      if (l && x) emeta = { prob, r, ln: lnPool.of(hashLn(l), l), rv: rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x), p0: prob, c0 };
-      else if (l) emeta = { prob, r, ln: lnPool.of(hashLn(l), l), p0: prob, c0 };
-      else if (x) emeta = { prob, r, rv: rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x), p0: prob, c0 };
+      // 同じ番号の判断の線・事実は、1 度共有の物にしたらそのまま（共有の物を共有の入れ物で引いても同じ物が返る）
+      const ln = l ? (kl > 0 ? (lnBy[kl] ??= lnPool.of(hashLn(l), l)) : lnPool.of(hashLn(l), l)) : null;
+      const rv = x ? (kv > 0 ? (rvBy[kv] ??= rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x)) : rvPool.of(hStr(hStr(SEED, x[0]), x[1]), x)) : null;
+      if (ln && rv) emeta = { prob, r, ln, rv, p0: prob, c0 };
+      else if (ln) emeta = { prob, r, ln, p0: prob, c0 };
+      else if (rv) emeta = { prob, r, rv, p0: prob, c0 };
       else emeta = { prob, r, p0: prob, c0 };
       edge = { id: eid, source, target: id, relation: "condition", label, condition, scenarioIds: EMPTY, collapsed: false, createdAt: at, updatedAt: at, meta: emeta };
     }
