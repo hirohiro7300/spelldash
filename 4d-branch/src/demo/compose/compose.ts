@@ -16,7 +16,7 @@
 //   この道で月の稼ぎを一番動かした結果（まとめた行き先は、標準の続きの目安）
 import type { MapContStep, MapData, MapMix } from "../../deepmap/mapData";
 import type { ImpactSt, R3 } from "../impact";
-import { accOf, capOf, clBand, landing, countEvent, countKind, countKindHere, endLink, eventMonth, eventsList, factShare, FILING_KINDS, indMonthsAt, jobMonths, joinedAt, keepTotalOf, linkFor, linkOf, mergedFact, newFeeOf, optionValue, pathEnv, quarterSal, recentSteps, recommended, ripple, searchCount, sideIn, stepsFor, usedSet, wOf, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
+import { accOf, capOf, clBand, landing, countEvent, countKind, countKindHere, endLink, eventMonth, eventsList, factShare, FAMILY, FILING_KINDS, indMonthsAt, jobMonths, joinedAt, keepTotalOf, linkFor, linkOf, mergedFact, newFeeOf, optionValue, pathEnv, quarterSal, recentSteps, recommended, ripple, searchCount, sideIn, stepsFor, usedSet, wOf, type Ctx, type Ev, type Link, type TitleEntry } from "./path";
 import { clPhrase, clr, cond, f2, hash, man, n0, oneIn, pbText, renyo, slot, spaceJa, strip, wari, yenTxt, type Env } from "./text";
 import type { Card, Consts, Step, Variant } from "./types";
 
@@ -643,6 +643,9 @@ function endPrefix(c: Ctx, n: number): string {
   return c.map.mix(n) ? "3 年後の見込み: " : "3 年後の平均: ";
 }
 
+/** 1.2（W5・con-14）: 本当の行き先の題の届け出の答え */
+const END_PM: Record<string, string> = { "?": "届け出なし", a: "副業も可", s: "Pro だけ可", n: "副業は不可" };
+
 /** 行き先の題: 分かれた数を先に、大きい事実を 2 つまで。年収で変わる数は入れない（code-1） */
 function endTitle(c: Ctx, n: number): string {
   const { map } = c;
@@ -676,6 +679,20 @@ function endTitle(c: Ctx, n: number): string {
       const cands = [`月に遊ぶ人 ${range(mix.mau[0], mix.mau[2], "人")}`, `月に遊ぶ人 ${slot(n0(mix.mau[1]))} 人ほど`, `遊ぶ人 ${slot(n0(mix.mau[1]))} 人ほど`];
       facts.push(cands.find((t) => len(`${pre}${t}`) <= TITLE_MAX.e) ?? cands[cands.length - 1]!);
     }
+  } else if (!map.sum(n)) {
+    // 1.2（W5・con-14）: 本当の行き先は、分かれた数の後に、仕事・届け出の答え・一番の稼ぎの元（顧客・有料会員）を「・」で並べる
+    //   （「3 年後: 給与 1.09 倍」だけにしない。年収で変わる数は入れない: code-1）。収まる所まで
+    const clp = bandClients(c, n) ?? clPhrase(s.cl);
+    const job = s.j === "i" ? "独立" : s.j === "p" ? "週 4 日勤務" : s.fl.includes("switched") ? "転職先" : "会社員";
+    //   顧客がいれば届け出の答え（全部可）は言わない（顧客の数で分かる）
+    //   数（顧客・有料会員）を届け出の答えより先に置く（収まらなければ答えを落とす）
+    const situation = [job, s.cl >= 0.5 ? `顧客 ${clp}` : "", s.pro && s.pu >= 0.5 ? `有料 ${slot(n0(s.pu))} 人` : "", s.j === "i" || s.cl >= 0.5 ? "" : END_PM[s.pm] ?? ""];
+    const said = (f: string): boolean => facts.some((x) => strip(x).includes(strip(f)) || (f === "転職先" && strip(x).includes("転職")));
+    for (const f of situation) if (f && !said(f)) facts.push(f);
+    const pre = endPrefix(c, n);
+    let t = `${pre}${facts[0]}`;
+    for (const f of facts.slice(1)) if (len(`${t}・${f}`) <= TITLE_MAX.e) t = `${t}・${f}`;
+    return t;
   } else {
     const avg = map.sum(n);
     if (s.j === "i") facts.push(`独立・顧客 ${avg ? avgClients(s.cl) : (bandClients(c, n) ?? clPhrase(s.cl))}`);
@@ -1490,7 +1507,9 @@ function keepActIds(c: Ctx, a: number): readonly string[] {
     if (k2 !== undefined) prev = keepActIds(c, k2);
   }
   const pick = fresh.filter((st) => !prev.includes(st.id));
-  const out = (pick.length ? pick : fresh).slice(0, map.role(d) === "r" ? 1 : 2).map((st) => st.id);
+  // 1.2（W5・con-8）: 文で書く歩みは 3 つまで（残りはやることの言葉で段取りに入る）
+  //   1 つ前の今のままと同じ歩みしか無ければ、文では書かない（やることの言葉で言う）
+  const out = pick.slice(0, 3).map((st) => st.id);
   if (memo.size > 60_000) memo.clear();
   memo.set(a, out);
   return out;
@@ -1557,10 +1576,39 @@ function moveThreadSentence(c: Ctx, a: number, trace: string[]): string {
   return t;
 }
 
-/** 1b・W3: 手の本文の長さの目安（点検 C3 の上 LIMITS.a.max 700 より短く。超えるときは決まった順に文を落とす） */
+/** 1b・W3: 手の本文の長さの目安（点検 C3 の上 LIMITS.a.max 740 より短く。超えるときは決まった順に文を落とす。1.2 は段取りの文を縮める） */
 export const MOVE_BUDGET = 680;
 /** 1b・W3: 今日の手の本文の長さの目安（点検 C3 の FIRST_MOVE_MAX より短く。今日の手は結果ごとの分かれ道と行き先を言うので長い） */
 export const FIRST_MOVE_BUDGET = 900;
+
+/**
+ * 1.2（W5・con-8）: 手の段取りの 1 文（その 3 か月の k 番目の月 mon にやること）。how: full は手引きの本文の文、short はやることの言葉、
+ * again は道で前に使った歩みをもう一度やる言い方。月の数は差し込み、やることの言葉は手引きの印の中（数字は引いた項目の物。点検 C1b）
+ */
+function planSentence(st: Step, mon: number, same: boolean, k: number, how: "full" | "short" | "again"): string {
+  const m = `${slot(mon)} 月`;
+  const at = same ? `同じ ${m}に、` : `${m}は、`;
+  // 句点は手引きの印の外に置く（点検の骨組みは印の中を落とすので、月の言葉だけの切れ端にして次の文とつなげない）
+  if (how === "full") return `${at}${pbText(st.act.replace(/。$/, ""))}。`;
+  // やることの言葉で言う文も、月の言葉の後を手引きの印の中に入れる（続く判断の同じ種類の手と、印を落とした骨組みが同じにならない。点検 C6）
+  const td = st.todo;
+  if (how === "again") return `${at}${pbText(`前にもやった「${td}」をもう一度やる`)}。`;
+  if (same) return `${at}${pbText(`「${td}」も済ませる`)}。`;
+  return `${m}は、${pbText([`「${td}」から始める`, `「${td}」に取りかかる`, `「${td}」を済ませる`][k % 3]!)}。`;
+}
+
+/**
+ * 1.2（W5・con-8）: 判断の月 m0 から選ぶ手 kind の段取りの 3 つの月（暦の月）。答えの前に済ませる手（4 月の評価・届け出・週 4 日の相談・学校への提案）は、
+ * 答えの月より後に段取りを置かない（評価の後に実績を絞る、と言わない）
+ */
+//   届け出は答えが 1 か月目に出るので、読む・出すは 1 か月目、3 つ目（答えを受けた後の歩み）は 2 か月目。週 4 日の相談と学校への提案は答えが 2 か月目
+const PLAN_AT: Readonly<Record<string, readonly number[]>> = { ad_perm: [1, 1, 2], ad_permside: [1, 1, 2], sd_permpro: [1, 1, 2], part: [1, 2, 2], sd_school: [1, 2, 2] };
+function planMonths(c: Ctx, kind: string, m0: number): number[] {
+  const at = PLAN_AT[kind];
+  if (at) return at.map((k) => c.cal.parts(m0 + k)[1]);
+  const last = kind === "fc_push" ? eventMonth(c.cal, kind, m0) : m0 + 3;
+  return [1, 2, 3].map((k) => c.cal.parts(Math.min(m0 + k, last))[1]);
+}
 
 /** 手のカード。書き出し・分かれ目は、道でその種類の手が何回目か（nth）で言い換えを回す */
 function composeMove(c: Ctx, a: number): Card {
@@ -1572,17 +1620,15 @@ function composeMove(c: Ctx, a: number): Card {
   const fl = map.st(a).fl;
   const title = titleOf(c, a, trace);
   const lead = choose(B.lead[kind], env, fl, s2, seed, trace, `lead.${kind}`) ?? "";
-  // 長い節がある手（今日の手の先の数・避けたい訳・まとめた手の結果ごとの見積もり）は、手引きの文を 1 つだけにする。本文に入れるのは、道で初めて使う歩みの文だけ
-  // 1b・W3: 結果が 1 つの広げた手は、やること 3 つの文を全部書く（今日の手・避けたい手・結果が 3 つ以上の手は 1 つ、結果が 2 つの手とまとめた手の
-  //   結果が 1 つの物は 2 つ。やることの文は、その 3 か月にすることの中身。con-8 の先取り）
-  const nk = map.childCount(a);
-  //   今のままは 2 つまで（どの判断にも並ぶので、続く判断の今のままと同じ歩みを並べない。点検 C6 の判断ごとの繰り返し）
-  const nAct = map.role(d) === "r" || map.why(a) === "avoid" || nk >= 3 ? 1 : map.stub(a) || nk === 2 || kind === "keep" ? (map.stub(a) && nk >= 2 ? 1 : 2) : 3;
-  //   今のままは、1 つ前の判断に並んだ今のまま（この道で選ばなかった方）が本文に書く歩みを書かない（続く判断で同じ文を並べない。点検 C6）
-  const acts = (kind === "keep" ? keepActIds(c, a).map((id) => fresh.find((st) => st.id === id)).filter((st): st is Step => !!st) : fresh)
-    .slice(0, nAct)
-    .map((st) => pbText(st.act))
-    .join("");
+  // 1.2（W5・con-8）: やること 3 つを、その 3 か月の月に 1 つずつ置いた段取りの文にする（「12 月は、…。1 月は、…。2 月は、…。」）。
+  //   道で初めて使う歩みは本文の文（act）、前に使った歩みはやることの言葉で「もう一度やる」と言う（同じ文を道で 2 回書かない。点検 C6）。
+  //   今のままは、1 つ前の判断に並んだ今のまま（この道で選ばなかった方）が文で書く歩みを、やることの言葉で言う（続く判断で同じ文を並べない）。
+  //   長さの目安を超えるときは、2 つ目と 3 つ目をやることの言葉に縮める（move:drop:plan）
+  const fullIds = new Set((kind === "keep" ? keepActIds(c, a) : fresh.map((st) => st.id)));
+  const freshIds = new Set(fresh.map((st) => st.id));
+  const mons = planMonths(c, kind, map.month(a));
+  const planOf = (short: boolean): string => join(steps.map((st, k) => planSentence(st, mons[k]!, k > 0 && mons[k] === mons[k - 1], k, freshIds.has(st.id) ? (fullIds.has(st.id) && !(short && k > 0) ? "full" : "short") : "again")));
+  const acts = planOf(false);
   // お金と仕事・この先の見込みが変わる手だけ、その中身（週の時間は数の行。SPEC §4.2）。結果が事実の場合をまとめた 1 つなら、
   // 見込みは分かれ目の文で言うので重ねない
   const mergedOnly = map.childCount(a) === 1 && mergedFact(map, map.child(a, 0));
@@ -1630,18 +1676,19 @@ function composeMove(c: Ctx, a: number): Card {
   // 1b・W4（L4）: 今日の手の答えがこの手の前提になっているときの 1 文（道で 1 回だけ。長さの目安では落とさない）
   const thread = map.role(d) === "r" ? "" : moveThreadSentence(c, a, trace);
   const parts = [why, lead, thread, acts, cost, prog, avoid, watch, rules, april, value, ripple1, next];
-  const at = { why: 0, cost: 4, prog: 5, rules: 8, april: 9, next: 12 } as const;
+  const at = { why: 0, plan: 3, cost: 4, prog: 5, rules: 8, april: 9, next: 12 } as const;
   const root = map.role(d) === "r";
   const budget = root ? FIRST_MOVE_BUDGET : MOVE_BUDGET;
   let size = parts.reduce((x, t) => x + len(t), 0);
   // 1b・W4（con-11）: 今日の手は、結果ごとの次のおすすめを落とさない（手の時間とお金を先に落とす）
-  const order = root ? (["april", "rules", "cost", "prog", "why"] as const) : (["april", "rules", "next", "cost", "prog", "why"] as const);
+  // 1.2（W5・con-8）: 段取りの文は落とさず、2 つ目と 3 つ目をやることの言葉に縮める（plan）。やること 3 つはどれも本文で月に置く
+  const order = root ? (["april", "rules", "cost", "plan", "prog", "why"] as const) : (["april", "rules", "next", "plan", "cost", "prog", "why"] as const);
   for (const k of order) {
     if (size <= budget) break;
     const was = parts[at[k]]!;
     if (!was) continue;
-    parts[at[k]] = "";
-    size -= len(was);
+    parts[at[k]] = k === "plan" ? planOf(true) : "";
+    size -= len(was) - len(parts[at[k]]!);
     trace.push(`move:drop:${k}`);
   }
   const body = join(parts);
@@ -3007,7 +3054,8 @@ function leverOf(c: Ctx, link: Link): Lever | null {
 
 /** 3 か月の手の名前: 題（年月や「か月」を言う題は、結びの文の年月と重ねないように短い名前） */
 function quarterName(c: Ctx, a: number): string {
-  const t = titleOf(c, a, []);
+  // 手引きの歩みの題（数字は引いた項目の物）は、行き先では差し込みとして言う（行き先はその項目を引かない。点検 C1b）
+  const t = titleOf(c, a, []).replace(/\u0003([^\u0004]*)\u0004/g, (_, x: string) => slot(x));
   return /年|か月/.test(strip(t)) ? kindShort(c, c.map.kind(a) ?? "") : t;
 }
 
@@ -3442,6 +3490,162 @@ function contWatch(c: Ctx, step: MapContStep, k: number): string {
 }
 
 /**
+ * 1.2（W5・con-10）: まとめた行き先 i の標準の続きの、一番ありそうな流れの月の稼ぎ（万円/月）。地図の続き（cont）は期ごとの手と一番ありそうな出来事
+ * だけを持つので、まとめた手を選んだ判断の状態から、その期の出来事を前提の数（C）で足して進める: 給与は 4 月の昇給・昇格・転職・週 4 日・会社員に
+ * 戻る・独立、広告運用は顧客が増える・離れる（月額は道で決まる段）・独立の経費、SpellDash は有料会員を判断の時と 3 年後の平均の間で月ごとに
+ * まっすぐ伸ばし（Pro を出してから）、学校の席を足す。start はまとめた手の 3 か月の後、at[k] は k 番目の期の終わり。env は k 番目の期の初めの状態
+ * （手引きの条件に使う。顧客・届け出の答え・仕事・Pro）。地図に続きの期の数が無いので見積もりの見積もりで、3 年後は中身の平均（行き先の数）と違ってよい
+ */
+export interface ContMoney {
+  start: number;
+  at: number[];
+  env: Array<{ j: ImpactSt["j"]; pm: ImpactSt["pm"]; pro: 0 | 1; cl: number }>;
+}
+const CONT_MONEY = new WeakMap<Ctx, Map<number, ContMoney | null>>();
+export function contMoney(c: Ctx, i: number): ContMoney | null {
+  let memo = CONT_MONEY.get(c);
+  if (!memo) CONT_MONEY.set(c, (memo = new Map()));
+  if (memo.has(i)) return memo.get(i)!;
+  const v = contMoneyOf(c, i);
+  if (memo.size > 30_000) memo.clear();
+  memo.set(i, v);
+  return v;
+}
+function contMoneyOf(c: Ctx, i: number): ContMoney | null {
+  const { map, C, cal } = c;
+  const cont = map.cont(i);
+  if (!cont?.length) return null;
+  const a = map.parent(i);
+  const d = map.parent(a);
+  if (d < 0) return null;
+  const s0 = map.st(d);
+  const sE = map.st(i);
+  const m0 = map.month(a);
+  const H = cal.horizon;
+  let j = s0.j;
+  let pm = s0.pm;
+  let sal = s0.sal;
+  let pro = s0.pro;
+  let cl = s0.cl;
+  let ad = map.rr(d)[1] + (j === "i" ? C.overhead : 0);
+  let f5 = linkOf(c, d).f5;
+  let seats = s0.seats;
+  let proFrom = pro ? m0 : -1;
+  const pay = (): number => (j === "e" ? sal : j === "p" ? C.partFactor * sal : 0);
+  // 有料会員（学校の席を除く。地図の pu は席を含み、席は 1 席の月額で数える）を、判断の時と 3 年後の平均の間で月ごとにまっすぐ伸ばす
+  const own0 = s0.pu - s0.seats;
+  const ownE = sE.pu - sE.seats;
+  const puAt = (m: number): number => Math.max(0, own0 + ((ownE - own0) * (m - m0)) / Math.max(1, H - m0));
+  const addClient = (): void => {
+    ad += newFeeOf(C, j, f5);
+    cl += 1;
+    if (Math.round(cl) >= C.raiseAt) f5 = true;
+  };
+  const apply = (kind: string, ev: string | undefined, m: number): void => {
+    if (j !== "i" && cal.aprils.some((q) => q > m && q <= m + 3)) sal *= 1 + C.aprilRaise;
+    switch (ev) {
+      case "SWITCH_HIGH":
+        sal *= C.switchHigh;
+        break;
+      case "SWITCH_MID":
+        sal *= C.switchMid;
+        break;
+      case "PROMO":
+        sal += C.step * (1 + C.aprilRaise);
+        break;
+      case "PART_ON":
+        j = "p";
+        break;
+      case "BACK_EMP":
+        j = "e";
+        sal = C.backSal * (cal.aprils.includes(m + 3) ? 1 + C.aprilRaise : 1);
+        ad = 0;
+        cl = 0;
+        f5 = false;
+        break;
+      case "IND_START":
+        j = "i";
+        break;
+      case "FIRST_CLIENT":
+      case "CLIENT_UP":
+      case "CLIENT_REGAIN":
+        addClient();
+        break;
+      case "CLIENT_LOST":
+        if (cl >= 0.5) {
+          ad -= cl > 0 ? ad / cl : 0;
+          cl -= 1;
+        }
+        break;
+      case "PERM_A":
+      case "PERM_S":
+        pm = ev === "PERM_A" ? "a" : "s";
+        if (!pro) (pro = 1), (proFrom = m + 1);
+        break;
+      case "PERM_N":
+        pm = "n";
+        break;
+      case "PRO_START":
+      case "PU_MILE":
+        // 有料会員の節目は Pro を出している道（地図の続きが Pro の受付の期を言わないこともある）
+        if (!pro) (pro = 1), (proFrom = m + 1);
+        break;
+      case "SCHOOL_ON":
+        seats += C.schoolSeats;
+        break;
+    }
+    void kind;
+  };
+  const monthly = (m: number): number => {
+    // 計算の芯と同じ足し方: 有料会員の手取り − サーバー代（いつも）＋ 学校の席
+    const sd = (pro && m >= proFrom ? puAt(m) * C.net : 0) + (seats * C.seatYen) / 10_000 - C.infra;
+    return (c.annual / 12) * pay() + ad - (j === "i" ? C.overhead : 0) + sd;
+  };
+  // まとめた手の 3 か月: その結果の出来事（地図の続きに無い）
+  const kind0 = map.kind(a) ?? "";
+  const id = map.outId(i);
+  const ln = map.ln(i);
+  const stubEv = STUB_EV[`${kind0}.${id}`] ?? (kind0 === "ind_quit" ? "IND_START" : undefined);
+  apply(kind0, stubEv, m0);
+  if (stubEv === "PERM_A" && id === "a1") addClient();
+  if (ln && ln[0] === "cl" && typeof ln[2] === "number") {
+    const want = ln[3] === null || ln[3] === undefined ? ln[2] : (ln[2] + ln[3]) / 2;
+    while (Math.round(cl) < Math.round(want)) addClient();
+  }
+  const env: ContMoney["env"] = [];
+  const at: number[] = [];
+  const start = monthly(m0 + 3);
+  for (const st of cont) {
+    env.push({ j, pm, pro, cl });
+    apply(st.kind, st.ev, st.m);
+    at.push(monthly(st.m + 3));
+  }
+  return { start, at, env };
+}
+/** まとめた手の 3 か月の結果の出来事（手の種類.結果の番号） */
+const STUB_EV: Readonly<Record<string, string>> = {
+  "fc_switch.high": "SWITCH_HIGH",
+  "fc_switch.mid": "SWITCH_MID",
+  "fc_switch2.high": "SWITCH_HIGH",
+  "fc_switch2.mid": "SWITCH_MID",
+  "fc_push.up": "PROMO",
+  "part.p": "PART_ON",
+  "back_emp.e": "BACK_EMP",
+  "ad_permside.a1": "PERM_A",
+  "ad_permside.a0": "PERM_A",
+  "ad_permside.a": "PERM_A",
+  "ad_permside.s": "PERM_S",
+  "ad_permside.n": "PERM_N",
+  "ad_perm.a": "PERM_A",
+  "ad_perm.s": "PERM_S",
+  "ad_perm.n": "PERM_N",
+  "sd_permpro.a": "PERM_A",
+  "sd_permpro.s": "PERM_S",
+  "sd_permpro.n": "PERM_N",
+  "sd_school.yes": "SCHOOL_ON",
+};
+
+/**
  * まとめた行き先 i の標準の続き（cont）の k 番目の期。その期の手の種類の書き出し・手引きの文 3 つまで（道とそれまでの期で使っていない歩み）・
  * その期の分かれ目（答えが出る月と見る物）・一番ありそうな出来事・やること 3 つを書く。手引きの条件は、まとめた手を選んだ判断の状態で見る
  * （続きの期の状態は地図に無い）。「この期の分かれ道は開いていない」は道の画面の見積もりの印の行に 1 回だけ出す（行ごとに繰り返さない。reader-7）
@@ -3451,7 +3655,23 @@ export function composeContMarked(c: Ctx, i: number, k: number): ContCard | null
   return contCardsMarked(c, i, k)[k] ?? null;
 }
 
-/** まとめた行き先 i の標準の続きの期の文章を、0 番目から upto 番目まで（省けば全部）。まとめた行き先でなければ空 */
+/** 1.2（W5・con-10）: 月の稼ぎの 3 か月前との違い（0.05 万円より小さければ「ほぼ同じ」） */
+function monDiff(dv: number): string {
+  if (Math.abs(dv) < 0.05) return "3 か月前とほぼ同じ";
+  return `3 か月前より ${slot(man(Math.abs(dv)))} 万円${dv > 0 ? "多い" : "少ない"}`;
+}
+
+/** 手引きを使い切っても時間の使い方の歩み（_generic）で埋めてよい種類（今のままと、SpellDash の時間の中の手） */
+const CONT_GENERIC = new Set(["keep", "sd_grow", "sd_ads", "sd_retain"]);
+
+/**
+ * まとめた行き先 i の標準の続きの期の文章を、0 番目から upto 番目まで（省けば全部）。まとめた行き先でなければ空。
+ * 1.2（W5・con-10・rep-13）: 「標準の選び方」は最初の期で 1 回だけ言い、期ごとに、その期の手・手引きの文 2 つ・分かれ目・一番ありそうな出来事・
+ * その手の前提の見込み（束の contOdds）・一番ありそうな流れでの期の終わりの月の稼ぎとその動き（contMoney）を言う。最後の期は、その流れの 3 年後の
+ * 月の稼ぎと、行き先の平均（中身の道の平均。行き先のカードの数）を並べる。「大きな出来事の無い 3 か月」は言わない。手引きの条件は、その期の初めの
+ * 状態（それまでの期の出来事で進めた顧客・届け出の答え・仕事・Pro）で見て、手引きを使い切ったら近い種類の手引きから取る（時間の使い方の歩みは
+ * 今のままと SpellDash の手だけ）
+ */
 export function contCardsMarked(c: Ctx, i: number, upto = Infinity): ContCard[] {
   const { map, B, cal } = c;
   if (map.role(i) !== "e" || !map.sum(i)) return [];
@@ -3464,23 +3684,53 @@ export function contCardsMarked(c: Ctx, i: number, upto = Infinity): ContCard[] 
   const used = new Set(usedSet(link));
   for (const st of stepsFor(c, stub, countKind(link, map.kind(stub) ?? ""), used, recentSteps(link), pathEnv(c, link))) used.add(st.id);
   const s0 = map.st(d);
-  const { env: env0 } = baseEnv(c, d);
+  const { env: env0, slots: slots0 } = baseEnv(c, d);
   const cband = env0.cband === 1;
+  const money = contMoney(c, i);
   const out: ContCard[] = [];
   for (let x = 0; x <= last; x++) {
     const step = cont[x]!;
-    const env: Env = { ...env0, n: cont.slice(0, x).filter((y) => y.kind === step.kind).length, m: step.m, mon: cal.parts(step.m)[1], first: 0 };
+    const now = money?.env[x];
+    const nOnPath = countKind(link, step.kind) + (map.kind(stub) === step.kind ? 1 : 0);
+    const env: Env = { ...env0, n: nOnPath + cont.slice(0, x).filter((y) => y.kind === step.kind).length, m: step.m, mon: cal.parts(step.m)[1], first: 0 };
+    if (now) Object.assign(env, { j: now.j, pm: now.pm, pro: now.pro, cl: now.cl, clr: clr(now.cl), cap: capOf(c.C, now.j) });
     const picked: Step[] = [];
-    for (const one of [...(B.playbook[step.kind] ?? []), ...(B.playbook._generic ?? [])]) if (picked.length < 3 && !used.has(one.id) && !picked.some((y) => y.id === one.id) && cond(one.if, env, s0.fl)) picked.push(one);
+    const take = (one: Step): void => {
+      if (picked.length < 3 && !used.has(one.id) && !picked.some((y) => y.id === one.id) && cond(one.if, env, s0.fl)) picked.push(one);
+    };
+    for (const one of B.playbook[step.kind] ?? []) take(one);
+    for (const fk of FAMILY[step.kind] ?? []) for (const one of B.playbook[fk] ?? []) take(one);
+    if (CONT_GENERIC.has(step.kind) || !picked.length) for (const one of B.playbook._generic ?? []) take(one);
     for (const one of picked) used.add(one.id);
     const noun = B.contNoun[step.kind] ?? kindNoun(c, step.kind);
+    const period = cal.period(step.m);
     const ev = step.ev ? (cband && step.ev === "FIRST_CLIENT" ? "顧客が決まる" : (CONT_EV[step.ev] ?? fill(B.eventShort[step.ev] ?? "", {}))) : null;
-    // 1b・W3（L2）: 期ごとの決まった枠（見出し・出来事・静かな期）は、期の並び（x）で 3 つの言い方を回す（まとめた行き先の後に 10 期並ぶ道でも、
+    // 1b・W3（L2）: 期ごとの決まった枠（見出し・出来事・月の稼ぎ）は、期の並び（x）で 3 つの言い方を回す（まとめた行き先の後に 10 期並ぶ道でも、
     //   1 つの枠が道で 4 回まで）
-    const quiet = ["大きな出来事の無い 3 か月の見込み。", "目立った出来事の無い 3 か月とみた。", "この期に大きな出来事は見込んでいない。"][x % 3]!;
-    const what = ev ? [`この期に一番ありそうな出来事は『${ev}』。`, `一番ありそうな出来事は『${ev}』とみる。`, `この期は『${ev}』が一番ありそうな出来事。`][x % 3]! : quiet;
-    const head = [`${cal.period(step.m)}は、標準の選び方では『${noun}』の 3 か月。`, `標準の選び方で続けると、${cal.period(step.m)}は『${noun}』。`, `この期（${cal.period(step.m)}）の標準の手は『${noun}』。`][x % 3]!;
-    const body = join([head, ...picked.map((st) => pbText(st.act)), contWatch(c, step, x), what]);
+    const head =
+      x === 0
+        ? `${period}からは標準の選び方で続け、どの期も一番ありそうな結果で進めた見積もり。最初の 3 か月は『${noun}』。`
+        : [`${period}は『${noun}』の 3 か月。`, `続く ${period}は『${noun}』。`, `${period}の手は『${noun}』。`][x % 3]!;
+    const what = ev ? [`この期に一番ありそうな出来事は『${ev}』。`, `一番ありそうな出来事は『${ev}』とみる。`, `この期は『${ev}』が一番ありそうな出来事。`][x % 3]! : "";
+    const slots: Slots = { ...slots0, ymApril: cal.ym(eventMonth(cal, step.kind, step.m)) };
+    const odds = B.contOdds?.[step.kind] ? (useGroup(B.contOdds[step.kind], 0, slots, x, [], `contOdds.${step.kind}`) ?? "") : "";
+    let mon = "";
+    if (money) {
+      const v = money.at[x]!;
+      const prev = x ? money.at[x - 1]! : money.start;
+      const ym = cal.ym(step.m + 3);
+      const mv = `${slot(man(v))} 万円`;
+      const df = monDiff(v - prev);
+      mon = [`この流れで ${ym}の月の稼ぎは ${mv}ほど（${df}）。`, `${ym}の月の稼ぎは、この流れでは ${mv}ほど（${df}）。`, `見積もりの流れでは、${ym}に月 ${mv}ほどを稼ぐ（${df}）。`][x % 3]!;
+      if (x === 0) mon = `${cal.ym(step.m)}の月の稼ぎ ${slot(man(money.start))} 万円から始める。${mon}`;
+    }
+    let tail = "";
+    if (money && x === cont.length - 1) {
+      const rr = map.rr(i);
+      const avg = (c.annual / 12) * rr[0] + rr[1] + rr[2];
+      tail = `この流れの 3 年後は月 ${slot(man(money.at[x]!))} 万円ほどで、ほかの結果の道も入れた 3 年後の平均は月 ${slot(man(avg))} 万円（行き先のカードの数はこの平均）。`;
+    }
+    const body = join([head, ...picked.slice(0, 2).map((st) => pbText(st.act)), contWatch(c, step, x), what, odds, mon, tail]);
     out.push({ m: step.m, kind: step.kind, title: contName(c, step.kind, step.ev, step.m, cband), body, todo: picked.map((st) => ({ text: st.todo, cite: st.id })) });
   }
   return out;

@@ -667,7 +667,8 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     expect(s6).not.toMatch(/昇格しなかった|評価は据え置き|据え置きで、/);
     expect(s6).toMatch(/昇格[^。]*3 割/);
     const c6 = composeCard(rules, find(rules, "r.merge", "s", 6), { annual: 360 });
-    expect(c6.title).toBe("昇格と据え置きの平均で進む");
+    // 1.2（W5・con-14）: 題はまとめ方でなく、その評価の昇格の見込みを言う
+    expect(c6.title).toBe("4 月の評価・昇格は 3 割");
     expect(c6.numbers[0]).toMatch(/^年収 平均 /);
     // 手の文: 見込みは分かれ目で 1 回だけ言う
     const push = body(rules, find(rules, "r.merge", "a", 3));
@@ -744,10 +745,18 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
     const i = byKey(rules, "r.mix.all");
     const rows = Array.from({ length: (rules.cont(i) ?? []).length }, (_, k) => composeCont(rules, i, k, { annual: 360 })!);
     expect(rows).toHaveLength(11);
-    expect(rows[0]!.body).toMatch(/^2027 年 3 月〜5 月は、標準の選び方では『今のまま』の 3 か月。/);
-    // 1.0（W3・L2）: 見出し・出来事・静かな期は、期の並びで 3 つの言い方を回す（10 期並んでも 1 つの枠は 4 回まで）
-    expect(rows[1]!.body).toMatch(/^標準の選び方で続けると、2027 年 6 月〜8 月は『[^』]*』。/);
-    expect(rows[2]!.body).toMatch(/^この期（2027 年 9 月〜11 月）の標準の手は『[^』]*』。/);
+    // 1.2（W5・con-10・rep-13）: 「標準の選び方」は最初の期で 1 回だけ。見出し・出来事・月の稼ぎは期の並びで 3 つの言い方を回す
+    expect(rows[0]!.body).toMatch(/^2027 年 3 月〜5 月からは標準の選び方で続け、どの期も一番ありそうな結果で進めた見積もり。最初の 3 か月は『今のまま』。/);
+    expect(rows[1]!.body).toMatch(/^続く 2027 年 6 月〜8 月は『[^』]*』。/);
+    expect(rows[2]!.body).toMatch(/^2027 年 9 月〜11 月の手は『[^』]*』。/);
+    for (const r of rows.slice(1)) expect(r.body).not.toContain("標準の選び方");
+    // どの期も、期の終わりの月の稼ぎとその動き（静かな期の言い方は無い）。最後の期は 3 年後と行き先の平均
+    for (const r of rows) {
+      expect(r.body).toMatch(/月の稼ぎは[^。]*万円ほど（3 か月前(より [\d.]+ 万円(多い|少ない)|とほぼ同じ)）|月 [\d.]+ 万円ほどを稼ぐ/);
+      expect(r.body).not.toMatch(/大きな出来事の無い|目立った出来事の無い|大きな出来事は見込んでいない/);
+    }
+    expect(rows[0]!.body).toMatch(/2027 年 2 月の月の稼ぎ [\d.]+ 万円から始める。/);
+    expect(rows[10]!.body).toMatch(/この流れの 3 年後は月 [\d.]+ 万円ほどで、ほかの結果の道も入れた 3 年後の平均は月 [\d.]+ 万円/);
     expect(rows[4]!.title).toBe("転職活動の続き（5 月に移る）");
     expect(rows[4]!.body).toContain("一番ありそうな出来事は『転職』とみる。");
     const cites = rows.flatMap((r) => r.todo.map((t) => t.cite));
@@ -1705,5 +1714,70 @@ describe("文章の波 1b の W3（手のカード: text-w1/audit の con-3・co
               n++;
             }
     expect(n).toBeGreaterThan(40);
+  });
+});
+
+describe("1.2（W5）: やることの段取り・標準の続きの期の月の稼ぎ・題（con-8・con-9・con-10・con-14・rep-13）", () => {
+  const rules = fromDevTree(RULES);
+  const tree = fromDevTree(TREE);
+  const generic = new Set((BANKS.playbook._generic ?? []).map((st) => st.id));
+
+  it("con-8: 手の本文は、やること 3 つをその 3 か月の月に 1 つずつ置いて言う（答えの前に済ませる手は答えの月より後に置かない）", () => {
+    let n = 0;
+    for (const m of [tree, rules])
+      for (const i of all(m)) {
+        if (m.role(i) !== "a") continue;
+        const c = composeCard(m, i, { annual: 360 });
+        const plan = c.body.match(/(?:^|。)(?:同じ )?(?:1[0-2]|[1-9]) 月(?:は、|に、)/g) ?? [];
+        expect(plan.length, m.key(i)).toBe(c.todo.length);
+        n++;
+      }
+    expect(n).toBeGreaterThan(40);
+    // 昇格を狙う手は、4 月の評価より後の月に段取りを置かない（2 月の判断なら 3 月と 4 月）
+    for (const m of [tree, rules])
+      for (const i of all(m)) {
+        if (m.role(i) !== "a" || m.kind(i) !== "fc_push" || m.month(i) % 12 !== 3) continue;
+        expect(body(m, i)).not.toMatch(/(?:^|。)5 月は、/);
+      }
+  });
+
+  it("con-9: 種類の手引きを使い切った手は近い種類の手引きから取り、今のまま以外の手が時間の使い方の歩みを引くのは 2% 未満（小さい木）", async () => {
+    const q = await loadQSmall();
+    let moves = 0;
+    let gen = 0;
+    for (let i = 0; i < q.n; i++) {
+      if (q.role(i) !== "a" || q.kind(i) === "keep") continue;
+      moves++;
+      if (composeCard(q, i, { annual: 360 }).todo.some((t) => generic.has(t.cite))) gen++;
+    }
+    expect(moves).toBeGreaterThan(500);
+    expect(gen / moves).toBeLessThan(0.02);
+  });
+
+  it("con-10・rep-13: 標準の続きの最後の期は、その流れの 3 年後と、行き先の平均（行き先の数の行と同じ月の稼ぎ）を並べる", () => {
+    let n = 0;
+    for (const m of [tree, rules])
+      for (const i of all(m)) {
+        if (m.role(i) !== "e" || !m.sum(i) || !(m.cont(i) ?? []).length) continue;
+        const rows = Array.from({ length: m.cont(i)!.length }, (_, k) => composeCont(m, i, k, { annual: 360 })!);
+        const rr = m.rr(i);
+        const avg = (360 / 12) * rr[0] + rr[1] + rr[2];
+        const hit = /ほかの結果の道も入れた 3 年後の平均は月 (−?[\d.]+) 万円/.exec(rows[rows.length - 1]!.body);
+        expect(hit, m.key(i)).not.toBeNull();
+        expect(Math.abs(Number(hit![1]!.replace("−", "-")) - avg)).toBeLessThan(0.051);
+        for (const r of rows) expect(r.todo.length).toBeGreaterThan(0);
+        n++;
+      }
+    expect(n).toBeGreaterThan(3);
+  });
+
+  it("con-14: 今のままの題はその期の数を言い（「今のまま 3 か月続ける」と言わない）、本当の行き先の題は給与の倍率だけにしない", () => {
+    for (const m of [tree, rules])
+      for (const i of all(m)) {
+        const c = composeCard(m, i, { annual: 360 });
+        if (m.role(i) === "a" && m.kind(i) === "keep" && m.month(i) > 0) expect(c.title).toMatch(/^(今のまま|独立のまま)・/);
+        if (m.role(i) === "e" && !m.sum(i)) expect(c.title).not.toMatch(/^3 年後: 給与 [\d.]+ 倍$/);
+        if (m.role(i) === "s") expect(c.title).not.toMatch(/の幅$/);
+      }
   });
 });

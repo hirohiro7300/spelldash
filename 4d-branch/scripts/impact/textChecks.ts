@@ -128,7 +128,7 @@ export const CONTRAST_FRAMES: readonly RegExp[] = [
  * 1b・W3: 束の節（言い換え）を、骨組み（数字を # にした文）に当てる正規表現にする。言い換えを句点で文に分け、数字を # にし、差し込み（{名前}）は
  * 句点をまたがない何かにする（8 字以下の切れ端は数えない）。数の枠を束に置く節（進み具合・選べなくなる手）を構造の文にするため
  */
-export function cellFrames(banks: Banks, secs: ReadonlyArray<"progress" | "rules">): RegExp[] {
+export function cellFrames(banks: Banks, secs: ReadonlyArray<"progress" | "rules" | "contOdds">): RegExp[] {
   const out: RegExp[] = [];
   const seen = new Set<string>();
   const esc = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -278,18 +278,25 @@ export const STRUCTURAL: readonly RegExp[] = [
   // まとめた手の印（SPEC §4.2 が求める決まった注。手の種類の名前のような物）
   /^この手の先は分かれ道を開かず、標準の選び方で続けた見積もり$/,
   // 標準の続きの 1 期の枠（道の画面の薄い行の見出しと同じデータ: その期の手・一番ありそうな出来事。reader-7）
-  //   1b・W3（L2）: 見出し・出来事・静かな期は、期の並びで 3 つずつ言い方を回す（言い方ごとに 1 つの枠）
-  /^# 年 # 月〜(?:# 年 )?# 月は、標準の選び方では『[^』]*』の # か月$/,
-  /^標準の選び方で続けると、# 年 # 月〜(?:# 年 )?# 月は『[^』]*』$/,
-  /^この期（# 年 # 月〜(?:# 年 )?# 月）の標準の手は『[^』]*』$/,
+  //   1b・W3（L2）: 見出し・出来事は、期の並びで 3 つずつ言い方を回す（言い方ごとに 1 つの枠）
+  //   1.2（W5・con-10・rep-13）: 「標準の選び方」は最初の期で 1 回だけ。静かな期の言い方（「大きな出来事の無い 3 か月」）をやめ、期の終わりの
+  //   月の稼ぎとその動き（3 つの言い方）・最初の期の始まりの月の稼ぎ・最後の期の 3 年後と行き先の平均を言う。その手の前提の見込み（束の contOdds）も
+  //   数の枠（下の cellFrames）
+  /^# 年 # 月〜(?:# 年 )?# 月からは標準の選び方で続け、どの期も一番ありそうな結果で進めた見積もり$/,
+  /^最初の # か月は『[^』]*』$/,
+  /^# 年 # 月〜(?:# 年 )?# 月は『[^』]*』の # か月$/,
+  /^続く # 年 # 月〜(?:# 年 )?# 月は『[^』]*』$/,
+  /^# 年 # 月〜(?:# 年 )?# 月の手は『[^』]*』$/,
   /^この期に一番ありそうな出来事は『[^』]*』$/,
   /^一番ありそうな出来事は『[^』]*』とみる$/,
   /^この期は『[^』]*』が一番ありそうな出来事$/,
-  /^大きな出来事の無い # か月の見込み$/,
-  /^目立った出来事の無い # か月とみた$/,
-  /^この期に大きな出来事は見込んでいない$/,
+  /^# 年 # 月の月の稼ぎ −?# 万円から始める$/,
+  /^この流れで # 年 # 月の月の稼ぎは −?# 万円ほど（# か月前(?:より # 万円(?:多い|少ない)|とほぼ同じ)）$/,
+  /^# 年 # 月の月の稼ぎは、この流れでは −?# 万円ほど（# か月前(?:より # 万円(?:多い|少ない)|とほぼ同じ)）$/,
+  /^見積もりの流れでは、# 年 # 月に月 −?# 万円ほどを稼ぐ（# か月前(?:より # 万円(?:多い|少ない)|とほぼ同じ)）$/,
+  /^この流れの # 年後は月 −?# 万円ほどで、ほかの結果の道も入れた # 年後の平均は月 −?# 万円（行き先のカードの数はこの平均）$/,
   // 1b・W3（con-4・con-5）: 手の進み具合（前提の上限まで・積んだ物・見込みの動き）と、決まりで選べなくなる手（束の progress・rules の言い換えから作る）
-  ...cellFrames(BANKS, ["progress", "rules"]),
+  ...cellFrames(BANKS, ["progress", "rules", "contOdds"]),
 ];
 
 /** 文の骨組み。構造の文なら null。書き出しの年月（「# 年 # 月、」）と、来た結果を受ける言葉（「『…』を受けて、」）は落として比べる */
@@ -455,11 +462,34 @@ export interface DecisionRepeats {
   top: Array<[string, number]>;
 }
 
+/**
+ * 1.2（W5・con-8・con-9・con-10）: やることに数か期限があるか（数字か、曜日・毎週・月末・〜まで・〜以内・何か月などの時の言葉）。報告だけ
+ */
+export const TODO_BOUND = /[0-9]|毎週|毎月|毎朝|毎日|曜|月末|月初|前日|当日|その日|翌日|翌週|期限|まで|以内|か月|週間|日間|中に/;
+/** 1.2（W5・con-10）: 標準の続きの期の、前の版の静かな期の言い方（報告だけ） */
+export const CONT_QUIET = /大きな出来事の無い # か月の見込み。$|目立った出来事の無い # か月とみた。$|この期に大きな出来事は見込んでいない。$/;
+
+/** 1.2（W5）: やること・標準の続きの期の報告（止めない） */
+export interface TodoStats {
+  /** 手のやることの数と、そのうち数か期限がある物 */
+  items: number;
+  bounded: number;
+  /** 今のままでない手と、そのうち時間の使い方の歩み（_generic）を引く物 */
+  moves: number;
+  genericMoves: number;
+  /** 標準の続きの期・静かな期の言い方で終わる行・月の稼ぎ（万円）を言う行・時間の使い方の歩みを引く今のまま以外の行 */
+  contRows: number;
+  contQuiet: number;
+  contMoney: number;
+  contGeneric: number;
+}
+
 export interface TextCheckRun {
   annual: number;
   cards: number;
   /** 点検した標準の続きの期の数（まとめた行き先の後の行。reader-7） */
   contRows: number;
+  todoStats: TodoStats;
   checks: CheckCount[];
   /** 本文の字数（役割ごと） */
   lengths: Record<string, Dist>;
@@ -642,6 +672,29 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
       for (const part of [f.title, f.body, ...f.todo.map((t) => t.text)]) for (const x of spacingIssues(part)) tally.add(`C8 ${x}`, "cont", key);
     });
   }
+  // 1.2（W5）: やることの数か期限・時間の使い方の歩み・標準の続きの期の静かな言い方と月の稼ぎ（報告だけ）
+  const generic = new Set((banks.playbook._generic ?? []).map((st) => st.id));
+  const todoStats: TodoStats = { items: 0, bounded: 0, moves: 0, genericMoves: 0, contRows: 0, contQuiet: 0, contMoney: 0, contGeneric: 0 };
+  for (let i = 0; i < n; i++) {
+    if (map.role(i) !== "a") continue;
+    for (const t of fin[i]!.todo) {
+      todoStats.items++;
+      if (TODO_BOUND.test(t.text)) todoStats.bounded++;
+    }
+    if (map.kind(i) === "keep") continue;
+    todoStats.moves++;
+    if (fin[i]!.todo.some((t) => generic.has(t.cite))) todoStats.genericMoves++;
+  }
+  for (const [i, rows] of contMarked) {
+    const conts = map.cont(i)!;
+    rows.forEach((row, j) => {
+      todoStats.contRows++;
+      const body = contFin.get(i)![j]!;
+      if (CONT_QUIET.test(mask(body))) todoStats.contQuiet++;
+      if (/万円/.test(body)) todoStats.contMoney++;
+      if (conts[j]!.kind !== "keep" && row.todo.some((t) => generic.has(t.cite))) todoStats.contGeneric++;
+    });
+  }
   const tCards = now() - t1;
   // 道（C9・C6 の道の繰り返し）
   const t2 = now();
@@ -690,6 +743,7 @@ function runOne(map: MapData, annual: number, banks: Banks, wish: ReadonlyMap<st
     annual,
     cards: n,
     contRows,
+    todoStats,
     checks: tally.list(),
     lengths,
     titleLengths,
@@ -1483,6 +1537,10 @@ export function reportMarkdown(rep: TextCheckReport): string {
     L.push(`## 年収 ${r.annual}`, "");
     L.push(`- 組み立て ${f(r.ms.compose)} ms（1 枚 ${r.ms.perCardUs} µs）・1 枚の点検 ${f(r.ms.cardChecks)} ms・道 ${f(r.ms.paths)} ms・兄弟 ${f(r.ms.siblings)} ms`);
     L.push(`- まとめた行き先の後の標準の続きの期 ${f(r.contRows)} 行も、1 枚ごとの点検・道で 1 回だけの文（C9）・道の繰り返し（C6）に入れた`);
+    {
+      const t = r.todoStats;
+      L.push(`- 参考（止めない。1.2・W5）: 手のやること ${f(t.items)} のうち数か期限がある物 ${f(t.bounded)}（${pct(t.bounded / Math.max(1, t.items))}）・今のままでない手 ${f(t.moves)} のうち時間の使い方の歩みを引く手 ${f(t.genericMoves)}（${pct(t.genericMoves / Math.max(1, t.moves))}）・標準の続きの期 ${f(t.contRows)} 行のうち静かな期の言い方で終わる行 ${f(t.contQuiet)}（${pct(t.contQuiet / Math.max(1, t.contRows))}）・月の稼ぎを言う行 ${f(t.contMoney)}（${pct(t.contMoney / Math.max(1, t.contRows))}）・時間の使い方の歩みを引く今のまま以外の行 ${f(t.contGeneric)}`);
+    }
     L.push("- 点検:");
     if (!r.checks.length) L.push("  - なし");
     for (const c of r.checks) {

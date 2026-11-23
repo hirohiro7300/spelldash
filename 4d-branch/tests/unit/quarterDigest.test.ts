@@ -20,9 +20,11 @@ import { loadQSmall } from "./helpers/qSmall";
  * 小さい木そのものを作り直したとき（生成 v2 で焼き込んだやることが入った等。版の順番 0 の試験用で、配っていない）も値は変わる。
  * 組み立てが変わっていないことは、前の小さい木で前の値（08ywb3s0oh106s）が出ることで確かめてから直す。
  * 文の型 1.1（W4・rep-14: 手引きの歩みをその期の状況で先に取る）で焼き込んだやることの項目が変わり 178pivj0gb2qln → 0q6mgtw00zqla8
- * （前の小さい木では今の組み立てでも前の値 178pivj0gb2qln が出ることを確かめた）
+ * （前の小さい木では今の組み立てでも前の値 178pivj0gb2qln が出ることを確かめた）。
+ * 文の型 1.2（W5・con-8・con-9: やることに数と期限・近い種類の手引き・確定申告の歩み）で焼き込んだやることが変わり 0q6mgtw00zqla8 → 1at88gs0w8q25s
+ * （前の小さい木では今の組み立てでも前の値 0q6mgtw00zqla8 が出ることを確かめた）
  */
-const Q_SMALL_DIGEST = "0q6mgtw00zqla8";
+const Q_SMALL_DIGEST = "1at88gs0w8q25s";
 
 let map: MapData;
 beforeAll(async () => {

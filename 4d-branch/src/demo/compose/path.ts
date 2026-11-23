@@ -774,7 +774,7 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
     newEmployer(true);
   } else if (search) out.push({ code: mixed ? "SEARCH_MIX" : "SEARCH_NONE", m: at, x: {} });
   if (k === "fc_push") {
-    if (mixed) out.push({ code: "PROMO_MIX", m: at, x: { share: shareSlot(factShare(C, k, a.fl)), salx: `${slot(f2(b.sal))} 倍` }, at: { ymApril: at } });
+    if (mixed) out.push({ code: "PROMO_MIX", m: at, x: { share: shareSlot(factShare(C, k, a.fl)), salx: `${slot(f2(b.sal))} 倍` }, at: { ymApril: at }, env: { share: factShare(C, k, a.fl) === null ? 0 : 1 } });
     else out.push({ code: id === "up" ? "PROMO" : "PROMO_NO", m: at, x: { salx: `${slot(f2(b.sal))} 倍` }, at: { ymApril: at } });
   }
   // Pro の受付: 認められている手の 2 か月目。期間の途中で独立したなら、独立した翌月（sim.ts の latePro。truth-10）
@@ -810,7 +810,7 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
   } else if ((k === "ad_side" || k === "ad_more") && exact && bl === pl) out.push({ code: "CLIENT_NOT_FOUND", m: m0 + 3, x: {} });
   for (const [flag, on, off, kindOf, mix] of FLAG_EVENTS) {
     if (k !== kindOf) continue;
-    if (mixed) out.push({ code: mix, m: at, x: { share: shareSlot(factShare(C, k, a.fl)), seats: slot(C.schoolSeats) } });
+    if (mixed) out.push({ code: mix, m: at, x: { share: shareSlot(factShare(C, k, a.fl)), seats: slot(C.schoolSeats) }, env: { share: factShare(C, k, a.fl) === null ? 0 : 1 } });
     // 学校の席は、この 3 か月に加わった分（2 校目なら 2 校目の席。facts-3）
     else out.push({ code: b.fl.includes(flag) && (!a.fl.includes(flag) || flag === "school") && id === "yes" ? on : off, m: at, x: { seats: slot(n0(Math.max(0, b.seats - a.seats))) } });
   }
@@ -879,6 +879,33 @@ export function optionValue(map: MapData, a: number, annual: number): number | n
  * （やることを空にしない。もう一度使う歩みの文は本文に入れない。点検 C3）。
  * 今のままは、どの判断にも並ぶ手なので、手引きの始まりを判断の月で回す（道の上の判断ごとに同じ歩みを並べない。reader-8）
  */
+/** 1.2（W5・con-9）: 手引きを使い切った種類が次に歩みを取る、近い種類の手引き（文がその種類の手でも読める物だけ） */
+export const FAMILY: Readonly<Record<string, readonly string[]>> = {
+  ad_side: ["ad_more", "ad_portfolio"],
+  ad_more: ["ad_side"],
+  ad_portfolio: ["ad_side"],
+  fc_push: ["fc_scope"],
+  fc_scope: ["fc_push"],
+  fc_switch: ["fc_switch2"],
+  fc_switch2: ["fc_switch"],
+  back_emp: ["fc_switch2"],
+  sd_school: ["sd_pilot"],
+  sd_pilot: ["sd_school"],
+};
+
+/**
+ * 1.2（W5・con-9）: 判断の月 m から選ぶ手の 3 か月（m+1〜m+3）が確定申告の期（2 月か 3 月がある）で、副業・SpellDash・独立の稼ぎがある状態か
+ * （顧客がいる・Pro を出している・独立している）。状態の暦の文（calPick）より粗いが、道で使った歩みだけで決まる
+ */
+export function taxQuarter(c: Ctx, m: number, s: ImpactSt): boolean {
+  if (m === 0) return false;
+  const q = [1, 2, 3].some((k) => {
+    const mo = c.cal.parts(m + k)[1];
+    return mo === 2 || mo === 3;
+  });
+  return q && (s.j === "i" || s.cl >= 0.5 || s.pro === 1);
+}
+
 export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<string>, recent: ReadonlySet<string> = used, extra: Env = {}): Step[] {
   const { map, B, C } = c;
   const kind = map.kind(a) ?? "";
@@ -888,7 +915,7 @@ export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<strin
   // 判断ごとに 3 つずらす（続く判断の今のままの歩みが重ならない）
   const r = kind === "keep" && book0.length ? m % book0.length : 0;
   const turned = r ? [...book0.slice(r), ...book0.slice(0, r)] : book0;
-  const env: Env = { ...extra, j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap: capOf(C, s.j), m, mon: c.cal.parts(m)[1], n: nth, first: m === 0 ? 1 : 0 };
+  const env: Env = { ...extra, j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap: capOf(C, s.j), m, mon: c.cal.parts(m)[1], n: nth, first: m === 0 ? 1 : 0, taxQ: taxQuarter(c, m, s) ? 1 : 0 };
   // 1.1（W4・rep-14）: その期の状況で先に取る歩み（lead の条件が合う物）を前に出す。ほかは手引きの並びのまま
   const led = turned.filter((st) => st.lead && cond(st.lead, env, s.fl));
   const book = led.length ? [...led, ...turned.filter((st) => !led.includes(st))] : turned;
@@ -897,8 +924,15 @@ export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<strin
   const take = (st: Step): void => {
     if (out.length < 3 && !used.has(st.id) && !out.some((x) => x.id === st.id) && cond(st.if, env, s.fl)) out.push(st);
   };
+  // 1.2（W5・con-9）: 確定申告の期（その 3 か月に 2 月か 3 月があり、副業・SpellDash・独立の稼ぎがある）は、申告の歩みを 1 つ先に取る
+  //   （束の _tax。道で使っていない物から。毎年の申告で違う歩みになる）
+  if (env.taxQ === 1)
+    for (const st of B.playbook._tax ?? [])
+      if (!out.length && cond(st.lead, env, s.fl)) take(st);
   for (const st of book) take(st);
-  // 道の上でその種類の手引きを使い切ったら、_generic の歩みで埋める
+  // 1.2（W5・con-9）: 道の上でその種類の手引きを使い切ったら、近い種類の手引き（FAMILY）から取り、それでも足りなければ _generic で埋める
+  //   （顧客探しの長い道で、時間の使い方の歩みに落ちない）
+  for (const fk of FAMILY[kind] ?? []) if (out.length < 3) for (const st of B.playbook[fk] ?? []) take(st);
   if (out.length < 3) for (const st of B.playbook._generic ?? []) take(st);
   // それでも足りなければ、直前の 3 つの手より前に使った種類の歩み（1 年近く前の歩みを、もう一度やる）
   if (out.length < 3) for (const st of book) if (out.length < 3 && used.has(st.id) && !recent.has(st.id) && !out.some((x) => x.id === st.id) && cond(st.if, env, s.fl)) out.push(st);

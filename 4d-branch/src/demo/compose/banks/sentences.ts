@@ -117,9 +117,30 @@ export const SENTENCES: Omit<Banks, "version" | "C" | "playbook"> = {
     "ad_more.CLIENT_REGAIN": "紹介での顧客探し（離れた分を戻す）",
     "ad_portfolio.PORTFOLIO_ON": "事例づくり（事例ができる）",
   },
+  // 1.2（W5・con-10・rep-13）: 標準の続きの 1 期の、その手の前提の見込み（「大きな出来事の無い 3 か月」の代わり）。数はどれも前提の数（C）。
+  //   期の並びで言い換えを回す（同じ手の期が何期も続く道で、1 つの枠が道で 4 回まで。L2）
+  contOdds: {
+    ad_side: [V("この地図では、探す 3 か月で顧客が決まる見込みを {sideP}とみる（事例があれば {sidePPortfolio}）。", "顧客探しの 3 か月で決まる見込みは、この地図では {sideP}（事例があれば {sidePPortfolio}）。", "探して決まる見込みは 3 か月ごとに {sideP}で、事例を持っていれば {sidePPortfolio}とみる。")],
+    ad_more: [V("この地図では、紹介で探す 3 か月に顧客が決まる見込みを {sideP}とみる（事例があれば {sidePPortfolio}）。", "紹介で探す 3 か月の見込みは、この地図では {sideP}（事例があれば {sidePPortfolio}）。", "紹介で決まる見込みは 3 か月ごとに {sideP}で、事例を持っていれば {sidePPortfolio}とみる。")],
+    ad_permside: [V("届け出の答えは、全部可 {permA}・SpellDash だけ可 {permS}・どちらも不可 {permN}とみる。", "この地図では、届け出が全部可になる見込みを {permA}、SpellDash だけ可を {permS}とみる。", "会社の答えの見込みは、全部可 {permA}・SpellDash だけ {permS}・不可 {permN}。")],
+    ad_perm: [V("届け出の答えは、全部可 {permA}・SpellDash だけ可 {permS}・どちらも不可 {permN}とみる。", "この地図では、届け出が全部可になる見込みを {permA}、SpellDash だけ可を {permS}とみる。", "会社の答えの見込みは、全部可 {permA}・SpellDash だけ {permS}・不可 {permN}。")],
+    sd_permpro: [V("届け出の答えは、全部可 {permA}・SpellDash だけ可 {permS}・どちらも不可 {permN}とみる。", "この地図では、届け出が全部可になる見込みを {permA}、SpellDash だけ可を {permS}とみる。", "会社の答えの見込みは、全部可 {permA}・SpellDash だけ {permS}・不可 {permN}。")],
+    fc_push: [V("{ymApril}の評価で昇格する見込みは {promoP}（先に担当を広げていれば {promoPScope}）とみる。", "この地図では、{ymApril}の評価で昇格する見込みを {promoP}とみる（担当を広げた後なら {promoPScope}）。", "昇格の見込みは {ymApril}の評価で {promoP}、担当を広げていれば {promoPScope}。")],
+    fc_scope: [V("担当を広げると、次の 4 月の評価で昇格する見込みが {promoP}から {promoPScope}に上がるとみる。", "この地図では、担当を広げた後の 4 月の評価で昇格する見込みを {promoPScope}とみる（広げなければ {promoP}）。", "担当を広げておくと、次の評価の昇格の見込みは {promoP}から {promoPScope}になる。")],
+    fc_switch: [V("この地図では、転職活動の最初の 3 か月で移れる見込みを {switchP1}、続けた 3 か月ごとを {switchP2}とみる。", "移れる見込みは、最初の 3 か月で {switchP1}、続ける 3 か月ごとに {switchP2}とみる。", "転職活動で移れる見込みは、この地図では最初の期 {switchP1}・続けた期 {switchP2}。")],
+    fc_switch2: [V("続けて探す 3 か月で移れる見込みは {switchP2}で、1 つの会社で探せるのは {searchMax} 期まで。", "この地図では、続けた転職活動で移れる見込みを 3 か月ごとに {switchP2}とみる（1 つの会社で {searchMax} 期まで）。", "続けた期に移れる見込みは {switchP2}、探せるのは 1 つの会社で {searchMax} 期まで。")],
+    part: [V("週 4 日勤務が認められる見込みは {partP}とみる。", "この地図では、週 4 日の相談が通る見込みを {partP}とみる。", "週 4 日が認められる見込みは、この地図では {partP}。")],
+    back_emp: [V("会社員に戻れる見込みは、3 か月ごとに {backP}とみる。", "この地図では、戻る先が 3 か月で決まる見込みを {backP}とみる。", "戻る先探しが 3 か月で決まる見込みは、この地図では {backP}。")],
+    sd_school: [V("学校への提案が 3 か月で導入になる見込みは {schoolP}（試用の実績があれば {schoolPPilot}）とみる。", "この地図では、提案が導入になる見込みを 3 か月ごとに {schoolP}とみる（試用の実績があれば {schoolPPilot}）。", "導入の見込みは 3 か月で {schoolP}、試用の実績があれば {schoolPPilot}。")],
+    sd_pilot: [V("無料の試用先が 3 か月で決まる見込みは {pilotP}とみる。", "この地図では、試してくれる学校・塾が 3 か月で見つかる見込みを {pilotP}とみる。", "試用先が見つかる見込みは、3 か月ごとに {pilotP}。")],
+    ad_portfolio: [V("事例があると、もう 1 社が決まる見込みは {sideP}から {sidePPortfolio}に上がるとみる。", "この地図では、数字つきの事例で顧客探しの見込みが {sideP}から {sidePPortfolio}になるとみる。", "事例を持つと、3 か月で顧客が決まる見込みは {sidePPortfolio}（無ければ {sideP}）。")],
+    ind_quit: [V("独立した後の顧客は 1 社 月 {indFee} 万円で、経費は月 {overhead} 万円かかるとみる。", "この地図では、独立後の新しい顧客を 1 社 月 {indFee} 万円、独立の経費を月 {overhead} 万円とみる。", "独立の後は、顧客 1 社で月 {indFee} 万円、経費が月 {overhead} 万円。")],
+  },
   title: {
     // 1.0（W3・con-4）: 同じ種類の手の 2 回目からは、何回目か・何期目かを題で言う（道の上で同じ題が並ばない。年収では変わらない）
-    keep: [If("first=1", "今のままにする"), If("n>=1", "今のまま {nth} 回目"), V("今のまま 3 か月続ける", "何も足さず 3 か月続ける", "今の形で 3 か月続ける")],
+    // 1.2（W5・con-14）: 今のままは、その期に何で今のままにするか（独立の顧客・有料会員・副業の顧客・遊ぶ人の数）を題で言う（どの判断にも並ぶので、
+    //   道の上で「今のまま 3 か月続ける」が並ばない。数は年収で変わらない）
+    keep: [If("first=1", "今のままにする"), If("j=i", "独立のまま・顧客 {clp}"), If("pro=1 & pu>=0.5", "今のまま・有料 {pu} 人から"), If("cl>=0.5", "今のまま・顧客 {clp}"), V("今のまま・遊ぶ人 {mau} 人")],
     ad_permside: [If("n>=1", "{nth} 回目の届け出と 1 社目探し"), V("届け出て副業の 1 社目を探す")],
     sd_permpro: [If("n>=1", "{nth} 回目の届け出で Pro"), V("届け出て Pro を出す")],
     ad_perm: [V("副業を届け出る")],
@@ -795,16 +816,17 @@ export const SENTENCES: Omit<Banks, "version" | "C" | "playbook"> = {
     CLIENT_LOST: [If("exact=0", "顧客が減り {cnt} 社に"), V("顧客が {lost} 社減り {clp}")],
     CLIENT_NOT_FOUND: [If("evn>=1", "{evnth} 回目も新しい顧客は決まらず"), V("顧客は増えず {clp}のまま", "新しい顧客は決まらず")],
     // 0.5: 「（2 回目のまとめ）」は読みにくいので、今回もまとめた幅だと言う（F6）
-    CLIENT_MIX: [If("evn>=1", "{evnth} 回目も顧客は {cnt} 社の幅", "顧客は今回も {cnt} 社の幅"), V("顧客は {cnt} 社の幅", "顧客 {cnt} 社（まとめた見積もり）")],
+    // 1.2（W5・con-14）: まとめた結果の題は、まとめ方（幅・平均）でなく、その期に分かれた所の見込みを言う（「顧客 1〜2 社・2 社目は 5 割 5 分」）
+    CLIENT_MIX: [If("share=1 & evn>=1", "{evnth} 回目も {hi} 社目は {share}"), If("share=1", "顧客 {cnt} 社・{hi} 社目は {share}"), If("evn>=1", "{evnth} 回目の探しで顧客 {cnt} 社"), V("顧客は {cnt} 社の見込み")],
     CLIENT_EXACT: [V("顧客 {cnt} 社（前は {prev} 社）")],
     SWITCH_HIGH: [V("転職で給与 {salx}")],
     SWITCH_MID: [V("小幅増で転職（{salx}）")],
-    SWITCH_MIX: [V("転職・給与は平均 {salx}")],
+    SWITCH_MIX: [V("転職・給与 {midX}か{hiX}")],
     SEARCH_NONE: [If("evn>=1", "{evnth} 回目も転職先は決まらず"), V("転職先はまだ決まらず")],
     SEARCH_MIX: [V("転職の有無をまとめた平均")],
     PROMO: [V("昇格して給与 {salx}")],
     PROMO_NO: [If("evn>=1", "{evnth} 回目の評価も据え置き"), V("評価は据え置き")],
-    PROMO_MIX: [If("evn>=1", "{evnth} 回目の評価も平均で進む"), V("昇格と据え置きの平均で進む")],
+    PROMO_MIX: [If("share=1 & evn>=1", "{evnth} 回目の評価も昇格は {share}"), If("share=1", "{ymApril}の評価・昇格は {share}"), If("evn>=1", "{evnth} 回目の評価も平均で進む"), V("昇格と据え置きの平均で進む")],
     PART_ON: [V("週 4 日勤務・給与 {salx}")],
     PART_NO: [V("週 4 日は認められず")],
     PART_MIX: [V("週 4 日の可否をまとめた平均")],
@@ -814,7 +836,7 @@ export const SENTENCES: Omit<Banks, "version" | "C" | "playbook"> = {
     BACK_MIX: [V("採用の有無をまとめた平均")],
     SCHOOL_ON: [V("学校が導入・{seats} 席")],
     SCHOOL_NO: [If("evn>=1", "{evnth} 回目も学校は見送り"), V("学校は導入を見送り")],
-    SCHOOL_MIX: [V("学校の導入と見送りの平均")],
+    SCHOOL_MIX: [If("share=1", "学校の導入は見込み {share}"), V("学校の導入と見送りの平均")],
     PILOT_ON: [V("学校・塾で試用が始まった")],
     PILOT_NO: [If("evn>=1", "{evnth} 回目も試用先は見つからず"), V("試してくれる先は見つからず")],
     PILOT_MIX: [V("試用の有無をまとめた平均")],

@@ -190,6 +190,11 @@ export interface Banks {
   nextNoun: Record<string, string>;
   /** 標準の続きの 1 期の言い方（手の種類か「種類.出来事」。この後の目安の並び。reader-5） */
   contNoun: Record<string, string>;
+  /**
+   * 1.2（W5・con-10・rep-13）: 標準の続きの 1 期の、その手の前提の見込み（手の種類ごと。数は前提の数 C の差し込み）。言い換えは期の並びで回す。
+   * 無い種類（今のまま・SpellDash の集客と工夫）は、その期の月の稼ぎの文だけを言う
+   */
+  contOdds: Record<string, Variant[]>;
 }
 
 /** カードのやること 1 つ: 文と、元にしたやりたいことリストの番号 */
