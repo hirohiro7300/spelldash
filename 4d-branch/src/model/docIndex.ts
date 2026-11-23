@@ -200,9 +200,91 @@ function diffKeys<T>(a: Record<ID, T>, b: Record<ID, T>): Set<ID> {
 }
 
 
+/**
+ * ノード → 線の ID の並び（出る線・入る線）。Map と同じ読み口で、ノードのキーの順の番号の表（DocIndex の nodeSeq）で番号を引き、
+ * 番号ごとの配列に持つ（7.7 万枚で、同じ鍵の Map を 2 つ持たない: 3.5 MB。作り直しでも 15 万回の Map への書き込みをしない: P4）。
+ * 鍵の順は番号の表に入れた順（DocIndex は番号の表と並びを同じ所で足し・消すので、Map に入れた順と同じ）。
+ * 番号の表に無いノードには入れない（DocIndex は先に番号を振る）
+ */
+export class SeqLists implements Map<ID, ID[]> {
+  private count = 0;
+  constructor(
+    private readonly seq: Map<ID, number>,
+    private lists: Array<ID[] | undefined> = [],
+    count = 0,
+  ) {
+    this.count = count;
+  }
+
+  get size(): number {
+    return this.count;
+  }
+
+  get(id: ID): ID[] | undefined {
+    const i = this.seq.get(id);
+    return i === undefined ? undefined : this.lists[i];
+  }
+
+  has(id: ID): boolean {
+    return this.get(id) !== undefined;
+  }
+
+  set(id: ID, list: ID[]): this {
+    const i = this.seq.get(id);
+    if (i === undefined) throw new Error(`索引の番号が無いノードです: ${id}`);
+    if (this.lists[i] === undefined) this.count++;
+    this.lists[i] = list;
+    return this;
+  }
+
+  delete(id: ID): boolean {
+    const i = this.seq.get(id);
+    if (i === undefined || this.lists[i] === undefined) return false;
+    this.lists[i] = undefined;
+    this.count--;
+    return true;
+  }
+
+  clear(): void {
+    this.lists = [];
+    this.count = 0;
+  }
+
+  *entries(): MapIterator<[ID, ID[]]> {
+    for (const [id, i] of this.seq) {
+      const l = this.lists[i];
+      if (l !== undefined) yield [id, l];
+    }
+  }
+
+  *keys(): MapIterator<ID> {
+    for (const [id, i] of this.seq) if (this.lists[i] !== undefined) yield id;
+  }
+
+  *values(): MapIterator<ID[]> {
+    for (const i of this.seq.values()) {
+      const l = this.lists[i];
+      if (l !== undefined) yield l;
+    }
+  }
+
+  [Symbol.iterator](): MapIterator<[ID, ID[]]> {
+    return this.entries();
+  }
+
+  forEach(cb: (value: ID[], key: ID, map: Map<ID, ID[]>) => void, thisArg?: unknown): void {
+    for (const [k, v] of this.entries()) cb.call(thisArg, v, k, this);
+  }
+
+  get [Symbol.toStringTag](): string {
+    return "SeqLists";
+  }
+}
+
 export class DocIndex implements GraphIndex {
-  out = new Map<ID, ID[]>();
-  inc = new Map<ID, ID[]>();
+  /** ノード → 出る線・入る線（両端のノードがある線だけ。キーの順の番号の表 nodeSeq で引く: SeqLists） */
+  out: Map<ID, ID[]>;
+  inc: Map<ID, ID[]>;
   projectNodes = new Map<ID, ID[]>();
   unassigned: ID[] = [];
   cross = new Set<ID>();
@@ -247,6 +329,8 @@ export class DocIndex implements GraphIndex {
 
   constructor(doc: DocData) {
     this.doc = doc;
+    this.out = new SeqLists(this.nodeSeq);
+    this.inc = new SeqLists(this.nodeSeq);
     this.rebuild(doc);
   }
 
@@ -331,8 +415,6 @@ export class DocIndex implements GraphIndex {
   /** 全部を作り直す（buildIndex と同じ並び） */
   rebuild(doc: DocData): void {
     this.doc = doc;
-    this.out = new Map();
-    this.inc = new Map();
     this.projectNodes = new Map();
     this.unassigned = [];
     this.drops.clear();
@@ -423,15 +505,15 @@ export class DocIndex implements GraphIndex {
       outN[a]!++;
       incN[b]!++;
     }
+    // 番号 i のノードの並び（番号の表 nodeSeq は上で i を振った: そのまま SeqLists の番号ごとの配列にする）
     const outL: ID[][] = new Array(N);
     const incL: ID[][] = new Array(N);
     for (let i = 0; i < N; i++) {
-      const id = nkeys[i]!;
-      const o: ID[] = (outL[i] = outN[i] ? new Array<ID>(outN[i]!) : []);
-      const c: ID[] = (incL[i] = incN[i] ? new Array<ID>(incN[i]!) : []);
-      this.out.set(id, o);
-      this.inc.set(id, c);
+      outL[i] = outN[i] ? new Array<ID>(outN[i]!) : [];
+      incL[i] = incN[i] ? new Array<ID>(incN[i]!) : [];
     }
+    this.out = new SeqLists(this.nodeSeq, outL, N);
+    this.inc = new SeqLists(this.nodeSeq, incL, N);
     outN.fill(0);
     incN.fill(0);
     const edgeAt = this.edgeAt;
