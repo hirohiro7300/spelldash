@@ -8,4 +8,4 @@ export const V = (...v: string[]): Variant => ({ v });
 export const If = (c: string, ...v: string[]): Variant => ({ if: c, v });
 
 /** 手引きの 1 歩: やりたいことリストの番号・やること・本文の文・{ 2 回目からの題・条件 } */
-export const S = (id: string, todo: string, act: string, o: { title?: string; if?: string } = {}): Step => ({ id, todo, act, ...o });
+export const S = (id: string, todo: string, act: string, o: { title?: string; if?: string; lead?: string } = {}): Step => ({ id, todo, act, ...o });

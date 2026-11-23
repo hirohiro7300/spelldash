@@ -40,9 +40,23 @@ export const ALLOWED_NUM: readonly RegExp[] = [/980 円/g, /週 10 時間/g, /�
  *   中身の同じ兄弟を言うまとめた行き先）。状態の上 480 → 500（R1: おすすめでない手を選んだ道は、その手の見込みの数を言う。長さの目安 460 で
  *   落とせる文を落とした後の最大が、計算の芯つきで 477 字（年収 240〜1200）・計算の芯なしの組み立てで 493 字）。今日の手は 0.9 で測り直して
  *   660（360）・662（540）なので 700 のまま
+ *   1.1（W4・con-6・con-13）: 行き先に今日の手とその答え・3 年の稼ぎの内訳・月の稼ぎの動き・一番分けた判断・3 年の後の伸びしろ（額つき）を足した。
+ *   本当の行き先は組み立ての目安 END_BUDGET 640 で落とせる文を落とした後の最大が年収 360 で 644 字、行き先全体の最大は中身の同じ兄弟を言う
+ *   まとめた行き先（独立した道を含む物は内訳に経費を引いた額と言う）で年収 360 で 708 字・540 で 711 字。行き先の上 620 → 740
+ *   1.2（W5・con-8）: 手の本文は、やること 3 つをその 3 か月の月に置いた段取りで言う（前は 1〜2 つ）。長さの目安 MOVE_BUDGET 680 で落とせる文を
+ *   落とし、段取りの 2 つ目・3 つ目をやることの言葉に縮めた後の最大が、年収 360 で 701 字・540 で 701 字（結果が 3 つの独立の手）。手の上 700 → 740
  */
-export const LIMITS = { a: { title: 16, min: 60, max: 700 }, s: { title: 22, min: 30, max: 500 }, e: { title: 24, min: 80, max: 620 }, r: { title: 40, min: 0, max: 600 } } as const;
-export const FIRST_MOVE_MAX = 700;
+export const LIMITS = { a: { title: 16, min: 60, max: 740 }, s: { title: 22, min: 30, max: 500 }, e: { title: 24, min: 80, max: 740 }, r: { title: 40, min: 0, max: 600 } } as const;
+/**
+ * 今日の手の本文の上。1.0（W3・con-3・con-5）: 今日の手の結果の名前に見込みを添え、結果ごとの次の判断のおすすめと、選べなくなる手を足した。
+ * 届け出て副業の手（結果が 4 つ）が年収 360 で 771 字（組み立ての目安 FIRST_MOVE_BUDGET 760 で選べなくなる手の文を落とす前）。700 → 800。
+ * 1.1（W4・con-11）: 結果ごとの分かれ道を結果の名前と見込みで言い、今日の手の先がどれもほぼ同じ数の分かれ道まで開いてあることと、本当の行き先が
+ * 着いた所（仕事・移った会社・Pro・顧客）を足した。組み立ての目安 FIRST_MOVE_BUDGET 900 で、届け出て副業の手が年収 360 で 924 字・540 で 922 字
+ * （選べなくなる手の文を落とした後。ほかの手は 812 まで）。800 → 960。
+ * 1.2（W5・con-8）: やること 3 つを月に置いた段取りにした。届け出て副業の手が年収 360 で 994 字（選べなくなる手を落とし、段取りの 2 つ目・3 つ目を
+ * やることの言葉に縮めた後）。960 → 1,040
+ */
+export const FIRST_MOVE_MAX = 1040;
 /**
  * 0.9: 道の最初の状態（今日の手の結果）の本文の上。3 年の見込みの見積もり方とずっと今のままの 3 年を道でここだけが言う（組み立ての
  * FIRST_STATE_BUDGET 600 の後に、落とせない文の分の余白）
@@ -501,6 +515,46 @@ export function listNameOf(map: MapData, a: number): string {
   return map.header.kinds[map.kind(a) ?? ""]?.[0] ?? "";
 }
 
+/** 手の 3 年の見積もりの文（今日の手・まとめた手の長い言い方と、1.0 の短い言い方 3 つ。rep-1・con-15） */
+export const VALUE_SENTENCE = /この手で進むと|までの稼ぎの見積もりは|この手を選ぶと、[^。]*までの稼ぎは|見積もりでは、ここから/;
+
+/**
+ * 1b・W3（con-3・C13）: 結果が 2 つ以上の手の本文が言う、結果ごとの次の判断のおすすめの手（「『A』と『B』の後は『X』」「どの結果でも…『X』」）が、
+ * その結果の状態の画面のおすすめ（pi。決まらなければ −1 で比べない）と同じ手か。text は仕上げた本文
+ */
+export function nextRecIssues(map: MapData, a: number, text: string, pi: (d: number) => number): string[] {
+  const out: string[] = [];
+  if (map.role(a) !== "a") return out;
+  const kids: number[] = [];
+  for (let k = 0; k < map.childCount(a); k++) kids.push(map.child(a, k));
+  const byLab = new Map<string, number>();
+  for (const o of kids) {
+    const lab = shownLabel(map, o);
+    if (lab) byLab.set(lab, o);
+  }
+  const check = (o: number, said: string): void => {
+    if (map.role(o) !== "s") return;
+    const r = pi(o);
+    if (r < 0) return;
+    const want = listNameOf(map, r);
+    if (want && said !== want) out.push(`『${map.label(o)}』の後の次のおすすめ『${said}』が画面のおすすめ『${want}』と違う`);
+  };
+  for (const sent of text.split("。")) {
+    if (!/おすすめ/.test(sent)) continue;
+    if (/どの結果|結果によらず/.test(sent)) {
+      const m = /『([^』]*)』$/.exec(sent);
+      if (m) for (const o of kids) check(o, m[1]!);
+      continue;
+    }
+    for (const m of sent.matchAll(/((?:『[^』]*』と)*『[^』]*』)(?:なら|の後は)『([^』]*)』/g))
+      for (const l of m[1]!.matchAll(/『([^』]*)』/g)) {
+        const o = byLab.get(l[1]!);
+        if (o !== undefined) check(o, m[2]!);
+      }
+  }
+  return out;
+}
+
 /**
  * 本文の「おすすめ」が、画面のおすすめ（今の年収の一番良い選び方 π。pi(d) はその手、決まらなければ −1）と同じ手か（C13・truth-1）:
  * おすすめの手の本文は「おすすめの手」と言う・ほかの手の本文が言う「おすすめの『…』」はその手の名前・「おすすめの『…』より N 万円多い」と
@@ -514,7 +568,7 @@ export function recommendIssues(map: MapData, a: number, text: string, pi: (d: n
   const rec = pi(d);
   if (rec < 0) return out;
   // この手の 3 年の見積もりの文（「この手で進むと」）がある手だけ（値の無い手は比べる文を書かない）
-  if (rec === a && /この手で進むと/.test(text) && !/おすすめの手/.test(text)) out.push("おすすめの手の本文が、おすすめの手と言わない");
+  if (rec === a && VALUE_SENTENCE.test(text) && !/おすすめの手/.test(text)) out.push("おすすめの手の本文が、おすすめの手と言わない");
   for (const m of text.matchAll(/おすすめの『([^』]*)』/g)) if (m[1] !== listNameOf(map, rec)) out.push(`本文のおすすめ『${m[1]}』が画面のおすすめ『${listNameOf(map, rec)}』と違う`);
   const more = /(?<!見積もりでは)おすすめの『[^』]*』より [0-9.,]+ 万円多い/.exec(text);
   if (more) out.push(`おすすめの手より多いと言い切る「${more[0]}」`);
@@ -594,6 +648,17 @@ const shownLabel = (map: MapData, o: number): string | null => {
 };
 
 /**
+ * 1b・W3: 本文の『lab』の結果の意味の切れ端（『lab』の後の見込みの括弧と「なら」「の場合は」「では」の後から、次の『か句点まで）。無ければ null。
+ * 0.9 までは「『lab』なら」だけだった（1.0 で結果の名前の後に見込みを添え、数で分かれる結果の言い方を位置で 3 つ回す。con-3・L2）
+ */
+export function outcomeSegment(text: string, lab: string): string | null {
+  const m = new RegExp(`『${escapeRe(lab)}』(?:（[^）]*）)?(?:なら|の場合は|では)`).exec(text);
+  if (!m) return null;
+  const rest = text.slice(m.index + m[0].length);
+  return rest.slice(0, Math.min(...[rest.indexOf("『"), rest.indexOf("。")].map((x) => (x < 0 ? rest.length : x))));
+}
+
+/**
  * 手が結果について言う額と数が、その結果の状態と合うか（C11・reader-4）: 次の顧客の月額（道で決まる段）・昇格の額（2 つの結果の給与の差）・
  * 結果ごとの売上・席・倍率・年収（『結果』なら…の中。まとめた行き先は 3 年後の平均なので比べない）。text は仕上げた本文
  */
@@ -623,10 +688,8 @@ export function moveClaims(map: MapData, a: number, text: string, C: Consts, ann
     if (!map.sum(o)) continue;
     const lab = shownLabel(map, o);
     if (!lab) continue;
-    const at = text.indexOf(`『${lab}』なら`);
-    if (at < 0) continue;
-    const rest = text.slice(at + lab.length + 4);
-    const seg = rest.slice(0, Math.min(...[rest.indexOf("『"), rest.indexOf("。")].map((x) => (x < 0 ? rest.length : x))));
+    const seg = outcomeSegment(text, lab);
+    if (seg === null) continue;
     const ok = (id === "high_mid" ? [quarterSal(map, C, cal, a, "high"), quarterSal(map, C, cal, a, "mid")] : [quarterSal(map, C, cal, a, id)]).filter((x): x is number => x !== null);
     for (const m of seg.matchAll(/今日の ([0-9.]+) 倍/g)) if (!ok.some((x) => f2(x) === m[1])) out.push(`まとめた手の『${lab}』の倍率「${m[0]}」が、その 3 か月の給与 ${ok.map(f2).join("・") || "（無し）"} 倍と違う`);
     if (annual !== undefined) for (const m of seg.matchAll(/年収 ([0-9,]+) 万円/g)) if (!ok.some((x) => n0(annual * x) === m[1])) out.push(`まとめた手の『${lab}』の年収「${m[0]}」が、その 3 か月の給与 ${ok.map((x) => n0(annual * x)).join("・") || "（無し）"} 万円と違う`);
@@ -634,10 +697,8 @@ export function moveClaims(map: MapData, a: number, text: string, C: Consts, ann
   for (const o of kids) {
     const lab = shownLabel(map, o);
     if (map.sum(o) || !lab) continue;
-    const at = text.indexOf(`『${lab}』なら`);
-    if (at < 0) continue;
-    const rest = text.slice(at + lab.length + 4);
-    const seg = rest.slice(0, Math.min(...[rest.indexOf("『"), rest.indexOf("。")].map((x) => (x < 0 ? rest.length : x))));
+    const seg = outcomeSegment(text, lab);
+    if (seg === null) continue;
     const so = map.st(o);
     const rr = map.rr(o);
     for (const m of seg.matchAll(/売上 月 ([0-9.]+) 万円/g)) if (m[1] !== man(so.cl * so.fee)) out.push(`『${lab}』の売上「${m[0]}」が結果の ${man(so.cl * so.fee)} 万円と違う`);
@@ -731,6 +792,17 @@ export function pathContext(map: MapData, i: number, text: string, t: Card): str
         const n = Number(m[1] ?? m[2]);
         const actual = searchQuarters(map, i);
         if (n !== actual) out.push(`転職活動の期が ${n}（道では ${actual}）`);
+      }
+    // 1b・W3（con-5）: 『転職せず』の後の判断に転職活動が並ばないのに、続けて探すと言わない
+    if (kind === "fc_switch" || kind === "fc_switch2")
+      for (let k = 0; k < map.childCount(i); k++) {
+        const o = map.child(i, k);
+        if (map.outId(o) !== "none" || map.role(o) !== "s") continue;
+        let next = false;
+        for (let x = 0; x < map.childCount(o); x++) if (/^fc_switch2?$/.test(map.kind(map.child(o, x)) ?? "")) next = true;
+        const lab = shownLabel(map, o);
+        const seg = lab ? outcomeSegment(text, lab) : null;
+        if (!next && seg !== null && /続けられる|続きが並ぶ|続けて探せる|もう 1 期探せる|続けるか|探すかを|次の 3 か月の応募/.test(seg)) out.push(`『${lab}』の後の判断に転職活動が並ばないのに、続けて探すと言う「${seg.slice(0, 30)}」`);
       }
     const dPrev = map.role(d) === "s" ? map.parent(map.parent(d)) : -1;
     if (/過去 6 か月の月次報告/.test(text) && (map.st(d).j === "i" || (dPrev >= 0 && map.st(dPrev).j === "i"))) out.push("独立していた期があるのに過去 6 か月の月次報告");

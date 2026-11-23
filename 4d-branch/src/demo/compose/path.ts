@@ -149,6 +149,60 @@ export function ripple(map: MapData, i: number): Ripple {
   return { decisions, splits, forks: decisions + splits, ends: c.end[i] ?? 0, sumEnds: c.sumEnd[i] ?? 0 };
 }
 
+/**
+ * 1b・W4（con-11）: あるカードから先の本当の行き先（標準の続きの見積もりでない物）が着いた所の数: 仕事（会社員・週 4 日・独立）・移った会社・
+ * Pro を出している・広告運用の顧客がいる。今日の手の本文が言う（下から 1 回。初めて要るときに数える）
+ */
+export interface Landing {
+  real: number;
+  emp: number;
+  part: number;
+  ind: number;
+  switched: number;
+  pro: number;
+  clients: number;
+}
+
+interface LandCounts {
+  real: Int32Array;
+  emp: Int32Array;
+  part: Int32Array;
+  ind: Int32Array;
+  sw: Int32Array;
+  pro: Int32Array;
+  cl: Int32Array;
+}
+
+function landCountsOf(map: MapData): LandCounts {
+  const n = map.n;
+  const z = (): Int32Array => new Int32Array(n);
+  const L: LandCounts = { real: z(), emp: z(), part: z(), ind: z(), sw: z(), pro: z(), cl: z() };
+  const keys = Object.keys(L) as Array<keyof LandCounts>;
+  for (let i = n - 1; i >= 0; i--) {
+    if (map.role(i) === "e" && !map.sum(i)) {
+      const s = map.st(i);
+      L.real[i]! += 1;
+      if (s.j === "i") L.ind[i]! += 1;
+      else if (s.j === "p") L.part[i]! += 1;
+      else L.emp[i]! += 1;
+      if (s.fl.includes("switched")) L.sw[i]! += 1;
+      if (s.pro) L.pro[i]! += 1;
+      // 修正（facts-6）: 顧客がいる道は、顧客の数の幅の下が 1 社以上の行き先だけ（0〜N 社の幅や、丸めて 0 社の道は数えない）
+      if (clBand(map, i)[0] >= 1) L.cl[i]! += 1;
+    }
+    const p = map.parent(i);
+    if (p >= 0) for (const k of keys) L[k][p]! += L[k][i]!;
+  }
+  return L;
+}
+
+/** カード i から先の本当の行き先が着いた所の数（地図ごとに 1 回だけ数える） */
+export function landing(map: MapData, i: number): Landing {
+  const pm = perMap(map);
+  const L = (pm.land ??= landCountsOf(map));
+  return { real: L.real[i] ?? 0, emp: L.emp[i] ?? 0, part: L.part[i] ?? 0, ind: L.ind[i] ?? 0, switched: L.sw[i] ?? 0, pro: L.pro[i] ?? 0, clients: L.cl[i] ?? 0 };
+}
+
 // ---- 道の覚え
 
 /**
@@ -219,6 +273,8 @@ interface PerMap {
   /** 暦（初めて組み立てるときに作る。数え上げだけなら要らない） */
   cal: Calendar | null;
   counts: Counts | null;
+  /** 本当の行き先が着いた所の数（今日の手の本文。初めて要るときに数える） */
+  land: LandCounts | null;
   /** ずっと今のままの 3 年の稼ぎ（年収ごと。今のままの手の先だけをたどって 1 回。null は出せない地図） */
   keep: Map<number, number | null> | null;
   links: WeakMap<Banks, Map<number, Link>>;
@@ -231,7 +287,7 @@ const MEMO = new WeakMap<MapData, PerMap>();
 function perMap(map: MapData): PerMap {
   let pm = MEMO.get(map);
   if (!pm) {
-    pm = { cal: null, counts: null, keep: null, links: new WeakMap(), titles: new WeakMap() };
+    pm = { cal: null, counts: null, land: null, keep: null, links: new WeakMap(), titles: new WeakMap() };
     MEMO.set(map, pm);
   }
   return pm;
@@ -307,9 +363,14 @@ export function recentSteps(link: Link): Set<string> {
 }
 
 /** 道の上で使った手引きの番号 */
-export function usedSet(link: Link): Set<string> {
-  const s = new Set<string>();
-  for (let l: Link | null = link; l; l = l.up) for (const id of l.steps) s.add(id);
+//   修正（code-4）: 道の覚えごとに 1 回だけ作る（覚えは束ごとに続くので、手・題・標準の続きの期で同じ道の物を作り直さない）。書き換えない
+const USED = new WeakMap<Link, ReadonlySet<string>>();
+export function usedSet(link: Link): ReadonlySet<string> {
+  const hit = USED.get(link);
+  if (hit) return hit;
+  const s = new Set<string>(link.up ? usedSet(link.up) : []);
+  for (const id of link.steps) s.add(id);
+  USED.set(link, s);
   return s;
 }
 
@@ -380,11 +441,12 @@ export function joinedAt(c: Ctx, link: Link): number | null {
  * 手を選ぶ判断の道から決まる条件の値（手の書き出し・手引きの条件に使う。reader-6）:
  * emp6 その判断と 1 つ前の判断で会社員か週 4 日（過去 6 か月の月次報告がある）・prevSearch 前の 3 か月が転職活動・
  * search 今の会社での転職活動の期の数（この手を除く）・f5 次に増える副業の顧客が上の月額か・
- * joined 道の上で勤め先が変わった（今の会社は地図の途中で入った会社。fact-5）
+ * joined 道の上で勤め先が変わった（今の会社は地図の途中で入った会社。fact-5）・
+ * pushHere 今の会社で昇格を狙った回数（この手を除く。1.1・rep-14: 同じ会社で 2 回目の評価は、足りない 1 点を聞く歩みから）
  */
 export function pathEnv(c: Ctx, link: Link): Env {
   const js = jobsUp(c, link, 2);
-  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0, joined: joinedAt(c, link) !== null ? 1 : 0 };
+  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0, joined: joinedAt(c, link) !== null ? 1 : 0, pushHere: countKindHere(link, "fc_push") };
 }
 
 /** 独立してからの月の数（m か月目の時点。その月を含む。独立していなければ 0）。行き先の「独立して N か月目」と同じ数え方（rep-5） */
@@ -718,7 +780,7 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
     newEmployer(true);
   } else if (search) out.push({ code: mixed ? "SEARCH_MIX" : "SEARCH_NONE", m: at, x: {} });
   if (k === "fc_push") {
-    if (mixed) out.push({ code: "PROMO_MIX", m: at, x: { share: shareSlot(factShare(C, k, a.fl)), salx: `${slot(f2(b.sal))} 倍` }, at: { ymApril: at } });
+    if (mixed) out.push({ code: "PROMO_MIX", m: at, x: { share: shareSlot(factShare(C, k, a.fl)), salx: `${slot(f2(b.sal))} 倍` }, at: { ymApril: at }, env: { share: factShare(C, k, a.fl) === null ? 0 : 1 } });
     else out.push({ code: id === "up" ? "PROMO" : "PROMO_NO", m: at, x: { salx: `${slot(f2(b.sal))} 倍` }, at: { ymApril: at } });
   }
   // Pro の受付: 認められている手の 2 か月目。期間の途中で独立したなら、独立した翌月（sim.ts の latePro。truth-10）
@@ -754,7 +816,7 @@ export function eventsOf(c: Ctx, n: number, up: Link): Ev[] {
   } else if ((k === "ad_side" || k === "ad_more") && exact && bl === pl) out.push({ code: "CLIENT_NOT_FOUND", m: m0 + 3, x: {} });
   for (const [flag, on, off, kindOf, mix] of FLAG_EVENTS) {
     if (k !== kindOf) continue;
-    if (mixed) out.push({ code: mix, m: at, x: { share: shareSlot(factShare(C, k, a.fl)), seats: slot(C.schoolSeats) } });
+    if (mixed) out.push({ code: mix, m: at, x: { share: shareSlot(factShare(C, k, a.fl)), seats: slot(C.schoolSeats) }, env: { share: factShare(C, k, a.fl) === null ? 0 : 1 } });
     // 学校の席は、この 3 か月に加わった分（2 校目なら 2 校目の席。facts-3）
     else out.push({ code: b.fl.includes(flag) && (!a.fl.includes(flag) || flag === "school") && id === "yes" ? on : off, m: at, x: { seats: slot(n0(Math.max(0, b.seats - a.seats))) } });
   }
@@ -823,6 +885,39 @@ export function optionValue(map: MapData, a: number, annual: number): number | n
  * （やることを空にしない。もう一度使う歩みの文は本文に入れない。点検 C3）。
  * 今のままは、どの判断にも並ぶ手なので、手引きの始まりを判断の月で回す（道の上の判断ごとに同じ歩みを並べない。reader-8）
  */
+/** 1.2（W5・con-9）: 手引きを使い切った種類が次に歩みを取る、近い種類の手引き（文がその種類の手でも読める物だけ） */
+export const FAMILY: Readonly<Record<string, readonly string[]>> = {
+  ad_side: ["ad_more", "ad_portfolio"],
+  ad_more: ["ad_side"],
+  ad_portfolio: ["ad_side"],
+  fc_push: ["fc_scope"],
+  fc_scope: ["fc_push"],
+  fc_switch: ["fc_switch2"],
+  fc_switch2: ["fc_switch"],
+  back_emp: ["fc_switch2"],
+  sd_school: ["sd_pilot"],
+  sd_pilot: ["sd_school"],
+};
+
+/**
+ * 1.2（W5・con-9）: 判断の月 m から選ぶ手の 3 か月（m+1〜m+3）が確定申告の期（2 月か 3 月がある）で、副業・SpellDash・独立の稼ぎがある状態か
+ * （顧客がいる・Pro を出している・独立している）。状態の暦の文（calPick）より粗いが、道で使った歩みだけで決まる
+ */
+//   修正（reader-5）: 申告が要りそうな稼ぎ（独立・広告運用の顧客・副業と SpellDash の手取りが年で申告の線の 7 割以上。状態の暦の文の
+//   「超えるなら確定申告」と同じ線）がある時だけ。Pro を出していても赤字か線より十分下なら、申告の歩みを先に取らない（暦の文が住民税の申告を言う）
+export function taxQuarter(c: Ctx, m: number, s: ImpactSt, rr?: readonly number[]): boolean {
+  if (m === 0) return false;
+  const q = [1, 2, 3].some((k) => {
+    const mo = c.cal.parts(m + k)[1];
+    return mo === 2 || mo === 3;
+  });
+  if (!q) return false;
+  if (s.j === "i" || s.cl >= 0.5) return true;
+  const line = Number(c.B.facts.taxLine ?? NaN);
+  if (!rr || !Number.isFinite(line)) return s.pro === 1;
+  return s.pro === 1 && 12 * (rr[1]! + rr[2]!) >= line * 0.7;
+}
+
 export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<string>, recent: ReadonlySet<string> = used, extra: Env = {}): Step[] {
   const { map, B, C } = c;
   const kind = map.kind(a) ?? "";
@@ -831,17 +926,36 @@ export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<strin
   const book0 = B.playbook[kind] ?? B.playbook._generic ?? [];
   // 判断ごとに 3 つずらす（続く判断の今のままの歩みが重ならない）
   const r = kind === "keep" && book0.length ? m % book0.length : 0;
-  const book = r ? [...book0.slice(r), ...book0.slice(0, r)] : book0;
-  const env: Env = { ...extra, j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap: capOf(C, s.j), m, mon: c.cal.parts(m)[1], n: nth, first: m === 0 ? 1 : 0 };
+  const turned = r ? [...book0.slice(r), ...book0.slice(0, r)] : book0;
+  const env: Env = { ...extra, j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap: capOf(C, s.j), m, mon: c.cal.parts(m)[1], n: nth, first: m === 0 ? 1 : 0, taxQ: taxQuarter(c, m, s, map.rr(map.parent(a))) ? 1 : 0 };
+  // 1.1（W4・rep-14）: その期の状況で先に取る歩み（lead の条件が合う物）を前に出す。ほかは手引きの並びのまま
+  const led = turned.filter((st) => st.lead && cond(st.lead, env, s.fl));
+  const book = led.length ? [...led, ...turned.filter((st) => !led.includes(st))] : turned;
   const out: Step[] = [];
   // 同じ番号の歩みは 1 回だけ（試作は種類の手引きと _generic の両方にある番号を 2 回入れることがあった）
   const take = (st: Step): void => {
     if (out.length < 3 && !used.has(st.id) && !out.some((x) => x.id === st.id) && cond(st.if, env, s.fl)) out.push(st);
   };
+  // 1.2（W5・con-9）: 確定申告の期（その 3 か月に 2 月か 3 月があり、副業・SpellDash・独立の稼ぎがある）は、申告の歩みを 1 つ先に取る
+  //   （束の _tax。道で使っていない物から。毎年の申告で違う歩みになる）
+  if (env.taxQ === 1)
+    for (const st of B.playbook._tax ?? [])
+      if (!out.length && cond(st.lead, env, s.fl)) take(st);
   for (const st of book) take(st);
-  // 道の上でその種類の手引きを使い切ったら、_generic の歩みで埋める
+  // 1.2（W5・con-9）: 道の上でその種類の手引きを使い切ったら、近い種類の手引き（FAMILY）から取り、それでも足りなければ _generic で埋める
+  //   （顧客探しの長い道で、時間の使い方の歩みに落ちない）
+  for (const fk of FAMILY[kind] ?? []) if (out.length < 3) for (const st of B.playbook[fk] ?? []) take(st);
   if (out.length < 3) for (const st of B.playbook._generic ?? []) take(st);
   // それでも足りなければ、直前の 3 つの手より前に使った種類の歩み（1 年近く前の歩みを、もう一度やる）
   if (out.length < 3) for (const st of book) if (out.length < 3 && used.has(st.id) && !recent.has(st.id) && !out.some((x) => x.id === st.id) && cond(st.if, env, s.fl)) out.push(st);
+  // 修正（reader-7）: 先にやる歩み（素材を撮る）が同じ 3 か月に選ばれていれば、後の歩み（その素材で週 5 本出す）より前の月に置く
+  for (const [later, first] of STEP_AFTER) {
+    const li = out.findIndex((x) => x.id === later);
+    const fi = out.findIndex((x) => first.includes(x.id));
+    if (li >= 0 && fi > li) out.splice(li, 0, ...out.splice(fi, 1));
+  }
   return out;
 }
+
+/** 修正（reader-7）: 同じ 3 か月に並ぶとき、後に置く歩みと、その前に置く歩み（動画は素材を撮りため・型紙を作ってから出す回数を決める） */
+const STEP_AFTER: ReadonlyArray<readonly [string, readonly string[]]> = [["spell-growth-d16", ["spell-growth-d08", "spell-growth-d09"]]];

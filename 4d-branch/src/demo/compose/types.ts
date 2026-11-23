@@ -18,6 +18,8 @@ export interface Step {
   /** 同じ種類の手の 2 回目からの題 */
   title?: string;
   if?: string;
+  /** 1.1（W4・rep-14）: この条件が合う 3 か月は、手引きの並びより先に取る（その期の状況で順を変える。遊ぶ人の数・同じ会社で 2 回目の評価など） */
+  lead?: string;
 }
 
 /**
@@ -105,6 +107,10 @@ export interface Consts {
   growMax: number;
   adsMax: number;
   retainMax: number;
+  /** 紹介で顧客を増やす手の、月あたりに来る顧客の数（会社員・週 4 日・独立） */
+  lamEmp: number;
+  lamPart: number;
+  lamInd: number;
 }
 
 /** 文の型の束。節ごとに、手の種類・出来事・結果の分類から言い換えの組を引く */
@@ -122,6 +128,15 @@ export interface Banks {
   lead: Record<string, Variant[]>;
   /** 手の時間とお金（その種類の初めてのときなど） */
   cost: Record<string, Variant[]>;
+  /**
+   * 1.0（W3・rep-2）: この手を今選ぶ訳（手の書き出し。手の種類ごと。条件は 1 つ前の判断の出来事 pev・状態など）。「『結果』を受けて、」の代わり。
+   * 関係の無い出来事の後は書かない（無い組は飛ばす）
+   */
+  why: Record<string, Variant[]>;
+  /** 1.0（W3・con-4）: 同じ種類の手の 2 回目からの進み具合（何回目か・前提の上限まであと何回か・ここまでに積んだ物）。手の種類ごと */
+  progress: Record<string, Variant[]>;
+  /** 1.0（W3・con-5）: この手を選ぶと、次の判断から決まりで選べなくなる手の言い方（手の種類ごと。_generic は決まった言い方） */
+  rules: Record<string, Variant[]>;
   /** 手の結果ごとの意味: 手の種類 → 結果の分類 → 組 */
   branch: Record<string, Record<string, Variant[]>>;
   /** 状態の出来事の文（できごとだけ。同じ出来事が道で何回も起きるときは、何回目かで言い換えを選ぶ） */
@@ -157,8 +172,18 @@ export interface Banks {
   nextPhrase: Record<string, string[]>;
   /** 暦の文（確定申告・住民税・4 月・辞める前）。どれも道で 1 回だけ（確定申告はその年分ごとに 1 回） */
   cal: Record<string, Variant[]>;
-  /** 3 年後の行き先の、この先の見通し */
+  /** 3 年後の行き先の、3 年の後の伸びしろ（1.1・con-13: 状態の数と前提の額・見込み・年月を差し込む） */
   after: Variant[];
+  /**
+   * 1.1（W4・L4）: 行き先で、今日の手の答えが 3 年の終わりまで効いているときの中身（「…まま」「…て」で終わる 1 節。今日の手の種類ごと。
+   * 枠「今日の『手』は『答え』（見込み）で、… 3 年を終える」は組み立て側）
+   */
+  endThread?: Record<string, Variant[]>;
+  /**
+   * 1.1（W4・L4）: 手で、今日の手の答えがこの手の前提になっているときの 1 文（今日の手の種類ごと。条件の mk はこの手の種類）。道で 1 回だけ
+   * （組み立て側が、道の上の手で言ったかを覚える）
+   */
+  moveThread?: Record<string, Variant[]>;
   /** 静かな 3 か月の一言（組ごとに道で 1 回だけ） */
   hint: Variant[];
   /** 避けたい手の訳（お金で。組ごとに道で 1 回だけ） */
@@ -167,10 +192,13 @@ export interface Banks {
   short: Record<string, string>;
   /** 手の名詞の形（この後の目安の並び） */
   nextNoun: Record<string, string>;
-  /** 手をした後の言い方（「前の 3 か月は担当を広げた。」。reader-10） */
-  did: Record<string, string>;
   /** 標準の続きの 1 期の言い方（手の種類か「種類.出来事」。この後の目安の並び。reader-5） */
   contNoun: Record<string, string>;
+  /**
+   * 1.2（W5・con-10・rep-13）: 標準の続きの 1 期の、その手の前提の見込み（手の種類ごと。数は前提の数 C の差し込み）。言い換えは期の並びで回す。
+   * 無い種類（今のまま・SpellDash の集客と工夫）は、その期の月の稼ぎの文だけを言う
+   */
+  contOdds: Record<string, Variant[]>;
 }
 
 /** カードのやること 1 つ: 文と、元にしたやりたいことリストの番号 */

@@ -1,6 +1,6 @@
 // 8 万枚の木（3 か月ごとの地図の本番の形）の同梱データ: 読み手がどのノードのどの問いにも fromDevTree() と同じ答え・64 ビットの ID が重ならない・
 // アプリと同じ値（年収 360・540）・決まった並び・大きさ・木の形（S1〜S5）・一貫性（年収 360・540）・焼き込んだ題・短い名前・やること・
-// 文章の点検（runTextChecks。年収 360・540 で 1 分ほど。生成の点検と同じ物）。遅いので、環境変数 IMPACT_Q_FULL があるときだけ動く
+// 文章の点検（runTextChecks。年収 360・540 で 3 分ほど。生成の点検と同じ物）。遅いので、環境変数 IMPACT_Q_FULL があるときだけ動く
 // （既定のテストは小さい木。見直し gaps-4。CI の test:slow で動かす）。
 //   IMPACT_Q_FULL=<場所> npx vitest run tests/unit/impactBundleQFull.test.ts
 //   <場所> には生成の書き出し（node scripts/impact/q/run.mjs --out <場所>/q-tree.json --bundle <場所>/impact-q.b64 …）の
@@ -19,6 +19,9 @@ import { envVar, gunzipStream, nodeFs, readGzJson } from "./helpers/qSmall";
 
 const DIR = envVar("IMPACT_Q_FULL");
 const SLOW = 180_000;
+/** 文章の点検の上限。文の型 1.3 の点検は道の点検（標準の続きの期 75,889 行も入れる）が 1 つの年収で 60 秒ほどになり、2 つの年収で
+ *  ひとつだけ動かしても 185 秒かかった（r7d・空いた機械。文の型 0.9 の r7c は 80 秒ほど）。ほかの遅いテストと並ぶ時の分も見て 2 倍 */
+const TEXT_SLOW = 400_000;
 
 describe.skipIf(!DIR)("8 万枚の木の同梱データ（IMPACT_Q_FULL があるときだけ）", () => {
   let b64: string;
@@ -112,6 +115,6 @@ describe.skipIf(!DIR)("8 万枚の木の同梱データ（IMPACT_Q_FULL があ�
       if (g.warns.length) console.log(`文章の点検の注意: ${g.warns.join(" / ")}`);
       console.log(`文章の点検: ${(g.ms / 1000).toFixed(0)} 秒`);
     },
-    SLOW,
+    TEXT_SLOW,
   );
 });
