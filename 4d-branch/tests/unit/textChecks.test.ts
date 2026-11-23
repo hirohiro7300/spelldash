@@ -58,15 +58,16 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     for (const c of rep.runs[0]!.checks) expect(c.examples.length).toBeLessThanOrEqual(5);
   });
 
-  it("C6・T4: 数だけ違う名前の兄弟が同じ状態なら、本文の骨組みが同じ（兄弟の題は言い分ける）", () => {
+  it("C6・T4: 数だけ違う名前の兄弟が同じ状態でも、行き先は道で 1 回の文の言い方を兄弟の並びで回すので骨組みが違う（1.1・rep-15。兄弟の題は言い分ける）", () => {
     // 届け出は SpellDash だけ可（3 年後の一言の言い換えが 1 つ）・2 つの結果は名前の数だけが違い、状態も月の稼ぎも同じ
     const s = st({ pm: "s", pro: 1, mau: 300, pu: 10 });
     const twin = (id: string, lab: string): DevTreeNode => out(`r.x.${id}`, 36, s, id, 50, lab, ["pu", 36, null, null], [3, 0, 3], [1, 0, 0.6]);
     const tree: DevTree = { header, root: { k: "r", r: "r", m: 0, st: st(), rr: [1, 0, -0.3], kids: [move("r.x", "sd_retain", 33, s, [twin("pu1", "有料 1 人"), twin("pu2", "有料 2 人")])] } };
     const rep = runTextChecks(fromDevTree(tree), { annuals: [360] });
     const c6 = rep.runs[0]!.checks.find((c) => c.id === "C6");
-    expect(c6?.n).toBe(1);
-    expect(rep.runs[0]!.siblings.outSame).toBe(1);
+    expect(c6).toBeUndefined();
+    expect(rep.runs[0]!.siblings.outPairs).toBe(1);
+    expect(rep.runs[0]!.siblings.outSame).toBe(0);
     expect(rep.runs[0]!.siblings.titleSame).toBe(0);
   });
 

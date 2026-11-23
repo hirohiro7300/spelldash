@@ -49,7 +49,7 @@ export const TEXT_CHECKS: readonly TextCheckDef[] = [
   { id: "C11", name: "手が結果について言う額と数（売上・席・年収・倍率・次の顧客の月額・昇格の額）が結果の状態と合う・まとめた手と行き先が言う出来事の月（会社員に戻る月など）が標準の続きの出来事の月と合う", block: true },
   { id: "C12", name: "道の歩みと合う（前の手・転職活動の期・顧客の有無・会社員だった期間・広告運用の稼ぎ・前の会社の手の続き・何も変えなかった結果・次の判断に無い手を勧めない）", block: true },
   { id: "C13", name: "本文の「おすすめ」が画面のおすすめ（その年収の一番良い選び方の手）と同じ手で、おすすめより多いと言い切らない・状態は次の判断のおすすめの手（選べる手が無ければその訳）を言う", block: true },
-  { id: "C14", name: "状態と行き先の本文の差（3 か月前・選んだ手の見込み・別の結果・ずっと今のまま）が、画面に出る合計どうしの差と合う", block: true },
+  { id: "C14", name: "状態と行き先の本文の差（3 か月前・選んだ手の見込み・別の結果・ずっと今のまま）が、画面に出る合計どうしの差と合う・行き先の 3 年の稼ぎの内訳を足すと 3 年の稼ぎ（本当の行き先は合計・内訳・月の稼ぎの動きを必ず言う）", block: true },
   { id: "T4", name: "兄弟の題が違う（手も結果も）", block: true },
   { id: "D1", name: "『どちらも不可』なのに Pro が続く（データ。計算の側へ返す）", block: false },
   { id: "D2", name: "本当の状態の顧客の数が整数でない（データ。計算の側へ返す）", block: false },
@@ -304,7 +304,7 @@ export function skeleton(sentence: string): string | null {
 /** 文の型に差し込む言葉のうち、日本語で始まることがある物（前に空白を置くと「は 年収」になる） */
 const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "salBack", "partLoss", "job", "jobName", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
 /** 日本語で終わる物（後ろに空白を置くと「社 の」になる） */
-const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "sharePrev", "growth", "conv", "convOne", "convNote", "hz", "jobName", "hiX", "midX", "hiYen", "midYen"]);
+const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "sharePrev", "growth", "conv", "convOne", "convNote", "hz", "jobName", "hiX", "midX", "hiYen", "midYen", "np", "promoPx", "schoolPx"]);
 
 /** 束の言い換えの、差し込みの隣の空白（間は組み立てが空ける。R2 の C8） */
 export function bankSpacing(banks: Banks): string[] {
@@ -741,6 +741,14 @@ export function tieIssues(map: MapData, fin: readonly Card[]): Array<{ i: number
       const m = /(?:今日からこの道の|標準の続きを入れた今日からの) 3 年の稼ぎは (−?[0-9,.]+) 万円で、ずっと今のまま(?:より ([0-9,.]+) 万円(多い|少ない)|とほぼ同じ)/.exec(b);
       const k = keepOf(map.parent(map.parent(i)));
       if (m && k !== null) bad("ずっと今のままとの差", signed(m[2], m[3]), numOf(m[1]!) - k);
+      // 1b・W4（con-6）: 3 年の稼ぎの内訳は、足すと 3 年の稼ぎ（見せる数・道の画面の合計）になる。本当の行き先は合計・内訳・月の稼ぎの動きを必ず言う
+      const mk = /内訳は給与 (−?[0-9,]+) 万円・SpellDash (−?[0-9,]+) 万円・広告運用(?:（[^）]*）)? (−?[0-9,]+) 万円/.exec(b);
+      const t3 = /3 年の稼ぎは (−?[0-9,.]+) 万円/.exec(b);
+      if (mk && t3) {
+        const sumMk = numOf(mk[1]!) + numOf(mk[2]!) + numOf(mk[3]!);
+        if (Math.abs(sumMk - numOf(t3[1]!)) > 1e-9) out.push({ i, msg: `3 年の稼ぎの内訳の和: 文は ${t3[1]} 万円、内訳の和は ${sumMk}` });
+      }
+      if (!map.sum(i) && (!t3 || !mk || !/月の稼ぎは、今日の −?[0-9,.]+ 万円から/.test(b))) out.push({ i, msg: "本当の行き先が 3 年の稼ぎ・その内訳・月の稼ぎの動きのどれかを言わない" });
       continue;
     }
     const X = shownTotal(b);

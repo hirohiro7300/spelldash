@@ -149,6 +149,59 @@ export function ripple(map: MapData, i: number): Ripple {
   return { decisions, splits, forks: decisions + splits, ends: c.end[i] ?? 0, sumEnds: c.sumEnd[i] ?? 0 };
 }
 
+/**
+ * 1b・W4（con-11）: あるカードから先の本当の行き先（標準の続きの見積もりでない物）が着いた所の数: 仕事（会社員・週 4 日・独立）・移った会社・
+ * Pro を出している・広告運用の顧客がいる。今日の手の本文が言う（下から 1 回。初めて要るときに数える）
+ */
+export interface Landing {
+  real: number;
+  emp: number;
+  part: number;
+  ind: number;
+  switched: number;
+  pro: number;
+  clients: number;
+}
+
+interface LandCounts {
+  real: Int32Array;
+  emp: Int32Array;
+  part: Int32Array;
+  ind: Int32Array;
+  sw: Int32Array;
+  pro: Int32Array;
+  cl: Int32Array;
+}
+
+function landCountsOf(map: MapData): LandCounts {
+  const n = map.n;
+  const z = (): Int32Array => new Int32Array(n);
+  const L: LandCounts = { real: z(), emp: z(), part: z(), ind: z(), sw: z(), pro: z(), cl: z() };
+  const keys = Object.keys(L) as Array<keyof LandCounts>;
+  for (let i = n - 1; i >= 0; i--) {
+    if (map.role(i) === "e" && !map.sum(i)) {
+      const s = map.st(i);
+      L.real[i]! += 1;
+      if (s.j === "i") L.ind[i]! += 1;
+      else if (s.j === "p") L.part[i]! += 1;
+      else L.emp[i]! += 1;
+      if (s.fl.includes("switched")) L.sw[i]! += 1;
+      if (s.pro) L.pro[i]! += 1;
+      if (s.cl > 0) L.cl[i]! += 1;
+    }
+    const p = map.parent(i);
+    if (p >= 0) for (const k of keys) L[k][p]! += L[k][i]!;
+  }
+  return L;
+}
+
+/** カード i から先の本当の行き先が着いた所の数（地図ごとに 1 回だけ数える） */
+export function landing(map: MapData, i: number): Landing {
+  const pm = perMap(map);
+  const L = (pm.land ??= landCountsOf(map));
+  return { real: L.real[i] ?? 0, emp: L.emp[i] ?? 0, part: L.part[i] ?? 0, ind: L.ind[i] ?? 0, switched: L.sw[i] ?? 0, pro: L.pro[i] ?? 0, clients: L.cl[i] ?? 0 };
+}
+
 // ---- 道の覚え
 
 /**
@@ -219,6 +272,8 @@ interface PerMap {
   /** 暦（初めて組み立てるときに作る。数え上げだけなら要らない） */
   cal: Calendar | null;
   counts: Counts | null;
+  /** 本当の行き先が着いた所の数（今日の手の本文。初めて要るときに数える） */
+  land: LandCounts | null;
   /** ずっと今のままの 3 年の稼ぎ（年収ごと。今のままの手の先だけをたどって 1 回。null は出せない地図） */
   keep: Map<number, number | null> | null;
   links: WeakMap<Banks, Map<number, Link>>;
@@ -231,7 +286,7 @@ const MEMO = new WeakMap<MapData, PerMap>();
 function perMap(map: MapData): PerMap {
   let pm = MEMO.get(map);
   if (!pm) {
-    pm = { cal: null, counts: null, keep: null, links: new WeakMap(), titles: new WeakMap() };
+    pm = { cal: null, counts: null, land: null, keep: null, links: new WeakMap(), titles: new WeakMap() };
     MEMO.set(map, pm);
   }
   return pm;
@@ -380,11 +435,12 @@ export function joinedAt(c: Ctx, link: Link): number | null {
  * 手を選ぶ判断の道から決まる条件の値（手の書き出し・手引きの条件に使う。reader-6）:
  * emp6 その判断と 1 つ前の判断で会社員か週 4 日（過去 6 か月の月次報告がある）・prevSearch 前の 3 か月が転職活動・
  * search 今の会社での転職活動の期の数（この手を除く）・f5 次に増える副業の顧客が上の月額か・
- * joined 道の上で勤め先が変わった（今の会社は地図の途中で入った会社。fact-5）
+ * joined 道の上で勤め先が変わった（今の会社は地図の途中で入った会社。fact-5）・
+ * pushHere 今の会社で昇格を狙った回数（この手を除く。1.1・rep-14: 同じ会社で 2 回目の評価は、足りない 1 点を聞く歩みから）
  */
 export function pathEnv(c: Ctx, link: Link): Env {
   const js = jobsUp(c, link, 2);
-  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0, joined: joinedAt(c, link) !== null ? 1 : 0 };
+  return { emp6: js.every((j) => j !== "i") ? 1 : 0, prevSearch: link.kind === "fc_switch" || link.kind === "fc_switch2" ? 1 : 0, search: searchCount(link), f5: link.f5 ? 1 : 0, joined: joinedAt(c, link) !== null ? 1 : 0, pushHere: countKindHere(link, "fc_push") };
 }
 
 /** 独立してからの月の数（m か月目の時点。その月を含む。独立していなければ 0）。行き先の「独立して N か月目」と同じ数え方（rep-5） */
@@ -831,8 +887,11 @@ export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<strin
   const book0 = B.playbook[kind] ?? B.playbook._generic ?? [];
   // 判断ごとに 3 つずらす（続く判断の今のままの歩みが重ならない）
   const r = kind === "keep" && book0.length ? m % book0.length : 0;
-  const book = r ? [...book0.slice(r), ...book0.slice(0, r)] : book0;
+  const turned = r ? [...book0.slice(r), ...book0.slice(0, r)] : book0;
   const env: Env = { ...extra, j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap: capOf(C, s.j), m, mon: c.cal.parts(m)[1], n: nth, first: m === 0 ? 1 : 0 };
+  // 1.1（W4・rep-14）: その期の状況で先に取る歩み（lead の条件が合う物）を前に出す。ほかは手引きの並びのまま
+  const led = turned.filter((st) => st.lead && cond(st.lead, env, s.fl));
+  const book = led.length ? [...led, ...turned.filter((st) => !led.includes(st))] : turned;
   const out: Step[] = [];
   // 同じ番号の歩みは 1 回だけ（試作は種類の手引きと _generic の両方にある番号を 2 回入れることがあった）
   const take = (st: Step): void => {

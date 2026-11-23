@@ -716,8 +716,9 @@ describe("組み立ての版（THIN_BASELINE_VERSION）の上げ忘れ", () => {
     // THIN_BASELINE_VERSION を上げれば、前の bv の文書は鍵で当て直して読む（同じ木なら消したカードは消したまま。新しい bv は新しい版: skew-2）。
     // 小さい木そのものを作り直したとき（生成 v2 で 8,306 枚に・文の型 0.9 で題を焼き直した・文の型 1.0 で手の題（何回目・何期目）を焼き直した）も
     // 値は変わる。組み立てが変わっていないことは、前の小さい木で前の値（生成 v2: q 0kfl3bj1ad693n・todo 134vakb0yf1dl3 → 文の型 0.6:
-    // q 0jpr93p0ss8lnd・todo 182k9tq1jc7g8a → 文の型 0.9: q 0h3ytmv11bz76b・todo 1scc9nq0idnsre）が出ることで確かめてから直す
-    expect({ bv: THIN_BASELINE_VERSION, q: baselinePrint(qMap), todo: baselinePrint(todoMap) }).toEqual({ bv: 1, q: "1eisuj2108kwqa", todo: "0ux7v4r1rstlon" });
+    // q 0jpr93p0ss8lnd・todo 182k9tq1jc7g8a → 文の型 0.9: q 0h3ytmv11bz76b・todo 1scc9nq0idnsre → 文の型 1.0: q 1eisuj2108kwqa・
+    // todo 0ux7v4r1rstlon）が出ることで確かめてから直す。文の型 1.1（W4）は手引きの歩みの順（rep-14）で焼き込んだやることが変わった
+    expect({ bv: THIN_BASELINE_VERSION, q: baselinePrint(qMap), todo: baselinePrint(todoMap) }).toEqual({ bv: 1, q: "0swsynm00vbdhq", todo: "1t3zr970mjz3hz" });
   });
 
   it("鍵・ID・日付は乱数も時計も使わない（同じ地図なら、いつどこで組み立てても同じ基準）", () => {

@@ -201,7 +201,8 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
     const r = ripple(map, a);
     const c = composeCard(map, a, { annual: 360 });
     // 結果の並びは「、」でつなぐ（結果の名前と区切りが混ざらない。reader-5）
-    expect(c.body).toContain(`この手の先、2029 年 11 月までの分かれ道は ${r.forks}（判断 ${r.decisions}・出来事の分かれ ${r.splits}）。全部可の後 ${ripple(map, byKey(map, "r.ad_permside.a0_a1")).forks}、SpellDash だけの後`);
+    // 1.1（W4・con-11）: 結果ごとの数は結果の名前と見込み（割）で
+    expect(c.body).toContain(`この手の先、2029 年 11 月までの分かれ道は ${r.forks}（判断 ${r.decisions}・出来事の分かれ ${r.splits}）。『全部可』（2 割）の後に ${ripple(map, byKey(map, "r.ad_permside.a0_a1")).forks}、『SpellDash だけ』（4 割 5 分）の後に`);
     // 行き先は名前を付けて（地図にある行き先と、そのうちのまとめた行き先。計算の芯が無ければ着く行き先は言わない。reader-4）
     expect(c.body).toContain(`地図にある行き先は ${r.ends}（うち標準の続きの見積もり ${r.sumEnds}）。`);
     expect(c.body).not.toContain("一番良い選び方で着く");
@@ -762,7 +763,9 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
 function resolves(banks: Banks, tag: string): boolean {
   if (["watch:single", "watch:num", "watch:sum", "watch:sums", "watch:mix", "watch:scope", "watch:client", "watch:keep", "ripple", "root", "sum:avg", "sum:mix", "sum:same", "cont", "value", "value:stub"].includes(tag)) return true;
   // 1.0（W3）: 手の数の枠（組み立て側の決まった枠。分かれ道・結果ごとの次のおすすめ・4 月の評価を逃す文・長さの目安で落とした文）
-  if (/^move:(?:forks|next|april|drop:\w+)$/.test(tag)) return true;
+  if (/^move:(?:forks|next|april|thread|drop:\w+)$/.test(tag)) return true;
+  // 1.1（W4）: 行き先の決まった枠（今日の手・内訳・月の稼ぎの動き・一番分けた判断・長さの目安で落とした文）
+  if (/^end:(?:today|makeup|traj|decision|drop:\w+)$/.test(tag)) return true;
   // 0.8（W2）: 状態の数の枠（組み立て側の決まった枠。束の型は使わない）
   if (/^state:(?:quarter|total|contrast|menu|forks|next|thread|then|then:share|then:cap|then:keep|(?:short|drop):\w+)$/.test(tag)) return true;
   // 0.9: 並びの違いを言った手（決まりで変わった手。R2）と、おすすめの手のカードの数の訳（F8）
@@ -817,25 +820,24 @@ describe("最後の点検の指摘（F2〜F6）", () => {
   /** そのカードが使った文の型（trace のうち、その束の組の番号まで） */
   const used = (c: Card, cell: string): string[] => c.trace.filter((t) => t.startsWith(`${cell}#`)).map((t) => t.replace(/\.\d+$/, ""));
 
-  it("F2: 3 年後の見通しは顧客の数で言い分ける（確かに 1 社なら 2 社目が決まればと言い、社数の幅では 2 社目を決めて言わない）", () => {
+  it("F2: 3 年の後の伸びしろは顧客の数で言い分ける（確かに 1 社なら上限まであと何社と額を言い、社数の幅では残りの社数も上限に届いたとも言わない。1.1・con-13）", () => {
     const m = fromDevTree(F_ENDS);
     const seen: Record<string, string> = {};
     for (const i of endsOf(m)) {
       const c = composeCard(m, i, { annual: 360 });
       const band = m.band(i)?.cl ?? null;
       seen[band ? band.join("-") : "1"] = c.trace.find((t) => t.startsWith("after#")) ?? "";
-      if (band) {
-        expect(c.body, m.key(i)).not.toMatch(TWO_IF);
-        expect(c.body, m.key(i)).not.toMatch(TWO_LASTS);
-      } else expect(c.body, m.key(i)).not.toMatch(TWO_LASTS);
+      expect(c.body, m.key(i)).not.toMatch(TWO_IF);
+      expect(c.body, m.key(i)).not.toMatch(TWO_LASTS);
+      if (band) expect(c.body, m.key(i)).not.toMatch(/まであと [0-9]+ 社|上限まで顧客がいる/);
+      else expect(c.body, m.key(i)).toMatch(/会社員で持てる 2 社まであと 1 社。1 社 月 3 万円なら、埋まれば月 3 万円の上乗せになる|会社員で持てる 2 社まで残りは 1 社（1 社 月 3 万円で、埋まれば月 3 万円）/);
       expect(checkCard(m, i, composeMarkedCard(m, i, { annual: 360 }), BANKS, wish, 360).filter((x) => x.startsWith("C2")), m.key(i)).toEqual([]);
     }
-    // 組の番号: 確かに 1 社・下が 1 社の幅・顧客がいない道を含む幅（sentences.ts の after の並び）
+    // 組の番号: 確かに 1 社は上限までの残り、社数の幅はまとめた結果の組（sentences.ts の after の並び）
     const at = (cond: string): number => BANKS.after.findIndex((g) => g.if === cond);
-    expect(Object.fromEntries(Object.entries(seen).map(([k, t]) => [k, Number(/^after#(\d+)/.exec(t)?.[1])]))).toEqual({ "1": at("pm=a & clo=1 & chi=1"), "1-2": at("pm=a & clo>=1"), "0-2": at("pm=a & cl>=0.5") });
-    // 2 社目が続くかは、2 社が確かなとき（上限に届いた組）だけ
-    for (const g of BANKS.after) for (const v of g.v) if (TWO_LASTS.test(v)) expect(g.if).toMatch(/clo>=2/);
-    for (const g of BANKS.after) for (const v of g.v) if (TWO_IF.test(v)) expect(g.if).toBe("pm=a & clo=1 & chi=1");
+    expect(Object.fromEntries(Object.entries(seen).map(([k, t]) => [k, Number(/^after#(\d+)/.exec(t)?.[1])]))).toEqual({ "1": at("pm=a & capLeft>=1"), "1-2": at("pm=a & cband=1"), "0-2": at("pm=a & cband=1") });
+    // 1.1: 3 年の後の伸びしろは、2 社目が決まれば・2 社目が続くかを言わない（社数は上限と残りの数で言う）
+    for (const g of BANKS.after) for (const v of g.v) expect(TWO_LASTS.test(v) || TWO_IF.test(v), v).toBe(false);
   });
 
   it("F3: 行き先の節目は、結びの文が言う結果を必ず並べる（同じ節目の 2 回目は「2 回目の昇格」）", () => {
