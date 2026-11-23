@@ -5,7 +5,7 @@
 // 初めての 1 枚は道の長さぶん（と兄弟の題）、後は引くだけ。段取りと題は年収で変わらないので、年収を替えても作り直さない
 import type { MapData } from "../../deepmap/mapData";
 import { BANKS } from "./banks";
-import { composeContMarked, composeMarked, contCardsMarked, type ContCard } from "./compose";
+import { composeContMarked, composeMarked, contCardsMarked, markedTitle, type ContCard } from "./compose";
 import { ctxOf, type ComposeRuntime } from "./path";
 import { spaceJa, strip } from "./text";
 import type { Banks, Card } from "./types";
@@ -65,6 +65,16 @@ export function composeCont(map: MapData, i: number, k: number, opts: ComposeOpt
 export function composeMarkedConts(map: MapData, i: number, opts: ComposeOpts): ContCard[] {
   check(map, i, opts.annual);
   return contCardsMarked(ctxOf(map, opts.banks ?? BANKS, opts.annual, opts.rt ?? null), i);
+}
+
+/**
+ * カード i の題（キャンバス・見取り図・道の画面と同じ物。題は年収で変わらない）。marked なら差し込み・手引きの印つきのまま（点検用）。
+ * 本文は手を、この題で呼ぶ（P4・reader-1）
+ */
+export function cardTitle(map: MapData, i: number, opts: { banks?: Banks; marked?: boolean } = {}): string {
+  check(map, i, map.header.annual);
+  const t = markedTitle(ctxOf(map, opts.banks ?? BANKS, map.header.annual), i);
+  return opts.marked ? t : spaceJa(strip(t));
 }
 
 /** 写し（複製・コピー）に入れる文章: 数の行（1 行）と本文。写しは地図の外のカードになるので、その時の年収で文にして残す */

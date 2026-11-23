@@ -9,7 +9,7 @@ import { analyze, CHECKED_ANNUALS, compileMap, countsOf, mixLabel, textRuntime, 
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, DevTreeNode, MapData, MapMix } from "../../src/deepmap/mapData";
 import { condText, moveDetailVM, notesVM, num, overviewVM, pathVM, SMALL_DELTA_TEXT } from "../../src/deepmap/views";
-import { BANKS, composeCard, composeCont, quarterSal } from "../../src/demo/compose";
+import { BANKS, cardTitle, composeCard, composeCont, quarterSal } from "../../src/demo/compose";
 import { adviceKindIssues, exactIssues, listNameOf, ordinalIssues, recommendIssues } from "../../src/demo/compose/checks";
 import { calendarOf, clBand } from "../../src/demo/compose/path";
 import { f2, n0 } from "../../src/demo/compose/text";
@@ -217,15 +217,15 @@ describe("生成 v2 の見直しの直し（文章）", () => {
       const head = sents.findIndex((x) => /^(?:[0-9]+ 年 [0-9]+ 月までの手は [0-9]+ つで|次の 3 か月に選べる [0-9]+ つの手のうち|ここで選べる手は [0-9]+ つあり)/.test(x));
       expect(head, `${map.key(i)}: ${body}`).toBeGreaterThanOrEqual(0);
       expect(Number(/([0-9]+) つ/.exec(sents[head]!)![1]), sents[head]).toBe(kids.length);
-      // おすすめは画面のおすすめと同じ手で、ほかの手は次の文が全部言う（名前は地図の名前か短い名前）
+      // おすすめは画面のおすすめと同じ手で、ほかの手は次の文が全部言う。名前はカードの題（見取り図・道の画面・キャンバスと同じ。P4・reader-1）
       const rec = rt.recommended(i);
-      expect(sents[head], `${map.key(i)}`).toContain(`『${rec >= 0 && map.isBase(rec) ? "この 3 か月は今のまま" : (map.header.kinds[map.kind(rec)!]?.[0] ?? "")}』`);
+      expect(sents[head], `${map.key(i)}`).toContain(`『${rec >= 0 && map.isBase(rec) ? "この 3 か月は今のまま" : cardTitle(map, rec)}』`);
       // 0.9: おすすめの手のカードの数の訳（F8）が間に入ることがある
       const rest = sents.slice(head + 1).find((x) => /^(?:ほかの手は|おすすめとの差は|残りの手は|ほかに選べるのは)/.test(x)) ?? "";
       for (const x of kids) {
         if (x === rec) continue;
-        const names = map.isBase(x) ? ["今のまま"] : [map.header.kinds[map.kind(x)!]![0], BANKS.short[map.kind(x)!]!];
-        expect(names.some((nm) => rest.includes(`『${nm}』`)), `${map.key(i)} ${map.kind(x)}: ${rest}`).toBe(true);
+        const name = map.isBase(x) ? "今のまま" : cardTitle(map, x);
+        expect(rest.includes(`『${name}』`), `${map.key(i)} ${map.kind(x)}: ${rest}`).toBe(true);
       }
       if (kids.length >= 4) wide++;
     }

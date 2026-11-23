@@ -327,8 +327,9 @@ function goTo(app: AppContext, id: ID, closeDrawer: boolean): void {
     else if (panel && a instanceof HTMLElement && panel.contains(a)) a.blur();
     return;
   }
-  // 同じノードを押してパネルが作り直されていなければ、そのまま
-  if (!panel || !from || from.isConnected) return;
+  // 同じノードを押してパネルが作り直されていなければ、そのまま（押した行が外れた・隠れた（取っておいた概要は外さずに隠す:
+  // src/ui/inspector.ts）ときは、フォーカスはもうその行に無い）
+  if (!panel || !from || (from.isConnected && document.activeElement === from)) return;
   const block = panel.querySelector<HTMLElement>(".imp-node:not([hidden])");
   if (!(block && focusFirst(block))) focusFirst(panel);
 }

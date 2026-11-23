@@ -133,6 +133,15 @@ export class CanvasView {
   private labelBoxes: Box[] = [];
   private stubBoxes: Box[] = [];
   private grid: { key: string; pattern: CanvasPattern | null } | null = null;
+  /**
+   * 点の格子は、地図の下の別のキャンバスに描く（カメラ・大きさが変わったときだけ描き直す）。地図と同じキャンバスに毎フレーム
+   * 敷き詰めると、カードを選ぶ・概要へ戻るたびに画面全体の格子を描き直し、ソフトウェアで描く環境ではフレームの仕上げが 3〜4 ms
+   * 延びていた（P4・選ぶの行）。見た目は同じ（地図のキャンバスは透けていて、格子の上に重なる）
+   */
+  private readonly gridCanvas: HTMLCanvasElement;
+  private readonly gridCtx: CanvasRenderingContext2D | null;
+  /** 格子のキャンバスに今描いてある物（同じなら描き直さない） */
+  private gridDrawn = "";
   private readonly cameraListeners = new Set<() => void>();
   private readonly renderListeners = new Set<() => void>();
   private readonly reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -147,7 +156,9 @@ export class CanvasView {
     private readonly vm: ViewModel,
   ) {
     this.canvas = h("canvas", { class: "graph-canvas", attrs: { "aria-label": "分岐のキャンバス", role: "application", tabindex: "0" } });
-    this.root = h("div", { class: "canvas-wrap" }, this.canvas);
+    this.gridCanvas = h("canvas", { class: "graph-grid", attrs: { "aria-hidden": "true" } });
+    this.gridCtx = this.gridCanvas.getContext("2d", { alpha: true });
+    this.root = h("div", { class: "canvas-wrap" }, this.gridCanvas, this.canvas);
     const ctx = this.canvas.getContext("2d", { alpha: true });
     if (!ctx) throw new Error("Canvas 2D が使えません");
     this.ctx = ctx;
@@ -204,7 +215,10 @@ export class CanvasView {
     this.canvas.height = Math.round(hgt * dpr);
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${hgt}px`;
+    this.gridCanvas.width = this.canvas.width;
+    this.gridCanvas.height = this.canvas.height;
     this.grid = null;
+    this.gridDrawn = "";
     if (first) this.cameraChanged();
     this.runPendingFit();
     this.requestRender();
@@ -562,21 +576,34 @@ export class CanvasView {
 
   // ------------------------------------------------------------ 描画
 
-  private drawGrid(): void {
+  /** 点の格子を下のキャンバスに描く（show = false なら消す）。カメラ・大きさ・拡大率が前と同じなら何もしない */
+  private drawGrid(show: boolean): void {
+    const g = this.gridCtx;
+    if (!g) return;
+    if (!show) {
+      if (this.gridDrawn !== "off") g.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
+      this.gridDrawn = "off";
+      return;
+    }
     const z = this.camera.zoom;
     let spacing = 32;
     while (spacing * z < 16) spacing *= 4;
     const px = spacing * z * this.dpr;
     const fade = Math.min(1, (spacing * z - 16) / 24 + 0.35);
     const key = `${px.toFixed(2)}|${this.dpr}|${fade.toFixed(2)}`;
-    if (!this.grid || this.grid.key !== key) this.grid = { key, pattern: gridPattern(this.ctx, px, Math.max(1, this.dpr * 1.1), 0.16 * fade) };
+    if (!this.grid || this.grid.key !== key) this.grid = { key, pattern: gridPattern(g, px, Math.max(1, this.dpr * 1.1), 0.16 * fade) };
     const pat = this.grid.pattern;
-    if (!pat) return;
     const ox = ((this.camera.x * this.dpr) % px) - px + this.dpr * 1.1;
     const oy = ((this.camera.y * this.dpr) % px) - px + this.dpr * 1.1;
+    const drawn = `${key}|${ox}|${oy}|${this.gridCanvas.width}|${this.gridCanvas.height}`;
+    if (drawn === this.gridDrawn) return;
+    this.gridDrawn = drawn;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
+    if (!pat) return;
     pat.setTransform(new DOMMatrix([px / Math.round(px), 0, 0, px / Math.round(px), ox, oy]));
-    this.ctx.fillStyle = pat;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    g.fillStyle = pat;
+    g.fillRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
   }
 
   private render(now: number): void {
@@ -604,7 +631,7 @@ export class CanvasView {
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    if (prefs.showGrid) this.drawGrid();
+    this.drawGrid(prefs.showGrid);
     ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * cam.x, dpr * cam.y);
     const margin = 60 / z;
     const view = { minX: -cam.x / z - margin, minY: -cam.y / z - margin, maxX: (this.width - cam.x) / z + margin, maxY: (this.height - cam.y) / z + margin };

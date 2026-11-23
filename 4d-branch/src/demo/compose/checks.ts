@@ -14,6 +14,7 @@ import type { WishData } from "../wishlist";
 import { calendarOf, clBand, eventMonth, mergedFact, newFeeOf, quarterSal, type Calendar } from "./path";
 import { clr, f2, man, ME, MS, n0, PE, PS, spaceJa, strip } from "./text";
 import type { Banks, Card, Consts } from "./types";
+import { cardTitle } from "./index";
 
 /**
  * 文の型が差し込みなしで書いてよい数字（決まった言い方・暦の月・1 つ 2 つの数え方）。0.7: どの数でも通していた形（N か月・N 日・N 円・N 人・
@@ -289,7 +290,8 @@ export function checkCard(map: MapData, i: number, t: Card, banks: Banks, wish: 
     }
     for (const d of digitsNotIn(td.text, wishSrc(w))) out.push(`C1b 引用元に無い数字 ${d}: ${td.cite}「${td.text}」`);
   }
-  for (const span of [...playbookSpans(t.body), ...playbookSpans(t.title)]) for (const d of digitsNotIn(span, src)) out.push(`C1b 引用元に無い数字 ${d}「${span}」`);
+  // 本文が名前で呼ぶほかの手の題（『』の中）の手引きの文は、その手のカードの題から来た物（その手の点検で確かめる。P4・reader-1）
+  for (const span of [...playbookSpans(withoutNamedTitles(map, i, t.body, banks)), ...playbookSpans(t.title)]) for (const d of digitsNotIn(span, src)) out.push(`C1b 引用元に無い数字 ${d}「${span}」`);
   // C1: ほかの数字はどれも差し込み（データ）か、許した言い方
   const stray = digitsOutside(t.body);
   if (stray.length) out.push(`C1 データに無い数字: ${stray.join(",")}`);
@@ -509,10 +511,43 @@ export function adviceKindIssues(map: MapData, i: number, text: string): string[
   return out;
 }
 
-/** 道の画面の「選べる手」の並びと同じ手の名前（本文の「おすすめの『…』」と比べる。組み立ての listName と同じ決まり） */
+/**
+ * 画面と本文が手を呼ぶ名前（本文の「おすすめの『…』」と比べる。組み立ての listName と同じ決まり）: そのカードの題（見取り図の行・道の画面の
+ * 「選べる手」・キャンバスのカードと同じ。P4・reader-1）。比べる元は「この 3 か月は今のまま」
+ */
 export function listNameOf(map: MapData, a: number): string {
   if (map.isBase(a)) return "この 3 か月は今のまま";
-  return map.header.kinds[map.kind(a) ?? ""]?.[0] ?? "";
+  return cardTitle(map, a);
+}
+
+/**
+ * 本文が名前で呼べる手（カード i の兄弟・子・孫の手: 同じ判断のほかの手・その後の判断の手）の、印つきの題。本文の『』の中がこのどれかと
+ * そのまま同じなら、中の数・手引きの文は、その手のカードの題から来た物（その題は、その手のカードの点検で C1・C1b を通す）。P4・reader-1
+ */
+function namedTitles(map: MapData, i: number, banks: Banks): Set<string> {
+  const out = new Set<string>();
+  const add = (y: number): void => {
+    if (map.role(y) === "a" && !map.isBase(y)) out.add(cardTitle(map, y, { banks, marked: true }));
+  };
+  const kids = (x: number): number[] => Array.from({ length: map.childCount(x) }, (_, k) => map.child(x, k));
+  const p = map.parent(i);
+  if (p >= 0) for (const y of kids(p)) if (y !== i) add(y);
+  for (const o of kids(i)) {
+    add(o);
+    for (const y of kids(o)) add(y);
+  }
+  return out;
+}
+
+/** 本文の『』のうち、呼べる手の題（印つき）とそのまま同じ物を外した本文（手引きの数字の点検 C1b で、その題の中は見ない） */
+function withoutNamedTitles(map: MapData, i: number, body: string, banks: Banks): string {
+  if (!body.includes("『")) return body;
+  let named: Set<string> | null = null;
+  return body.replace(/『([^』]*)』/g, (q, inner: string) => {
+    if (!inner.includes(PS)) return q;
+    named ??= namedTitles(map, i, banks);
+    return named.has(inner) ? "『』" : q;
+  });
 }
 
 /** 手の 3 年の見積もりの文（今日の手・まとめた手の長い言い方と、1.0 の短い言い方 3 つ。rep-1・con-15） */

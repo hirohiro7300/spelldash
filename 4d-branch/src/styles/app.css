@@ -969,7 +969,17 @@ button.tag-chip:hover {
   position: absolute;
   inset: 0;
 }
+/* 点の格子（地図の下の別のキャンバス。src/canvas/CanvasView.ts の drawGrid） */
+.graph-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 .graph-canvas {
+  /* 格子のキャンバスより上に重ねる（どちらも位置を決めた物なので、後に置いた地図が上） */
+  position: relative;
   display: block;
   width: 100%;
   height: 100%;
@@ -1346,6 +1356,11 @@ button.tag-chip:hover {
 .insp-head-sub {
   font-size: 11.5px;
   color: var(--warn);
+}
+/* 取っておいた概要・ノードの詳細を、外さずに隠す（配置と文字の組みを持ったまま。src/ui/inspector.ts の render） */
+.insp-kept-off {
+  content-visibility: hidden;
+  contain-intrinsic-size: none;
 }
 .insp-body-scroll {
   flex: 1;

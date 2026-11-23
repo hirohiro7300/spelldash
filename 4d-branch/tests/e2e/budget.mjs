@@ -9,7 +9,7 @@
 //   そのフレームを描き終えた後）まで。リスナーの仕事を含む。続けて送る入力（変換中の文字）は、フレームの中の決まった所から始めないよう、
 //   1 つごとにフレームの中のばらばらの時刻（0〜16 ms 待つ）から送る（rAF 2 回で測ると、どの 1 文字も 2 フレーム = 33 ms より短く出ない: 見直し perf-12）。
 //   日本語の入力（IME）のように、変換中の 1 文字ずつ input を送る（題名・検索）。
-//   机（1440×900）とスマホ（390×844・CPU 4 倍遅く）。それぞれ 3 回のうち一番良い値と中くらいの値。予算は一番良い値と中くらいの値の両方で見る
+//   机（1440×900）とスマホ（390×844・CPU 4 倍遅く）。それぞれ 3 回（カードを選ぶは 7 回: SELECT_ROUNDS）のうち一番良い値と中くらいの値。予算は一番良い値と中くらいの値の両方で見る
 //   （どちらかが超えたら ✗。✗ があれば終わりのコードを 1 にする。BUDGET_REPORT_ONLY=1 なら 0 のまま）。
 //   ヒープは JS のヒープ・ArrayBuffer など（backingStorageSize）・DOM（embedderHeapUsedSize）の合計（型付き配列の計算が数に入る: 見直し perf-3）。
 //   予算の表のほかに: 選んだ後に概要へ戻る（Esc）・取り込み（全部の入れ替え）・手のカードを 50 枚見た後のヒープ・変更の後 3 秒の長い仕事・
@@ -32,6 +32,13 @@ const FIXTURE = path.join(ROOT, "tests", "fixtures", "account-r6.json");
 const DIST = process.env.BUDGET_DIST || path.join(os.tmpdir(), "4d-branch-budget-dist");
 const ONLY = process.env.BUDGET_ONLY || "";
 const ROUNDS = Number(process.env.BUDGET_ROUNDS || 3);
+/**
+ * カードを選ぶ行の回数（P4）。この行は 1 フレーム（16.7 ms）より短い仕事と、押した時刻から次のフレームの頭までの待ち（0〜16.7 ms の
+ * どこか）の和なので、3 回だと中くらいの値がその待ちのばらつきでほぼ決まる（同じビルドで 25〜34 ms と振れた）。7 回にして中くらいの値を
+ * 確かにする（予算 30 ms はそのまま。一番良い値と中くらいの値の両方で見るのも同じ）。Esc で概要へ戻る行は、これにする・見送るの
+ * 後ごとに測るので、もう 2 × BUDGET_ROUNDS 回ある
+ */
+const SELECT_ROUNDS = Number(process.env.BUDGET_SELECT_ROUNDS || Math.max(ROUNDS, 7));
 
 /** 予算（§7.2。ms・MB。null は無し） */
 const BUDGET = {
@@ -446,7 +453,7 @@ async function measureProfile(browser, profile) {
     if (narrow) push("selectLayout", (await layoutMs()) - l0);
     return true;
   };
-  for (let k = 0, done = 0; done < ROUNDS && k < 20; k++) {
+  for (let k = 0, done = 0; done < SELECT_ROUNDS && k < 40; k++) {
     await page.evaluate(() => window.__fourD.ui.clearSelection());
     await page.evaluate(() => window.__budget.frames());
     const alts = await visibleAlts(page);
@@ -540,7 +547,8 @@ async function measureProfile(browser, profile) {
       f.ui.select([f.app.vm.impactRoots()[0]]);
     });
     if (narrow) await openRight();
-    const btn = page.locator(".sidebar-right .deep-open-moves button").nth(k % 3);
+    // 隠して取っておいた概要にも今日の手ごとのボタンがある（P4）。出している詳細の物を押す
+    const btn = page.locator(".sidebar-right .deep-open-moves button:visible").nth(k % 3);
     await btn.waitFor({ timeout: 10_000 });
     await page.evaluate(() => window.__budget.frames());
     await page.evaluate(() => window.__budget.arm("pointerdown", "click"));
@@ -776,7 +784,7 @@ async function measureProfile(browser, profile) {
   });
   if (narrow) await openRight();
   {
-    const btn = page.locator(".sidebar-right .deep-open-moves button").first();
+    const btn = page.locator(".sidebar-right .deep-open-moves button:visible").first();
     await btn.waitFor({ timeout: 10_000 });
     await btn.click();
     await page.evaluate(() => window.__budget.frames());
@@ -862,7 +870,7 @@ async function main() {
     server?.kill();
   }
   const load = os.loadavg().map((x) => x.toFixed(2)).join(" ");
-  console.log(`\n予算の表（ms。ヒープは MB。3 回のうち一番良い値 / 中くらいの値。測ったときの負荷 ${load}）\n`);
+  console.log(`\n予算の表（ms。ヒープは MB。${ROUNDS} 回（カードを選ぶは ${SELECT_ROUNDS} 回）のうち一番良い値 / 中くらいの値。測ったときの負荷 ${load}）\n`);
   const fails = [];
   console.log(table(results, fails));
   for (const [p, r] of Object.entries(results)) {

@@ -250,7 +250,21 @@ function distTexts(d: Dist | null, vSQ: number | null): { rangeText: string | nu
   return { rangeText: rangeParts.join(""), rangeParts, vsKeepText };
 }
 
+/**
+ * 手ごとの 3 か月ごとの分かれ道の数（地図の形だけで決まる。選んだ手・年収では変わらない）。地図と形の版ごとに覚える
+ * （これにした後に概要へ戻るたびに 10 の手の木を全部なめ直さない: P4・Esc の行）。返す並びは読むだけ
+ */
+const stripMemo = new WeakMap<Analysis["cm"], { topology: number; byMove: Map<number, StripCol[]> }>();
+
 function stripOf(a: Analysis, f: number): StripCol[] {
+  let m = stripMemo.get(a.cm);
+  if (!m || m.topology !== a.stamp.topology) stripMemo.set(a.cm, (m = { topology: a.stamp.topology, byMove: new Map() }));
+  let cols = m.byMove.get(f);
+  if (!cols) m.byMove.set(f, (cols = stripCols(a, f)));
+  return cols;
+}
+
+function stripCols(a: Analysis, f: number): StripCol[] {
   const st = forkStrip(a, f);
   const map = a.cm.map;
   const cols: StripCol[] = [];

@@ -213,17 +213,22 @@ export function buildBottomBar(app: AppContext): HTMLElement {
     syncControls();
   };
 
+  /** 時点のボタンに出している時点（同じなら作り直さない。選ぶたびに作り直すと、そのフレームでもう一度配置をやり直す: P4・選ぶの行） */
+  let cursorShown: string | null | undefined = undefined;
   const syncControls = () => {
     const cursor = ui.prefs.timeCursor;
-    clear(cursorBtn);
-    if (cursor) {
-      cursorBtn.append(h("span", null, `${formatDate(cursor)} まで`), icon("x", 12, 2));
-      cursorBtn.classList.add("on");
-      cursorBtn.title = "時点を解除して、すべての時期を表示";
-    } else {
-      cursorBtn.append(h("span", null, "すべての時期"));
-      cursorBtn.classList.remove("on");
-      cursorBtn.title = "時間軸を押すと、その日までを表示します";
+    if (cursorShown !== (cursor ?? null)) {
+      cursorShown = cursor ?? null;
+      clear(cursorBtn);
+      if (cursor) {
+        cursorBtn.append(h("span", null, `${formatDate(cursor)} まで`), icon("x", 12, 2));
+        cursorBtn.classList.add("on");
+        cursorBtn.title = "時点を解除して、すべての時期を表示";
+      } else {
+        cursorBtn.append(h("span", null, "すべての時期"));
+        cursorBtn.classList.remove("on");
+        cursorBtn.title = "時間軸を押すと、その日までを表示します";
+      }
     }
     // 再生ボタンの印は、再生しているかが変わったときだけ差し替える（毎フレーム差し替えると押せなくなる）
     if (playBtn.dataset.playing !== String(!!playing)) {

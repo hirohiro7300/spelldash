@@ -14,7 +14,7 @@ import type { AppContext } from "../app/context";
 import { cardWithDocOdds, type DeepCtx } from "../app/deepState";
 import type { DeepPage } from "../app/uiState";
 import type { Analysis, Overview } from "../deepmap/core";
-import { findFirstMove, findPathToken, kindSlug, moveDetailVM, notesSection, notesVM, overviewVM, parseRoute, pathVM, renderMoveDetail, renderOverview, renderPathPage, ym, type MoveDetailVM, type OverviewVM, type PathVM } from "../deepmap/views";
+import { findFirstMove, findPathToken, kindSlug, moveDetailVM, notesSection, notesVM, overviewVM, parseRoute, pathVM, renderMoveDetail, renderOverview, renderPathPage, ym, type MoveDetailVM, type OverviewMemo, type OverviewVM, type PathVM } from "../deepmap/views";
 import { DEEP_OPEN_CAP, DEEP_OPEN_ROWS, deepHorizons, horizonOpen, type DeepHorizon } from "../model/deepOpen";
 import type { ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
@@ -139,6 +139,41 @@ function ctxNotes(app: AppContext, ctx: DeepCtx): HTMLElement | null {
  */
 const overviewCache = new WeakMap<AppContext, { a: Analysis; ov: Overview; nodes: Node[]; hrefs: HrefMap; moves: Map<string, number> }>();
 
+/** 見取り図の行の、前に組み立てた物（計算が変わって作り直すとき、中身が同じ行は組み直さずに写す） */
+const overviewMemos = new WeakMap<AppContext, OverviewMemo>();
+function overviewMemo(app: AppContext): OverviewMemo {
+  let m = overviewMemos.get(app);
+  if (!m) overviewMemos.set(app, (m = { prev: new Map() }));
+  return m;
+}
+
+/**
+ * 描いてある DOM（a）を、新しく組み立てた同じ形の DOM（b）に合わせる。同じ所はそのまま残し（配置と文字の組み直しをしない）、
+ * 違う文字・属性だけ書き換え、形が違う所は b の物と入れ替える。見取り図の部品（src/deepmap/views）は押した時の処理を要素に付けない
+ * （リンクは入れ物で受ける）ので、残した要素が古い処理を持つことはない。開いた「見取り図の見方」（details の open）は利用者の物なので残す。
+ * 合わせた後の要素（a か、入れ替えた b）を返す
+ */
+function morphNode(a: Node, b: Node): Node {
+  if (a.isEqualNode(b)) return a;
+  if (a.nodeType === Node.TEXT_NODE && b.nodeType === Node.TEXT_NODE) {
+    (a as Text).data = (b as Text).data;
+    return a;
+  }
+  if (!(a instanceof Element) || !(b instanceof Element) || a.namespaceURI !== b.namespaceURI || a.tagName !== b.tagName) {
+    a.parentNode?.replaceChild(b, a);
+    return b;
+  }
+  for (const at of [...a.attributes]) if (!b.hasAttribute(at.name) && !(at.name === "open" && a.tagName === "DETAILS")) a.removeAttribute(at.name);
+  for (const at of [...b.attributes]) if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
+  const ac = [...a.childNodes];
+  const bc = [...b.childNodes];
+  const n = Math.min(ac.length, bc.length);
+  for (let i = 0; i < n; i++) morphNode(ac[i]!, bc[i]!);
+  for (let i = n; i < ac.length; i++) ac[i]!.remove();
+  for (let i = n; i < bc.length; i++) a.appendChild(bc[i]!);
+  return a;
+}
+
 /**
  * 方針の外の今日の手の行を薄くする（ひと目の行と手のカード。見取り図の数は方針で絞らないので、行は残して薄くするだけ:
  * 作業メモ SPEC v1 §5.11・見直し user-13）。moves は行の行き先（#move-…）→ 今日の手の地図の番号
@@ -202,10 +237,21 @@ export function buildDeepOverview(app: AppContext): { el: HTMLElement; update():
       const t0 = performance.now();
       const vm = overviewVM(a, ov, { name: (f) => ctx.text().title(f) });
       rememberOverview(vm, hrefs);
-      clear(el);
       const notes = notesVM(a, ov.basis.delta, ov.basis.worth, { worthNoise: ov.worthNoise });
-      const nodes = [renderOverview(vm), h("details", { class: "deep-notes" }, h("summary", null, "見取り図の見方"), notesSection(notes))];
-      el.append(...(head ? [head] : []), ...nodes);
+      const fresh: Node[] = [renderOverview(vm, overviewMemo(app)), h("details", { class: "deep-notes" }, h("summary", null, "見取り図の見方"), notesSection(notes))];
+      // 前に描いた見取り図がこの入れ物に入ったまま（取っておいた概要）: 違う所だけ入れ替える。これにした後に概要へ戻ると、変わるのは
+      // その手の行（ひと目とカードで 2〜4 行）だけ。全部を置き直すと、10 行の配置と文字の組み直しで机でも 30 ms を超えていた（P4・Esc の行）
+      const prev = kept && kept.nodes.length === fresh.length && kept.nodes.every((n) => n.parentNode === el) ? kept.nodes : null;
+      let nodes: Node[];
+      if (prev) {
+        nodes = prev.map((n, i) => morphNode(n, fresh[i]!));
+        for (const c of [...el.childNodes]) if (!nodes.includes(c)) c.remove();
+        if (head) el.prepend(head);
+      } else {
+        clear(el);
+        nodes = fresh;
+        el.append(...(head ? [head] : []), ...nodes);
+      }
       const moves = new Map<string, number>();
       for (const r of vm.rows) moves.set(r.href, r.node);
       overviewCache.set(app, { a, ov, nodes, hrefs, moves });

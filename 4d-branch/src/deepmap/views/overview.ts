@@ -11,6 +11,25 @@ import { num } from "./format";
 import type { ChainVM, GlanceVM, OverviewRowVM, OverviewVM } from "./model";
 import { distBar, miniStrip, pill, pillValue, scaleLegend, splitBar } from "./parts";
 
+/**
+ * 前に組み立てた部品（同じ中身なら組み直さずに使い回す）。アプリの概要が、計算が変わるたびに見取り図を作り直すときに渡す
+ * （これにした後に変わるのはその手の行だけ。試し版は渡さない）。prev は前の回の部品で、組み立てた後は今回の物に替わる。
+ * 使い回すのは置かれていない（ページに無い）物だけ。置かれている物は写す（ページから抜かない）
+ */
+export interface OverviewMemo {
+  prev: Map<string, Element>;
+}
+
+/** key の部品を、前の回にあれば使い回し（置かれている・今回もう使った物は写す）、無ければ組み立てる。next に今回の物を覚える */
+function reuse<T extends Element>(memo: OverviewMemo | undefined, next: Map<string, Element>, key: string, build: () => T): T {
+  if (!memo) return build();
+  const used = next.get(key);
+  const kept = used ?? memo.prev.get(key);
+  const el = !kept ? build() : used || kept.isConnected ? (kept.cloneNode(true) as T) : (kept as T);
+  if (!used) next.set(key, el);
+  return el;
+}
+
 /** 区切りの間でだけ折り返す文（区切りが 1 行より長いときは中でも折り返す） */
 function segs(parts: readonly string[]): Child[] {
   return parts.map((t) => h("span", { class: "dm-seg-t" }, nobr(t)));
@@ -78,7 +97,7 @@ function at(g: GlanceVM, v: number): string {
 }
 
 /** 「10 の手をひと目で」: 1 行 = 名前・今やる vs 3 か月待つ・共通の軸の 3 年の合計の棒（10〜90%・真ん中）（作業メモ user-3） */
-function glanceEl(g: GlanceVM): HTMLElement {
+function glanceEl(g: GlanceVM, memo?: OverviewMemo, next: Map<string, Element> = new Map()): HTMLElement {
   const axis = h("div", { class: "dm-glance-axis", attrs: { "aria-hidden": "true" } });
   const ticks = h("span", { class: "dm-glance-ticks" });
   g.ticks.forEach((t, k) => ticks.append(h("span", { class: k === 0 ? "is-first" : k === g.ticks.length - 1 ? "is-last" : "", style: { left: at(g, t) } }, num(t))));
@@ -97,31 +116,8 @@ function glanceEl(g: GlanceVM): HTMLElement {
       )
     : null;
   const list = h("ol", { class: "dm-glance-list" });
-  for (const r of g.rows) {
-    const bar = h("span", { class: "dm-glance-bar", attrs: { "aria-hidden": "true" } });
-    for (const t of g.ticks) bar.append(h("i", { class: "dm-glance-grid", style: { left: at(g, t) } }));
-    if (g.keep !== null) bar.append(h("i", { class: "dm-glance-keep", style: { left: at(g, g.keep) } }));
-    if (r.range) {
-      bar.append(
-        h("i", { class: "dm-glance-range", style: { left: at(g, r.range.p10), right: `calc(100% - ${at(g, r.range.p90)})` } }),
-        h("i", { class: "dm-glance-mid", style: { left: at(g, r.range.p50) } }),
-      );
-    }
-    const dp = r.delta;
-    list.append(
-      h(
-        "li",
-        null,
-        h(
-          "a",
-          { class: `dm-glance-row${r.isPi ? " is-pi" : ""}${r.isBase ? " is-base" : ""}`, attrs: { href: r.href, "aria-label": r.aria } },
-          h("span", { class: "dm-glance-name" }, r.name),
-          dp ? h("span", { class: "dm-glance-pill" }, pillValue(dp)) : h("span", { class: "dm-glance-pill is-none" }, "差なし"),
-          bar,
-        ),
-      ),
-    );
-  }
+  const axisKey = JSON.stringify([g.lo, g.hi, g.ticks, g.keep]);
+  for (const r of g.rows) list.append(reuse(memo, next, `g${axisKey}${JSON.stringify(r)}`, () => glanceItem(g, r)));
   return h(
     "section",
     { class: "dm-glance", attrs: { "aria-labelledby": "dm-glance-h" } },
@@ -130,6 +126,31 @@ function glanceEl(g: GlanceVM): HTMLElement {
     list,
     legend,
     g.note ? h("p", { class: "dm-glance-note" }, g.note) : null,
+  );
+}
+
+/** 「10 の手をひと目で」の 1 行 */
+function glanceItem(g: GlanceVM, r: GlanceVM["rows"][number]): HTMLLIElement {
+  const bar = h("span", { class: "dm-glance-bar", attrs: { "aria-hidden": "true" } });
+  for (const t of g.ticks) bar.append(h("i", { class: "dm-glance-grid", style: { left: at(g, t) } }));
+  if (g.keep !== null) bar.append(h("i", { class: "dm-glance-keep", style: { left: at(g, g.keep) } }));
+  if (r.range) {
+    bar.append(
+      h("i", { class: "dm-glance-range", style: { left: at(g, r.range.p10), right: `calc(100% - ${at(g, r.range.p90)})` } }),
+      h("i", { class: "dm-glance-mid", style: { left: at(g, r.range.p50) } }),
+    );
+  }
+  const dp = r.delta;
+  return h(
+    "li",
+    null,
+    h(
+      "a",
+      { class: `dm-glance-row${r.isPi ? " is-pi" : ""}${r.isBase ? " is-base" : ""}`, attrs: { href: r.href, "aria-label": r.aria } },
+      h("span", { class: "dm-glance-name" }, r.name),
+      dp ? h("span", { class: "dm-glance-pill" }, pillValue(dp)) : h("span", { class: "dm-glance-pill is-none" }, "差なし"),
+      bar,
+    ),
   );
 }
 
@@ -145,11 +166,12 @@ export function chainLinks(xs: ReadonlyArray<ChainVM | null>, primary = false): 
 }
 
 /** 見取り図の全体（見出し・読み方・ひと目・比べる元・行・今日から一番良い選び方で進んだ場合） */
-export function renderOverview(vm: OverviewVM): HTMLElement {
+export function renderOverview(vm: OverviewVM, memo?: OverviewMemo): HTMLElement {
   const stripMax = Math.max(1, ...vm.rows.flatMap((r) => r.strip.map((c) => c.dec + c.split)));
+  const next = new Map<string, Element>();
   // 並びは良い順（順番に意味があるので番号付きの並び）
   const list = h("ol", { class: "dm-rows" });
-  for (const r of vm.rows) list.append(h("li", { class: "dm-rows-item" }, overviewRow(r, stripMax)));
+  for (const r of vm.rows) list.append(reuse(memo, next, `r${stripMax}${JSON.stringify(r)}`, () => h("li", { class: "dm-rows-item" }, overviewRow(r, stripMax))));
   const cols = h(
     "div",
     { class: "dm-cols", attrs: { "aria-hidden": "true" } },
@@ -167,7 +189,7 @@ export function renderOverview(vm: OverviewVM): HTMLElement {
         h("span", { class: "dm-keep-text" }, nobr(vm.keep.text)),
       )
     : null;
-  return h(
+  const el = h(
     "section",
     { class: "dm-overview", attrs: { "aria-labelledby": "dm-overview-h" } },
     h(
@@ -177,7 +199,7 @@ export function renderOverview(vm: OverviewVM): HTMLElement {
       h("p", { class: "dm-lead" }, nobr(vm.lead)),
       h("p", { class: "dm-frame" }, vm.frame),
     ),
-    glanceEl(vm.glance),
+    glanceEl(vm.glance, memo, next),
     h("div", { class: "dm-overview-tools" }, scaleLegend("カードの棒の色: ずっと今のままとの 3 年の合計の差（万円）")),
     keep,
     h("h3", { class: "dm-h3 dm-cards-h" }, `${num(vm.rows.length)} の手のくわしい見取り図（良い順）`),
@@ -185,4 +207,6 @@ export function renderOverview(vm: OverviewVM): HTMLElement {
     list,
     vm.headline || vm.chain || vm.median ? h("div", { class: "dm-today" }, vm.headline ? h("p", { class: "dm-headline" }, nobr(vm.headline)) : null, chainLinks([vm.chain, vm.median])) : null,
   );
+  if (memo) memo.prev = next;
+  return el;
 }

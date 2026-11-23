@@ -9,7 +9,7 @@
 
 export * from "./format";
 export * from "./model";
-export { renderOverview, overviewRow, chainLinks } from "./overview";
+export { renderOverview, overviewRow, chainLinks, type OverviewMemo } from "./overview";
 export { renderMoveDetail, type PageHandle, type MoveDetailOpts } from "./pages";
 export { renderPathPage, type PathPageHandle, type PathPageOpts } from "./path";
 export { fanChart, type FanChartHandle } from "./fanChart";
