@@ -137,7 +137,8 @@ export function cellFrames(banks: Banks, secs: ReadonlyArray<"progress" | "rules
       for (const g of vs)
         for (const v of g.v)
           for (const piece of v.split("。")) {
-            const parts = mask(piece.trim()).split(/\{\w+\}/);
+            // 修正（code-3）: 差し込みで分けてから数字を # にする（先に # にすると {switchP1} が {switchP#} になって分けられなかった）
+            const parts = piece.trim().split(/\{\w+\}/).map(mask);
             if ([...parts.join("")].length <= 8) continue;
             const src = `^${parts.map(esc).join("[^。]*?")}$`;
             if (seen.has(src)) continue;
@@ -218,7 +219,7 @@ export const STRUCTURAL: readonly RegExp[] = [
   /^この手を選ぶと、# 年 # 月までの稼ぎは −?# 万円ほどの見積もり(?:（.*）)?$/,
   /^見積もりでは、ここから # 年 # 月までに −?# 万円を稼ぐ(?:（.*）)?$/,
   /^この手の先の分かれ道は # 年 # 月までに #(?:（判断 #・出来事の分かれ #）| )で、.*が続く$/,
-  /^# の分かれ道(?:（判断 #・出来事の分かれ #）)?のうち、『/,
+  /^# の分かれ道(?:（判断 #・出来事の分かれ #）)?のうち、# つはこの手の結果の分かれで、『/,
   /^結果ごとに数えると、この手の後ろの分かれ道は『/,
   /^ここで分かれるのは、この手の # つの結果だけ（その後は # 年 # 月の行き先）$/,
   /^結果は # つで、その先の # の分かれ道は # 年 # 月の判断から始まり、/,
@@ -294,7 +295,14 @@ export const STRUCTURAL: readonly RegExp[] = [
   /^この流れで # 年 # 月の月の稼ぎは −?# 万円ほど（# か月前(?:より # 万円(?:多い|少ない)|とほぼ同じ)）$/,
   /^# 年 # 月の月の稼ぎは、この流れでは −?# 万円ほど（# か月前(?:より # 万円(?:多い|少ない)|とほぼ同じ)）$/,
   /^見積もりの流れでは、# 年 # 月に月 −?# 万円ほどを稼ぐ（# か月前(?:より # 万円(?:多い|少ない)|とほぼ同じ)）$/,
-  /^この流れの # 年後は月 −?# 万円ほどで、ほかの結果の道も入れた # 年後の平均は月 −?# 万円（行き先のカードの数はこの平均）$/,
+  // 修正（reader-10・reader-6）: 最後の期は月の稼ぎと行き先の平均を 1 文で。顧客探しの期で、この流れでは顧客が増えない訳
+  /^この流れで # 年 # 月(?:（# 年後）)?の月の稼ぎは −?# 万円ほど（# か月前(?:より # 万円(?:多い|少ない)|とほぼ同じ)）で、ほかの結果の道も入れた # 年後の平均は月 −?# 万円（行き先のカードの数はこの平均）$/,
+  /^顧客は上限の # 社に届いているので、この流れでは増えない$/,
+  /^この流れでは顧客が持てる # 社に届いていて、この期には増えない$/,
+  /^持てる # 社に届いた後なので、この流れの顧客は増えない$/,
+  /^この流れでは、この期に顧客は増えないとみる$/,
+  /^一番ありそうな流れでは、この期の顧客探しは決まらない$/,
+  /^この流れの顧客は、この期には増えない見積もり$/,
   // 1b・W3（con-4・con-5）: 手の進み具合（前提の上限まで・積んだ物・見込みの動き）と、決まりで選べなくなる手（束の progress・rules の言い換えから作る）
   ...cellFrames(BANKS, ["progress", "rules", "contOdds"]),
 ];
@@ -311,7 +319,7 @@ export function skeleton(sentence: string): string | null {
 /** 文の型に差し込む言葉のうち、日本語で始まることがある物（前に空白を置くと「は 年収」になる） */
 const JA_START = new Set(["salYen", "hiYen", "midYen", "salNow", "salBack", "partLoss", "job", "jobName", "lab", "next1", "act1", "act2", "stepTitle", "capNote", "period", "ym"]);
 /** 日本語で終わる物（後ろに空白を置くと「社 の」になる） */
-const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "sharePrev", "growth", "conv", "convOne", "convNote", "hz", "jobName", "hiX", "midX", "hiYen", "midYen", "np", "promoPx", "schoolPx"]);
+const JA_END = new Set(["period", "ym", "ymNext", "ym1", "ym2", "ymTell", "ymInd", "ymApril", "nextApril", "ymEv", "job", "salx", "salYen", "salBack", "stepYen", "clp", "lab", "next1", "taxYear", "taxPeriod", "taxDeadline", "salNow", "partLoss", "act1", "act2", "stepTitle", "promoP", "promoPScope", "schoolP", "schoolPPilot", "firstP", "firstPPortfolio", "sideP", "sidePPortfolio", "permA", "permS", "permN", "switchP1", "switchP2", "partP", "backP", "pilotP", "churnQ", "share", "sharePrev", "growth", "conv", "convOne", "convNote", "hz", "jobName", "hiX", "midX", "hiYen", "midYen", "np", "promoPx", "schoolPx", "swAx", "swBx", "moreP"]);
 
 /** 束の言い換えの、差し込みの隣の空白（間は組み立てが空ける。R2 の C8） */
 export function bankSpacing(banks: Banks): string[] {
@@ -771,6 +779,66 @@ export function shownTotal(body: string): number | null {
 const signed = (n: string | undefined, word: string | undefined): number => (n === undefined ? 0 : (/上がった|多い|多かった|上回る|上$/.test(word ?? "") ? 1 : -1) * numOf(n));
 
 /**
+ * C14（修正・reader-1・code-1）: 手の本文が結果ごとの分かれ道の数を並べるとき、並べた数（とこの手の結果の分かれ 1 つ）を足すと、同じ文か
+ * 手の先の分かれ道の文が言う合わせての数になる。並べた数が 2 つ以上の文だけを見る
+ */
+export function forkTieIssues(body: string): string[] {
+  const out: string[] = [];
+  const sents = body.split("。");
+  const head = /までの分かれ道は ([0-9,]+)（判断/.exec(body);
+  for (const sent of sents) {
+    const parts = [...sent.matchAll(/』(?:（[^）]*）)?の後(?:に続くのが|に|が) ([0-9,]+)/g)].map((m) => numOf(m[1]!));
+    if (parts.length < 2) continue;
+    const own = /この手の結果の分かれ ([0-9]+) つ|([0-9]+) つはこの手の結果の分かれ/.exec(sent);
+    const sum = parts.reduce((x, y) => x + y, 0) + (own ? numOf(own[1] ?? own[2]!) : 0);
+    const t = /を入れて ([0-9,]+)|合わせて ([0-9,]+)|までに ([0-9,]+)|^([0-9,]+) の分かれ道/.exec(sent.trim());
+    const said = t ? numOf(t[1] ?? t[2] ?? t[3] ?? t[4]!) : head ? numOf(head[1]!) : null;
+    if (said !== null && said !== sum) out.push(`分かれ道の数の和: 文は ${said}、並べた数${own ? "とこの手の結果の分かれ" : ""}の和は ${sum}`);
+  }
+  return out;
+}
+
+/**
+ * 状態のカードの、おすすめの手との差（『名前』→ 万円。おすすめは 0。多いは +、少ないは −）。言えない手は入れない
+ */
+function stateGaps(body: string): Map<string, number> {
+  const g = new Map<string, number>();
+  const rec = /(?:おすすめは|一番の手は|3 年の稼ぎが一番多いのは)『([^』]+)』/.exec(body);
+  if (rec) g.set(rec[1]!, 0);
+  const others = /(?:ほかの手は|おすすめとの差は|残りの手は)、([^。]*)。/.exec(body);
+  if (!others) return g;
+  const txt = others[1]!;
+  for (const m of txt.matchAll(/『([^』]+)』(?:は見積もりでは|は) ([0-9,.]+) 万円多い/g)) g.set(m[1]!, numOf(m[2]!));
+  for (const m of txt.matchAll(/『([^』]+)』が −([0-9,.]+) 万円/g)) g.set(m[1]!, -numOf(m[2]!));
+  for (const m of txt.matchAll(/『([^』]+)』(?:がほぼ無し|がおすすめとほぼ同じ|はほぼ同じ)/g)) g.set(m[1]!, 0);
+  // 「『A』が N 万円、『B』が M 万円少ない」
+  const less = /((?:『[^』]+』が [0-9,.]+ 万円、?)+)少ない/.exec(txt);
+  if (less) for (const m of less[1]!.matchAll(/『([^』]+)』が ([0-9,.]+) 万円/g)) g.set(m[1]!, -numOf(m[2]!));
+  return g;
+}
+
+/** 行き先 i の「3 年の稼ぎを一番分けた判断」の差と、その判断の状態のカードの差が合わなければその説明（今日の判断は状態のカードが無いので見ない） */
+function decisionGapIssue(map: MapData, fin: readonly Card[], i: number, cal: Calendar): string | null {
+  const b = fin[i]!.body;
+  const m = /(?:一番分けたのは|一番大きかったのは)?([0-9]+ 年 [0-9]+ 月)の判断(?:[^。]*?。)?[^。]*?この道(?:の|が選んだ)『([^』]+)』(?:の見込み)?は、?(?:ほかの手で見込みの一番多い|見込みの一番多い|次に多い)?『([^』]+)』(?:を選んだ場合)?(?:より|を) ([0-9,.]+) 万円(多い|上回って|少ない|少なかった)/.exec(b);
+  if (!m) return null;
+  const [, ym, ch, o, gs, word] = m;
+  const said = (/多い|上回って/.test(word!) ? 1 : -1) * numOf(gs!);
+  for (let x = map.parent(i); x > 0; x = map.parent(x)) {
+    if (map.role(x) !== "s" || cal.ym(map.month(x)) !== ym) continue;
+    const g = stateGaps(fin[x]!.body);
+    const gc = g.get(ch!);
+    const go = g.get(o!);
+    if (gc === undefined || go === undefined) return null;
+    const want = gc - go;
+    // 2 つの丸めた差の差なので、丸めの幅（10 万円以上は 1、それより下は 0.1 の半分ずつ）まで
+    const tol = (Math.abs(gc) >= 9.95 ? 0.5 : 0.05) + (Math.abs(go) >= 9.95 ? 0.5 : 0.05) + 1e-9;
+    return Math.abs(said - want) > tol ? `一番分けた判断の差: 文は ${said}、${ym}の状態のカードの差は ${Math.round(want * 10) / 10}` : null;
+  }
+  return null;
+}
+
+/**
  * C14（0.9・R4）: 状態と行き先が言う差が、画面に出る合計どうしの差と合うか（1 万円以上ずれたら止める）:
  * - 3 か月前の見込みとの差 = この状態の合計 − 1 つ前の状態の合計（どちらもカードに出る）
  * - 選んだ手の見込みとの差 = この状態の合計 − 文に書いた見込み
@@ -779,6 +847,7 @@ const signed = (n: string | undefined, word: string | undefined): number => (n =
  */
 export function tieIssues(map: MapData, fin: readonly Card[]): Array<{ i: number; msg: string }> {
   const out: Array<{ i: number; msg: string }> = [];
+  let cal: Calendar | undefined;
   const tol = (x: number): number => (Math.abs(x) >= 9.95 ? 0.5 : 0.15);
   const keepOf = (i: number): number | null => {
     let x = i;
@@ -788,6 +857,10 @@ export function tieIssues(map: MapData, fin: readonly Card[]): Array<{ i: number
   };
   for (let i = 0; i < map.n; i++) {
     const role = map.role(i);
+    if (role === "a") {
+      for (const msg of forkTieIssues(fin[i]!.body)) out.push({ i, msg });
+      continue;
+    }
     if (role !== "s" && role !== "e") continue;
     const b = fin[i]!.body;
     const bad = (what: string, said: number, want: number): void => void (Math.abs(said - want) > tol(want) + 1e-9 && out.push({ i, msg: `${what}: 文は ${said}、見せる数の差は ${Math.round(want * 10) / 10}` }));
@@ -803,6 +876,9 @@ export function tieIssues(map: MapData, fin: readonly Card[]): Array<{ i: number
         if (Math.abs(sumMk - numOf(t3[1]!)) > 1e-9) out.push({ i, msg: `3 年の稼ぎの内訳の和: 文は ${t3[1]} 万円、内訳の和は ${sumMk}` });
       }
       if (!map.sum(i) && (!t3 || !mk || !/月の稼ぎは、今日の −?[0-9,.]+ 万円から/.test(b))) out.push({ i, msg: "本当の行き先が 3 年の稼ぎ・その内訳・月の稼ぎの動きのどれかを言わない" });
+      // 修正（facts-3・reader-4）: 行き先が言う「3 年の稼ぎを一番分けた判断」の差は、その判断の状態のカードが同じ 2 つの手に言う差と同じ
+      const dg = decisionGapIssue(map, fin, i, cal ??= calendarOf(map.header));
+      if (dg) out.push({ i, msg: dg });
       continue;
     }
     const X = shownTotal(b);
@@ -1228,6 +1304,9 @@ function repeatsByDecision(map: MapData, marked: readonly Card[], gates: TextGat
   return { pairs, hist, overGate: over, top };
 }
 
+/** 本当の行き先の中身（状態・月の稼ぎ・3 年の稼ぎ。双子の兄弟を見つける） */
+const dataKey = (map: MapData, i: number): string => JSON.stringify([map.st(i), map.rr(i), map.e(i)]);
+
 /**
  * 兄弟: 本文の骨組みが同じ組（C6）と、題が同じ組（T4）。同じ種類の手が兄弟に 2 つある組（データの重なり）と、
  * 束に無い種類どうし（どちらも「別の手」と書く）の組は比べない
@@ -1254,7 +1333,10 @@ function siblingPass(map: MapData, fin: readonly Card[], banks: Banks, allowed: 
         const y = ks[b]!;
         const role = map.role(x);
         if (role === "a" && (map.kind(x) === map.kind(y) || (!known(x) && !known(y)))) continue;
-        const same = sk[a] === sk[b];
+        // 修正（code-6）: 行き先は道で 1 回の文の言い方を兄弟の並びで回すので、骨組みが違っても中身（状態・月の稼ぎ・3 年の稼ぎ）が同じ兄弟は
+        //   同じと数える（言い方だけで双子の行き先を通さない）
+        const twin = role === "e" && !map.sum(x) && !map.sum(y) && dataKey(map, x) === dataKey(map, y);
+        const same = sk[a] === sk[b] || twin;
         if (role === "a") {
           r.movePairs++;
           if (same) r.moveSame++;

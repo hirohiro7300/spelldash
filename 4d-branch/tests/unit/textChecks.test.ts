@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { bankSpacing, cli, defaultWish, fixtureGolden, goldenMarkdown, goldenPaths, likeliest, mask, ownDateAgain, recommended, reportMarkdown, rowOf, runTextChecks, sentencesOf, skeleton, spacingIssues, TEXT_CHECKS, TEXT_GATES } from "../../scripts/impact/textChecks";
+import { bankSpacing, cellFrames, cli, defaultWish, fixtureGolden, goldenMarkdown, goldenPaths, likeliest, mask, ownDateAgain, recommended, reportMarkdown, rowOf, runTextChecks, sentencesOf, skeleton, spacingIssues, STRUCTURAL, TEXT_CHECKS, TEXT_GATES } from "../../scripts/impact/textChecks";
 import { analyze, compileMap, groupRows, joinsRow, rowJoinOf, walkPath, type RowJoin } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, DevTreeNode } from "../../src/deepmap/mapData";
-import { BANKS, type Banks } from "../../src/demo/compose";
+import { BANKS, composeCard, composeMarkedConts, type Banks } from "../../src/demo/compose";
 import { checkCard, kindHereBefore, mergedIssues, moveClaims, pathContext, searchQuarters, stillOutcome, sumClientIssues } from "../../src/demo/compose/checks";
 import { calendarOf } from "../../src/demo/compose/path";
+import { spaceJa, strip } from "../../src/demo/compose/text";
+import { loadQSmall } from "./helpers/qSmall";
 import golden from "./composeGolden.json";
 import { F_BACK, F_ENDS, F_PORTFOLIO, F_PROMO2, F_SCOPE, F_STILL, header, move, out, RULES, st, TREE } from "./composeFixture";
 
@@ -58,16 +60,16 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     for (const c of rep.runs[0]!.checks) expect(c.examples.length).toBeLessThanOrEqual(5);
   });
 
-  it("C6・T4: 数だけ違う名前の兄弟が同じ状態でも、行き先は道で 1 回の文の言い方を兄弟の並びで回すので骨組みが違う（1.1・rep-15。兄弟の題は言い分ける）", () => {
+  it("C6・T4: 数だけ違う名前の兄弟が同じ状態・同じ稼ぎなら、行き先の言い方を兄弟の並びで回しても双子として止める（修正・code-6。兄弟の題は言い分ける）", () => {
     // 届け出は SpellDash だけ可（3 年後の一言の言い換えが 1 つ）・2 つの結果は名前の数だけが違い、状態も月の稼ぎも同じ
     const s = st({ pm: "s", pro: 1, mau: 300, pu: 10 });
     const twin = (id: string, lab: string): DevTreeNode => out(`r.x.${id}`, 36, s, id, 50, lab, ["pu", 36, null, null], [3, 0, 3], [1, 0, 0.6]);
     const tree: DevTree = { header, root: { k: "r", r: "r", m: 0, st: st(), rr: [1, 0, -0.3], kids: [move("r.x", "sd_retain", 33, s, [twin("pu1", "有料 1 人"), twin("pu2", "有料 2 人")])] } };
     const rep = runTextChecks(fromDevTree(tree), { annuals: [360] });
     const c6 = rep.runs[0]!.checks.find((c) => c.id === "C6");
-    expect(c6).toBeUndefined();
+    expect(c6?.n).toBe(1);
     expect(rep.runs[0]!.siblings.outPairs).toBe(1);
-    expect(rep.runs[0]!.siblings.outSame).toBe(0);
+    expect(rep.runs[0]!.siblings.outSame).toBe(1);
     expect(rep.runs[0]!.siblings.titleSame).toBe(0);
   });
 
@@ -106,15 +108,53 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
     expect(c6.examples.some((e) => e.includes("道で 1 つの枠を"))).toBe(true);
   });
 
+  it("修正（code-3・code-7）: 束から作る構造の文（進み具合・選べなくなる手・標準の続きの見込み）は、どの言い換えも差し込みを埋めると構造の文になり、手で書いた構造の文はどれも、小さい木と手で作った地図の文か書いた見本に当たる", async () => {
+    // 束の言い換え: 差し込みを数の無い言葉で埋めても、数のある言葉で埋めても構造の文（{switchP1} のような数字入りの名前でも分けられる）
+    for (const sec of ["progress", "rules", "contOdds"] as const)
+      for (const vs of Object.values(BANKS[sec] ?? {}))
+        for (const g of vs)
+          for (const v of g.v)
+            for (const fill of ["あ", "2 割 8 分"])
+              for (const piece of v.replace(/\{\w+\}/g, fill).split("。")) if ([...mask(piece.trim())].length > 8) expect(skeleton(piece.trim()), `${sec}: ${v}`).toBeNull();
+    // 手で書いた構造の文: 組み立てた文（小さい木・手で作った 2 つの地図、年収 360・540、標準の続きの期も）か、組み立てのまれな枝の見本に当たる
+    const nHand = STRUCTURAL.length - cellFrames(BANKS, ["progress", "rules", "contOdds"]).length;
+    const keys: string[] = [
+      "この結果になる見込みは 3 割だった",
+      "3 割の見込みで起きた結果",
+      "見込み 3 割の結果",
+      "『顧客 1 社』と比べても、この結果の 3 年の見込みはほぼ同じ",
+      "次の手の並びは『全部可』の場合より少なく、副業の顧客探しが無い",
+      "ここから 2029 年 11 月までの分かれ道は 12（判断 6・出来事の分かれ 6）",
+      "会社員で持てる顧客は 2 社まで（あと 1 社）",
+      "『転職活動をする』のカードの 1,100 万円は、その後を標準の選び方で続けた見積もりで、この先の見込みより 12 万円低い",
+      "結果は 1 つで、残る分かれ道は 2029 年 8 月の判断の 1 つだけ",
+      "2029 年 8 月の判断のほかに、この手の先の分かれ道は無い",
+      "3 か月を終えて顧客が 2 社になっている見込みは 4 割 5 分で、増えれば広告運用の売上が月 3 万円上がる",
+      "3 か月を終えて顧客は 2 社になる見込みで、会社員で持てる上限は 2 社",
+      "この 3 か月で顧客は 2 社まで増える見込み（1 社増えるごとに売上は月 3 万円）",
+      "顧客は 2 社で 3 か月を終える見込みで、会社員で持てる上限に届く",
+      "その後を一番良い選び方で進めば、平均 1,250 万円",
+    ].map((x) => mask(x));
+    for (const m of [fromDevTree(TREE), fromDevTree(RULES), await loadQSmall()])
+      for (const annual of [360, 540])
+        for (let i = 0; i < m.n; i++) {
+          const bodies = [composeCard(m, i, { annual }).body];
+          if (m.role(i) === "e" && m.sum(i)) for (const x of composeMarkedConts(m, i, { annual })) bodies.push(spaceJa(strip(x.body)));
+          for (const b of bodies) for (const x of sentencesOf(b)) keys.push(mask(x).replace(/^(?:# 年 # 月|今月)、/, "").replace(/^『[^』]*』を受けて、/, ""));
+        }
+    const dead = STRUCTURAL.slice(0, nHand).filter((re) => !keys.some((k) => re.test(k)));
+    expect(dead.map((re) => re.source)).toEqual([]);
+  }, 120_000);
+
   it("1b・W3: 手の数の枠（短い 3 年の見積もり・分かれ道・結果ごとの次のおすすめ・4 月の評価・顧客の見込み・今のままの伸び・数の結果の言い方）と標準の続きの行の枠は構造の文", () => {
     for (const x of [
       "2029 年 11 月までの稼ぎの見積もりは 923 万円（おすすめの手で、今のままより 8.9 万円多い）",
       "この手を選ぶと、2029 年 11 月までの稼ぎは 1,136 万円ほどの見積もり（おすすめの手で、今のままより 21.1 万円多い）",
       "見積もりでは、ここから 2029 年 11 月までに 1,024 万円を稼ぐ（おすすめの『転職活動を続ける』より 3 万円少ない）",
-      "この手の先の分かれ道は 2029 年 11 月までに 108 で、『大きく上げて転職』の後に 26、『少し上げて転職』の後に 22、『転職せず』の後に 59 が続く",
-      "この手の先の分かれ道は 2029 年 11 月までに 108（判断 72・出来事の分かれ 36）で、『昇格』の後に 26、『据え置き』の後に 81 が続く",
-      "1,270 の分かれ道（判断 966・出来事の分かれ 304）のうち、『昇格』の後に続くのが 519、『据え置き』の後に続くのが 750",
-      "結果ごとに数えると、この手の後ろの分かれ道は『昇格』の後が 13、『据え置き』の後が 30（合わせて 44）",
+      "この手の先の分かれ道は 2029 年 11 月までに 108 で、この手の結果の分かれ 1 つのほかに、『大きく上げて転職』の後に 26、『少し上げて転職』の後に 22、『転職せず』の後に 59 が続く",
+      "この手の先の分かれ道は 2029 年 11 月までに 108（判断 72・出来事の分かれ 36）で、この手の結果の分かれ 1 つのほかに、『昇格』の後に 26、『据え置き』の後に 81 が続く",
+      "1,270 の分かれ道（判断 966・出来事の分かれ 304）のうち、1 つはこの手の結果の分かれで、『昇格』の後に続くのが 519、『据え置き』の後に続くのが 750",
+      "結果ごとに数えると、この手の後ろの分かれ道は『昇格』の後が 13、『据え置き』の後が 30（この手の結果の分かれ 1 つを入れて 44）",
       "結果は 1 つで、その先の 29 の分かれ道は 2028 年 8 月の判断から始まり、一番多く続くのは『転職活動を続ける』の後の 28",
       "この手の後ろの分かれ道 13（判断 8・出来事の分かれ 5）は、2028 年 11 月に選べる 3 つの手に分かれ、『遊ぶ人を増やす』の後が 12 で一番多い",
       "2029 年 2 月の判断から先に 12 の分かれ道が続き、そのうち『4 月の評価で昇格を狙う』を選んだ後が 11",
@@ -135,7 +175,9 @@ describe("文章の点検（scripts/impact/textChecks.ts）", () => {
       "この流れで 2027 年 5 月の月の稼ぎは 30.6 万円ほど（3 か月前より 0.9 万円多い）",
       "2028 年 8 月の月の稼ぎは、この流れでは 17.7 万円ほど（3 か月前とほぼ同じ）",
       "見積もりの流れでは、2028 年 11 月に月 24.7 万円ほどを稼ぐ（3 か月前より 7 万円多い）",
-      "この流れの 3 年後は月 50.9 万円ほどで、ほかの結果の道も入れた 3 年後の平均は月 50.2 万円（行き先のカードの数はこの平均）",
+      "この流れで 2029 年 11 月（3 年後）の月の稼ぎは 50.9 万円ほど（3 か月前より 0.4 万円多い）で、ほかの結果の道も入れた 3 年後の平均は月 50.2 万円（行き先のカードの数はこの平均）",
+      "この流れでは、この期に顧客は増えないとみる",
+      "顧客は上限の 2 社に届いているので、この流れでは増えない",
       "探して決まる見込みは 3 か月ごとに 5 割 5 分で、事例を持っていれば 7 割とみる",
       "2029 年 4 月の評価で昇格する見込みは 3 割（先に担当を広げていれば 4 割）とみる",
     ])

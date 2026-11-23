@@ -187,7 +187,8 @@ function landCountsOf(map: MapData): LandCounts {
       else L.emp[i]! += 1;
       if (s.fl.includes("switched")) L.sw[i]! += 1;
       if (s.pro) L.pro[i]! += 1;
-      if (s.cl > 0) L.cl[i]! += 1;
+      // 修正（facts-6）: 顧客がいる道は、顧客の数の幅の下が 1 社以上の行き先だけ（0〜N 社の幅や、丸めて 0 社の道は数えない）
+      if (clBand(map, i)[0] >= 1) L.cl[i]! += 1;
     }
     const p = map.parent(i);
     if (p >= 0) for (const k of keys) L[k][p]! += L[k][i]!;
@@ -362,9 +363,14 @@ export function recentSteps(link: Link): Set<string> {
 }
 
 /** 道の上で使った手引きの番号 */
-export function usedSet(link: Link): Set<string> {
-  const s = new Set<string>();
-  for (let l: Link | null = link; l; l = l.up) for (const id of l.steps) s.add(id);
+//   修正（code-4）: 道の覚えごとに 1 回だけ作る（覚えは束ごとに続くので、手・題・標準の続きの期で同じ道の物を作り直さない）。書き換えない
+const USED = new WeakMap<Link, ReadonlySet<string>>();
+export function usedSet(link: Link): ReadonlySet<string> {
+  const hit = USED.get(link);
+  if (hit) return hit;
+  const s = new Set<string>(link.up ? usedSet(link.up) : []);
+  for (const id of link.steps) s.add(id);
+  USED.set(link, s);
   return s;
 }
 
@@ -897,13 +903,19 @@ export const FAMILY: Readonly<Record<string, readonly string[]>> = {
  * 1.2（W5・con-9）: 判断の月 m から選ぶ手の 3 か月（m+1〜m+3）が確定申告の期（2 月か 3 月がある）で、副業・SpellDash・独立の稼ぎがある状態か
  * （顧客がいる・Pro を出している・独立している）。状態の暦の文（calPick）より粗いが、道で使った歩みだけで決まる
  */
-export function taxQuarter(c: Ctx, m: number, s: ImpactSt): boolean {
+//   修正（reader-5）: 申告が要りそうな稼ぎ（独立・広告運用の顧客・副業と SpellDash の手取りが年で申告の線の 7 割以上。状態の暦の文の
+//   「超えるなら確定申告」と同じ線）がある時だけ。Pro を出していても赤字か線より十分下なら、申告の歩みを先に取らない（暦の文が住民税の申告を言う）
+export function taxQuarter(c: Ctx, m: number, s: ImpactSt, rr?: readonly number[]): boolean {
   if (m === 0) return false;
   const q = [1, 2, 3].some((k) => {
     const mo = c.cal.parts(m + k)[1];
     return mo === 2 || mo === 3;
   });
-  return q && (s.j === "i" || s.cl >= 0.5 || s.pro === 1);
+  if (!q) return false;
+  if (s.j === "i" || s.cl >= 0.5) return true;
+  const line = Number(c.B.facts.taxLine ?? NaN);
+  if (!rr || !Number.isFinite(line)) return s.pro === 1;
+  return s.pro === 1 && 12 * (rr[1]! + rr[2]!) >= line * 0.7;
 }
 
 export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<string>, recent: ReadonlySet<string> = used, extra: Env = {}): Step[] {
@@ -915,7 +927,7 @@ export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<strin
   // 判断ごとに 3 つずらす（続く判断の今のままの歩みが重ならない）
   const r = kind === "keep" && book0.length ? m % book0.length : 0;
   const turned = r ? [...book0.slice(r), ...book0.slice(0, r)] : book0;
-  const env: Env = { ...extra, j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap: capOf(C, s.j), m, mon: c.cal.parts(m)[1], n: nth, first: m === 0 ? 1 : 0, taxQ: taxQuarter(c, m, s) ? 1 : 0 };
+  const env: Env = { ...extra, j: s.j, pm: s.pm, pro: s.pro, cl: s.cl, clr: clr(s.cl), pu: s.pu, mau: s.mau, sal: s.sal, seats: s.seats, cap: capOf(C, s.j), m, mon: c.cal.parts(m)[1], n: nth, first: m === 0 ? 1 : 0, taxQ: taxQuarter(c, m, s, map.rr(map.parent(a))) ? 1 : 0 };
   // 1.1（W4・rep-14）: その期の状況で先に取る歩み（lead の条件が合う物）を前に出す。ほかは手引きの並びのまま
   const led = turned.filter((st) => st.lead && cond(st.lead, env, s.fl));
   const book = led.length ? [...led, ...turned.filter((st) => !led.includes(st))] : turned;
@@ -936,5 +948,14 @@ export function stepsFor(c: Ctx, a: number, nth: number, used: ReadonlySet<strin
   if (out.length < 3) for (const st of B.playbook._generic ?? []) take(st);
   // それでも足りなければ、直前の 3 つの手より前に使った種類の歩み（1 年近く前の歩みを、もう一度やる）
   if (out.length < 3) for (const st of book) if (out.length < 3 && used.has(st.id) && !recent.has(st.id) && !out.some((x) => x.id === st.id) && cond(st.if, env, s.fl)) out.push(st);
+  // 修正（reader-7）: 先にやる歩み（素材を撮る）が同じ 3 か月に選ばれていれば、後の歩み（その素材で週 5 本出す）より前の月に置く
+  for (const [later, first] of STEP_AFTER) {
+    const li = out.findIndex((x) => x.id === later);
+    const fi = out.findIndex((x) => first.includes(x.id));
+    if (li >= 0 && fi > li) out.splice(li, 0, ...out.splice(fi, 1));
+  }
   return out;
 }
+
+/** 修正（reader-7）: 同じ 3 か月に並ぶとき、後に置く歩みと、その前に置く歩み（動画は素材を撮りため・型紙を作ってから出す回数を決める） */
+const STEP_AFTER: ReadonlyArray<readonly [string, readonly string[]]> = [["spell-growth-d16", ["spell-growth-d08", "spell-growth-d09"]]];

@@ -107,6 +107,10 @@ export interface Consts {
   growMax: number;
   adsMax: number;
   retainMax: number;
+  /** 紹介で顧客を増やす手の、月あたりに来る顧客の数（会社員・週 4 日・独立） */
+  lamEmp: number;
+  lamPart: number;
+  lamInd: number;
 }
 
 /** 文の型の束。節ごとに、手の種類・出来事・結果の分類から言い換えの組を引く */

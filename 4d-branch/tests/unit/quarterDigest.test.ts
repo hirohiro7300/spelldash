@@ -22,9 +22,11 @@ import { loadQSmall } from "./helpers/qSmall";
  * 文の型 1.1（W4・rep-14: 手引きの歩みをその期の状況で先に取る）で焼き込んだやることの項目が変わり 178pivj0gb2qln → 0q6mgtw00zqla8
  * （前の小さい木では今の組み立てでも前の値 178pivj0gb2qln が出ることを確かめた）。
  * 文の型 1.2（W5・con-8・con-9: やることに数と期限・近い種類の手引き・確定申告の歩み）で焼き込んだやることが変わり 0q6mgtw00zqla8 → 1at88gs0w8q25s
- * （前の小さい木では今の組み立てでも前の値 0q6mgtw00zqla8 が出ることを確かめた）
+ * （前の小さい木では今の組み立てでも前の値 0q6mgtw00zqla8 が出ることを確かめた）。
+ * 文の型 1.3（見直しの直し: 確定申告の歩みを申告が要りそうな期だけに・動画の歩みの順）で焼き込んだやることが変わり 1at88gs0w8q25s → 0fbmvg81j5f9jg
+ * （前の小さい木では今の組み立てでも前の値 1at88gs0w8q25s が出ることを確かめた）
  */
-const Q_SMALL_DIGEST = "1at88gs0w8q25s";
+const Q_SMALL_DIGEST = "0fbmvg81j5f9jg";
 
 let map: MapData;
 beforeAll(async () => {

@@ -7,7 +7,7 @@ import { adviceIn, adviceMatchers, asciiIds, bareBuIssues, checkBanks, checkCard
 import { cmpFrameOf, frameOf, FRAME_SOFT, sentencesOf, shownTotal, skeleton, tieIssues } from "../../scripts/impact/textChecks";
 import { analyze, compileMap, textRuntime, type Analysis } from "../../src/deepmap/core";
 import { BANKS, composeCard, composeCont, composeMarkedCard, materializeBody, optionValue, ripple, type Banks, type Card } from "../../src/demo/compose/index";
-import { allowedKind, FIRST_MOVE_BUDGET, FIRST_STATE_BUDGET, MOVE_BUDGET, STATE_BUDGET } from "../../src/demo/compose/compose";
+import { allowedKind, FIRST_MOVE_BUDGET, FIRST_STATE_BUDGET, MOVE_BUDGET, planMonths, STATE_BUDGET } from "../../src/demo/compose/compose";
 import { calendarOf, ctxOf, eventMonth, joinedAt, keepTotalOf, linkOf, weekday } from "../../src/demo/compose/path";
 import { n0, oneIn, strip, wari } from "../../src/demo/compose/text";
 import type { WishData } from "../../src/demo/wishlist";
@@ -188,6 +188,9 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
       growMax: lim.sd_grow,
       adsMax: lim.sd_ads,
       retainMax: lim.sd_retain,
+      lamEmp: k.ad_more.p.lamEmp,
+      lamPart: k.ad_more.p.lamPart,
+      lamInd: k.ad_more.p.lamInd,
     });
     // 3 か月ごとの世界が無い環境でも上の値で確かめたことにならないよう、世界と手の決まりがあることも確かめる
     expect(W, "scripts/impact/q/world.ts の quarterWorld").not.toBeNull();
@@ -202,7 +205,8 @@ describe("文章の組み立て（R2 の組み立てを MapData に移した物�
     const c = composeCard(map, a, { annual: 360 });
     // 結果の並びは「、」でつなぐ（結果の名前と区切りが混ざらない。reader-5）
     // 1.1（W4・con-11）: 結果ごとの数は結果の名前と見込み（割）で
-    expect(c.body).toContain(`この手の先、2029 年 11 月までの分かれ道は ${r.forks}（判断 ${r.decisions}・出来事の分かれ ${r.splits}）。『全部可』（2 割）の後に ${ripple(map, byKey(map, "r.ad_permside.a0_a1")).forks}、『SpellDash だけ』（4 割 5 分）の後に`);
+    // 修正（reader-1）: 合わせての数はこの手の結果の分かれ 1 つを含むので、それを言ってから結果ごとの後の数を並べる
+    expect(c.body).toContain(`この手の先、2029 年 11 月までの分かれ道は ${r.forks}（判断 ${r.decisions}・出来事の分かれ ${r.splits}）。この手の結果の分かれ 1 つのほか、『全部可』（2 割）の後に ${ripple(map, byKey(map, "r.ad_permside.a0_a1")).forks}、『SpellDash だけ』（4 割 5 分）の後に`);
     // 行き先は名前を付けて（地図にある行き先と、そのうちのまとめた行き先。計算の芯が無ければ着く行き先は言わない。reader-4）
     expect(c.body).toContain(`地図にある行き先は ${r.ends}（うち標準の続きの見積もり ${r.sumEnds}）。`);
     expect(c.body).not.toContain("一番良い選び方で着く");
@@ -346,7 +350,8 @@ describe("SPEC §4.2: 数の行と数の言い方", () => {
     //   言い直さない（道の画面の行の見出しが言う。3 か月の言い方は標準の続きの行で見る）
     expect(body(rules, find(rules, "r.tax", "a", 3))).not.toContain("2027 年 3 月〜5 月");
     expect(body(map, byKey(map, "r.keep"))).toMatch(/^この 3 か月（2026 年 12 月〜2027 年 2 月）は/);
-    expect(body(map, byKey(map, "r.ad_permside"))).toMatch(/^本業のまま、広告運用と SpellDash の両方を今月のうちに/);
+    // 修正（reader-2）: 届け出は段取りと答えの月（3 か月の 1 か月目）に出す（今日の手でも「今月」と言わない）
+    expect(body(map, byKey(map, "r.ad_permside"))).toMatch(/^本業のまま、広告運用と SpellDash の両方を 2026 年 12 月のうちに/);
   });
 
   it("顧客と学校の席は整数（ならした値・中身の幅でも端数を書かない。C5b）", () => {
@@ -756,7 +761,9 @@ describe("見直しの指摘（stage 4: reader-*・facts-*・code-*）", () => {
       expect(r.body).not.toMatch(/大きな出来事の無い|目立った出来事の無い|大きな出来事は見込んでいない/);
     }
     expect(rows[0]!.body).toMatch(/2027 年 2 月の月の稼ぎ [\d.]+ 万円から始める。/);
-    expect(rows[10]!.body).toMatch(/この流れの 3 年後は月 [\d.]+ 万円ほどで、ほかの結果の道も入れた 3 年後の平均は月 [\d.]+ 万円/);
+    // 修正（reader-10）: 最後の期は、その期の終わり（3 年後）の月の稼ぎと行き先の平均を 1 文で言う
+    expect(rows[10]!.body).toMatch(/この流れで 2029 年 11 月（3 年後）の月の稼ぎは [\d.]+ 万円ほど（[^）]*）で、ほかの結果の道も入れた 3 年後の平均は月 [\d.]+ 万円/);
+    expect(rows[10]!.body).not.toContain("この流れの 3 年後は月");
     expect(rows[4]!.title).toBe("転職活動の続き（5 月に移る）");
     expect(rows[4]!.body).toContain("一番ありそうな出来事は『転職』とみる。");
     const cites = rows.flatMap((r) => r.todo.map((t) => t.cite));
@@ -1733,6 +1740,23 @@ describe("1.2（W5）: やることの段取り・標準の続きの期の月の
         n++;
       }
     expect(n).toBeGreaterThan(40);
+    // 修正（reader-2・code-2）: 届け出・週 4 日の相談・学校への提案は、答えの月より後の月に段取りを置かず、「答えを待つ間」を答えの月より後に言わない。
+    //   届け出は書き出しの届け出る月も段取りの月（答えの月）と同じ
+    const cal = calendarOf(rules.header);
+    for (const m of [tree, rules])
+      for (const i of all(m)) {
+        const kind = m.kind(i) ?? "";
+        if (m.role(i) !== "a" || !["ad_perm", "ad_permside", "sd_permpro", "part", "sd_school"].includes(kind)) continue;
+        const ev = eventMonth(cal, kind, m.month(i));
+        const mons = planMonths(ctxOf(m, BANKS, 360), kind, m.month(i));
+        const order = (mo: number): number => [1, 2, 3].find((k) => cal.parts(m.month(i) + k)[1] === mo)!;
+        for (const mo of mons) expect(m.month(i) + order(mo), m.key(i)).toBeLessThanOrEqual(ev);
+        const b = body(m, i);
+        const wait = /(?:^|。)(?:同じ )?((?:1[0-2]|[1-9])) 月(?:は、|に、)(?:さらに、)?答えを待つ間/.exec(b);
+        if (wait) expect(m.month(i) + order(Number(wait[1])), m.key(i)).toBeLessThanOrEqual(ev);
+        const lead = /([0-9]+) 年 ((?:1[0-2]|[1-9])) 月のうちに(?:書いて|会社に|SpellDash|広告運用|届け出る|両方)/.exec(b);
+        if (["ad_permside", "sd_permpro"].includes(kind) && lead) expect(Number(lead[2]), m.key(i)).toBe(cal.parts(ev)[1]);
+      }
     // 昇格を狙う手は、4 月の評価より後の月に段取りを置かない（2 月の判断なら 3 月と 4 月）
     for (const m of [tree, rules])
       for (const i of all(m)) {
