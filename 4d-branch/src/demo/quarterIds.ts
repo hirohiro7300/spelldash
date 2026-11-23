@@ -12,6 +12,7 @@
 // 返す物は書き換えない約束（凍らせはしない: 7.7 万の要素の配列を凍らせると、それだけで遅い）。
 
 import type { MapData } from "../deepmap/mapData";
+import type { BundleMapData } from "./impactBundle";
 import type { ID } from "../model/types";
 
 const OFF1 = 0x811c9dc5;
@@ -60,26 +61,42 @@ export function quarterIdTable(map: MapData): QuarterIdTable {
   const H1 = new Int32Array(n);
   const H2 = new Int32Array(n);
   const L = new Uint8Array(14);
+  // 同梱データの読み手は鍵の区切りを答える（鍵 = 親の鍵 + . + 区切り）: 鍵の文字を読まずに数える（鍵の文字列は、つないだままの軽い形で
+  // 持つ。読むと 1 つにし直すので、7.7 万の鍵で時間とメモリを食う）
+  const seg = (map as Partial<BundleMapData>).seg;
   for (let i = 0; i < n; i++) {
     const key = map.key(i);
     keys[i] = key;
     const p = i > 0 ? map.parent(i) : -1;
     let h1 = OFF1;
     let h2 = OFF2;
-    let from = 0;
-    // 親の鍵 + "." + 区切り: 親の値から続けて数える（親は前の番号: 深さ優先の並び。違えば初めから）
-    if (p >= 0 && p < i) {
-      const pk = keys[p]!;
-      if (key.length > pk.length + 1 && key.charCodeAt(pk.length) === 46 && key.startsWith(pk)) {
-        h1 = H1[p]!;
-        h2 = H2[p]!;
-        from = pk.length;
+    if (seg && (i === 0 ? p === -1 : p >= 0 && p < i)) {
+      const t = seg.call(map, i);
+      if (i > 0) {
+        h1 = Math.imul(H1[p]! ^ 46, PRIME);
+        h2 = Math.imul(H2[p]! ^ 46, PRIME);
       }
-    }
-    for (let c = from; c < key.length; c++) {
-      const ch = key.charCodeAt(c);
-      h1 = Math.imul(h1 ^ ch, PRIME);
-      h2 = Math.imul(h2 ^ ch, PRIME);
+      for (let c = 0; c < t.length; c++) {
+        const ch = t.charCodeAt(c);
+        h1 = Math.imul(h1 ^ ch, PRIME);
+        h2 = Math.imul(h2 ^ ch, PRIME);
+      }
+    } else {
+      let from = 0;
+      // 親の鍵 + "." + 区切り: 親の値から続けて数える（親は前の番号: 深さ優先の並び。違えば初めから）
+      if (p >= 0 && p < i) {
+        const pk = keys[p]!;
+        if (key.length > pk.length + 1 && key.charCodeAt(pk.length) === 46 && key.startsWith(pk)) {
+          h1 = H1[p]!;
+          h2 = H2[p]!;
+          from = pk.length;
+        }
+      }
+      for (let c = from; c < key.length; c++) {
+        const ch = key.charCodeAt(c);
+        h1 = Math.imul(h1 ^ ch, PRIME);
+        h2 = Math.imul(h2 ^ ch, PRIME);
+      }
     }
     H1[i] = h1;
     H2[i] = h2;

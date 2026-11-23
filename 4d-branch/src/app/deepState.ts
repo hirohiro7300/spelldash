@@ -18,7 +18,7 @@ import type { MapData } from "../deepmap/mapData";
 import { composeCard, materializeBody, type Card } from "../demo/compose";
 import { impactNodeId64 } from "../demo/impact";
 import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
-import { loadPageMap, PAGE_Q } from "../demo/pageBundle";
+import { loadPageMap, PAGE_Q, pageMapIfLoaded } from "../demo/pageBundle";
 import { compiledMapOf, statusCode } from "../model/impactGraph";
 import type { DocData, GNode, ID } from "../model/types";
 import { Emitter } from "../store/emitter";
@@ -346,9 +346,16 @@ export class DeepState {
     if (reg && this.matches(reg, doc, root)) return reg;
     if (!this.loaded) {
       const r = doc.nodes[root];
-      // 3 か月ごとの地図（入口に地図の年月がある）なら、ページに入れた地図を読む
-      if (r && typeof r.meta?.anchor === "string") this.load();
-      return null;
+      if (!r || typeof r.meta?.anchor !== "string") return null;
+      // 3 か月ごとの地図（入口に地図の年月がある）なら、ページに入れた地図を読む。もう読み終えていれば（保存してあった物を読むときに読んだ）
+      // そのまま使う（読み終えた知らせは出さない: 呼んだ所が今作っている。画面を 2 度作らない）
+      const ready = PAGE_Q ? pageMapIfLoaded() : null;
+      if (!ready) {
+        this.load();
+        return null;
+      }
+      this.loaded = ready;
+      this.loading = true;
     }
     return this.matches(this.loaded, doc, this.root(doc) ?? root) ? this.loaded : null;
   }

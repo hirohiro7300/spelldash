@@ -1659,7 +1659,9 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     if (nidIndex.has(id) || (!rootGone && id === s.root)) throw corrupt("カードの ID が重なっています", s.release);
     nidIndex.set(id, i);
   }
-  for (let i = 1; i < n; i++) if (!gone[i]) idOf[i] = s.nid?.[keys[i]!] ?? view.nodes[i]!.id;
+  // 読み替えたカードだけ読み替えた ID（鍵で s.nid を 7.7 万回引かない: 鍵の文字を 1 つにし直して数えることになる。見直し perf-1）
+  for (let i = 1; i < n; i++) if (!gone[i]) idOf[i] = view.nodes[i]!.id;
+  for (const [id, i] of nidIndex) if (i > 0) idOf[i] = id;
   const cardAt = (id: ID): number | undefined => {
     const j = nidIndex.get(id);
     if (j !== undefined) return j;
@@ -1710,9 +1712,12 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     if (!sameWas(i, s.pin![k]!)) throw mismatch(`印の題名が基準と違います: ${k.slice(0, 80)}`, s.release);
   }
   const ePatch = s.e ?? {};
+  /** 消した同梱の線（番号ごと。線の変更が 0 の物。鍵で 7.7 万回引かない） */
+  const eTomb = new Uint8Array(n);
   for (const k of Object.keys(ePatch)) {
     const i = known(k, "線の変更");
     if (gone[i] || gone[core.parent[i]!]) throw mismatch(`消したカードの線の変更: ${k.slice(0, 80)}`, s.release);
+    if (ePatch[k] === 0) eTomb[i] = 1;
   }
   /** 線の ID（読み替えた物だけ。番号ごと） */
   const eidOver = new Array<ID | undefined>(n);
@@ -1726,7 +1731,7 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
     eidOver[i] = id;
   }
   const edgeIdOf = (i: number): ID => eidOver[i] ?? view.edges[i]!.id;
-  const edgeLive = (i: number): boolean => !gone[i] && !gone[core.parent[i]!] && ePatch[keys[i]!] !== 0;
+  const edgeLive = (i: number): boolean => !gone[i] && !gone[core.parent[i]!] && !eTomb[i];
   for (const [id, i] of eidIndex) {
     const k = core.eidIndex.get(id);
     if (k !== undefined && k !== i && edgeLive(k) && edgeIdOf(k) === id) throw corrupt("線の ID が重なっています", s.release);

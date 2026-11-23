@@ -192,6 +192,18 @@ export class ImpactCards {
     return ranks;
   }
 
+  /**
+   * 見込み（P_path）をまだ数えていないときの順位（★ の選択肢を除いた labelRank と同じ物。覚えない: 見込みを数え終えたら labelRank）
+   */
+  labelRankBase(imp: ImpactResult): Map<ID, number> {
+    const ranks = new Map<ID, number>();
+    imp.ends.slice(0, 20).forEach((e, i) => ranks.set(e.id, 4 + i / 100));
+    const root = imp.root ? imp.decision.get(imp.root) : undefined;
+    for (const id of root?.alts ?? []) ranks.set(id, 2);
+    if (imp.root) ranks.set(imp.root, 2);
+    return ranks;
+  }
+
   private buildEdge(imp: ImpactResult, doc: DocData, eid: ID): ImpactEdge | null {
     const e = doc.edges[eid];
     if (!e || (e.relation !== "leads" && e.relation !== "condition") || !imp.scope.has(e.source) || !imp.scope.has(e.target)) return null;

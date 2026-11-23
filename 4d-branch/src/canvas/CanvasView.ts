@@ -677,13 +677,23 @@ export class CanvasView {
     }
 
     // ノード
-    // 見込み（P_path）は、読む所が出たときだけ作る（3 年の分かれ道のカードは使わない。8 万枚の地図では計画を作るのに 4 倍遅いスマホで
-    // 0.5 秒かかり、起動の最初のフレームを待たせる: 見直し perf-7）
-    let fcMemo: ForecastResult | null = null;
-    const fcOf = (): ForecastResult => (fcMemo ??= vm.forecast);
+    // 見込み（P_path）は、数えてある物だけを使う（3 年の分かれ道のカードは使わない）。まだなら、見込みの要らない名前・数だけで描き、
+    // 見込みは空いた時間に少しずつ数えて、数え終えたら描き直す（8 万枚の地図では計画を作るのに 4 倍遅いスマホで 0.6 秒かかり、起動の
+    // 最初のフレームを待たせていた: 見直し perf-1・perf-7。見取り図を先に見せて、触れるようにしてから）
+    const fcNow = vm.forecastIfReady();
+    let fcWanted = false;
+    const fcOf = (): ForecastResult | null => {
+      if (!fcNow) fcWanted = true;
+      return fcNow;
+    };
     const screenLabels: ScreenLabel[] = [];
     const impLabels: ScreenLabel[] = [];
-    const ranks = imp.active && (lod === "low" || lod === "dot") ? cards.labelRank(imp, doc, (id) => fcOf().reach.get(id)?.p ?? 0) : null;
+    const ranks =
+      imp.active && (lod === "low" || lod === "dot")
+        ? fcNow
+          ? cards.labelRank(imp, doc, (id) => fcNow.reach.get(id)?.p ?? 0)
+          : (fcOf(), cards.labelRankBase(imp))
+        : null;
     const pillBox = this.pillTmp;
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
@@ -713,7 +723,7 @@ export class CanvasView {
         collapsed: nv.collapsed,
         showBadge: this.badgeVisible(id, lod),
         today,
-        reach: card ? undefined : fcOf().active ? fcOf().reach.get(id)?.p : undefined,
+        reach: card ? undefined : fcOf()?.active ? fcNow!.reach.get(id)?.p : undefined,
       };
       if (card) {
         drawImpactNode(ctx, n, p.x, p.y, opts, card, pills ? pillBox : null);
@@ -731,7 +741,7 @@ export class CanvasView {
         continue;
       }
       drawNode(ctx, n, p.x, p.y, opts);
-      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fcOf().active ? fcOf().reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
+      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fcOf()?.active ? fcNow!.reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
     }
     // つまみ
     if (lod === "full" || lod === "compact") {
@@ -766,10 +776,21 @@ export class CanvasView {
 
     if (this.rasterFlush) ctx.getImageData(0, 0, 1, 1);
     this.lastFrameMs = performance.now() - t0;
+    // 見込みが要ったのに、まだ数えていなかった: 空いた時間に数え、数え終えたら描き直す
+    if (fcWanted && !this.forecastAsked) {
+      this.forecastAsked = true;
+      vm.warmForecast(() => {
+        this.forecastAsked = false;
+        this.requestRender();
+      });
+    }
     this.frames++;
     for (const fn of this.renderListeners) fn();
     if (this.camAnim || animating) this.requestRender();
   }
+
+  /** 見込みを空いた時間に数えるよう頼んだ（数え終えるまで重ねて頼まない） */
+  private forecastAsked = false;
 
   /** 目盛りを描いている（キャンバスの上のお知らせの帯を目盛りの下へ: src/styles/deep.css）。確かめ用に描いた目盛りの文字 */
   rulerShown = false;

@@ -929,12 +929,23 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
   // 3 か月ごとの地図は見取り図と同じ札の名前（「やらない場合との差」は「この手をやらない」と読める: 作業メモ reader-12）
   const q = !!(deep && deep.map.header.never);
   sec.append(h("h3", { class: "insp-label" }, `${span}でやる価値が大きい手`, h("span", { class: "insp-count" }, q ? WORTH_LABEL : "ずっと使わない場合との差")));
+  // 見込み（P_path）をまだ数えていなければ（大きい文書）、空いた時間に数えてから出す（概要の最初の作りを待たせない: 見直し perf-1）
+  const fc = app.vm.forecastIfReady();
+  if (!fc) {
+    sec.append(h("p", { class: "imp-note imp-worth-wait", attrs: { "aria-busy": "true" } }, "手の種類ごとの差を計算中…"));
+    sec.classList.add("is-busy");
+    app.vm.warmForecast(() => {
+      if (sec.isConnected && app.vm.impact === imp) fillWorth(app, imp, sec, seen);
+    });
+    return;
+  }
+  sec.classList.remove("is-busy");
   if (deep && q) {
     // 3 か月ごとの地図: 見取り図と同じ k(fam)（生成の見積もり never._all − never[fam]）と、同じ「ほぼ無し」の大きさ（見直し user-2）。
     // 逆にたどる計算は要らない（数は地図に書いてある）
     const a = deep.analysis();
     const noise = deep.overview().worthNoise;
-    const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast, (fam) => worthOf(a, fam))
+    const rows = cachedWorthRanking(app.store.doc, imp, fc, (fam) => worthOf(a, fam))
       .worth.filter((w) => w.k >= noise)
       .slice(0, WORTH_LIMIT);
     if (!rows.length) {
@@ -963,7 +974,7 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
     return;
   }
   sec.classList.remove("is-busy");
-  const rows = cachedWorthRanking(app.store.doc, imp, app.vm.forecast)
+  const rows = cachedWorthRanking(app.store.doc, imp, fc)
     .worth.filter((w) => w.k >= WORTH_MIN)
     .slice(0, WORTH_LIMIT);
   if (!rows.length) {
@@ -978,7 +989,16 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
 /** 「避けたい手」: 出てくる所の差の平均（来る見込みで重み付け）が −15 万円以下の種類を、悪い順に 3 つまで。無ければ欄ごと出さない */
 function fillAvoid(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Seen): void {
   clear(sec);
-  const rows = cachedAvoidRanking(app.store.doc, imp, app.vm.forecast).slice(0, AVOID_LIMIT);
+  // 見込み（P_path）をまだ数えていなければ、空いた時間に数えてから出す（概要の最初の作りを待たせない: 見直し perf-1）
+  const fc = app.vm.forecastIfReady();
+  if (!fc) {
+    sec.hidden = true;
+    app.vm.warmForecast(() => {
+      if (sec.isConnected && app.vm.impact === imp) fillAvoid(app, imp, sec, seen);
+    });
+    return;
+  }
+  const rows = cachedAvoidRanking(app.store.doc, imp, fc).slice(0, AVOID_LIMIT);
   sec.hidden = !rows.length;
   if (!rows.length) return;
   sec.append(h("h3", { class: "insp-label" }, "避けたい手", h("span", { class: "insp-count" }, "出てくる所の差の平均")));

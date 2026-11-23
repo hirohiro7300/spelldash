@@ -247,11 +247,20 @@ const copyBand = (b: MapBand): MapBand => {
 };
 
 /**
+ * 同梱データの読み手の地図（MapData に、鍵の区切りを足した物）。鍵 key(i) は「親の鍵 + . + 区切り」（今日は区切りだけ）。
+ * 区切りがあれば、鍵の指紋を親の値から区切りの文字だけで数えられる（7.7 万の鍵の文字を 1 つにし直さない: ./quarterIds.ts。見直し perf-1）
+ */
+export interface BundleMapData extends MapData {
+  /** カード i の鍵の最後の区切り（同じ番号は同じ文字列） */
+  seg(i: number): string;
+}
+
+/**
  * 決まった並びのバイト列（gzip を伸ばした後）から、読むだけの地図を作る（同期・型付きの配列。ノードごとの物は問われたときに作る）。
  * どの accessor も、同じ木（作る側が丸めた開発用の木）の fromDevTree() と同じ答えを返す。食い違いは ImpactBundleError。
  * 文字列は表の番号ごとに同じ物、やることは同じ並びごとに同じ凍らせた配列を返す（ほかの配列と物は、問うたびに新しい物）
  */
-export function decodeBundleBytes(bytes: Uint8Array): MapData {
+export function decodeBundleBytes(bytes: Uint8Array): BundleMapData {
   const r = new Reader(bytes, 0, bytes.length);
   for (let k = 0; k < 4; k++) if (bytes[k] !== BUNDLE_MAGIC[k]) bad("3 か月ごとの地図の同梱データではありません");
   r.p = 4;
@@ -501,6 +510,7 @@ export function decodeBundleBytes(bytes: Uint8Array): MapData {
   return {
     header,
     n,
+    seg: (i) => S.seg.get(seg[N(i)]!),
     parent: (i) => parent[N(i)]!,
     childCount: (i) => kidOff[N(i) + 1]! - kidOff[i]!,
     child: (i, k) => {
@@ -609,7 +619,7 @@ export async function gunzipBytes(gz: Uint8Array): Promise<Uint8Array> {
 }
 
 /** 同梱データ（base64 の gzip）から読むだけの地図を作る。読めなければ ImpactBundleError（gzip の食い違いも） */
-export async function decodeBundle(b64: string): Promise<MapData> {
+export async function decodeBundle(b64: string): Promise<BundleMapData> {
   const gz = base64ToBytes(b64);
   let raw: Uint8Array;
   try {
