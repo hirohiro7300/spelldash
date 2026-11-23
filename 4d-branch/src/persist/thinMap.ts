@@ -426,6 +426,11 @@ export function thinBaseline(): PageMapRecord | null {
   return { release: page.release, hash: page.hash, digest: pageDigest(page), anchor: page.anchor };
 }
 
+/** 入れてあるページの地図（無ければ null。読むだけ） */
+export function pageMapData(): MapData | null {
+  return page ? page.map : null;
+}
+
 /** ページの地図があるか（基準を組み立てずに分かる） */
 export function hasThinBaseline(): boolean {
   return page !== null;
@@ -1477,6 +1482,11 @@ export interface LegacyUpgradeDetail {
   split?: Array<{ to: string; cards: number }>;
   /** 関係を変えた同梱の線で、新しい地図の関係に戻した物の数（引き継がない物を知らせる: loss-6。無ければ省く） */
   relations?: number;
+  /**
+   * 選んだ手・見送った手で、新しい地図のカードへ引き継いだ・移した物の鍵の読み替え（版 6 の鍵 → 新しい地図の鍵・状態。鍵の順）。
+   * 新しい地図の知らせが、前の版と今の版の差を並べるのに使う（作業メモ SPEC §5.9・W-app の I5。無ければ省く）
+   */
+  decided?: Array<{ from: string; to: string; status: string }>;
 }
 
 /** 読んだ結果（当て直したときは upgrade に数） */

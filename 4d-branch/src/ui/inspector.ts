@@ -10,6 +10,7 @@ import { isNarrowScreen } from "./breakpoints";
 import { MOD, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
 import { buildComposedBody, buildDeepNodeBlock, buildDeepOverview, buildDeepPage, type DeepPageHandle } from "./deepPanel";
+import { PREV_BODY_META } from "../persist/legacyMap";
 import { buildImpactNodeBlock, buildImpactOverview, focusLost, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
 import { edgeProb, formatPercent } from "../model/forecast";
@@ -369,6 +370,21 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   }
   const bodySec = sectionEl(composed ? "自分のメモ" : "文章", bodyTa);
   wrap.append(bodySec);
+  if (composed) {
+    // 前の版（版 6 まで）の地図で書き換えた本文を移したメモ: 「前の版のメモ」と言う（地図の文章は上。W-store の §10.5・W-app の I9）
+    const label = bodySec.querySelector(".insp-label")!;
+    const hint = h("p", { class: "insp-hint deep-prev-note" }, "前の版の地図で書き換えた本文を、そのまま残しています。新しい地図の文章は上にあります");
+    bodySec.append(hint);
+    const syncPrev = (): void => {
+      const n = node();
+      const prev = !!n && n.meta?.[PREV_BODY_META] === true && n.body.trim().length > 0;
+      label.textContent = prev ? "前の版のメモ" : "自分のメモ";
+      hint.hidden = !prev;
+      bodyTa.setAttribute("aria-label", prev ? "前の版のメモ" : "自分のメモ");
+    };
+    syncPrev();
+    push(syncPrev);
+  }
 
   // 期限
   const n0 = node()!;

@@ -270,6 +270,47 @@
   font-weight: 600;
   color: var(--warn);
 }
+.rel-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: normal;
+}
+.rel-mine {
+  margin-top: 14px;
+}
+.rel-mine tbody th {
+  white-space: normal;
+}
+.rel-prev {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.rel-prev-head {
+  margin: 0 0 6px;
+}
+.rel-prev-head b {
+  color: var(--text-1);
+  font-weight: 650;
+}
+.rel-prev-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 4px;
+}
+.rel-prev-title {
+  color: var(--text-1);
+}
+.rel-sheet .modal-footer {
+  flex-wrap: wrap;
+}
 .rel-foot {
   margin: 12px 0 0;
   font-size: 12px;
@@ -345,4 +386,12 @@
   font-size: 11px;
   color: var(--text-3);
   margin-left: 4px;
+}
+
+/* 前の版の地図で書き換えた本文を移したメモ（src/ui/inspector.ts。W-app の I9） */
+.deep-prev-note {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
 }

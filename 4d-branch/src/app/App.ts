@@ -13,7 +13,7 @@ import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbA
 import { isDisposableDoc } from "../demo/demo";
 import { CloudRepo, CloudSync, asBootDoc, baseCovered, dbBackend, mapReleaseOf, nextBootDoc, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
-import { holdsPageMap, pageRelease, setCodecWarn, storedMapReleaseOf, storedUpgradeOf, thinReadable, upgradeNotice, type CodecWarnKind } from "../persist/codec";
+import { holdsPageMap, setCodecWarn, storedMapReleaseOf, storedUpgradeOf, thinReadable, upgradeNotice, type CodecWarnKind } from "../persist/codec";
 import type { BackupKind, BlockInfo, KeptAside, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
@@ -25,7 +25,7 @@ import { offerImpactSalary } from "../ui/impactPanel";
 import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
 import { buildListView } from "../ui/listView";
-import { openReleaseSheet } from "../ui/releaseSheet";
+import { openReleaseSheet, type DecidedCards } from "../ui/releaseSheet";
 import { startTour } from "../ui/onboarding";
 import { closeMenus, closeToasts, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
@@ -35,7 +35,10 @@ import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
 import { editLocked } from "./editLock";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
-import { buildFuture, futureRelease, futureVersion } from "../demo/futureBundle";
+import type { FutureStats } from "../demo/futureBundle";
+import type { ImportPreview } from "../persist/io";
+import { buildPageFuture, pageFutureVersion } from "./pageFuture";
+import { carryMapDoc } from "./futureCache";
 import { FRESH_FUTURE, FUTURE_MIN_ZOOM, NO_AUTO_FUTURE, futureAge, futureMaps, hasEditPrints, hasFutureRoot, hasStaleFuture, inPlaceRoot, isFreshFuture, nearFutureRoot, swapFutureDoc, withNoAutoFuture, yieldsToRemote, type FutureMap } from "../demo/futureSwap";
 
 export interface AppOptions {
@@ -79,6 +82,9 @@ const TAKE_OVER_TOASTS = new Set([READ_ONLY_BLOCKED, READ_ONLY_FUTURE, READ_ONLY
 /** 未来の道筋を一度に開く入れ替えの名前（履歴・安全用バックアップ） */
 const FUTURE_OPEN_LABEL = "未来の道筋を開く";
 /** 地図の未来の道筋が、このページより新しい版で作られているとき（古い版に戻さない） */
+/** 文書の meta: 新しい地図の知らせを見せた版（どの端末で見せても、同期で届けば出さない） */
+const RELEASE_SHEET_META = "releaseSheet";
+
 const FUTURE_NEWER = "この地図の未来の道筋は、このページより新しい版で作られています。ページを開き直すと新しい版で見られます";
 /** 新しい版にする前に確かめ直したら、もう新しい版だった */
 const FUTURE_UP_TO_DATE = "未来の道筋はもう新しい版になっています";
@@ -155,6 +161,7 @@ export class App implements AppContext {
   private remoteTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(opts: AppOptions) {
+    this.bootDecided = storedUpgradeOf(opts.store.doc)?.legacy?.decided ?? null;
     this.store = opts.store;
     this.ui = opts.ui;
     this.persistence = opts.persistence;
@@ -379,6 +386,9 @@ export class App implements AppContext {
   /** 新しい地図の知らせを出した（この起動で。待っている間に重ねて出さない） */
   private deepOffered = false;
 
+  /** この起動で地図を新しい版で読んだときの、前の版で選んだ・見送ったカードの鍵の読み替え（新しい地図の知らせの表: W-app の I5） */
+  private bootDecided: DecidedCards | null = null;
+
   /**
    * 3 か月ごとの地図（版 7）があれば、右のパネルに見取り図を見せて始める（何も選ばない概要の先頭。広い画面はパネル、
    * スマホは最初の 1 枚として引き出しに: 作業メモ SPEC v1 §5.1・§5.9・user-1・user-5）。
@@ -403,7 +413,12 @@ export class App implements AppContext {
     if (ric) ric(warm, { timeout: 3000 });
     else setTimeout(warm, 1500);
     const rel = ctx.map.header.release;
-    const seen = Math.max(this.ui.prefs.releaseSheet, typeof this.ui.storedPrefs().releaseSheet === "number" ? this.ui.storedPrefs().releaseSheet! : 0);
+    // 見せた版は、この端末の表示の設定と、文書の meta（同期でほかの端末にも届く: 新しい端末でもう一度出さない。作業メモ SPEC §5.9・W-app の I5）
+    const docSeen = (): number => {
+      const v = this.store.doc.meta?.[RELEASE_SHEET_META];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    };
+    const seen = Math.max(this.ui.prefs.releaseSheet, typeof this.ui.storedPrefs().releaseSheet === "number" ? this.ui.storedPrefs().releaseSheet! : 0, docSeen());
     if (rel < 7 || seen >= rel) return;
     const show = (): void => {
       if (this.newerShown) return;
@@ -413,8 +428,14 @@ export class App implements AppContext {
       }
       const now = this.vm.deep.get();
       if (!now) return;
+      // 待つ間に同期でほかの端末の「見せた」が届いた
+      if (docSeen() >= rel) return;
       this.ui.setPrefs({ releaseSheet: rel });
-      openReleaseSheet(this, now);
+      if (!this.store.readOnly) {
+        this.store.doc.meta = { ...this.store.doc.meta, [RELEASE_SHEET_META]: rel };
+        this.persistence.markDirty();
+      }
+      openReleaseSheet(this, now, this.bootDecided ? { decided: this.bootDecided } : {});
     };
     setTimeout(show, 300);
   }
@@ -436,7 +457,8 @@ export class App implements AppContext {
     const btn = this.futureBtn;
     if (!btn) return;
     const idx = this.vm.index;
-    const key = `${idx.version.roots}|${idx.source === this.store.doc}|${futureVersion()}|${futureRelease()}`;
+    const fv = pageFutureVersion();
+    const key = `${idx.version.roots}|${idx.source === this.store.doc}|${fv.version}|${fv.release}`;
     if (key !== this.futureNewKey) {
       this.futureNewKey = key;
       const nodes: DocData["nodes"] = {};
@@ -444,7 +466,7 @@ export class App implements AppContext {
         const n = this.store.doc.nodes[id];
         if (n) nodes[id] = n;
       }
-      this.futureNewOn = hasStaleFuture({ ...this.store.doc, nodes }, futureVersion(), futureRelease());
+      this.futureNewOn = hasStaleFuture({ ...this.store.doc, nodes }, fv.version, fv.release);
     }
     const on = this.futureNewOn;
     if (btn.classList.contains("has-new") === on) return;
@@ -1037,7 +1059,7 @@ export class App implements AppContext {
     // 印は入れ替える直前に付ける（入れ替える物の前の姿として履歴に残り、「元に戻す」で印ごと戻る）
     const mark = markFor();
     if (mark) this.store.doc.meta = { ...this.store.doc.meta, ...mark };
-    if (!this.store.replaceDoc(doc, label)) return false;
+    if (!this.store.replaceDoc(doc, label, carryMapDoc(doc))) return false;
     // 入れ替えた直後の時刻を印に（手を付けるまでの間に、アカウントで別の端末の内容と重なったら、こちらを送らずに読み込む）
     if (opts.fresh) this.store.doc.meta = { ...this.store.doc.meta, [FRESH_FUTURE]: this.store.doc.updatedAt };
     this.ui.select([]);
@@ -1109,13 +1131,14 @@ export class App implements AppContext {
   /** 今の地図の未来の道筋と版の様子（stale: このページの版より古い・newer: このページより新しい版で作った） */
   private futureState(): { maps: FutureMap[]; stale: FutureMap[]; newer: FutureMap[] } {
     const maps = futureMaps(this.store.doc);
-    const age = (m: FutureMap) => futureAge(m, futureVersion(), futureRelease());
+    const fv = pageFutureVersion();
+    const age = (m: FutureMap) => futureAge(m, fv.version, fv.release);
     return { maps, stale: maps.filter((m) => age(m) === "old"), newer: maps.filter((m) => age(m) === "newer") };
   }
 
   /** この版への差し替えを、「未来の道筋」から聞いて断った（この端末で。別のタブで断った物も） */
   private futureDeclined(): boolean {
-    return this.ui.isFutureDeclined(futureVersion());
+    return this.ui.isFutureDeclined(pageFutureVersion().version);
   }
 
   /** 地図の未来の道筋が、このページより新しい版で作られている: 差し替えずに訳を知らせる（always でなければ、このページを開いている間に 1 回） */
@@ -1235,9 +1258,9 @@ export class App implements AppContext {
     if (this.openingFuture) return "skipped";
     this.openingFuture = true;
     try {
-      let built: ReturnType<typeof buildFuture>;
+      let built: { pv: ImportPreview; stats: FutureStats };
       try {
-        built = buildFuture();
+        built = await buildPageFuture();
       } catch {
         toast("未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください", { tone: "warn" });
         return "failed";
@@ -1257,7 +1280,7 @@ export class App implements AppContext {
         markBefore: { [NO_AUTO_FUTURE]: true },
         fresh: true,
       });
-      if (done) this.ui.setPrefs({ futureAutoOpened: true, futureOffered: true, futureNotified: futureVersion() });
+      if (done) this.ui.setPrefs({ futureAutoOpened: true, futureOffered: true, futureNotified: pageFutureVersion().version });
       // 押したのに入れ替えなかった（待つ間に地図が変わった・書き始めた・閲覧のみになった）: 黙らない
       else if (how === "button") toast("開いている間に地図が変わったため、入れ替えませんでした。もう一度「未来の道筋」を押してください", { tone: "warn", ms: 6000 });
       return done ? "opened" : "skipped";
@@ -1334,9 +1357,9 @@ export class App implements AppContext {
       return;
     }
     if (!this.futureSwapNeeded(pre)) return;
-    let built: ReturnType<typeof buildFuture>;
+    let built: { pv: ImportPreview; stats: FutureStats };
     try {
-      built = buildFuture();
+      built = await buildPageFuture();
     } catch {
       toast("未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください", { tone: "warn" });
       return;
@@ -1353,7 +1376,7 @@ export class App implements AppContext {
     const others = new Set<ID>();
     for (const m of pre.maps) if (m.root !== upRoot) for (const id of m.nodes) if (!mine?.has(id)) others.add(id);
     // ページの地図の版（か、それより新しい版）の地図を「古い」とは呼ばない（safety-9）
-    const pageRel = pageRelease() ?? futureRelease();
+    const pageRel = pageFutureVersion().release;
     const othersOld = pre.maps.every((m) => m.root === upRoot || (m.release !== null && m.release < pageRel));
     const { stats } = built;
     // 新しい版にした結果を先に作り、その数のまま確かめる（新しい版に無いカードで決めたことは、消さずに別のカードとして残る。
@@ -1386,7 +1409,7 @@ export class App implements AppContext {
     );
     if (!ok) {
       // 「未来の道筋」から聞いて断った: この版ではもう聞かない（お知らせ・メニューからは新しい版にできる。ボタンの「新」の印は残る）
-      if (how === "button") this.ui.declineFuture(futureVersion());
+      if (how === "button") this.ui.declineFuture(pageFutureVersion().version);
       return;
     }
     if (this.store.readOnly) return;
@@ -1411,8 +1434,8 @@ export class App implements AppContext {
     }
     const label = inPlace ? "未来の道筋を新しい版にする" : "未来の道筋を新しい版に差し替える";
     void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
-    this.store.replaceDoc(res.doc, label);
-    this.ui.setPrefs({ futureNotified: futureVersion(), futureOffered: true });
+    this.store.replaceDoc(res.doc, label, carryMapDoc(res.doc));
+    this.ui.setPrefs({ futureNotified: pageFutureVersion().version, futureOffered: true });
     this.ui.clearSelection();
     if (res.root && this.store.doc.nodes[res.root]) this.view.fit(nearFutureRoot(this.store.doc), { minZoom: FUTURE_MIN_ZOOM });
     if (res.legacy) {
@@ -1456,7 +1479,7 @@ export class App implements AppContext {
       if (!this.vm.index.forecastRoots.size) return;
       const st = this.futureState();
       if (st.newer.length) return this.tellNewerFuture();
-      const v = futureVersion();
+      const v = pageFutureVersion().version;
       if (this.ui.prefs.futureNotified === v || this.ui.storedPrefs().futureNotified === v) return;
       if (!st.stale.length) return;
       this.ui.setPrefs({ futureNotified: v });
@@ -1714,13 +1737,15 @@ export class App implements AppContext {
           try {
             const mark = this.futureMarkFor(doc);
             if (mark) this.store.doc.meta = { ...this.store.doc.meta, ...mark };
-            if (!this.store.replaceDoc(doc, "別の端末の内容を読み込む")) return null;
+            if (!this.store.replaceDoc(doc, "別の端末の内容を読み込む", carryMapDoc(doc))) return null;
           } finally {
             this.adopting = false;
           }
         } else {
           // 初めての同期・利用者の選択・手を付けていない中身からの読み込みは「元に戻す」の対象にしない
           // （戻すと、捨てたデモや選ばなかった内容・押せばまた開ける中身がアカウントへ送られる）
+          // 地図を組み立てたままの文書なら、そのまま覚える（読み込みは入れ物ごと使う）
+          carryMapDoc(doc)(doc);
           this.store.load(doc, "load");
           this.persistence.markDirty();
         }
@@ -1744,6 +1769,7 @@ export class App implements AppContext {
         // アカウントの内容が前の版の地図だった（読むときにページの地図へ引き上げた）: 移した手・別のカードに残したカードを数で知らせる（user-6）
         const up = storedUpgradeOf(doc);
         if (up) toast(upgradeNotice(up, "adopt"), { ms: 12000 });
+        if (up?.legacy?.decided) this.bootDecided = up.legacy.decided;
         return ident;
       },
       backup: async (doc, label, kind) => {

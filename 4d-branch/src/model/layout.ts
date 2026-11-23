@@ -7,11 +7,11 @@ import type { DocData, ID } from "./types";
 const GAP_X = 28;
 const GAP_Y = 22;
 
-function overlaps(doc: DocData, x: number, y: number, ignore: ReadonlySet<ID>, extra: Array<{ x: number; y: number }>): boolean {
+function overlaps(doc: DocData, x: number, y: number, ignore: ReadonlySet<ID>, extra: Array<{ x: number; y: number }>, skip?: (id: ID) => boolean): boolean {
   const w = NODE_W + GAP_X;
   const h = NODE_H + GAP_Y;
   for (const id in doc.nodes) {
-    if (ignore.has(id)) continue;
+    if (ignore.has(id) || skip?.(id)) continue;
     const n = doc.nodes[id]!;
     if (Math.abs(n.x - x) < w && Math.abs(n.y - y) < h) return true;
   }
@@ -19,10 +19,14 @@ function overlaps(doc: DocData, x: number, y: number, ignore: ReadonlySet<ID>, e
   return false;
 }
 
-/** (x, y) の近くで空いている所。上下に交互にずらして探す */
-export function findFreeSpot(doc: DocData, x: number, y: number, opts: { ignore?: ReadonlySet<ID>; extra?: Array<{ x: number; y: number }>; preferDown?: boolean } = {}): { x: number; y: number } {
+/**
+ * (x, y) の近くで空いている所。上下に交互にずらして探す。skip: 文書の位置では数えないノード（3 年の分かれ道のカードは、画面の位置が
+ * 重ねる位置で、文書には位置を持たない: extra に見えているカードの重ねる位置を渡す。W-app の I2）
+ */
+export function findFreeSpot(doc: DocData, x: number, y: number, opts: { ignore?: ReadonlySet<ID>; extra?: Array<{ x: number; y: number }>; preferDown?: boolean; skip?: (id: ID) => boolean } = {}): { x: number; y: number } {
   const ignore = opts.ignore ?? new Set<ID>();
   const extra = opts.extra ?? [];
+  const skip = opts.skip;
   const step = NODE_H + GAP_Y + 8;
   // 縦に交互に探し、その列が詰まっていれば右の列へ（確かめずに置かない）
   for (let col = 0; col < 24; col++) {
@@ -31,12 +35,12 @@ export function findFreeSpot(doc: DocData, x: number, y: number, opts: { ignore?
       const k = Math.ceil(i / 2);
       const dir = opts.preferDown ? (i % 2 === 1 ? 1 : -1) : i % 2 === 1 ? 1 : -1;
       const cy = i === 0 ? y : y + dir * k * step;
-      if (!overlaps(doc, cx, cy, ignore, extra)) return { x: cx, y: cy };
+      if (!overlaps(doc, cx, cy, ignore, extra, skip)) return { x: cx, y: cy };
     }
   }
   // それでも無ければ、いちばん右のノードのさらに右（必ず空いている）
   let maxX = x;
-  for (const id in doc.nodes) if (!ignore.has(id)) maxX = Math.max(maxX, doc.nodes[id]!.x);
+  for (const id in doc.nodes) if (!ignore.has(id) && !skip?.(id)) maxX = Math.max(maxX, doc.nodes[id]!.x);
   for (const p of extra) maxX = Math.max(maxX, p.x);
   return { x: maxX + NODE_W + GAP_X, y };
 }

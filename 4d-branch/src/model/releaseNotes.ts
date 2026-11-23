@@ -66,3 +66,85 @@ export function deltaTable(before: ReadonlyMap<string, number>, after: ReadonlyA
   out.sort((p, q) => (q.after ?? -Infinity) - (p.after ?? -Infinity) || p.kind.localeCompare(q.kind));
   return out;
 }
+
+/**
+ * 地図の文書の、どの判断の手も含めた差（カードの鍵 meta.key → 今のままとの差。数が出せない手は入れない）。年収は annual に置き換えて数える。
+ * 前の版（版 6）で選んだ・見送ったカードの差を、知らせの表に出すのに使う（作業メモ SPEC v1 §5.9・W-app の I5）
+ */
+export function optionDeltasOf(doc: DocData, annual: number): Map<string, number> {
+  const out = new Map<string, number>();
+  let root: GNode | null = null;
+  // 全体を見てよい: 版 6 の地図だけの文書（ストアの文書ではない）を、知らせを開くときに 1 回
+  for (const id in doc.nodes) {
+    const n = doc.nodes[id]!;
+    if (n.meta?.forecastRoot === true && n.meta?.impact && typeof n.meta.impact === "object") {
+      root = n;
+      break;
+    }
+  }
+  if (!root) return out;
+  const cfg = { ...(root.meta.impact as Record<string, unknown>), annual };
+  const nodes: Record<ID, GNode> = { ...doc.nodes, [root.id]: { ...root, meta: { ...root.meta, impact: cfg } } };
+  const d: DocData = { ...doc, nodes };
+  const imp = computeImpact(d, buildIndex(d).out, null);
+  for (const [, dec] of imp.decision) {
+    for (const a of dec.alts) {
+      const key = d.nodes[a]?.meta?.key;
+      const delta = imp.alt.get(a)?.delta ?? null;
+      if (typeof key === "string" && delta !== null && Number.isFinite(delta)) out.set(key, delta);
+    }
+  }
+  return out;
+}
+
+/** 選んだ・見送ったカードの前の版と今の版の差（知らせの表の行） */
+export interface DecidedRow {
+  /** 今の地図の鍵 */
+  key: string;
+  status: string;
+  before: number | null;
+  after: number | null;
+  /** 同じ判断の手の中の差の順位（1 から。数が出せなければ null） */
+  rankBefore: number | null;
+  rankAfter: number | null;
+  signChanged: boolean;
+  rankChanged: boolean;
+}
+
+/** 同じ親の鍵の手の中の、差の大きい順の順位（1 から） */
+function rankIn(deltas: ReadonlyMap<string, number>, keys: readonly string[], key: string): number | null {
+  const mine = deltas.get(key);
+  if (mine === undefined) return null;
+  let r = 1;
+  for (const k of keys) if (k !== key && (deltas.get(k) ?? -Infinity) > mine) r++;
+  return r;
+}
+
+/**
+ * 選んだ・見送ったカード（版 6 の鍵 → 今の地図の鍵）の、前の版と今の版の差と順位。before: 版 6 の差（optionDeltasOf）。
+ * after: 今の地図の鍵 → その判断の手の差（今のままとの差）と、同じ判断の手の鍵。向きか順位が変わった行だけを返す
+ */
+export function decidedTable(
+  decided: ReadonlyArray<{ from: string; to: string; status: string }>,
+  before: ReadonlyMap<string, number>,
+  after: (key: string) => { delta: number | null; siblings: ReadonlyArray<{ key: string; delta: number | null }> } | null,
+): DecidedRow[] {
+  const parentOf = (k: string): string => k.slice(0, Math.max(0, k.lastIndexOf(".")));
+  const rows: DecidedRow[] = [];
+  for (const c of decided) {
+    const now = after(c.to);
+    if (!now) continue;
+    const b = before.get(c.from) ?? null;
+    const a = now.delta;
+    const p = parentOf(c.from);
+    const sibsBefore = [...before.keys()].filter((k) => parentOf(k) === p);
+    const nowMap = new Map<string, number>();
+    for (const s of now.siblings) if (s.delta !== null) nowMap.set(s.key, s.delta);
+    const rankBefore = rankIn(before, sibsBefore, c.from);
+    const rankAfter = rankIn(nowMap, now.siblings.map((s) => s.key), c.to);
+    const signChanged = b !== null && a !== null && Math.max(Math.abs(b), Math.abs(a)) >= 1 && Math.sign(b) !== Math.sign(a);
+    const rankChanged = rankBefore !== null && rankAfter !== null && rankBefore !== rankAfter;
+    if (signChanged || rankChanged) rows.push({ key: c.to, status: c.status, before: b, after: a, rankBefore, rankAfter, signChanged, rankChanged });
+  }
+  return rows;
+}

@@ -488,9 +488,14 @@ function carryFat(v: GNode, c: GNode, st: FatCardState, slots: readonly string[]
     for (const k of st.meta) meta[k] = c.meta[k];
     out.meta = meta;
   }
+  // 書き換えた本文は、自分のメモの欄にそのまま移る。前の版の地図で書いたメモと分かるように印を付ける（画面は「前の版のメモ」: W-store の §10.5・W-app の I9）
+  if (st.body && c.body.trim()) out.meta = { ...(out.meta ?? v.meta), [PREV_BODY_META]: true };
   if (st.ticks || st.todo) out.conditions = carryFatTodo(v.conditions, slots, c, key);
   return out;
 }
+
+/** カードの meta: 自分のメモの欄の文が、前の版（版 6 まで）の地図で書き換えた本文を移した物 */
+export const PREV_BODY_META = "prevBody";
 
 /** ページの地図の同梱の線に、版 6 の同梱の線で利用者が直した物（見込み・説明と条件・利用者の meta）を当てる（関係は新しい版の物のまま） */
 function carryFatEdge(v: GEdge, e6: GEdge, id: ID, source: ID, target: ID): GEdge {
@@ -617,6 +622,7 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
   const moved = zeroCounts();
   const splitTo = new Map<string, number>();
   const det = zeroCounts();
+  const decided: Array<{ from: string; to: string; status: string }> = [];
   const detachList: Array<{ key: string; card: GNode; st: FatCardState }> = [];
   // 版 6 の組み立ての決まり（期限・開始・種類・プロジェクト・シナリオ）: 違うカードは利用者が直した物（loss-3）
   const rules = r6Rules(P, byKey);
@@ -634,6 +640,7 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
       stateOf[i] = st;
       if (st) {
         countCard(how, st);
+        if (st.status === "active" || st.status === "done" || st.status === "dropped") decided.push({ from: k, to: pa.keys[i]!, status: st.status });
         // 版 6 でまとめていた結果の手を、分けた先の 1 つへ移した物（知らせで、どの結果の後へ移したかを言う）
         if (how === moved && !pa.keyIndex.has(k.split(".").slice(0, 3).join("."))) {
           const to = pa.map.label(pa.parent[i]!);
@@ -820,6 +827,7 @@ export function upgradeLegacyMap(doc: DocData): LegacyUpgrade | null {
       movedAt: ymLabel(anchorMonthStart(pa.anchor, 3)),
       ...(splitTo.size ? { split: [...splitTo].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([to, cards]) => ({ to, cards })) } : {}),
       ...(relations ? { relations } : {}),
+      ...(decided.length ? { decided } : {}),
     },
   };
   return { doc: { ...nd, nodes, edges }, info };

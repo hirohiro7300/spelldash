@@ -65,7 +65,7 @@ export class Commands {
   createNode(type: NodeType, at?: { x: number; y: number }, opts: { from?: ID[]; to?: ID[]; title?: string; edit?: boolean; exact?: boolean; projectIds?: ID[] } = {}): ID | null {
     const base = at ?? this.hooks.viewCenter();
     // 空いている所は、3 年の分かれ道の重ねる位置（見えているカード）も避けて探す
-    const spot = opts.exact ? base : findFreeSpot(this.doc, Math.round(base.x), Math.round(base.y), { extra: this.vm.overlayPoints() });
+    const spot = opts.exact ? base : findFreeSpot(this.doc, Math.round(base.x), Math.round(base.y), { extra: this.vm.overlayPoints(), skip: (id) => this.vm.inImpact(id) });
     const parents = (opts.from ?? []).map((id) => this.doc.nodes[id]).filter((n): n is GNode => !!n);
     const node = makeNode({ type, title: opts.title ?? "", x: Math.round(spot.x), y: Math.round(spot.y), projectIds: opts.projectIds ?? this.defaultProjects(parents) });
     // 3 年の分かれ道の親は、見え方で開く（文書の collapsed は使わない）

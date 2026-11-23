@@ -1,8 +1,8 @@
 // ストア: ドキュメントを持ち、すべての変更をトランザクションで受ける。
 // 変更は 1 か所を通るので、Undo/Redo・自動保存・再描画が漏れなくつながる。設計: docs/DESIGN.md §2
 
-import { nextStamp, nowISO } from "../model/ids";
 import { cloneDocShallow } from "../model/schema";
+import { nextStamp, nowISO } from "../model/ids";
 import type { Collection, DocData, EntityOf, GEdge, GNode, ID, Project, Scenario } from "../model/types";
 import { Emitter } from "./emitter";
 import { History, isEmptyEntry, newEntry, type HistoryEntry, type OrderKey } from "./history";
@@ -418,18 +418,25 @@ export class Store {
     return true;
   }
 
-  /** ドキュメントを入れ替える（取り込み・復元）。Undo で戻せる */
-  replaceDoc(next: DocData, label: string): boolean {
+  /**
+   * ドキュメントを入れ替える（取り込み・復元）。Undo で戻せる。
+   * 入れ物（nodes・edges など）を写すのは、ストアが持つ文書の 1 回だけ（8 万枚の地図では 1 回に数十 ms。前は履歴の前と後にも写していた:
+   * W-app の I4・perf-6）。履歴には前と後の文書そのものを持つ: 前の文書は入れ替えた後はストアが書き換えない。後の文書は渡された物
+   * （ストアは写しを書き換えるので、渡した物は変わらない）。元に戻す・やり直すは写さずに入れ替え、離れる側の文書をその時の姿として持ち直す
+   */
+  replaceDoc(next: DocData, label: string, onDoc?: (doc: DocData) => void): boolean {
     if (this.readOnly) {
       this.emitter.emit("blocked", label);
       return false;
     }
     const entry = newEntry(label);
-    entry.replace = { before: cloneDocShallow(this.doc), after: cloneDocShallow(next) };
+    entry.replace = { before: this.doc, after: next };
     const prev = this.doc.updatedAt;
     this.doc = cloneDocShallow(next);
     // 入れ替えも変更なので時刻を進める（読み込んだ物の時刻が古くても、保存や緊急コピーで「古い」と見なされない）
     this.doc.updatedAt = nextStamp(prev);
+    // 入れた文書を、変更を知らせる前に呼ぶ側へ渡す（地図を組み立てたままの文書として覚える など: src/app/futureCache.ts）
+    onDoc?.(this.doc);
     this.history.push(entry);
     this.finish(newInfo("replace", label, true));
     return true;
@@ -452,7 +459,12 @@ export class Store {
     const info = newInfo(dir, entry.label);
     if (entry.replace) {
       const prev = this.doc.updatedAt;
-      this.doc = cloneDocShallow(dir === "undo" ? entry.replace.before : entry.replace.after);
+      // 入れ物は写さない。離れる側の文書（ストアが持っていた物）を、その時の姿として持ち直す（もうストアは書き換えない。
+      // やり直す・元に戻すで同じ中身に戻る）。入る側の文書は、この後ストアが書き換える（その前の姿は、離れるときにまた持ち直す）
+      const leaving = this.doc;
+      this.doc = dir === "undo" ? entry.replace.before : entry.replace.after;
+      if (dir === "undo") entry.replace.after = leaving;
+      else entry.replace.before = leaving;
       this.doc.updatedAt = nextStamp(prev);
       info.full = true;
       info.positionsOnly = false;

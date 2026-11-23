@@ -54,6 +54,7 @@ export {
   isQuarterRoot,
   isThinShape,
   pageHash,
+  pageMapData,
   pageRelease,
   sectionOf,
   setThinBaseline,
@@ -164,7 +165,11 @@ export function storedVersion(stored: Pick<StoredDoc, "version">): number {
  * 入れていなければ decodeStoredAsync）
  */
 export function decodeStored(raw: unknown, opts: ThinDecodeOpts = {}): StoredDecoded {
-  if (isThinShape(raw) && thinReadable()) return noted(decodeThin(raw, opts));
+  if (isThinShape(raw) && thinReadable()) {
+    const d = decodeThin(raw, opts);
+    if (!d.upgrade && keepsMapShape(raw)) mapShaped.add(d.doc);
+    return noted(d);
+  }
   const r = normalizeDoc(raw);
   if (opts.upgrade === "none") return r;
   // 版 6 までの地図（太い形）は、ページの地図に引き上げる（ページの地図を入れてあるときだけ。既定のビルドでは何もしない）
@@ -206,6 +211,54 @@ export function storedUpgradeOf(doc: DocData): ThinUpgradeInfo | undefined {
   return storedUpgrades.get(doc);
 }
 
+/**
+ * 読んだ文書のうち、ページの地図を組み立てたままの形と数の物（地図のカードの状態・題名・本文・やること・タグ・位置だけを変えた。
+ * 消したカード・利用者の線がつながる地図のカード・見込みや meta の変更・ほかの入口が無い）。アプリは、この文書を地図の列から
+ * 計算する（src/app/futureCache.ts の rememberMapDoc。文書から組み立て直す 0.2〜0.3 秒を起動で払わない: W-app の I1）
+ */
+const mapShaped = new WeakSet<DocData>();
+
+/** 地図のカードの変更で、形と数を変えない項目（状態・題名・本文・やること・タグ・位置・たたみ・時刻） */
+const SHAPE_SAFE_NODE: ReadonlySet<string> = new Set(["status", "title", "body", "conditions", "tags", "x", "y", "collapsed", "updatedAt"]);
+/** 同梱の線の変更で、形と数を変えない項目（説明・条件の文・時刻） */
+const SHAPE_SAFE_EDGE: ReadonlySet<string> = new Set(["label", "condition", "updatedAt"]);
+
+/** 薄い形の記録の地図の変更が、形と数を変えない物だけか（少しでも分からなければ false: 文書から組み立てる今までの道） */
+function keepsMapShape(raw: unknown): boolean {
+  let s: ReturnType<typeof sectionOf>;
+  try {
+    s = sectionOf(raw);
+  } catch {
+    return false;
+  }
+  if (!s) return false;
+  if (s.pin && Object.keys(s.pin).length) return false;
+  const safe = (p: unknown, ok: ReadonlySet<string>): boolean => {
+    if (!p || typeof p !== "object") return false;
+    const x = p as { f?: Record<string, unknown>; fd?: unknown; m?: unknown; md?: unknown };
+    if (x.fd !== undefined || x.m !== undefined || x.md !== undefined) return false;
+    for (const k of Object.keys(x.f ?? {})) if (!ok.has(k)) return false;
+    return true;
+  };
+  for (const k of Object.keys(s.n ?? {})) if (!safe(s.n![k], SHAPE_SAFE_NODE)) return false;
+  for (const k of Object.keys(s.e ?? {})) if (!safe(s.e![k], SHAPE_SAFE_EDGE)) return false;
+  // 利用者のノードに別の入口（もう 1 つの地図）があれば、組み立てたままではない
+  const nodes = (raw as { nodes?: unknown }).nodes;
+  if (nodes && typeof nodes === "object") {
+    for (const id of Object.keys(nodes)) {
+      if (id === s.root) continue;
+      const meta = (nodes as Record<string, { meta?: Record<string, unknown> } | undefined>)[id]?.meta;
+      if (meta && (meta.forecastRoot === true || meta.key !== undefined)) return false;
+    }
+  }
+  return true;
+}
+
+/** 読んだ文書が、ページの地図を組み立てたままの形と数か（keepsMapShape の通った物。読んだ物そのものだけ） */
+export function storedMapShaped(doc: DocData): boolean {
+  return mapShaped.has(doc);
+}
+
 /** 保存した形を読む（文書だけ） */
 export function fromStored(raw: unknown, opts: ThinDecodeOpts = {}): DocData {
   return decodeStored(raw, opts).doc;
@@ -232,8 +285,24 @@ export function needsPageMap(raw: unknown): boolean {
 
 /** 保存した形を読む（地図が要れば先に読み込む。地図を読めなければ、薄い形は ThinMapError unavailable で止まる） */
 export async function decodeStoredAsync(raw: unknown, opts: ThinDecodeOpts = {}): Promise<StoredDecoded> {
-  if (needsPageMap(raw)) await ensurePageMap();
+  if (needsPageMap(raw)) {
+    await ensurePageMap();
+    // 起動: 地図を読んだ後、基準の文書を組み立てる前に 1 度だけ（見取り図を先に描く: main.ts・W-app の I3）
+    const f = beforeMapDecode;
+    beforeMapDecode = null;
+    if (f) await f(raw).catch(() => undefined);
+  }
   return decodeStored(raw, opts);
+}
+
+let beforeMapDecode: ((raw: unknown) => Promise<void>) | null = null;
+
+/**
+ * 次に地図の要る記録を読むとき、地図を読んだ後・基準の文書を組み立てる前に 1 度だけ呼ぶ（main.ts が起動の間だけ決める。null で外す）。
+ * 失敗しても読むのは続ける
+ */
+export function setBeforeMapDecode(fn: ((raw: unknown) => Promise<void>) | null): void {
+  beforeMapDecode = fn;
 }
 
 /**
