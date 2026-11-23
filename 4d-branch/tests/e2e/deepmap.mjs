@@ -1076,6 +1076,44 @@ async function storedProfile(browser, profile) {
       await shot(page, `${tag}-07-reopened`);
     });
 
+    // 概要の「やる価値が大きい手」は、見込みを空いた時間に数え終えてから入れる（perf-1）。概要はカードを選んでいる間も取っておいて
+    // 置き直す（perf-8）ので、外れている間に数え終えても入れる（前は外れていると入れず、戻ると「計算中…」のまま残った: P3 を合わせたときの直し）
+    if (profile.viewport.width >= 700)
+      await check(`${tag}: 見込みを数えている間にカードを選び、数え終えてから概要へ戻っても「やる価値が大きい手」が「計算中」のまま残らない`, async () => {
+        const cdp = await ctx.newCDPSession(page);
+        // 見込みを数え終える前に選べるよう、遅い端末にする（数え終えていても、確かめは同じ: 戻った概要に計算中が無い）
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
+        try {
+          await page.goto(BASE, { waitUntil: "commit" });
+          await page.waitForFunction(() => !!window.__fourD?.app?.vm?.deep?.get() && !!document.querySelector(".sidebar-right .imp-overview .imp-more"), null, { timeout: 180_000, polling: 20 });
+          await page.evaluate(() => {
+            const d = document.querySelector(".sidebar-right .imp-overview .imp-more");
+            d.open = true;
+          });
+          await page.waitForFunction(() => !!document.querySelector(".sidebar-right .imp-overview .imp-worth .insp-label"), null, { timeout: 30_000, polling: 20 });
+          const busy = await page.evaluate(() => {
+            const f = window.__fourD;
+            const busy = !!document.querySelector(".sidebar-right .imp-overview .imp-worth.is-busy");
+            const imp = f.app.vm.impact;
+            f.ui.select([imp.decision.get(imp.root).alts[0]]);
+            return busy;
+          });
+          await page.waitForFunction(() => !!window.__fourD.app.vm.forecastIfReady(), null, { timeout: 60_000, polling: 100 });
+          await settle(page, 300);
+          await page.evaluate(() => window.__fourD.ui.clearSelection());
+          await settle(page, 300);
+          const r = await page.evaluate(() => {
+            const s = document.querySelector(".sidebar-right .imp-overview .imp-worth");
+            return { busy: !!s?.classList.contains("is-busy"), wait: !!s?.querySelector(".imp-worth-wait"), rows: s?.querySelectorAll(".imp-rank-title").length ?? 0 };
+          });
+          console.log(`      選んだときに見込みを数えていた: ${busy ? "はい" : "いいえ（もう数え終えていた）"}`);
+          assert(!r.busy && !r.wait && r.rows > 0, `戻った概要の「やる価値が大きい手」が計算中のまま・空（${JSON.stringify(r)}）`);
+        } finally {
+          await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+          await cdp.detach();
+        }
+      });
+
     await check(`${tag}: コンソールのエラーが無い`, async () => {
       assert(errors.length === 0, errors.slice(0, 5).join("\n"));
     });
