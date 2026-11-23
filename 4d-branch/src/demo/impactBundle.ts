@@ -311,7 +311,9 @@ export function decodeBundleBytes(bytes: Uint8Array): BundleMapData {
   const seg = readCol(r, n, "鍵の区切り");
   const flags = readCol(r, n, "印");
   const jpp = readCol(r, n, "仕事と答え");
-  const stCols = ST_NUMS.map((k) => readCol(r, n, `状態 ${k}`));
+  // 読み手 r は関数の中から呼ばない（閉じた所が r をつかむと、伸ばした同梱データ全部（約 4 MB）を地図と一緒に持ち続ける: 見直し perf-6）
+  const stCols: Int32Array[] = [];
+  for (const k of ST_NUMS) stCols.push(readCol(r, n, `状態 ${k}`));
   const fl = readCol(r, n, "状態の印");
   const rr = [readCol(r, n, "月の稼ぎ 0"), readCol(r, n, "月の稼ぎ 1"), readCol(r, n, "月の稼ぎ 2")];
   const band = readCol(r, n, "幅");

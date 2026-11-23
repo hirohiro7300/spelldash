@@ -38,7 +38,7 @@
 import type { MapData } from "../deepmap/mapData";
 import { fnv36, fnv64x36, impactEdgeId64, impactNodeId64, impactTagsOf } from "../demo/impact";
 import { impactBaselineDigest } from "../demo/impactDigest";
-import { buildQuarterParts, type QuarterLayout } from "../demo/quarterDoc";
+import { buildQuarterDoc, buildQuarterParts, type QuarterLayout } from "../demo/quarterDoc";
 import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
 import { NODE_H, NODE_TYPE_ORDER, NODE_W, STATUS_ORDER } from "../model/constants";
 import { impactConfigOf, setPreferredRelease } from "../model/forks";
@@ -325,7 +325,20 @@ interface Core {
   /** カードのやることの枠の名前（チェックを覚える名前） */
   readonly slotMemo: Map<number, readonly string[]>;
   views: View[];
+  /**
+   * 組み立てたときに当てた基準（初めて読んだ記録の at・dx・dy・pmap・smap。その記録の写しは組み立てた物そのもの: 7.7 万枚を写さない）。
+   * 組み立ての決まりの値（位置・プロジェクト・シナリオ）は、ここから戻して使う（inferBase・viewOf・pageMapAccess）
+   */
+  readonly b0: MapBase;
+  readonly b0Key: string;
+  /** その基準の写し（組み立てた物そのもの。最近の写しの数に数えず、いつも持つ） */
+  v0: View | null;
+  /** 読み替えたプロジェクト・シナリオの並び → 組み立てたときの並び（読み替えていない並びは無い） */
+  readonly orig: ReadonlyMap<readonly ID[], readonly ID[]>;
 }
+
+/** 組み立てたときのプロジェクト・シナリオの並び（読み替える前） */
+const origList = (core: Core, l: readonly ID[]): ID[] => (core.orig.get(l) ?? l) as ID[];
 
 /** ID・鍵 → 地図の番号を引く口（無ければ undefined） */
 export interface IndexOf<K> {
@@ -463,7 +476,7 @@ const isoOk = (s: unknown): s is string => typeof s === "string" && Number.isFin
  * 入れ物を作って読み直すと、それだけで起動が 0.1〜0.4 秒遅く、ヒープも 3 MB ほど増える: 見直し perf-1・perf-6）。入れ物の入った文書
  * （基準の文書の指紋・確かめ用）は、初めて要るときに作る（core.doc）。カードの ID と ID → 番号の表は、地図ごとの物（../demo/quarterIds.ts）を共有する
  */
-function coreOf(map: MapData, at: string | null): Core {
+function coreOf(map: MapData, at: string | null, pre: { dx?: unknown; dy?: unknown; pmap?: Record<ID, ID | null>; smap?: Record<ID, ID | null> } | null = null): Core {
   const hit = cores.get(map);
   if (hit) return hit;
   const h = map.header;
@@ -532,6 +545,42 @@ function coreOf(map: MapData, at: string | null): Core {
     else byScen.set(k, { list: s, idx: [c] });
   }
   const scenSamples = [...byScen.values()].map((g) => ({ list: g.list, idx: spreadOf(g.idx, 9) }));
+  // 初めて読んだ記録の基準（ずらし・プロジェクトとシナリオの読み替え）を、組み立てた物に当てておく（その記録を読むたびに 7.7 万枚を
+  // 写さない: 見直し perf-6。凍らせる前に。カード・線の物はカードごとに 1 つなので、ここで書き換えてよい）。見本は当てる前の物で取った
+  const projects = doc.projectOrder.map((id) => ({ id, name: doc.projects[id]!.name }));
+  const scenarios = doc.scenarioOrder.map((id) => ({ id, name: doc.scenarios[id]!.name }));
+  const fullOf = (list: ReadonlyArray<{ id: ID }>, m: Record<ID, ID | null> | undefined): Record<ID, ID | null> => {
+    const out: Record<ID, ID | null> = {};
+    for (const g of list) out[g.id] = m && isObj(m) && own(m, g.id) && (m[g.id] === null || typeof m[g.id] === "string") ? m[g.id]! : g.id;
+    return out;
+  };
+  const int = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 0);
+  const b0: MapBase = { at: nodes[0]!.createdAt, dx: int(pre?.dx), dy: int(pre?.dy), pmap: fullOf(projects, pre?.pmap), smap: fullOf(scenarios, pre?.smap) };
+  const orig = new Map<readonly ID[], readonly ID[]>();
+  {
+    const pm = listMapper(b0.pmap);
+    const sm = listMapper(b0.smap);
+    if (pm || sm || b0.dx || b0.dy) {
+      for (const node of nodes) {
+        if (pm) {
+          const m = pm(node.projectIds);
+          if (m !== node.projectIds) (orig.set(m, node.projectIds), (node.projectIds = m));
+        }
+        if (sm) {
+          const m = sm(node.scenarioIds);
+          if (m !== node.scenarioIds) (orig.set(m, node.scenarioIds), (node.scenarioIds = m));
+        }
+        node.x += b0.dx;
+        node.y += b0.dy;
+      }
+      if (sm)
+        for (const e of edges) {
+          if (!e) continue;
+          const m = sm(e.scenarioIds);
+          if (m !== e.scenarioIds) (orig.set(m, e.scenarioIds), (e.scenarioIds = m));
+        }
+    }
+  }
   // 入れ物は凍らせる（本番も。読み込みのたびに新しい入れ物へ写すので、ここへは誰も書かない: safety-11）
   if (FREEZE_ALL) {
     for (const node of nodes) {
@@ -579,6 +628,16 @@ function coreOf(map: MapData, at: string | null): Core {
     // 入れ物の入った基準の文書（基準の文書の指紋・確かめ用。初めて要るときに作り、凍らせる）
     get doc(): DocData {
       if (full) return full;
+      // 基準を当てて組み立てた物は、組み立てたままの物を組み立て直す（基準の文書の指紋は組み立てたままの物で数える）
+      if (orig.size || b0.dx || b0.dy) {
+        const d = buildQuarterDoc(map, { version: h.hash, release: h.release, at: Number.isFinite(ms) ? ms : 0, layout: THIN_LAYOUT });
+        if (FREEZE_ALL) {
+          for (const id of Object.keys(d.nodes)) (Object.freeze(d.nodes[id]!.meta), Object.freeze(d.nodes[id]));
+          for (const id of Object.keys(d.edges)) (Object.freeze(d.edges[id]!.meta), Object.freeze(d.edges[id]));
+        }
+        for (const k of ["nodes", "edges", "projects", "scenarios", "projectOrder", "scenarioOrder", "meta"] as const) Object.freeze(d[k]);
+        return (full = Object.freeze(d));
+      }
       const nd: Record<ID, GNode> = {};
       const ed: Record<ID, GEdge> = {};
       for (let i = 0; i < n; i++) nd[ids[i]!] = nodes[i]!;
@@ -600,8 +659,8 @@ function coreOf(map: MapData, at: string | null): Core {
     idIndex,
     eidIndex,
     keyIndex,
-    projects: doc.projectOrder.map((id) => ({ id, name: doc.projects[id]!.name })),
-    scenarios: doc.scenarioOrder.map((id) => ({ id, name: doc.scenarios[id]!.name })),
+    projects,
+    scenarios,
     spread,
     projSamples,
     allSamples: spreadOf(allIdx, 9),
@@ -609,7 +668,13 @@ function coreOf(map: MapData, at: string | null): Core {
     scenSamples,
     slotMemo: new Map(),
     views: [],
+    b0,
+    b0Key: baseKey(b0),
+    orig,
+    v0: null,
   };
+  // その基準の写しは組み立てた物そのもの
+  core.v0 = { key: core.b0Key, base: b0, nodes, edges, memoN: new WeakMap(), memoE: new WeakMap() };
   cores.set(map, core);
   return core;
 }
@@ -646,6 +711,7 @@ function listMapper(map: Readonly<Record<ID, ID | null>>): ((l: readonly ID[]) =
 /** 基準の写し（at・dx・dy・pmap・smap を当てた物。最近の 3 つを持つ） */
 function viewOf(core: Core, base: MapBase): View {
   const key = baseKey(base);
+  if (key === core.b0Key && core.v0) return core.v0;
   const k = core.views.findIndex((v) => v.key === key);
   if (k >= 0) {
     const v = core.views[k]!;
@@ -653,22 +719,28 @@ function viewOf(core: Core, base: MapBase): View {
     return v;
   }
   const n = core.n;
+  // 組み立てた物には初めの基準（b0）を当ててある: そこからの違いだけを当てる（読み替えは組み立てたときの並びから）
   const stamp = base.at !== core.at;
-  const shift = base.dx !== 0 || base.dy !== 0;
+  const dx = base.dx - core.b0.dx;
+  const dy = base.dy - core.b0.dy;
+  const shift = dx !== 0 || dy !== 0;
   const pm = listMapper(base.pmap);
   const sm = listMapper(base.smap);
   const nodes = new Array<GNode>(n);
   const edges = new Array<GEdge | null>(n).fill(null);
   for (let i = 0; i < n; i++) {
     const c = core.nodes[i]!;
-    const projectIds = pm ? pm(c.projectIds) : c.projectIds;
-    const scenarioIds = sm ? sm(c.scenarioIds) : c.scenarioIds;
+    const po = origList(core, c.projectIds);
+    const so = origList(core, c.scenarioIds);
+    const projectIds = pm ? pm(po) : po;
+    const scenarioIds = sm ? sm(so) : so;
     if (!stamp && !shift && projectIds === c.projectIds && scenarioIds === c.scenarioIds) nodes[i] = c;
-    else nodes[i] = fzAll({ ...c, projectIds, scenarioIds, x: c.x + base.dx, y: c.y + base.dy, createdAt: base.at, updatedAt: base.at });
+    else nodes[i] = fzAll({ ...c, projectIds, scenarioIds, x: c.x + dx, y: c.y + dy, createdAt: base.at, updatedAt: base.at });
   }
   for (let i = 1; i < n; i++) {
     const e = core.edges[i]!;
-    const scenarioIds = sm ? sm(e.scenarioIds) : e.scenarioIds;
+    const so = origList(core, e.scenarioIds);
+    const scenarioIds = sm ? sm(so) : so;
     if (!stamp && scenarioIds === e.scenarioIds) edges[i] = e;
     else edges[i] = fzAll({ ...e, scenarioIds, createdAt: base.at, updatedAt: base.at });
   }
@@ -788,12 +860,12 @@ export function pageMapAccess(at: string | null): PageMapAccess | null {
     kids: core.kids,
     keyIndex: core.keyIndex,
     at: core.at,
-    rootX: core.nodes[0]!.x,
-    rootY: core.nodes[0]!.y,
+    rootX: core.nodes[0]!.x - core.b0.dx,
+    rootY: core.nodes[0]!.y - core.b0.dy,
     projects: core.projects,
     scenarios: core.scenarios,
     slots: (i) => slotsOf(core, i),
-    projectIdsOf: (i) => core.nodes[i]!.projectIds,
+    projectIdsOf: (i) => origList(core, core.nodes[i]!.projectIds),
     view: (base) => {
       const v = viewOf(core, base);
       return { nodes: v.nodes, edges: v.edges };
@@ -834,16 +906,17 @@ function inferBase(core: Core, doc: DocData, cards: ReadonlyArray<GNode | undefi
     const c = cards[i];
     if (!c) return;
     ats.push(c.createdAt);
-    dxs.push(c.x - core.nodes[i]!.x);
-    dys.push(c.y - core.nodes[i]!.y);
+    // 組み立てたままの位置から（組み立てた物には初めの基準のずらしを当ててある）
+    dxs.push(c.x - (core.nodes[i]!.x - core.b0.dx));
+    dys.push(c.y - (core.nodes[i]!.y - core.b0.dy));
   };
   for (const i of core.spread) sample(i);
   const root = cards[0];
   // 今日を消した地図で、散らした見本のカードが残っていない: 残ったカードを番号の順に（文書の中身だけで決まる）
   if (!root && !ats.length) for (let i = 1; i < core.n && ats.length < core.spread.length; i++) sample(i);
   const at = vote(ats) ?? (root && isoOk(root.createdAt) ? root.createdAt : core.at);
-  const dx = Math.round(vote(dxs) ?? (root ? root.x - core.nodes[0]!.x : 0));
-  const dy = Math.round(vote(dys) ?? (root ? root.y - core.nodes[0]!.y : 0));
+  const dx = Math.round(vote(dxs) ?? (root ? root.x - (core.nodes[0]!.x - core.b0.dx) : 0));
+  const dy = Math.round(vote(dys) ?? (root ? root.y - (core.nodes[0]!.y - core.b0.dy) : 0));
   // プロジェクト: 1 つのプロジェクトだけのカード・全部のプロジェクトのカードの、文書の並びで多数決。決まらなければ同じ ID・同じ名前・無い
   const pVotes = new Map<ID, Array<ID | null>>();
   const pv = (p: ID, t: ID | null): void => {
@@ -1909,7 +1982,8 @@ function decodeExact(rest: Obj, s: ThinSection, pb: PageBaseline): ThinDecoded {
   if (s.hash !== pb.hash) throw mismatch("中身の指紋", s.release);
   if (s.bv !== THIN_BASELINE_VERSION) throw mismatch("組み立ての版", s.release);
   if (s.anchor !== pb.anchor) throw mismatch("地図の年月", s.release);
-  const core = coreOf(pb.map, s.at);
+  // 基準を初めて組み立てるなら、この記録の基準を当てて組み立てる（この記録の写しは組み立てた物そのもの）
+  const core = coreOf(pb.map, s.at, s);
   if (s.digest !== pageDigest(pb)) throw mismatch("基準の文書の指紋", s.release);
   if (s.key !== core.keys[0]) throw mismatch("今日の鍵", s.release);
   const n = core.n;
