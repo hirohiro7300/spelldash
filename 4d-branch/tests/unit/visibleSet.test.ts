@@ -169,8 +169,14 @@ function randomEdit(rand: () => number, store: Store, syn: Synth, k: number): vo
     store.transact("ノードを変える", (tx) => tx.updateNode(id, patch));
   } else if (u < 0.85) {
     store.undo();
-  } else {
+  } else if (u < 0.95) {
     store.redo();
+  } else {
+    // 全部の入れ替え（取り込みの写し。物はどれも新しく、カードを 1 つ書き換える）: 見え方は変わった物だけで受ける（見直し perf-4）
+    const next = structuredClone(doc);
+    const id = pick(rand, ids);
+    if (next.nodes[id]) next.nodes[id] = { ...next.nodes[id]!, title: `${next.nodes[id]!.title}（取り込み）`, collapsed: rand() < 0.5 ? !next.nodes[id]!.collapsed : next.nodes[id]!.collapsed };
+    store.replaceDoc(next, "取り込み");
   }
 }
 

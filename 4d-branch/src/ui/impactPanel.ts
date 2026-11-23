@@ -10,6 +10,7 @@
 
 import type { AppContext } from "../app/context";
 import type { DeepCtx } from "../app/deepState";
+import { idleSteps } from "../app/idle";
 import { worthOf, type MoveCounts, type MoveSummary } from "../deepmap/core";
 import { destSection, destVM, worthText, ym as ymOfMap } from "../deepmap/views";
 import { futureData } from "../demo/futureBundle";
@@ -481,12 +482,6 @@ function decisionList(app: AppContext, imp: ImpactResult, decisionId: ID, seen: 
 /** これより小さい地図は、年収の境目をその場で数える（版 6 の 1,533 枚: 40 回ほどの計算で数 ms） */
 const FLIP_SYNC_NODES = 4000;
 
-/** 手が空いたときに 1 度呼ぶ（requestIdleCallback。無ければ次の番に） */
-function whenIdle(fn: () => void): void {
-  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
-  if (ric) ric(fn, { timeout: 300 });
-  else setTimeout(fn, 0);
-}
 
 /**
  * 年収で今日の一番が入れ替わる所。大きい地図では、パネルを描いた後に、手が空いたときに逆にたどる計算 1 回ずつ進め、
@@ -511,14 +506,16 @@ function flipNote(app: AppContext, imp: ImpactResult, seen: Seen): HTMLElement {
   body.append(h("div", { class: "imp-flip-wait" }, "年収で一番の手が入れ替わる所を計算中…"));
   note.classList.add("is-busy");
   note.setAttribute("aria-busy", "true");
-  const step = (): void => {
-    // 作り直した・数が変わった: やめる（次のパネルが自分で始める。同じ版なら途中から続く）
-    if (!note.isConnected || app.vm.impact !== imp) return;
-    const f = imp.salaryFlipsStep();
-    if (f) show(f);
-    else whenIdle(step);
-  };
-  whenIdle(step);
+  // 空いた時間の内に 1 回の計算ずつ（空いた時間が長ければ続けて。作り直した・数が変わったらやめる: 次のパネルが自分で始める。
+  // 同じ版なら途中から続く: 見直し perf-8）
+  idleSteps(
+    () => {
+      const f = imp.salaryFlipsStep();
+      if (f) show(f);
+      return !!f;
+    },
+    () => note.isConnected && app.vm.impact === imp,
+  );
   return note;
 }
 
@@ -949,15 +946,16 @@ function fillWorth(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: S
   if (!worthReady(imp)) {
     sec.append(h("p", { class: "imp-note imp-worth-wait", attrs: { "aria-busy": "true" } }, "手の種類ごとの差を計算中…"));
     sec.classList.add("is-busy");
-    const step = (): void => {
-      // 作り直した・数が変わった: やめる（次のパネルが自分で始める。同じ結果なら数えた所から続く）
-      if (!sec.isConnected || app.vm.impact !== imp) return;
-      if (worthStep(imp)) {
+    // 作り直した・数が変わった: やめる（次のパネルが自分で始める。同じ結果なら数えた所から続く）
+    idleSteps(
+      () => {
+        if (!worthStep(imp)) return false;
         sec.classList.remove("is-busy");
         fillWorth(app, imp, sec, seen);
-      } else whenIdle(step);
-    };
-    whenIdle(step);
+        return true;
+      },
+      () => sec.isConnected && app.vm.impact === imp,
+    );
     return;
   }
   sec.classList.remove("is-busy");

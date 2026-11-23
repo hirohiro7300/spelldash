@@ -95,6 +95,111 @@ export function isIndexKey(id: string): boolean {
   return /^(0|[1-9]\d{0,9})$/.test(id) && Number(id) < 4294967295;
 }
 
+/** 全部の入れ替えを、変わった物の一覧にした物（DocIndex.diffDoc） */
+export interface DocDiff {
+  /** 中身が違う・足した・消したノードと線、中身が違うプロジェクト・シナリオ */
+  nodes: Set<ID>;
+  edges: Set<ID>;
+  projects: Set<ID>;
+  scenarios: Set<ID>;
+  /** 物だけ新しく中身が同じノード・線（新しい物）と、その索引の番号（rebase が覚えた物を替える） */
+  sameNodes: GNode[];
+  sameNodeSlots: number[];
+  sameEdges: GEdge[];
+  sameEdgeSlots: number[];
+}
+
+/** 文字の並びが同じ */
+function sameStrs(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * ノードの中身が同じ（決まった所は 1 つずつ、time・conditions・meta は中まで。全部の入れ替えの比べ: 型の決まった所を順に読むので、
+ * 何でも比べる sameContent の半分ほどの時間）
+ */
+export function sameNode(a: GNode, b: GNode): boolean {
+  if (a === b) return true;
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.status === b.status &&
+    a.title === b.title &&
+    a.body === b.body &&
+    Object.is(a.x, b.x) &&
+    Object.is(a.y, b.y) &&
+    a.collapsed === b.collapsed &&
+    a.updatedAt === b.updatedAt &&
+    a.createdAt === b.createdAt &&
+    sameStrs(a.tags, b.tags) &&
+    sameStrs(a.projectIds, b.projectIds) &&
+    sameStrs(a.scenarioIds, b.scenarioIds) &&
+    sameContent(a.time, b.time) &&
+    sameContent(a.conditions, b.conditions) &&
+    sameContent(a.meta, b.meta)
+  );
+}
+
+/** 線の中身が同じ（sameNode と同じ考え） */
+export function sameEdge(a: GEdge, b: GEdge): boolean {
+  if (a === b) return true;
+  return (
+    a.id === b.id &&
+    a.source === b.source &&
+    a.target === b.target &&
+    a.relation === b.relation &&
+    a.label === b.label &&
+    a.condition === b.condition &&
+    a.collapsed === b.collapsed &&
+    a.updatedAt === b.updatedAt &&
+    a.createdAt === b.createdAt &&
+    sameStrs(a.scenarioIds, b.scenarioIds) &&
+    sameContent(a.meta, b.meta)
+  );
+}
+
+/**
+ * 中身が同じ（値は Object.is、配列とオブジェクトは中まで・深さ 8 段まで）。物を作らない（7 万枚の取り込みで 1 枚ずつ呼ぶ）
+ */
+export function sameContent(a: unknown, b: unknown, depth = 8): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return Object.is(a, b);
+  if (depth <= 0) return false;
+  const arr = Array.isArray(a);
+  if (arr !== Array.isArray(b)) return false;
+  if (arr) {
+    const x = a as unknown[];
+    const y = b as unknown[];
+    if (x.length !== y.length) return false;
+    for (let i = 0; i < x.length; i++) if (!sameContent(x[i], y[i], depth - 1)) return false;
+    return true;
+  }
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  let n = 0;
+  for (const k in ra) {
+    if (!(k in rb) || !sameContent(ra[k], rb[k], depth - 1)) return false;
+    n++;
+  }
+  for (const _ in rb) n--;
+  return n === 0;
+}
+
+/**
+ * 2 つの表で、中身が違う・片方にしか無い鍵（プロジェクト・シナリオ。数は小さいので中身を 1 段比べる。取り込みの写しは物がどれも
+ * 新しいが、中身が同じなら変わっていない: シナリオが変わったと見ると 3 年の影響を計算し直す）
+ */
+function diffKeys<T>(a: Record<ID, T>, b: Record<ID, T>): Set<ID> {
+  const out = new Set<ID>();
+  for (const id in a) if (a[id] !== b[id] && !sameContent(a[id], b[id])) out.add(id);
+  for (const id in b) if (!(id in a)) out.add(id);
+  return out;
+}
+
+
 export class DocIndex implements GraphIndex {
   out = new Map<ID, ID[]>();
   inc = new Map<ID, ID[]>();
@@ -211,6 +316,11 @@ export class DocIndex implements GraphIndex {
       this.dayOf.set(due, d);
     }
     return d;
+  }
+
+  /** ノードの ID（文書の順。キーの順の番号の順と同じ） */
+  nodeIds(): IterableIterator<ID> {
+    return this.nodeSeq.keys();
   }
 
   /** 線のキーの順の番号。無ければ −1 */
@@ -340,6 +450,84 @@ export class DocIndex implements GraphIndex {
     v.scen++;
     v.collapse++;
     v.content++;
+  }
+
+  /**
+   * 全部の入れ替え（取り込み・読み込み・入れ替えの元に戻す）を、変わった物の一覧にする（見直し perf-4）。新しい文書の鍵を順に見て、
+   * 索引が覚えた物と物が違うノード・線は中身を 1 度だけ比べ、中身が違う・足した・消した物（nodes・edges）と、物だけ新しく中身が同じ物
+   * （sameNodes・sameEdges: 覚えた物を替えるだけ）に分ける。プロジェクト・シナリオは中身が違う物。O(ノード + 線)。
+   * 変わった物だけ直しても作り直した並びと同じにならない（鍵の順が替わった・足した鍵の後に前からの鍵がある・数の形の鍵を足した・
+   * プロジェクトかシナリオの並びが替わった）か、足した・消した物が半分より多いときは null（作り直す）
+   */
+  diffDoc(doc: DocData): DocDiff | null {
+    const prev = this.doc;
+    if (prev === doc) return null;
+    // プロジェクト・シナリオの並びが替わった: 一覧の鍵の並びが作り直した物と違うので作り直す（小さいので比べてもすぐ）
+    if (!sameList(prev.projectOrder, doc.projectOrder) || !sameList(prev.scenarioOrder, doc.scenarioOrder)) return null;
+    const nodes = this.diffColl(doc.nodes, this.nodeAt, this.nodeSeq, this.nodeCount, sameNode);
+    if (!nodes) return null;
+    const edges = this.diffColl(doc.edges, this.edgeAt, this.edgeSeq, this.edgeCount, sameEdge);
+    if (!edges) return null;
+    return {
+      nodes: nodes.changed,
+      edges: edges.changed,
+      projects: diffKeys(prev.projects, doc.projects),
+      scenarios: diffKeys(prev.scenarios, doc.scenarios),
+      sameNodes: nodes.same,
+      sameNodeSlots: nodes.slots,
+      sameEdges: edges.same,
+      sameEdgeSlots: edges.slots,
+    };
+  }
+
+  /** ノードか線の一覧の差（diffDoc。並びが合わなければ null） */
+  private diffColl<T>(next: Record<ID, T>, at: ReadonlyArray<T | undefined>, seq: ReadonlyMap<ID, number>, count: number, same1: (a: T, b: T) => boolean): { changed: Set<ID>; same: T[]; slots: number[] } | null {
+    const changed = new Set<ID>();
+    const same: T[] = [];
+    const slots: number[] = [];
+    let last = -1;
+    let added = false;
+    let kept = 0;
+    let total = 0;
+    // 全体を見てよい: 全部の入れ替えのときに 1 回（変わった物の一覧を作る。作り直しより軽い）
+    for (const id in next) {
+      total++;
+      const slot = seq.get(id);
+      if (slot === undefined) {
+        // 足した鍵（並びの後ろに入る）。数の形の鍵は、オブジェクトの順の前の方に入るので作り直す
+        if (isIndexKey(id)) return null;
+        added = true;
+        changed.add(id);
+        continue;
+      }
+      // 前からの鍵が、足した鍵の後・前の並びより前にある: 作り直した並びと違う
+      if (added || slot < last) return null;
+      last = slot;
+      kept++;
+      const now = next[id]!;
+      const old = at[slot];
+      if (old === now) continue;
+      if (old !== undefined && same1(old, now)) {
+        same.push(now);
+        slots.push(slot);
+      } else changed.add(id);
+    }
+    const removed = count - kept;
+    if (removed > 0) for (const id of seq.keys()) if (!(id in next)) changed.add(id);
+    // 大きく入れ替わった（別の文書を読み込んだ など）: 作り直す方が軽く、確か
+    if ((total - kept + removed) * 2 > Math.max(total, count, 1)) return null;
+    return { changed, same, slots };
+  }
+
+  /**
+   * 全部の入れ替えを、diffDoc の一覧で直す（前の文書と同じ並び・同じ数えになる。visit は apply と同じで、中身の違う物だけに呼ぶ）。
+   * 中身が同じで物だけ違うノード・線は、覚えた物を新しい物に替えるだけ（前の文書の物を持ち続けない）
+   */
+  rebase(doc: DocData, diff: DocDiff, visit?: IndexVisitor): void {
+    this.doc = doc;
+    for (let k = 0; k < diff.sameNodes.length; k++) this.nodeAt[diff.sameNodeSlots[k]!] = diff.sameNodes[k];
+    for (let k = 0; k < diff.sameEdges.length; k++) this.edgeAt[diff.sameEdgeSlots[k]!] = diff.sameEdges[k];
+    this.apply(doc, { full: false, nodes: diff.nodes, edges: diff.edges, projects: diff.projects, scenarios: diff.scenarios }, visit);
   }
 
   /**

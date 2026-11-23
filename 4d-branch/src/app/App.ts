@@ -268,6 +268,8 @@ export class App implements AppContext {
       this.syncDeep();
       // 全部が入れ替わったら、検索の索引は空いた時間に作り直す（初めての検索の 1 文字を待たせない）
       if (info.full) this.warmSearchSoon();
+      // 版 7 の地図: 選び直した後の見取り図の計算を空いた時間に（概要へ戻るのを待たせない: 見直し perf-6）
+      if (!info.positionsOnly) this.vm.deep.prewarmSoon();
     });
     this.persistence.on("writer", (w) => {
       this.renderBanner();

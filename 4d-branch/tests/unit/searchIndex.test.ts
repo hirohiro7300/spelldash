@@ -2,11 +2,14 @@
 // （helpers/refView.ts の refSearch）と同じか。題名が全部違う大きな地図（上に入る題名を山で選ぶ道）、タグ、プロジェクトの名前の変更、
 // 線の結果の名前・判断の文の変更、ノードの増減でも
 import { describe, expect, it } from "vitest";
+import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
+import { ViewModel } from "../../src/app/viewModel";
 import { buildIndex } from "../../src/model/graph";
 import { createEmptyDoc, makeEdge, makeNode, makeProject } from "../../src/model/schema";
 import { parseQuery } from "../../src/model/search";
 import { SearchIndex } from "../../src/model/searchIndex";
 import type { DocData, ID } from "../../src/model/types";
+import { Store } from "../../src/store/store";
 import { refSearch } from "./helpers/refView";
 import { pick, rng } from "./helpers/synthMap";
 
@@ -91,5 +94,51 @@ describe("検索の索引: 全部の点数を出して並べた物と同じ", ()
     si.touch();
     check(si, doc, "新しい名前");
     check(si, doc, "仕事");
+  });
+
+  it("空いた時間に 2,000 枚ずつ作る（見直し perf-8）: 作っている途中の題名の変更・まだ入れていないカードの変更・カードを足す・途中で探すでも同じ答え", async () => {
+    const doc = bigDoc(3, 7000);
+    const store = new Store(doc);
+    const ui = new UiState(structuredClone(DEFAULT_PREFS));
+    ui.persistPrefs = false;
+    const vm = new ViewModel(store, ui);
+    const internal = vm as unknown as { search: SearchIndex | null; searchBuild: { pos: number; ids: ID[] } | null };
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const ref = (raw: string) => refSearch(store.doc, buildIndex(store.doc), parseQuery(raw));
+    const same = (raw: string) => {
+      ui.setSearch(raw);
+      vm.ensure();
+      const want = ref(raw);
+      expect([raw, vm.searchCount]).toEqual([raw, want.length]);
+      expect(vm.searchHits.map((h) => h.id)).toEqual(want.slice(0, 50).map((h) => h.id));
+    };
+    // 1) 作り始めて 1 歩進んだ所で、入れたカードの題名と、まだ入れていないカードの題名を変える
+    vm.warmSearch();
+    expect(internal.search).toBeNull();
+    await tick();
+    const b = internal.searchBuild!;
+    expect(b.pos).toBe(2000);
+    store.transact("題名", (tx) => tx.updateNode("n5", { title: "かかかかか" }));
+    store.transact("題名", (tx) => tx.updateNode("n6500", { title: "かかかかき" }));
+    expect(internal.searchBuild).toBe(b);
+    for (let k = 0; k < 10 && internal.searchBuild; k++) await tick();
+    expect(internal.search).not.toBeNull();
+    same("かかかか");
+    same("か");
+    // 2) 作り直しの途中でカードを足す: 作り直す（足したカードも当たる）
+    internal.search = null;
+    vm.warmSearch();
+    await tick();
+    store.transact("足す", (tx) => tx.addNode(makeNode({ id: "nz", title: "かかかかく" })));
+    expect(internal.searchBuild).toBeNull();
+    for (let k = 0; k < 40 && !internal.search; k++) await new Promise((r) => setTimeout(r, 5));
+    same("かかかか");
+    // 3) 作っている途中で探す: 残りをその場で作って同じ答え
+    internal.search = null;
+    vm.warmSearch();
+    await tick();
+    expect(internal.searchBuild!.pos).toBeLessThan(7001);
+    same("さ");
+    expect(internal.searchBuild).toBeNull();
   });
 });

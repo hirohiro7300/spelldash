@@ -319,7 +319,15 @@ describe("3 年の分かれ道: 開く・閉じるは見え方だけ（文書・
     changes("ノードを足す", () => void (kid = cmd.addChild(alt)));
     changes("ノードを消す", () => cmd.deleteNodes([kid!]));
     changes("シナリオを足す", () => void cmd.addScenario("別の方針"));
-    changes("全部を入れ替える", () => store.load(structuredClone(store.doc)));
+    // 全部の入れ替え: 中身が同じ写しなら計算し直さない（変わった物だけで受ける: 見直し perf-4）。計算に使う物が違う写しなら計算し直す
+    const same0 = vm.impact;
+    store.load(structuredClone(store.doc));
+    expect(vm.impact, "中身が同じ写しで全部を入れ替える").toBe(same0);
+    changes("計算に使う物が違う写しで全部を入れ替える", () => {
+      const next = structuredClone(store.doc);
+      next.nodes[alt]!.status = next.nodes[alt]!.status === "dropped" ? "open" : "dropped";
+      store.load(next);
+    });
   });
 
   it("カードは動かせない（動かす・そろえる）。範囲の外のノードは今までどおり動き、お知らせは一度だけ", () => {

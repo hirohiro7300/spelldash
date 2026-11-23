@@ -137,12 +137,31 @@ function randomEdit(rand: () => number, store: Store, k: number): string {
     store.redo();
     return "やり直す";
   }
-  // 入れ替え（全部が変わる）
+  // 入れ替え（全部が変わる。物はどれも新しい）: ノードを 1 つ消す・題名と状態を書き換えて後ろに 1 つ足す・鍵の順を並べ替える
   const next = structuredClone(doc);
-  delete next.nodes[pick(rand, Object.keys(next.nodes))];
-  for (const [id, e] of Object.entries(next.edges)) if (!next.nodes[e.source] || !next.nodes[e.target]) delete next.edges[id];
+  const w = rand();
+  if (w < 0.4) {
+    delete next.nodes[pick(rand, Object.keys(next.nodes))];
+    for (const [id, e] of Object.entries(next.edges)) if (!next.nodes[e.source] || !next.nodes[e.target]) delete next.edges[id];
+  } else if (w < 0.8) {
+    const ks = Object.keys(next.nodes);
+    for (let j = 0; j < 3 && ks.length; j++) {
+      const n = next.nodes[pick(rand, ks)]!;
+      n.title += "（取り込み）";
+      n.status = pick(rand, ["open", "active", "done", "dropped"] as const);
+      if (rand() < 0.5) n.tags = [...n.tags, "取り込み"];
+    }
+    next.nodes[`r${k}`] = makeNode({ id: `r${k}`, title: `届いた ${k}`, time: { due: "2030-02-01", start: null } });
+    if (ks.length) next.edges[`re${k}`] = makeEdge({ id: `re${k}`, source: pick(rand, ks), target: `r${k}`, relation: pick(rand, RELS) });
+  } else {
+    // 鍵の順が替わった（作り直した並びと違うので、変わった物だけでは直さない）
+    const ks = Object.keys(next.nodes).reverse();
+    const nodes: Record<ID, GNode> = {};
+    for (const id of ks) nodes[id] = next.nodes[id]!;
+    next.nodes = nodes;
+  }
   store.replaceDoc(next, "入れ替え");
-  return "入れ替え";
+  return w < 0.8 ? "入れ替え" : "並べ替えた入れ替え";
 }
 
 describe("文書の索引: 変わった物だけ直しても、いちから作った物と同じ", () => {
@@ -151,7 +170,21 @@ describe("文書の索引: 変わった物だけ直しても、いちから作�
       const syn = synthMap(seed, { cards: 600, users: 40, links: 80, twoRoots: seed === 2 });
       const store = new Store(syn.doc);
       const ix = new DocIndex(store.doc);
-      store.on("change", (info) => ix.apply(store.doc, info));
+      // 全部の入れ替え（取り込み・元に戻す）は、並びが合えば変わった物だけで直す（ViewModel と同じ: 見直し perf-4）
+      let diffs = 0;
+      let rebuilt = 0;
+      store.on("change", (info) => {
+        if (info.full) {
+          const d = ix.diffDoc(store.doc);
+          if (d) {
+            diffs++;
+            ix.rebase(store.doc, d);
+            return;
+          }
+          rebuilt++;
+        }
+        ix.apply(store.doc, info);
+      });
       expect(indexDiff(ix, store.doc)).toEqual([]);
       const rand = rng(seed * 104729);
       const log: string[] = [];
@@ -160,8 +193,58 @@ describe("文書の索引: 変わった物だけ直しても、いちから作�
         const d = indexDiff(ix, store.doc);
         if (d.length) throw new Error(`${k} 回目（${log.slice(-4).join("・")}）の後:\n${d.join("\n")}`);
       }
+      // 入れ替えと、その元に戻す・やり直すの多くは変わった物だけで直した（並べ替えた入れ替えは作り直す）
+      expect(diffs).toBeGreaterThan(3);
+      expect(rebuilt).toBeGreaterThanOrEqual(log.filter((x) => x === "並べ替えた入れ替え").length);
     });
   }
+
+  it("全部の入れ替えの変わった物の一覧（diffDoc）: 物が替わった・足した・消した物だけ。並びが合わない・大きく替わったときは作り直す（見直し perf-4）", () => {
+    const syn = synthMap(9, { cards: 400, users: 20, links: 30 });
+    const store = new Store(syn.doc);
+    const ix = new DocIndex(store.doc);
+    const nodeIds = Object.keys(store.doc.nodes);
+    // 中身も物も同じ（元に戻した物など）: 一覧は空
+    const same = { ...store.doc, nodes: { ...store.doc.nodes }, edges: { ...store.doc.edges } };
+    const d0 = ix.diffDoc(same)!;
+    expect([d0.nodes.size, d0.edges.size]).toEqual([0, 0]);
+    // 物を全部作り直した写し（取り込み）: 中身はどれも同じなので、変わった物は無く、どのノード・線も「物だけ新しい」
+    const copy = structuredClone(store.doc);
+    const dc = ix.diffDoc(copy)!;
+    expect([dc.nodes.size, dc.edges.size, dc.projects.size, dc.scenarios.size]).toEqual([0, 0, 0, 0]);
+    expect(dc.sameNodes.length).toBe(nodeIds.length);
+    expect(dc.sameEdges.length).toBe(Object.keys(store.doc.edges).length);
+    // 中身の違いは 1 つずつ見分ける（題名・タグ・meta の中の配列・位置）
+    const c2 = structuredClone(store.doc);
+    const [a, b, c, d] = nodeIds;
+    c2.nodes[a!]!.title += "あ";
+    c2.nodes[b!]!.tags = [...c2.nodes[b!]!.tags, "新しい"];
+    c2.nodes[c!]!.meta = { ...c2.nodes[c!]!.meta, rr: [1, 2, 3] };
+    c2.nodes[d!]!.x += 1;
+    expect([...ix.diffDoc(c2)!.nodes].sort()).toEqual([a!, b!, c!, d!].sort());
+    // 1 つ書き換え・1 つ消し・後ろに 1 つ足す
+    const mod = { ...store.doc, nodes: { ...store.doc.nodes }, edges: { ...store.doc.edges } };
+    mod.nodes[nodeIds[3]!] = { ...mod.nodes[nodeIds[3]!]!, title: "書き換え" };
+    delete mod.nodes[nodeIds[5]!];
+    for (const [id, e] of Object.entries(mod.edges)) if (!mod.nodes[e.source] || !mod.nodes[e.target]) delete mod.edges[id];
+    mod.nodes.zz = makeNode({ id: "zz", title: "届いた" });
+    const d1 = ix.diffDoc(mod)!;
+    expect([...d1.nodes].sort()).toEqual([nodeIds[3]!, nodeIds[5]!, "zz"].sort());
+    ix.rebase(mod, d1);
+    expect(indexDiff(ix, mod)).toEqual([]);
+    // 鍵の順が替わった・前からの鍵が足した鍵の後にある・数の形の鍵を足した・プロジェクトの並びが替わった・半分より多く入れ替わった
+    const ix2 = () => new DocIndex(store.doc);
+    const rev: DocData = { ...store.doc, nodes: Object.fromEntries(Object.entries(store.doc.nodes).reverse()) };
+    expect(ix2().diffDoc(rev)).toBeNull();
+    const front: DocData = { ...store.doc, nodes: { aa: makeNode({ id: "aa" }), ...store.doc.nodes } };
+    expect(ix2().diffDoc(front)).toBeNull();
+    const num: DocData = { ...store.doc, nodes: { ...store.doc.nodes, "77": makeNode({ id: "77" }) } };
+    expect(ix2().diffDoc(num)).toBeNull();
+    const porder: DocData = { ...store.doc, projectOrder: [...store.doc.projectOrder].reverse() };
+    if (store.doc.projectOrder.length > 1) expect(ix2().diffDoc(porder)).toBeNull();
+    const other: DocData = { ...store.doc, nodes: Object.fromEntries(nodeIds.slice(0, 150).map((id) => [id, store.doc.nodes[id]!])) };
+    expect(ix2().diffDoc(other)).toBeNull();
+  });
 
   it("数の形の ID（1・2・3）のノードを消して元に戻しても、並び（出る線・描く順）は文書の順と同じ（見直し equiv-7）", () => {
     const doc = createEmptyDoc();

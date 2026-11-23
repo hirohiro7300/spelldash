@@ -39,8 +39,21 @@ import { computeCollapse, computePaths, computeUnreached, stronglyConnected, typ
 import type { ChangeInfo, Store } from "../store/store";
 import { isNarrowScreen } from "../ui/breakpoints";
 import { DeepState } from "./deepState";
-import { mapDocOf } from "./futureCache";
+import { idleSteps, whenIdle } from "./idle";
+import { mapDocOf, rememberMapDoc } from "./futureCache";
 import type { UiState } from "./uiState";
+
+/** 全部の入れ替えを変わった物だけで受けたとき、検索の索引を直す数の上限（多ければ作り直す） */
+const SEARCH_PATCH_MAX = 2000;
+/** 検索の索引を空いた時間に作るときの 1 歩のノードの数 */
+const SEARCH_SLICE = 2000;
+
+/** 空いた時間に少しずつ作っている検索の索引（ids は作り始めたときの文書の順。pos まで入れた） */
+interface SearchBuild {
+  idx: SearchIndex;
+  ids: ID[];
+  pos: number;
+}
 
 export interface NodeVis {
   hidden: boolean;
@@ -236,6 +249,8 @@ export class ViewModel {
   readonly deep: DeepState;
   /** 検索の索引（初めて探すときに作る。それまでは変更を受けても何もしない） */
   private search: SearchIndex | null = null;
+  /** 空いた時間に少しずつ作っている検索の索引（warmSearch） */
+  private searchBuild: SearchBuild | null = null;
   /** 索引が受けた最後の変更（ストアの revision。トランザクションの中の「ノードの線」を索引から答えてよいか） */
   private appliedRev: number;
   private dirtyVis = true;
@@ -290,32 +305,62 @@ export class ViewModel {
     const doc = store.doc;
     if (!info.positionsOnly) this.dirtyVis = true;
     else this.dirtyPos = true;
-    this.engine.note(doc, info);
-    if (info.full || this.index.source !== doc) {
+    // 全部の入れ替え（取り込み・読み込み・入れ替えの元に戻す）で、前と同じ並びのまま直せるとき: 変わった物だけの変更として受ける
+    // （索引・3 年の影響の形・見込みの組み立て・見え方の木を作り直さない。中身が同じで物だけ替わったカードは、覚えた物を替えるだけ: 見直し perf-4）
+    const diff = info.full && this.index.source !== doc ? this.index.diffDoc(doc) : null;
+    const change = diff ? { full: false, nodes: diff.nodes, edges: diff.edges, projects: diff.projects, scenarios: diff.scenarios } : info;
+    this.engine.note(doc, change);
+    if (diff) this.engine.rebindObjects(diff.sameNodes, diff.sameEdges);
+    if (!diff && (info.full || this.index.source !== doc)) {
       this.index.rebuild(doc);
       this.search = null;
+      this.searchBuild = null;
       this.forecastInputs++;
       this.titleVersion++;
       this.useMapDoc();
     } else {
       let hit = false;
+      let addedOrRemoved = false;
       const touched = new Set<ID>();
-      this.index.apply(doc, info, {
-        node: (id, before, after) => {
+      const visit = {
+        node: (id: ID, before: GNode | undefined, after: GNode | undefined) => {
+          if (!before || !after) addedOrRemoved = true;
           if (!hit && forecastNodeChanged(before, after)) hit = true;
           if (before && after && before.title !== after.title) this.titleVersion++;
           if (!before || !after || !info.positionsOnly) touched.add(id);
         },
-        edge: (_id, before, after) => {
+        edge: (_id: ID, before: GEdge | undefined, after: GEdge | undefined) => {
           if (!hit && forecastEdgeChanged(before, after)) hit = true;
           if (before) touched.add(before.target);
           if (after) touched.add(after.target);
         },
-      });
+      };
+      if (diff) {
+        this.index.rebase(doc, diff, visit);
+        // 形と数が同梱の地図のままなら、新しい文書もその地図の文書として覚える（3 年の影響の形・見え方の範囲を地図の列から作り続ける）
+        const map = this.engine.rebindDoc(doc);
+        if (map) rememberMapDoc(doc, map);
+      } else this.index.apply(doc, info, visit);
       if (hit) this.forecastInputs++;
+      // 作っている途中の検索の索引: ノードが増えた・減った・多く替わったら作り直し、中身だけ変わったら入れた物だけ直す
+      // （まだ入れていないノードは、入れるときに今の文書から読む）
+      const b = this.searchBuild;
+      if (b) {
+        if (addedOrRemoved || touched.size > SEARCH_PATCH_MAX) {
+          this.searchBuild = null;
+          whenIdle(() => this.warmSearch(), 4000);
+        } else {
+          const put = [...touched].filter((id) => b.idx.has(id));
+          if (put.length) b.idx.update(doc, this.index, put);
+        }
+      }
       if (this.search) {
-        if (touched.size) this.search.update(doc, this.index, touched);
-        if (info.projects.size) this.search.touch();
+        // 多くのカードの物が替わった（取り込み）: 検索の索引は空いた時間に作り直す（直すより軽い。App が全部の入れ替えの後に作る）
+        if (diff && touched.size > SEARCH_PATCH_MAX) this.search = null;
+        else {
+          if (touched.size) this.search.update(doc, this.index, touched);
+          if (change.projects.size) this.search.touch();
+        }
       }
     }
     this.appliedRev = store.revision;
@@ -324,6 +369,7 @@ export class ViewModel {
   invalidate(): void {
     this.index.rebuild(this.store.doc);
     this.search = null;
+    this.searchBuild = null;
     this.appliedRev = this.store.revision;
     this.dirtyVis = true;
     this.forecastInputs++;
@@ -384,10 +430,14 @@ export class ViewModel {
       // 計画（方針に依らない所）は見込みに使う物の版ごとに 1 度だけ作り、方針ごとに流し直す（computeForecast と同じ答えの速い作り）。
       // 入口（文書の順）と 3 年の分かれ道の範囲は、索引と見え方の計算が持っている物を使う
       let plan = this.forecastPlan;
-      if (!plan || plan.inputs !== this.forecastInputs || plan.doc !== doc) {
+      if (!plan || plan.inputs !== this.forecastInputs) {
         const idx = this.index;
         const roots = [...idx.forecastRoots].sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
         plan = this.forecastPlan = { inputs: this.forecastInputs, doc, plan: new ForecastPlan(doc, idx.out, { roots, impactScope: this.scopeSet() }) };
+      } else if (plan.doc !== doc) {
+        // 見込みに使う所は同じで文書の物だけ替わった（全部の入れ替えを変わった物だけで受けた後）: 計画は作り直さない（見直し perf-4）
+        plan.plan.rebase(doc);
+        plan.doc = doc;
       }
       this.forecastCache = this.titledEnds(plan.plan.run(sid));
       this.forecastKey = key;
@@ -448,16 +498,45 @@ export class ViewModel {
     });
   }
 
-  /** 検索の索引を先に作っておく（起動の後の空いた時間に。初めての検索の 1 文字を待たせない） */
+  /**
+   * 検索の索引を先に作っておく（起動の後・全部の入れ替えの後の空いた時間に。初めての検索の 1 文字を待たせない）。
+   * 8 万枚を 1 度に作ると長い 1 つの仕事になるので、ノード 2,000 枚ずつ、空いた時間の内に作る（見直し perf-8）。
+   * 途中で検索したら、残りをその場で作る
+   */
   warmSearch(): void {
-    this.search ??= new SearchIndex(this.store.doc, this.index);
+    if (this.search || this.searchBuild) return;
+    const ids = [...this.index.nodeIds()];
+    const b: SearchBuild = { idx: new SearchIndex(), ids, pos: 0 };
+    this.searchBuild = b;
+    idleSteps(
+      () => {
+        const to = Math.min(ids.length, b.pos + SEARCH_SLICE);
+        b.idx.putRange(this.store.doc, this.index, ids, b.pos, to);
+        b.pos = to;
+        if (to < ids.length) return false;
+        this.finishSearchBuild(b);
+        return true;
+      },
+      () => this.searchBuild === b,
+      4000,
+    );
+  }
+
+  /** 作っている途中の検索の索引を、残りを入れて使い始める */
+  private finishSearchBuild(b: SearchBuild): SearchIndex {
+    if (b.pos < b.ids.length) b.idx.putRange(this.store.doc, this.index, b.ids, b.pos, b.ids.length);
+    b.pos = b.ids.length;
+    b.idx.finish();
+    if (this.searchBuild === b) this.searchBuild = null;
+    this.search = b.idx;
+    return b.idx;
   }
 
   /** 検索の当たり（言葉と中身の版が同じなら前の答え） */
   private searchResult(): SearchResult | null {
     const q = parseQuery(this.ui.search);
     if (isEmptyQuery(q)) return null;
-    this.search ??= new SearchIndex(this.store.doc, this.index);
+    if (!this.search) this.search = this.searchBuild ? this.finishSearchBuild(this.searchBuild) : new SearchIndex(this.store.doc, this.index);
     return this.search.query(q, this.store.doc);
   }
 

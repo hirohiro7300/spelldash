@@ -61,8 +61,27 @@ export class SearchIndex {
   private version = 0;
   private memo: { key: string; version: number; projects: unknown; res: SearchResult } | null = null;
 
-  constructor(doc: DocData, graph: SearchGraph) {
-    this.rebuild(doc, graph);
+  /** doc を渡さなければ空（少しずつ作る: putRange をくり返し、finish。見直し perf-8） */
+  constructor(doc?: DocData, graph?: SearchGraph) {
+    if (doc && graph) this.rebuild(doc, graph);
+  }
+
+  /** 少しずつ作る: 文書の順のノード ID（ids）の [from, to) を入れる（無くなったノードは飛ばす）。作り終えたら finish */
+  putRange(doc: DocData, graph: SearchGraph, ids: readonly ID[], from: number, to: number): void {
+    for (let i = from; i < to; i++) {
+      const id = ids[i]!;
+      if (doc.nodes[id]) this.put(doc, graph, id);
+    }
+  }
+
+  /** 少しずつ作り終えた（当たりの覚えを捨てる） */
+  finish(): void {
+    this.version++;
+  }
+
+  /** そのノードが入っている */
+  has(id: ID): boolean {
+    return this.slotOf.has(id);
   }
 
   /** 全部を作り直す（全部が入れ替わったとき） */

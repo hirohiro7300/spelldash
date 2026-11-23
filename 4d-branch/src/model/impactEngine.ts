@@ -79,20 +79,30 @@ const C_PRESENT = 16;
 const NODE_SKIP: ReadonlySet<string> = new Set(["id", "title", "body", "tags", "conditions", "x", "y", "updatedAt", "collapsed", "createdAt", "status", "type", "meta", "time", "projectIds", "scenarioIds"]);
 /** 数に使う meta の名前（変わったら数を入れ直す。forecastRoot は数字なしの手の見分けにも使う） */
 const NODE_NUM_META: readonly string[] = ["fork", "m", "rr", "rank", "base", "fam", "ak", "end", "q", "stub", "sum", "forecastRoot"];
+/** 数の meta と impact のほか（変わったら見せ方だけ）。ノードごとに作らない（全部の入れ替えでは 7 万枚を比べる） */
+const META_SKIP: ReadonlySet<string> = new Set([...NODE_NUM_META, "impact"]);
 const EDGE_SKIP: ReadonlySet<string> = new Set(["id", "label", "condition", "updatedAt", "collapsed", "createdAt", "source", "target", "relation", "scenarioIds", "meta"]);
 const EDGE_NUM_META: readonly string[] = ["prob", "r", "rv"];
 
-/** 1 段だけの比較（配列は要素ごと、オブジェクトはキーごと） */
-function same1(a: unknown, b: unknown): boolean {
+/**
+ * 中身の比較（配列は要素ごと、オブジェクトはキーごと。深さ 4 段まで、それより深い所は物が同じかだけ）。物が違うときだけ呼ばれる
+ * （取り込みの写しは物がどれも新しいので、入口の meta.never・premises のような中の配列・オブジェクトも中身で比べる: 見直し perf-4）
+ */
+function same1(a: unknown, b: unknown, depth = 4): boolean {
   if (Object.is(a, b)) return true;
-  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
-  if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
-    const ra = a as Record<string, unknown>;
-    const rb = b as Record<string, unknown>;
-    const ka = Object.keys(ra);
-    return ka.length === Object.keys(rb).length && ka.every((k) => k in rb && Object.is(ra[k], rb[k]));
+  if (!a || !b || typeof a !== "object" || typeof b !== "object" || depth <= 0) return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!same1(a[i], b[i], depth - 1)) return false;
+    return true;
   }
-  return false;
+  if (Array.isArray(b)) return false;
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  const ka = Object.keys(ra);
+  if (ka.length !== Object.keys(rb).length) return false;
+  for (const k of ka) if (!(k in rb) || !same1(ra[k], rb[k], depth - 1)) return false;
+  return true;
 }
 
 /** names のほかの所が 1 段の比較で同じか（names は比べない） */
@@ -124,8 +134,7 @@ function nodeChange(old: GNode, now: GNode, primary: boolean): number {
       if (!Object.is(ia.horizon, ib.horizon)) c |= C_NUMS;
       else c |= C_PRESENT;
     }
-    const skipMeta = new Set([...NODE_NUM_META, "impact"]);
-    if (!sameRest(a, b, skipMeta)) c |= C_PRESENT;
+    if (!sameRest(a, b, META_SKIP)) c |= C_PRESENT;
   }
   if (!same1(old.time, now.time)) {
     // 月（meta.m）があれば期限は数に使わない。数字を出す入口の期限は、月の無いノードの月の元
@@ -1108,6 +1117,35 @@ export class ImpactEngine {
   useMap(x: MapDoc | null): void {
     this.pristine = x;
     if (x) this.dirty |= C_TOPO;
+  }
+
+  /**
+   * 全部の入れ替えで、物だけ新しく中身が同じノード・線（DocIndex.diffDoc の sameNodes・sameEdges）: 覚えた物を新しい物に替えるだけ
+   * （比べ直さない。前の文書の物を持ち続けない: 見直し perf-4）。作り直しを待っているときは何もしない（作り直すときに全部読む）
+   */
+  rebindObjects(nodes: readonly GNode[], edges: readonly GEdge[]): void {
+    const topo = this.topo;
+    const seen = this.seen;
+    if (!topo || !seen || this.dirty & C_TOPO) return;
+    for (const n of nodes) {
+      const i = topo.idx.get(n.id);
+      if (i !== undefined && seen.nodeObj[i] !== undefined) seen.nodeObj[i] = n;
+    }
+    for (const e of edges) {
+      const s = slotOfEdge(topo, e);
+      if (s >= 0 && seen.edgeObj[s] !== undefined) seen.edgeObj[s] = e;
+    }
+  }
+
+  /**
+   * 全部の入れ替えを変わった物だけの変更として受けた後（note に渡し終えた後）: 形と数が同梱の地図のままなら、新しい文書を
+   * その地図を組み立てた文書として覚え直し、その地図を返す（地図の列から作った形をそのまま使い続ける: 見直し perf-4）。そうでなければ null
+   */
+  rebindDoc(doc: DocData): MapData | null {
+    const p = this.pristine;
+    if (!p || p.doc === doc || this.dirty & (C_TOPO | C_NUMS) || this.lastCompile !== "map") return p && p.doc === doc ? p.map : null;
+    this.pristine = { ...p, doc };
+    return p.map;
   }
 
   /** 全部を作り直す */

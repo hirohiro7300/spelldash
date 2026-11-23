@@ -3046,6 +3046,11 @@ textarea.input {
   .app-shell:not(.right-closed) .sidebar-right {
     right: 0;
   }
+  /* 閉じた引き出しは置かない（幅 0 の列で 1 文字ずつ折り返した 1 万 px の高さのレイアウトを、カードを押すたびにしない: 見直し perf-5） */
+  .app-shell.left-closed .sidebar-left,
+  .app-shell.right-closed .sidebar-right {
+    display: none;
+  }
   .scenario-side .bottom-label {
     display: none;
   }

@@ -23,6 +23,7 @@ import type { DocData, GNode, ID } from "../model/types";
 import { Emitter } from "../store/emitter";
 import type { Store } from "../store/store";
 import { mapDocOf } from "./futureCache";
+import { idleSteps } from "./idle";
 import type { UiState } from "./uiState";
 import type { ViewModel } from "./viewModel";
 
@@ -190,6 +191,38 @@ export class DeepState {
     return this.emitter.on("ready", fn);
   }
 
+  /** 先に済ませる仕事を待っている */
+  private prewarmQueued = false;
+
+  /**
+   * 文書が変わった後（手を選んだ・見送った・元に戻した・年収 など）: 見取り図の計算と数、おすすめの値を、空いた時間に 1 つずつ先に
+   * 済ませる（カードの詳細から概要に戻ったとき、その場で 8 万枚を数え直さない: 見直し perf-6）。同じ材料なら覚えた物を使うので、
+   * 題名の 1 文字などでは何もしない
+   */
+  prewarmSoon(): void {
+    if (this.prewarmQueued) return;
+    this.prewarmQueued = true;
+    let k = 0;
+    idleSteps(
+      () => {
+        if (k === 0) this.prewarmQueued = false;
+        const ctx = this.get();
+        if (!ctx) return true;
+        if (k === 0) ctx.analysis();
+        else if (k === 1) ctx.overview();
+        else {
+          const imp = this.vm.impact;
+          if (imp.active && imp.hasPicks) imp.recommended();
+          return true;
+        }
+        k++;
+        return false;
+      },
+      () => true,
+      2000,
+    );
+  }
+
   /** ページに入れた地図を読む（ページに入っていなければ何もしない。1 度だけ） */
   private load(): void {
     if (this.loading || !PAGE_Q) return;
@@ -349,16 +382,21 @@ export class DeepState {
   private statusArr(doc: DocData, map: MapData, cm: CompiledMap): { key: string; arr: Uint8Array } {
     const eng = this.vm.engine;
     const fromMap = eng.mapStatus(doc);
+    // 選んだ手の版（エンジンの形・状態の版）が同じなら、文書の物が替わっても（全部の入れ替えを変わった物だけで受けた後）同じ配列
+    // （計算をやり直さない: 見直し perf-4）
     if (fromMap && fromMap.length === cm.n) {
       const key = `m${eng.version.topology}|${eng.version.statuses}`;
-      if (this.status?.key !== key || this.status.doc !== doc || this.status.arr !== fromMap) {
+      if (this.status?.key !== key || this.status.arr !== fromMap) {
         this.status = { key, doc, arr: fromMap };
         this.statusStamp++;
-      }
+      } else this.status.doc = doc;
       return this.status;
     }
     const key = `d${eng.version.topology}|${eng.version.statuses}|${map.header.hash}`;
-    if (this.status && this.status.key === key && this.status.doc === doc) return this.status;
+    if (this.status && this.status.key === key) {
+      this.status.doc = doc;
+      return this.status;
+    }
     this.status = { key, doc, arr: statusFromDoc(doc, cm, idsOf(map)) };
     this.statusStamp++;
     return this.status;

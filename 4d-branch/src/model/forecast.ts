@@ -213,7 +213,7 @@ export class ForecastPlan {
   private readonly rootIdx: number[];
   private readonly scope: ReadonlySet<ID>;
   constructor(
-    private readonly doc: DocData,
+    private doc: DocData,
     out: Map<ID, ID[]>,
     inp: ForecastInputs,
   ) {
@@ -272,6 +272,19 @@ export class ForecastPlan {
   }
 
   /** その方針（無ければ null）での見込み */
+  /**
+   * 見込みに使う所が同じまま文書の物だけ替わった（全部の入れ替えを変わった物だけで受けた: 見直し perf-4）: 新しい文書と、その線の物を読む
+   * （前の文書の物を持ち続けない。見込みに使う所が変わったら、読み手は計画を作り直す）
+   */
+  rebase(doc: DocData): void {
+    this.doc = doc;
+    const edges = this.edges;
+    for (let k = 0; k < edges.length; k++) {
+      const e = doc.edges[edges[k]!.id];
+      if (e) edges[k] = e;
+    }
+  }
+
   run(scenarioId: ID | null): ForecastResult {
     const ids = this.ids;
     const N = ids.length;

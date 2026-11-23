@@ -166,7 +166,7 @@ describe.skipIf(!DIR)("見え方の計算: 8 万枚の地図（IMPACT_Q_FULL が
     `時間（3 回のうち一番良い値）: これにする ≤ ${TARGET.pick}・選ぶ ≤ ${TARGET.select}・題名の 1 文字 ≤ ${TARGET.keystroke}・1 つ開く ≤ ${TARGET.open} ms（×${SLACK}）`,
     async () => {
       const gc = await gcFn();
-      const t = { boot: [] as number[], select: [] as number[], pick: [] as number[], keystroke: [] as number[], keySearch: [] as number[], open: [] as number[], jump: [] as number[], year: [] as number[], yearCards: [] as number[], search: [] as number[], scenario: [] as number[], undo: [] as number[] };
+      const t = { boot: [] as number[], select: [] as number[], pick: [] as number[], keystroke: [] as number[], keySearch: [] as number[], open: [] as number[], jump: [] as number[], year: [] as number[], yearCards: [] as number[], search: [] as number[], scenario: [] as number[], undo: [] as number[], adopt: [] as number[] };
       for (let round = 0; round < 3; round++) {
         const m = await decodeBundle(b64);
         gc();
@@ -287,9 +287,26 @@ describe.skipIf(!DIR)("見え方の計算: 8 万枚の地図（IMPACT_Q_FULL が
         vm.ensure();
         t.year.push(performance.now() - t0);
         t.yearCards.push(vm.drawNodes.length);
+        // 取り込み（全部の入れ替え: 物はどれも新しい写しで、手を 1 つ選んだ物。ストアの写しも入れる）: 見え方・3 年の影響・見込み・見取り図の計算。
+        // 形と数は地図のままなので、索引・形・見込みの組み立てを作り直さない（見直し perf-4）
+        const copy = structuredClone(store.doc);
+        copy.nodes[target]!.status = "done";
+        const topo0 = vm.engine.version.topology;
+        gc();
+        t0 = performance.now();
+        store.replaceDoc(copy, "取り込み");
+        vm.ensure();
+        imp = vm.impact;
+        void imp.vRoot;
+        void vm.forecast;
+        vm.deep.get()?.overview();
+        t.adopt.push(performance.now() - t0);
+        expect(imp.alt.get(target)!.picked).toBe(true);
+        expect(vm.engine.version.topology).toBe(topo0);
+        expect(vm.engine.mapTopo(store.doc)).not.toBeNull();
       }
       console.log(
-        `見え方（8 万枚・${map.n} 枚。ms）: 起動 ${fmt(t.boot)} · 1 つ開く ${fmt(t.open)} · 寄る ${fmt(t.jump)} · 選ぶ ${fmt(t.select)} · これにする ${fmt(t.pick)} · 元に戻す ${fmt(t.undo)} · 題名の 1 文字 ${fmt(t.keystroke)}（検索あり ${fmt(t.keySearch)}） · 検索の 1 文字 ${fmt(t.search)} · シナリオ ${fmt(t.scenario)} · 1 年先まで開く ${fmt(t.year)}（${t.yearCards.join(" / ")} 枚）`,
+        `見え方（8 万枚・${map.n} 枚。ms）: 起動 ${fmt(t.boot)} · 1 つ開く ${fmt(t.open)} · 寄る ${fmt(t.jump)} · 選ぶ ${fmt(t.select)} · これにする ${fmt(t.pick)} · 元に戻す ${fmt(t.undo)} · 題名の 1 文字 ${fmt(t.keystroke)}（検索あり ${fmt(t.keySearch)}） · 検索の 1 文字 ${fmt(t.search)} · シナリオ ${fmt(t.scenario)} · 1 年先まで開く ${fmt(t.year)}（${t.yearCards.join(" / ")} 枚） · 取り込み ${fmt(t.adopt)}`,
       );
       expect(best(t.pick)).toBeLessThanOrEqual(TARGET.pick * SLACK);
       expect(best(t.select)).toBeLessThanOrEqual(TARGET.select * SLACK);
