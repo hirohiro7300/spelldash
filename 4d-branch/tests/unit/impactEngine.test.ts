@@ -11,13 +11,15 @@ import { analyze, compileMap, overview } from "../../src/deepmap/core";
 import type { MapData } from "../../src/deepmap/mapData";
 import { computeForecast } from "../../src/model/forecast";
 import { buildIndex } from "../../src/model/graph";
-import { computeImpact, IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, type ImpactResult } from "../../src/model/impact";
+import { backward, backwardSteps, BACKWARD_CHUNK, computeImpact, IMPACT_STAR_LEAD, IMPACT_STAR_SHARE, newPass, type ImpactResult } from "../../src/model/impact";
+import { assemble } from "../../src/model/impactGraph";
 import { ImpactEngine } from "../../src/model/impactEngine";
 import { createEmptyDoc, makeEdge, makeNode } from "../../src/model/schema";
 import type { DocData, GEdge, GNode, ID, NodeStatus, NodeType } from "../../src/model/types";
 import { Store } from "../../src/store/store";
 import { engRun, refRun, sameImpact } from "./helpers/impactEquiv";
 import { loadQSmall } from "./helpers/qSmall";
+import { engineGraphDiff } from "./helpers/topoEquiv";
 import { r6Bundle } from "./helpers/r6";
 
 type R3 = [number, number, number];
@@ -797,4 +799,214 @@ describe("エンジン: 計算し直す時", () => {
     expect(f).toEqual(ref.salaryFlips());
     expect(eng.salaryFlipsReady()).toBe(f);
   });
+});
+
+/**
+ * 地図の中の形の編集（カードに子を足す: Tab・分岐を 2 つ・足したカードにさらに子・元に戻す・やり直す・葉を消す・線だけ消す）を、
+ * エンジンが型付き配列を最初から作り直さずに直したとき（src/model/impactSplice.ts）、形・数・状態が文書から最初から作った物と
+ * 番号まで同じで、答えも基準の作りと同じか（作業メモ SPEC v1 §7.1 の 1・perf-4）。直せない変更（合流・葉でないカードを消す）は作り直す
+ */
+function driveSplice(doc0: DocData, opts: { map?: MapData; seed: number; steps: number; refEvery: number; withBefore: boolean }): { spliced: number; rebuilt: number } {
+  const store = new Store(doc0);
+  const engine = new ImpactEngine();
+  if (opts.map) engine.useMap({ map: opts.map, doc: store.doc });
+  // ViewModel と同じく、変わる前の線（文書の索引が覚えている物）を渡す道と、渡さない道（線の ID の表で探す）
+  const shadow = new Map<ID, GEdge>(Object.entries(store.doc.edges));
+  store.on("change", (info) => {
+    engine.note(store.doc, info, opts.withBefore ? (id) => shadow.get(id) : undefined);
+    if (info.full) {
+      shadow.clear();
+      for (const [id, e] of Object.entries(store.doc.edges)) shadow.set(id, e);
+    } else
+      for (const id of info.edges) {
+        const e = store.doc.edges[id];
+        if (e) shadow.set(id, e);
+        else shadow.delete(id);
+      }
+  });
+  const rand = rng(opts.seed);
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
+  let made = 0;
+  const added: ID[] = [];
+  const check = (what: string, k: number) => {
+    const doc = store.doc;
+    const idx = buildIndex(doc);
+    const roots = Object.keys(doc.nodes).filter((id) => doc.nodes[id]!.meta.forecastRoot === true && doc.nodes[id]!.meta.impact);
+    const fc = computeForecast(doc, idx.out, null);
+    const eng = engine.result({ doc, sid: null, out: () => idx.out, roots: () => roots, reach: () => ({ version: k, of: (id) => fc.reach.get(id)?.p ?? 0 }) });
+    // 同梱の地図の列から作った形（組み立てたまま）は並べる順が違う（別のテストで比べる）。形を変えた後は文書から作った物と同じ
+    const diff = engine.graph.topo?.map ? [] : engineGraphDiff(engine, doc, idx.out, roots);
+    if (diff.length) throw new Error(`${what} の後で形・数が最初から作った物と違う: ${diff.slice(0, 3).join(" / ")}`);
+    if (k % opts.refEvery === 0) {
+      try {
+        sameImpact(eng, refRun(doc, null).ref, { fams: 1, details: false }, doc);
+      } catch (e) {
+        throw new Error(`${what} の後で食い違い: ${(e as Error).message}`);
+      }
+    }
+  };
+  check("最初", 0);
+  const inScope = () => engine.graph.topo!.ids;
+  const leaves = () => {
+    const t = engine.graph.topo!;
+    const out: ID[] = [];
+    for (let i = t.roots.length; i < t.n; i++) if (t.off[i + 1] === t.off[i] && t.incOff[i + 1]! - t.incOff[i]! === 1) out.push(t.ids[i]!);
+    return out;
+  };
+  for (let step = 1; step <= opts.steps; step++) {
+    const u = rand();
+    let what = "";
+    const child = (parent: ID, extra: Record<string, unknown> = {}, rel: "leads" | "condition" = "leads", prob?: number) => {
+      const id = `t${made++}`;
+      const p = store.doc.nodes[parent]!;
+      return {
+        node: makeNode({ id, title: "", type: rand() < 0.5 ? "action" : "result", meta: extra }),
+        edge: makeEdge({ id: `te${id}`, source: p.id, target: id, relation: rel, ...(prob !== undefined ? { meta: { prob } } : {}) }),
+      };
+    };
+    if (u < 0.3) {
+      // Tab: 見えている地図のカード（入口を含む）に子を 1 つ
+      const p = pick(inScope());
+      const c = child(p, rand() < 0.3 ? { m: 30, rr: [1, 1, 0], rank: 4 } : rand() < 0.2 ? { q: [1, 2, 3], end: true } : {}, rand() < 0.5 ? "leads" : "condition", rand() < 0.3 ? 20 : undefined);
+      what = `子を足す ${p}`;
+      store.transact(what, (tx) => {
+        tx.addNode(c.node);
+        tx.addEdge(c.edge);
+      });
+      added.push(c.node.id);
+    } else if (u < 0.38) {
+      // 分岐を 2 つ
+      const p = pick(inScope());
+      const a = child(p, {}, "condition");
+      const b = child(p, {}, "condition");
+      what = `分岐を 2 つ ${p}`;
+      store.transact(what, (tx) => {
+        for (const c of [a, b]) {
+          tx.addNode(c.node);
+          tx.addEdge(c.edge);
+        }
+      });
+      added.push(a.node.id, b.node.id);
+    } else if (u < 0.45 && added.some((id) => store.doc.nodes[id])) {
+      // 足したカードにさらに子（同じ変更の中でも、続けて読まずに 2 回でも）
+      const p = pick(added.filter((id) => store.doc.nodes[id]));
+      const c = child(p);
+      what = `足したカードに子 ${p}`;
+      store.transact(what, (tx) => {
+        tx.addNode(c.node);
+        tx.addEdge(c.edge);
+      });
+      added.push(c.node.id);
+      if (rand() < 0.5) {
+        const d = child(c.node.id);
+        store.transact("さらに子", (tx) => {
+          tx.addNode(d.node);
+          tx.addEdge(d.edge);
+        });
+        added.push(d.node.id);
+        what += "（読まずにもう 1 つ）";
+      }
+    } else if (u < 0.62) {
+      what = "元に戻す";
+      store.undo();
+    } else if (u < 0.7) {
+      what = "やり直す";
+      store.redo();
+    } else if (u < 0.8) {
+      const l = leaves();
+      const id = pick(l);
+      what = `葉を消す ${id}`;
+      store.transact(what, (tx) => tx.deleteNode(id));
+    } else if (u < 0.85) {
+      const l = leaves();
+      const id = pick(l);
+      const t = engine.graph.topo!;
+      const eid = t.eid[t.incSlot[t.incOff[t.idx.get(id)!]!]!]!;
+      what = `葉への線だけ消す ${eid}`;
+      store.transact(what, (tx) => tx.deleteEdge(eid));
+    } else if (u < 0.92) {
+      // 状態と子を足すを、続けて読まずに（状態の印の番号がずれる）
+      const opts2 = Object.values(store.doc.nodes).filter((n) => typeof n.meta.ak === "string" && engine.graph.topo!.idx.has(n.id));
+      const n = pick(opts2);
+      store.transact("状態", (tx) => tx.updateNode(n.id, { status: pick(["active", "dropped", "open"] as const) }));
+      const p = pick(inScope());
+      const c = child(p);
+      store.transact("子", (tx) => {
+        tx.addNode(c.node);
+        tx.addEdge(c.edge);
+      });
+      added.push(c.node.id);
+      what = `状態 ${n.id} と子を足す ${p}`;
+    } else if (u < 0.96) {
+      // 直せない形: 合流（地図のカードから、もうある地図のカードへ）
+      const t = engine.graph.topo!;
+      const a = pick(inScope());
+      const b = t.ids[Math.min(t.n - 1, t.idx.get(a)! + 1 + Math.floor(rand() * 50))]!;
+      what = `合流 ${a} → ${b}`;
+      if (a !== b) store.transact(what, (tx) => tx.addEdge(makeEdge({ id: `m${made++}`, source: a, target: b, relation: "leads" })));
+    } else {
+      // 直せない形: 葉でないカードを消す
+      const t = engine.graph.topo!;
+      const cand = t.ids.filter((_id, i) => i >= t.roots.length && t.off[i + 1]! - t.off[i]! > 0);
+      const id = pick(cand);
+      what = `葉でないカードを消す ${id}`;
+      store.transact(what, (tx) => tx.deleteNode(id));
+    }
+    check(what, step);
+  }
+  return engine.topoCounts;
+}
+
+describe("エンジン: 地図の中の形の編集を、最初から作り直さずに直した形と数が、最初から作った物と番号まで同じ（perf-4）", () => {
+  it("版 6 の地図（1,533 枚）: 変わる前の線を渡す道（ViewModel と同じ）と渡さない道", () => {
+    for (const withBefore of [true, false]) {
+      const doc = buildImpactDoc(r6Bundle(), new Date(2026, 10, 19), "test");
+      const r = driveSplice(doc, { seed: withBefore ? 11 : 12, steps: 120, refEvery: 3, withBefore });
+      // ほとんどは直すだけ（合流・葉でないカードを消す・入口の線が 0 本から増えるときだけ作り直す）
+      expect(r.spliced).toBeGreaterThan(60);
+      expect(r.rebuilt).toBeGreaterThan(1);
+    }
+  });
+
+  it("3 か月ごとの小さい地図（8,306 枚。同梱の地図の列から作った形は、最初の形の変更で文書から作り直し、その後は直す）", async () => {
+    const map = await loadQSmall();
+    const doc = buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: Date.UTC(2026, 10, 1) });
+    const r = driveSplice(doc, { map, seed: 5, steps: 60, refEvery: 20, withBefore: true });
+    expect(r.spliced).toBeGreaterThan(30);
+  }, 180_000);
+});
+
+describe("エンジン: 空いた時間の 1 歩を短くする（perf-10: 1 回の逆にたどる計算を分けて進める）", () => {
+  it("分けて進めた逆にたどる計算・おすすめの値・年収の境目は、1 度に数えた物と同じ", async () => {
+    const map = await loadQSmall();
+    const doc = buildQuarterDoc(map, { version: map.header.hash, release: map.header.release, at: Date.UTC(2026, 10, 1) });
+    withAnnual(doc, 540);
+    scatter(doc, 4);
+    const { eng, engine } = engRun(doc, null);
+    const { topo, nums, stat } = engine.graph;
+    const c = assemble(topo!, nums!, stat!, new Uint8Array(topo!.off[topo!.n]!).fill(1));
+    for (const mode of [0, 1] as const) {
+      const whole = backward(c, 45, 0, 36, mode, null);
+      for (const chunk of [1000, 4096, BACKWARD_CHUNK]) {
+        const g = backwardSteps(c, 45, 0, 36, mode, null, chunk === 1000 ? null : newPass(c.ids.length), chunk);
+        let x = g.next();
+        let steps = 1;
+        while (!x.done) (x = g.next()), steps++;
+        expect(steps).toBe(Math.ceil(c.ids.length / chunk));
+        for (const k of ["V", "RV", "R", "def", "partial", "pi", "best"] as const) expect(Array.from(x.value[k])).toEqual(Array.from(whole[k]));
+      }
+    }
+    // おすすめの値: 空いた時間の 1 歩ずつ（地図の大きさ / BACKWARD_CHUNK 歩）と 1 度に（別の結果の物）
+    const a = engRun(doc, null).eng;
+    let n = 1;
+    while (!a.recommendedStep!()) n++;
+    expect(n).toBe(Math.ceil(c.ids.length / BACKWARD_CHUNK));
+    expect(a.recommended()).toBe(eng.recommended());
+    // 年収の境目: 1 歩は逆にたどる計算の一部。答えは基準の作りと同じ
+    const b = engRun(doc, null).eng;
+    let steps = 0;
+    while (!b.salaryFlipsStep()) steps++;
+    expect(steps).toBeGreaterThan(5);
+    expect(b.salaryFlips()).toEqual(refRun(doc, null).ref.salaryFlips());
+  }, 60_000);
 });

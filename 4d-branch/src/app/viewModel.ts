@@ -27,7 +27,7 @@
 
 import { ForecastPlan, type ForecastResult } from "../model/forecast";
 import { flowOuts, forkKindOf, isFlowEdge, isImpactRoot } from "../model/forks";
-import { DocIndex } from "../model/docIndex";
+import { DocIndex, isIndexKey } from "../model/docIndex";
 import type { ImpactResult } from "../model/impact";
 import { ImpactEngine } from "../model/impactEngine";
 import { compareImpactKids, outlineLayout } from "../model/impactLayout";
@@ -41,6 +41,7 @@ import { isNarrowScreen } from "../ui/breakpoints";
 import { DeepState } from "./deepState";
 import { idleSteps, whenIdle } from "./idle";
 import { forgetMapDoc, mapDocOf, rememberMapDoc } from "./futureCache";
+import { emptyDelta, patchScope, ScopeSet, treeAt, type ImpactScopeInfo, type StructDelta, type TreeInfo } from "./scopeSplice";
 import type { UiState } from "./uiState";
 
 /** 全部の入れ替えを変わった物だけで受けたとき、検索の索引を直す数の上限（多ければ作り直す） */
@@ -117,39 +118,6 @@ function forecastEdgeChanged(a: GEdge | undefined, b: GEdge | undefined): boolea
   if (!fa && !fb) return false;
   if (!a || !b || fa !== fb) return true;
   return a.source !== b.source || a.target !== b.target || !Object.is(a.meta?.prob, b.meta?.prob) || !same1(a.scenarioIds, b.scenarioIds);
-}
-
-/**
- * 3 年の分かれ道の範囲（道の線の版ごとに作り直す）。入口（ID の順）から道の線で幅優先にたどった順に番号（pos）を振る。
- * 範囲のノード → それをたどった入口・入口から何歩目か・たどった親とその線
- */
-interface ImpactScopeInfo {
-  flow: number;
-  /** 入口（ID の順） */
-  roots: ID[];
-  /** 範囲のノード → 幅優先の順の番号 */
-  pos: Map<ID, number>;
-  /** 番号 → ノード */
-  order: ID[];
-  /** 番号 → それをたどった入口（roots の添え字） */
-  rootOf: Int32Array;
-  /** 番号 → 入口から何歩目か（いちばん短い道） */
-  depth: Int32Array;
-  /** 番号 → たどった親の番号（入口は −1） */
-  parent: Int32Array;
-  /** 番号 → たどった親からの線（入口は ""） */
-  parentEdge: ID[];
-}
-
-/** 範囲のカードの先が木かと、その大きさ（形の版ごと。閉じたカードの件数を、たどらずに出す） */
-interface TreeInfo {
-  key: string;
-  /** 自分を含む先の数（たどった親子の木で） */
-  size: Int32Array;
-  /** 先が木: 止める線の先がどれも、自分がたどった子で、入る線が 1 本・出る線が木の線だけ、その先も木 */
-  clean: Uint8Array;
-  /** 入る線が 1 本で、出る線がどれも木の線 */
-  regular: Uint8Array;
 }
 
 /** 自分のノード（3 年の分かれ道の範囲の外）の入口（形の版ごと） */
@@ -248,6 +216,8 @@ export class ViewModel {
   private forecastPlan: { inputs: number; doc: DocData; plan: ForecastPlan } | null = null;
   /** 3 年の影響のエンジン（文書の変更を受け、読まれたときに要る所だけやり直す） */
   readonly engine = new ImpactEngine();
+  /** 葉を足す・消すだけの変更で、範囲・木と見込みの計画をたどり直さずに直した回数（確かめ用） */
+  readonly patchCounts = { scope: 0, forecast: 0 };
   /** 3 か月ごとの地図（版 7）の見取り図・道の画面・組み立てた本文に渡す物（src/app/deepState.ts） */
   readonly deep: DeepState;
   /** 検索の索引（初めて探すときに作る。それまでは変更を受けても何もしない） */
@@ -312,7 +282,8 @@ export class ViewModel {
     // （索引・3 年の影響の形・見込みの組み立て・見え方の木を作り直さない。中身が同じで物だけ替わったカードは、覚えた物を替えるだけ: 見直し perf-4）
     const diff = info.full && this.index.source !== doc ? this.index.diffDoc(doc) : null;
     const change = diff ? { full: false, nodes: diff.nodes, edges: diff.edges, projects: diff.projects, scenarios: diff.scenarios } : info;
-    this.engine.note(doc, change);
+    // 変わる前の線は索引が覚えている物（索引はこの後で直す）: エンジンが消した線の番号を、線の ID の表を作らずに探す
+    this.engine.note(doc, change, (id) => this.index.seenEdge(id));
     // 組み立てたままと覚えた文書の形か数を、その場で書き換えた（エンジンが組み立てたままと見なさなくなった）: 覚えた物を忘れる。
     // 全部の入れ替えの元に戻す・やり直すは同じ文書の物に戻るので、忘れないと書き換えた見込みを無視して地図の列から作る（見直し data-1）
     if (!info.full && (info.nodes.size || info.edges.size) && !this.engine.holdsMap(doc)) forgetMapDoc(doc);
@@ -326,19 +297,41 @@ export class ViewModel {
       this.useMapDoc();
     } else {
       let hit = false;
+      /** 足した・消したノードと線のほかに、見込みに使う所の変更があった */
+      let hitOther = false;
       let addedOrRemoved = false;
       const touched = new Set<ID>();
+      // 葉のカードを足しただけ・消しただけの変更なら、範囲・木・見込みの計画を、たどり直さずに直す（perf-4）
+      const delta = emptyDelta();
+      let structOk = false;
+      const v0 = this.index.version;
+      const flow0 = v0.flow;
+      const topo0 = v0.topo;
       const visit = {
         node: (id: ID, before: GNode | undefined, after: GNode | undefined) => {
           if (!before || !after) addedOrRemoved = true;
           if (!hit && forecastNodeChanged(before, after)) hit = true;
           if (before && after && before.title !== after.title) this.titleVersion++;
           if (!before || !after || !info.positionsOnly) touched.add(id);
+          if (!before) delta.addN.push(after!);
+          else if (!after) delta.delN.push(before);
+          else {
+            if (isImpactRoot(before) !== isImpactRoot(after)) delta.other = true;
+            if (forecastNodeChanged(before, after)) hitOther = true;
+          }
+          if (isIndexKey(id)) delta.other = true;
         },
-        edge: (_id: ID, before: GEdge | undefined, after: GEdge | undefined) => {
+        edge: (id: ID, before: GEdge | undefined, after: GEdge | undefined) => {
           if (!hit && forecastEdgeChanged(before, after)) hit = true;
           if (before) touched.add(before.target);
           if (after) touched.add(after.target);
+          if (!before) delta.addE.push(after!);
+          else if (!after) delta.delE.push(before);
+          else {
+            if (before.source !== after.source || before.target !== after.target || isFlowEdge(before) !== isFlowEdge(after)) delta.other = true;
+            if (forecastEdgeChanged(before, after)) hitOther = true;
+          }
+          if (isIndexKey(id)) delta.other = true;
         },
       };
       if (diff) {
@@ -346,8 +339,14 @@ export class ViewModel {
         // 形と数が同梱の地図のままなら、新しい文書もその地図の文書として覚える（3 年の影響の形・見え方の範囲を地図の列から作り続ける）
         const map = this.engine.rebindDoc(doc);
         if (map) rememberMapDoc(doc, map);
-      } else this.index.apply(doc, info, visit);
+      } else {
+        this.index.apply(doc, info, visit);
+        structOk = this.patchStruct(delta, flow0, topo0);
+      }
+      const fp0 = this.forecastPlan && this.forecastPlan.inputs === this.forecastInputs && this.forecastPlan.doc === doc ? this.forecastPlan : null;
       if (hit) this.forecastInputs++;
+      // 見込みに使う所の変更が、足した・消した葉とその線だけ: 計画を作り直さずに直す
+      if (hit && !hitOther && structOk && fp0) this.patchForecast(fp0, delta);
       // 見込みの計画が前の文書の物を持ち続けない（取り込みの写しを残さない: 見直し perf-4）。見込みに使う所が同じなら新しい文書に替え、
       // 変わったなら捨てる（読まれたときに作り直す）
       const fp = this.forecastPlan;
@@ -383,6 +382,47 @@ export class ViewModel {
       this.forecastKey = "";
     }
     this.appliedRev = store.revision;
+  }
+
+  /**
+   * 葉のカードを足しただけ・消しただけの変更（Tab・その元に戻す・行き先を消す）で、範囲・木・自分のノードを、8 万枚をたどり直さずに
+   * 新しい版の物にする（./scopeSplice.ts。答えは最初から作った物と番号まで同じ）。範囲が変わらない・直した: true。直せない: false
+   * （読まれたときに最初から作る）
+   */
+  private patchStruct(d: StructDelta, flow0: number, topo0: number): boolean {
+    const v = this.index.version;
+    // 道の線が変わらない（範囲は同じ。木は形の版が変われば読まれたときに作る）
+    if (v.flow === flow0) return true;
+    const sc = this.scopeCache;
+    if (!sc || sc.flow !== flow0 || sc.fromMap) return false;
+    const key0 = `${topo0}|${flow0}`;
+    const tc = this.treeCache && this.treeCache.key === key0 ? this.treeCache : null;
+    const p = patchScope(this.store.doc, this.index, sc, tc, d, v.flow, `${v.topo}|${v.flow}`);
+    if (!p) return false;
+    this.scopeCache = p.info;
+    if (p.tree) this.treeCache = p.tree;
+    this.patchCounts.scope++;
+    const uc = this.userCache;
+    if (p.usersSame && uc && uc.key === key0) this.userCache = { ...uc, key: `${v.topo}|${v.flow}` };
+    return true;
+  }
+
+  /**
+   * 葉のカードを足しただけ・消しただけの変更で、見込みの計画を作り直さずに直す（src/model/forecast.ts の ForecastPlan.patch）。
+   * 直せなければ何もしない（版が進んだ計画は捨て、読まれたときに作る）
+   */
+  private patchForecast(fp: { inputs: number; doc: DocData; plan: ForecastPlan }, d: StructDelta): void {
+    const isRoot = (n: GNode) => n.meta?.forecastRoot === true;
+    if (d.addN.some(isRoot) || d.delN.some(isRoot)) return;
+    const touched = new Set<ID>();
+    for (const n of d.addN) touched.add(n.id);
+    for (const e of d.addE) (touched.add(e.source), touched.add(e.target));
+    for (const e of d.delE) (touched.add(e.source), touched.add(e.target));
+    const gone = d.delN.map((n) => n.id);
+    if (fp.plan.patch(this.store.doc, this.index.out, this.scopeSet(), touched, gone)) {
+      fp.inputs = this.forecastInputs;
+      this.patchCounts.forecast++;
+    }
   }
 
   invalidate(): void {
@@ -489,14 +529,14 @@ export class ViewModel {
     return fc;
   }
 
-  /** 3 年の分かれ道の範囲（道の線の版ごとに 1 度だけ作る集合） */
-  private scopeSetCache: { flow: number; set: ReadonlySet<ID> } | null = null;
+  /** 3 年の分かれ道の範囲（道の線の版ごとに 1 つの読み口。範囲の作りの物を読む: 8 万の ID の集合を作らない） */
+  private scopeSetCache: { info: ImpactScopeInfo; set: ReadonlySet<ID> } | null = null;
   private scopeSet(): ReadonlySet<ID> {
     const info = this.scopeInfo();
     const c = this.scopeSetCache;
-    if (c && c.flow === info.flow) return c.set;
-    const set = new Set(info.order);
-    this.scopeSetCache = { flow: info.flow, set };
+    if (c && c.info === info) return c.set;
+    const set = new ScopeSet(info);
+    this.scopeSetCache = { info, set };
     return set;
   }
 
@@ -976,38 +1016,10 @@ export class ViewModel {
     const c = this.treeCache;
     if (c && c.key === key) return c;
     const doc = this.store.doc;
-    const idx = this.index;
     const n = info.order.length;
-    const size = new Int32Array(n);
-    const clean = new Uint8Array(n);
-    const regular = new Uint8Array(n);
-    for (let p = n - 1; p >= 0; p--) {
-      const u = info.order[p]!;
-      // 入る線の数（自分への線を除く。自分への線は出る線でも数えるので、そこで引く）
-      let inDeg = idx.inc.get(u)?.length ?? 0;
-      let reg = true;
-      let cl = true;
-      let sz = 1;
-      for (const eid of idx.out.get(u) ?? []) {
-        const e = doc.edges[eid];
-        if (!e) continue;
-        if (e.target === u) {
-          inDeg--;
-          continue;
-        }
-        const q = info.pos.get(e.target);
-        const isTree = q !== undefined && info.parent[q] === p;
-        if (!isTree) reg = false;
-        const stop = isFlowEdge(e) && q !== undefined && info.rootOf[q] === info.rootOf[p];
-        if (stop) {
-          if (!isTree || !regular[q!] || !clean[q!]) cl = false;
-          else sz += size[q!]!;
-        }
-      }
-      size[p] = sz;
-      clean[p] = cl ? 1 : 0;
-      regular[p] = reg && inDeg === 1 ? 1 : 0;
-    }
+    const t = { size: new Int32Array(n), clean: new Uint8Array(n), regular: new Uint8Array(n) };
+    for (let p = n - 1; p >= 0; p--) treeAt(doc, this.index, info, t, p);
+    const { size, clean, regular } = t;
     const res: TreeInfo = { key, size, clean, regular };
     this.treeCache = res;
     return res;
@@ -1196,7 +1208,7 @@ export class ViewModel {
     const parentEdge: ID[] = new Array(n);
     parentEdge[0] = "";
     for (let i = 1; i < n; i++) parentEdge[i] = t.eid[t.incSlot[t.incOff[i]!]!]!;
-    const info: ImpactScopeInfo = { flow, roots: [t.ids[0]!], pos: t.idx, order: t.ids, rootOf: new Int32Array(n), depth: Int32Array.from(cm.depth), parent: cm.parent, parentEdge };
+    const info: ImpactScopeInfo = { flow, roots: [t.ids[0]!], pos: t.idx, order: t.ids, rootOf: new Int32Array(n), depth: Int32Array.from(cm.depth), parent: cm.parent, parentEdge, fromMap: true };
     // 先の数: どのカードも入る線が 1 本・出る線は木の線だけ（地図のまま）
     const regular = new Uint8Array(n).fill(1);
     regular[0] = 0;

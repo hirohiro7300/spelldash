@@ -212,6 +212,8 @@ export interface ImpactResult {
   families(): string[];
   /** おすすめの選び方（自分で選んだ手を外し、見送りはそのまま、方針で絞らない）での今日の値（遅延計算） */
   recommended(): number | null;
+  /** おすすめの値を空いた時間に 1 つ進める（済んだら true。分けて進められる作りだけが持つ: perf-10） */
+  recommendedStep?(): boolean;
   /** 選択肢の ID（alt の鍵と同じ物）。AltInfo を作らずに順位を作るため */
   altIds(): readonly ID[];
   /** alt.get(id)?.delta と同じ（AltInfo を作らない） */
@@ -625,6 +627,34 @@ export function backward(c: Compiled, S: number, tail: number, H: number, mode: 
   return out;
 }
 
+/** 逆にたどる計算を 1 回の空いた時間で進めるノードの数（8 万枚で 5 つほどに分ける。スマホ（4 倍遅い）でも 1 つ 10 ms ほど） */
+export const BACKWARD_CHUNK = 16384;
+
+/**
+ * backward と同じ計算を、番号の後ろから chunk 枚ずつに分けて進める（1 つ進めるたびに yield。perf-10: 空いた時間の 1 歩を短くする）。
+ * 入れ物は最初に全部消し、子（後ろの番号）から数えるので、答えは backward（1 度に全部）と同じ。out を渡せばそれに書く
+ */
+export function* backwardSteps(c: Compiled, S: number, tail: number, H: number, mode: 0 | 1 | 2, fam: string | null, out: Pass | null = null, chunk = BACKWARD_CHUNK): Generator<void, Pass, void> {
+  const n = c.ids.length;
+  const p = out && out.def.length === n ? out : newPass(n);
+  if (p === out) {
+    p.V.fill(0);
+    p.RV.fill(0);
+    p.R.fill(0);
+    p.def.fill(0);
+    p.partial.fill(0);
+    p.pi.fill(-1);
+    p.best.fill(-1);
+  }
+  for (let hi = n; hi > 0; ) {
+    const lo = Math.max(0, hi - chunk);
+    backward(c, S, tail, H, mode, fam, lo, hi, p);
+    hi = lo;
+    if (hi > 0) yield;
+  }
+  return p;
+}
+
 /** 選び方に沿って前へ流す（入口 = 1） */
 export function forward(c: Compiled, p: Pass): Float64Array {
   const n = c.ids.length;
@@ -774,13 +804,18 @@ export function compareCands(c: Pick<Compiled, "tgt" | "isBase" | "rank">, x: { 
 }
 
 /** 年収で今日の一番が入れ替わる所を、逆にたどる計算 1 回ごとに止まりながら探す（bestAt(年収) が 1 回の計算） */
-export function* salaryFlipSteps(annual: number, cur: number, bestAt: (a: number) => number, idOf: (j: number) => ID): Generator<void, SalaryFlips, void> {
+export function* salaryFlipSteps(annual: number, cur: number, bestAt0: (a: number) => number | Generator<void, number, void>, idOf: (j: number) => ID): Generator<void, SalaryFlips, void> {
+  // bestAt0 が分けて進める計算（Generator）なら、その途中でも yield する（perf-10）。答えは同じ
+  function* bestAt(a: number): Generator<void, number, void> {
+    const r = bestAt0(a);
+    return typeof r === "number" ? r : yield* r;
+  }
   const flips: SalaryFlips = { below: null, above: null };
   if (cur < 0) return flips;
   // 上: 20 万円ごとに見て、入れ替わったら境目を詰める
   let prev = annual;
   for (let a = Math.floor(annual / 20) * 20 + 20; a <= 1000; a += 20) {
-    const alt = bestAt(a);
+    const alt = yield* bestAt(a);
     yield;
     if (alt !== cur) {
       let lo = prev;
@@ -788,7 +823,7 @@ export function* salaryFlipSteps(annual: number, cur: number, bestAt: (a: number
       let altHi = alt;
       for (let k = 0; k < 14 && hi - lo > 0.5; k++) {
         const m = (lo + hi) / 2;
-        const am = bestAt(m);
+        const am = yield* bestAt(m);
         yield;
         if (am === cur) lo = m;
         else (hi = m), (altHi = am);
@@ -803,7 +838,7 @@ export function* salaryFlipSteps(annual: number, cur: number, bestAt: (a: number
   const gridBelow = (x: number): number => (x > 1000 ? Math.ceil(x / 100) * 100 - 100 : Math.ceil(x / 20) * 20 - 20);
   prev = annual;
   for (let a = gridBelow(annual); a >= 200; a = gridBelow(a)) {
-    const alt = bestAt(a);
+    const alt = yield* bestAt(a);
     yield;
     if (alt !== cur) {
       let lo = a;
@@ -811,7 +846,7 @@ export function* salaryFlipSteps(annual: number, cur: number, bestAt: (a: number
       let altLo = alt;
       for (let k = 0; k < 14 && hi - lo > 0.5; k++) {
         const m = (lo + hi) / 2;
-        const am = bestAt(m);
+        const am = yield* bestAt(m);
         yield;
         if (am === cur) hi = m;
         else (lo = m), (altLo = am);

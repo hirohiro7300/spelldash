@@ -4,7 +4,9 @@
 // （tests/unit/impactEngine*.test.ts。値・差・選び方・見込み・行き先・分布・印・年収の境目・やらない場合・おすすめの値）。
 //
 // 組み直した形（./impactGraph.ts）は版ごとに分けて持ち、文書の変更（ストアの ChangeInfo）を見て、要る所だけやり直す（perf-11）:
-//   形（カード・線の増減と付け替え・入口）: 組み直す。版 7 の地図を組み立てたままなら同梱の地図の列から（文書を読み直さない: SPEC D6）
+//   形（カード・線の増減と付け替え・入口）: 組み直す。版 7 の地図を組み立てたままなら同梱の地図の列から（文書を読み直さない: SPEC D6）。
+//                葉のカードを足す・消すだけ（Tab・その元に戻す・行き先を消す）なら、型付き配列を最初から作らずに直す
+//                （./impactSplice.ts。番号まで最初から作った物と同じ: perf-4）
 //   数（% ・月・月の稼ぎ・今のまま・種類・事実・q）: 文書から数を入れ直す
 //   状態（選んだ・見送った）: 変わったノードだけ入れ直す
 //   方針（シナリオ）・年収: 入れ直さず、計算（逆にたどる・前へ流す）だけやり直す
@@ -20,6 +22,7 @@ import { isFlowEdge, isImpactRoot, type ForkKind } from "./forks";
 import { assemble, compileDocTopo, compileMapDoc, edgeIndex, fillAllowed, fillNums, fillStatus, rippleCounts, rootConfig, slotOfEdge, statusCode, type Nums, type Seen, type Topo } from "./impactGraph";
 import {
   backward,
+  backwardSteps,
   BAD_EPS,
   CHANCE,
   compareCands,
@@ -55,6 +58,7 @@ import {
   type Vec3,
 } from "./impact";
 import { impactBin } from "./impactFormat";
+import { addLeaf, removeLeaf } from "./impactSplice";
 import { NODE_NUM_META } from "./impactMeta";
 import type { DocData, GEdge, GNode, ID } from "./types";
 
@@ -77,6 +81,8 @@ const C_NUMS = 2;
 const C_STATUS = 4;
 const C_SCEN = 8;
 const C_PRESENT = 16;
+/** 葉のカードを足した・消した（線ごと）だけかもしれない形の変更: 型付き配列を最初から作らずに直してみる（./impactSplice.ts） */
+const C_SPLICE = 32;
 
 /** 計算に使わない・どれにも当たらないノードの所（変わっても何もしない） */
 const NODE_SKIP: ReadonlySet<string> = new Set(["id", "title", "body", "tags", "conditions", "x", "y", "updatedAt", "collapsed", "createdAt", "status", "type", "meta", "time", "projectIds", "scenarioIds"]);
@@ -428,6 +434,8 @@ class EngineResult implements ImpactResult {
   private readonly fixed = new Map<string, number | null>();
   private readonly neverMemo = new Map<string, NeverResult>();
   private rec: { v: number | null } | null = null;
+  /** おすすめの値の途中（空いた時間に分けて進めている計算） */
+  private recSteps: Generator<void, number | null, void> | null = null;
 
   constructor(
     private readonly r: Run,
@@ -898,8 +906,11 @@ class EngineResult implements ImpactResult {
       const r0 = topo.roots[0];
       if (r0 === undefined) return (task.done = { below: null, above: null });
       const cur = main.best[r0]! >= 0 ? c.tgt[main.best[r0]!]! : -1;
-      const bestAt = (a: number): number => {
-        const p2 = backward(c, a / 12, tail, H, 0, null);
+      // 1 回の逆にたどる計算も分けて進める（空いた時間の 1 歩をスマホでも短く: perf-10）。入れ物はこの探す間だけ 1 つ
+      let pass: Pass | null = null;
+      const bestAt = function* (a: number): Generator<void, number, void> {
+        const p2 = yield* backwardSteps(c, a / 12, tail, H, 0, null, pass);
+        pass = p2;
         const s = p2.best[r0]!;
         return s >= 0 ? c.tgt[s]! : -1;
       };
@@ -995,15 +1006,34 @@ class EngineResult implements ImpactResult {
 
   recommended(): number | null {
     if (this.rec) return this.rec.v;
+    const g = this.recSteps ?? this.recommendedSteps();
+    let x = g.next();
+    while (!x.done) x = g.next();
+    this.recSteps = null;
+    this.rec = { v: x.value };
+    return x.value;
+  }
+
+  /** おすすめの値を 1 つ進める（空いた時間に: 1 回の逆にたどる計算を分けて。perf-10）。済んだら true（recommended() はその値） */
+  recommendedStep(): boolean {
+    if (this.rec) return true;
+    this.recSteps ??= this.recommendedSteps();
+    const x = this.recSteps.next();
+    if (!x.done) return false;
+    this.recSteps = null;
+    this.rec = { v: x.value };
+    return true;
+  }
+
+  private *recommendedSteps(): Generator<void, number | null, void> {
     const { c, topo, nums, S, tail, H } = this.r;
     // 選んだ手（進行中・完了）を外す（見送りはそのまま）・方針で絞らない: 1 回の逆にたどる計算（perf-5）。
     // 形は assemble で作る（同じ形の物だけを計算に渡すと、計算の速さが落ちない）
     const stat = new Uint8Array(c.stat.length);
     for (let i = 0; i < stat.length; i++) stat[i] = c.stat[i] === 2 ? 2 : 0;
-    const p = backward(assemble(topo, nums, stat, new Uint8Array(c.allowed.length).fill(1)), S, tail, H, 0, null);
+    const p = yield* backwardSteps(assemble(topo, nums, stat, new Uint8Array(c.allowed.length).fill(1)), S, tail, H, 0, null);
     const r0 = topo.roots[0];
-    this.rec = { v: r0 !== undefined && p.def[r0] ? sumV(p.V, r0) : null };
-    return this.rec.v;
+    return r0 !== undefined && p.def[r0] ? sumV(p.V, r0) : null;
   }
 
   altIds(): readonly ID[] {
@@ -1074,6 +1104,17 @@ class EngineResult implements ImpactResult {
 }
 
 /** 地図の登録（組み立てたままの文書なら、その地図の列から形を作る） */
+/** 状態の配列 a の at に v を入れた写し（add）・at を除いた写し */
+function gap8(a: Uint8Array, at: number, add: boolean, v: number): Uint8Array {
+  const out = new Uint8Array(a.length + (add ? 1 : -1));
+  out.set(a.subarray(0, at), 0);
+  if (add) {
+    out[at] = v;
+    out.set(a.subarray(at), at + 1);
+  } else out.set(a.subarray(at + 1), at);
+  return out;
+}
+
 export interface MapDoc {
   map: MapData;
   doc: DocData;
@@ -1094,6 +1135,13 @@ export class ImpactEngine {
   private allowedSid: ID | null = null;
   private dirty = C_TOPO;
   private readonly statusIdx = new Set<number>();
+  /** 形を直してみる線（C_SPLICE）: 足したかもしれない線の ID と、消した線の ID → 消す前の先のノードの ID */
+  private readonly spliceAdd = new Set<ID>();
+  private readonly spliceDel = new Map<ID, ID>();
+  /** 足したかもしれない線の先のカード（そこから出る線も足したかもしれない線として見る） */
+  private readonly spliceNew = new Set<ID>();
+  /** 形を最初から作り直した回数と、葉を足す・消すだけで直した回数（確かめ用） */
+  readonly topoCounts = { rebuilt: 0, spliced: 0 };
   readonly version: Versions = { topology: 0, numbers: 0, statuses: 0, scenario: 0, present: 0 };
   private run: Run | null = null;
   private res: ImpactResult = emptyImpact();
@@ -1160,8 +1208,11 @@ export class ImpactEngine {
     this.pristine = null;
   }
 
-  /** 文書の変更を受ける（印を付けるだけ。O(変わった物)） */
-  note(doc: DocData, info: { full: boolean; nodes: ReadonlySet<ID>; edges: ReadonlySet<ID>; projects: ReadonlySet<ID>; scenarios: ReadonlySet<ID> }): void {
+  /**
+   * 文書の変更を受ける（印を付けるだけ。O(変わった物)）。before は変わる前の線（文書の索引が覚えている物）を返す: あれば、消した線・
+   * 付け替えた線の番号を、線の ID の表（7 万本で 15 ms ほど）を作らずに先のノードの入ってくる線から探す
+   */
+  note(doc: DocData, info: { full: boolean; nodes: ReadonlySet<ID>; edges: ReadonlySet<ID>; projects: ReadonlySet<ID>; scenarios: ReadonlySet<ID> }, before?: (id: ID) => GEdge | undefined): void {
     if (info.full) {
       this.dirty |= C_TOPO;
       if (!this.pristine || this.pristine.doc !== doc) this.pristine = null;
@@ -1188,7 +1239,8 @@ export class ImpactEngine {
       }
       const old = seen.nodeObj[i];
       if (!now) {
-        c |= C_TOPO;
+        // 範囲のカードを消した: 入ってくる線も同じ変更で消えている（葉なら直してみる。そうでなければ直すときに作り直す）
+        c |= C_SPLICE;
         continue;
       }
       if (old === now) continue;
@@ -1197,32 +1249,49 @@ export class ImpactEngine {
       if (x & C_STATUS) this.statusIdx.add(i);
       c |= x;
     }
-    const eidx = info.edges.size ? edgeIndex(topo) : null;
+    const slotOf = (id: ID, now: GEdge | undefined): number => {
+      const b = before ? (before(id) ?? now) : undefined;
+      // 渡されていない・索引が知らない線を消した（ふつうは無い）: 線の ID の表で探す
+      if (!b) return edgeIndex(topo).get(id) ?? -1;
+      return slotOfEdge(topo, b);
+    };
     for (const id of info.edges) {
       const now = doc.edges[id];
-      const s = eidx!.get(id);
-      if (s === undefined) {
+      const s = slotOf(id, now);
+      if (s < 0) {
         if (now) {
-          if (isFlowEdge(now) && now.source !== now.target && (topo.idx.has(now.source) || topo.loose.has(now.source)) && doc.nodes[now.target]) c |= C_TOPO;
+          if (isFlowEdge(now) && now.source !== now.target && doc.nodes[now.target]) {
+            if (topo.loose.has(now.source)) c |= C_TOPO;
+            else if (topo.idx.has(now.source) || this.spliceNew.has(now.source)) {
+              // 範囲のカード（か、この前に足したカード）から出る道の線を足した: 葉を足すだけなら直してみる
+              c |= C_SPLICE;
+              this.spliceAdd.add(id);
+              this.spliceNew.add(now.target);
+            }
+          }
         } else if (topo.loose.size) c |= C_TOPO;
         continue;
       }
       const old = seen.edgeObj[s];
       if (!now) {
-        c |= C_TOPO;
+        if (old) {
+          c |= C_SPLICE;
+          this.spliceDel.set(id, old.target);
+        } else c |= C_TOPO;
         continue;
       }
       if (old === now) continue;
       seen.edgeObj[s] = now;
       c |= old ? edgeChange(old, now) : C_TOPO;
     }
-    if (c & (C_TOPO | C_NUMS)) this.pristine = null;
+    if (c & (C_TOPO | C_NUMS | C_SPLICE)) this.pristine = null;
     this.dirty |= c;
   }
 
   /** 今の結果（版が同じなら前と同じ物） */
   result(inp: EngineInputs): ImpactResult {
     if (this.dirty & C_TOPO) this.rebuild(inp);
+    else if (this.dirty & C_SPLICE && !this.splice(inp)) this.rebuild(inp);
     const topo = this.topo;
     const seen = this.seen;
     if (!topo || !seen) {
@@ -1286,6 +1355,8 @@ export class ImpactEngine {
   /** 形を作り直す（組み立てたままの版 7 の地図なら、その地図の列から） */
   private rebuild(inp: EngineInputs): void {
     const t0 = performance.now();
+    this.clearSplice();
+    this.topoCounts.rebuilt++;
     this.run = null;
     this.stat = null;
     this.allowed = null;
@@ -1314,9 +1385,138 @@ export class ImpactEngine {
       this.lastCompile = x ? "doc" : null;
     }
     this.version.topology++;
-    this.dirty = (this.dirty & ~C_TOPO) | C_NUMS | C_SCEN;
+    this.dirty = (this.dirty & ~(C_TOPO | C_SPLICE)) | C_NUMS | C_SCEN;
     if (made) this.dirty &= ~C_NUMS;
     this.timings.compile = performance.now() - t0;
+  }
+
+  private clearSplice(): void {
+    this.spliceAdd.clear();
+    this.spliceDel.clear();
+    this.spliceNew.clear();
+  }
+
+  /**
+   * 葉のカードを足した・消した（入ってくる線 1 本ごと）だけの形の変更を、型付き配列を最初から作らずに直す（./impactSplice.ts。
+   * 答えは最初から作った物と番号まで同じ）。足すのと消すのが混ざる・合流・循環・入口・葉でないカードに関わるなど、直せない形なら false
+   * （呼び手が最初から作り直す）
+   */
+  private splice(inp: EngineInputs): boolean {
+    const t0 = performance.now();
+    const adds = [...this.spliceAdd];
+    const dels = [...this.spliceDel];
+    this.clearSplice();
+    if (!this.topo || !this.seen || this.topo.map) return false;
+    let topo: Topo = this.topo;
+    let seen: Seen = this.seen;
+    const doc = inp.doc;
+    const out = inp.out();
+    const addE: GEdge[] = [];
+    for (const id of adds) {
+      const e = doc.edges[id];
+      if (e && isFlowEdge(e) && e.source !== e.target && doc.nodes[e.target]) addE.push(e);
+    }
+    if (addE.length && dels.length) return false;
+    let nums = this.dirty & C_NUMS ? null : this.nums;
+    let stat = this.stat;
+    let status = [...this.statusIdx];
+    const remap = (pos: (i: number) => number): void => {
+      status = status.map(pos).filter((i) => i >= 0);
+    };
+    /** 直したノード（最後に、道の線が文書の出る線と同じ並びかを確かめる） */
+    const touched = new Set<ID>();
+    // 消す（どれも、入ってくる線が 1 本の葉）
+    for (const [eid, target] of dels) {
+      if (doc.edges[eid]) return false;
+      const j = topo.idx.get(target);
+      if (j === undefined) return false;
+      const s = topo.incOff[j + 1]! - topo.incOff[j]! === 1 ? topo.incSlot[topo.incOff[j]!]! : -1;
+      if (s < 0 || topo.eid[s] !== eid) return false;
+      const u = topo.ids[topo.src[s]!]!;
+      const r = removeLeaf(topo, seen, nums, j);
+      if (!r) return false;
+      if (stat) stat = gap8(stat, j, false, 0);
+      remap(r.pos);
+      ({ topo, seen } = r);
+      nums = r.nums;
+      touched.delete(target);
+      touched.add(u);
+    }
+    // 足す（範囲のカードから、まだ範囲に無いカードへ。足したカードからの線は、そのカードを足した後に）
+    let left = addE;
+    while (left.length) {
+      const next: GEdge[] = [];
+      for (const e of left) {
+        const u = topo.idx.get(e.source);
+        if (u === undefined) {
+          if (topo.loose.has(e.source)) return false;
+          next.push(e);
+          continue;
+        }
+        if (topo.idx.has(e.target) || topo.loose.has(e.target)) return false;
+        const v = doc.nodes[e.target]!;
+        if (isImpactRoot(v)) return false;
+        // u の道の線の並び（文書の出る線のうち、形にもうある線とこの線）での、この線の場所
+        let k = 0;
+        let found = false;
+        const a = topo.off[u]!;
+        const b = topo.off[u + 1]!;
+        for (const eid of out.get(e.source) ?? []) {
+          if (eid === e.id) {
+            found = true;
+            break;
+          }
+          if (a + k < b && topo.eid[a + k] === eid) k++;
+        }
+        if (!found) return false;
+        const r = addLeaf(topo, seen, nums, u, k, e, v);
+        if (!r) return false;
+        const q = r.topo.idx.get(v.id)!;
+        if (stat) stat = gap8(stat, q, true, statusCode(v));
+        remap(r.pos);
+        ({ topo, seen } = r);
+        nums = r.nums;
+        touched.add(e.source);
+        touched.add(v.id);
+      }
+      // 元がまだ形に無い線: 足したカードからの線なら次の回に。どれも進まなければ、範囲の外の線（形は変わらない）
+      if (next.length === left.length) break;
+      left = next;
+    }
+    // 直したノードの道の線が、文書の出る線と同じ並びか（足したカードの先・混ざった変更などを、ここで見落とさない）
+    for (const id of touched) {
+      const x = topo.idx.get(id);
+      if (x === undefined) continue;
+      let s = topo.off[x]!;
+      const end = topo.off[x + 1]!;
+      for (const eid of out.get(id) ?? []) {
+        const e = doc.edges[eid];
+        if (!e || !isFlowEdge(e) || e.source === e.target || !doc.nodes[e.target]) continue;
+        if (s >= end || topo.eid[s] !== eid || seen.edgeObj[s] !== e) return false;
+        s++;
+      }
+      if (s !== end) return false;
+    }
+    if (topo === this.topo) return true;
+    this.topo = topo;
+    this.seen = seen;
+    this.nums = nums;
+    this.stat = stat;
+    this.statusIdx.clear();
+    for (const i of status) this.statusIdx.add(i);
+    this.allowed = null;
+    this.shown = null;
+    this.run = null;
+    this.flipTasks.clear();
+    this.version.topology++;
+    if (stat) this.version.statuses++;
+    if (nums) this.version.numbers++;
+    else this.dirty |= C_NUMS;
+    this.dirty = (this.dirty & ~C_SPLICE) | C_SCEN;
+    this.lastCompile = "doc";
+    this.topoCounts.spliced++;
+    this.timings.compile = performance.now() - t0;
+    return true;
   }
 
   /** 計算（逆にたどる・前へ流す・そこまでの稼ぎ） */
@@ -1377,6 +1577,8 @@ export class ImpactEngine {
     let t = this.flipTasks.get(r.flipsKey);
     if (!t) {
       if (this.flipTasks.size > 8) this.flipTasks.clear();
+      // 途中の探す計算（地図の大きさの入れ物を持つ）は 1 つだけ: ほかの途中の物は、また読まれたら最初から
+      for (const x of this.flipTasks.values()) if (!x.done) x.steps = null;
       this.flipTasks.set(r.flipsKey, (t = { key: r.flipsKey, done: null, steps: null }));
     }
     return t;
@@ -1400,8 +1602,8 @@ export class ImpactEngine {
   }
 
   /** 今の形（確かめ用） */
-  get graph(): { topo: Topo | null; nums: Nums | null } {
-    return { topo: this.topo, nums: this.nums };
+  get graph(): { topo: Topo | null; nums: Nums | null; seen: Seen | null; stat: Uint8Array | null } {
+    return { topo: this.topo, nums: this.nums, seen: this.seen, stat: this.stat };
   }
 }
 

@@ -16,6 +16,10 @@ import type { MapData } from "../../src/deepmap/mapData";
 import { makeEdge, makeNode } from "../../src/model/schema";
 import type { DocData, ID } from "../../src/model/types";
 import { Store } from "../../src/store/store";
+import { Commands } from "../../src/app/commands";
+import { computeForecast } from "../../src/model/forecast";
+import { forecastDiff, scopeDiff } from "./helpers/structCheck";
+import { engineGraphDiff } from "./helpers/topoEquiv";
 import { refView } from "./helpers/refView";
 import { envVar, nodeFs } from "./helpers/qSmall";
 import { pick, rng } from "./helpers/synthMap";
@@ -313,6 +317,77 @@ describe.skipIf(!DIR)("見え方の計算: 8 万枚の地図（IMPACT_Q_FULL が
       expect(best(t.keystroke)).toBeLessThanOrEqual(TARGET.keystroke * SLACK);
       expect(best(t.open)).toBeLessThanOrEqual(TARGET.open * SLACK);
       expect(Math.max(...t.yearCards)).toBeLessThanOrEqual(3000);
+    },
+    SLOW,
+  );
+
+  it(
+    "地図の中の形の編集（Tab・元に戻す・葉を消す）: 範囲・木・見込み・3 年の影響の形と数を、たどり直さずに直した物が最初から作った物と同じ。時間を書き出す（perf-4）",
+    async () => {
+      const gc = await gcFn();
+      const { store, ui, vm } = setup(build(map));
+      const cmd = new Commands(store, ui, vm, { toast: () => undefined, viewCenter: () => ({ x: 0, y: 0 }), startEdit: () => undefined, reveal: () => undefined, confirm: async () => true });
+      vm.ensure();
+      expect(vm.impact.active).toBe(true);
+      expect(vm.index.nodeCount).toBe(map.n);
+      const rand = rng(11);
+      const read = () => {
+        vm.ensure();
+        void vm.impact.vRoot;
+        void vm.forecast;
+      };
+      const check = (what: string) => {
+        const doc = store.doc;
+        const roots = [...vm.index.impactRoots];
+        const problems = [...scopeDiff(vm), ...engineGraphDiff(vm.engine, doc, vm.index.out, roots).map((x) => `エンジン: ${x}`)];
+        problems.push(...forecastDiff(vm.forecast, computeForecast(doc, vm.index.out, null)).map((x) => `見込み: ${x}`));
+        if (problems.length) throw new Error(`${what} の後: ${problems.slice(0, 5).join(" / ")}`);
+      };
+      const decisions = () => {
+        vm.ensure();
+        return vm.drawNodes.filter((id) => vm.inImpact(id) && store.doc.nodes[id]!.meta.fork === "decision" && id !== vm.impactRoots()[0]);
+      };
+      // 最初の形の編集（組み立てたままの地図の形から、文書から作った形へ。ここは作り直す）
+      vm.setImpactOpen([vm.impactRoots()[0]!, ...decisions().slice(0, 2)]);
+      let t0 = performance.now();
+      cmd.addChild(pick(rand, decisions()));
+      read();
+      const first = performance.now() - t0;
+      store.undo();
+      read();
+      check("最初の Tab と元に戻す");
+      const t = { tab: [] as number[], undo: [] as number[], del: [] as number[] };
+      const c0 = { ...vm.patchCounts, spliced: vm.engine.topoCounts.spliced, rebuilt: vm.engine.topoCounts.rebuilt };
+      for (let round = 0; round < 3; round++) {
+        const p = pick(rand, decisions());
+        gc();
+        t0 = performance.now();
+        const id = cmd.addChild(p)!;
+        read();
+        t.tab.push(performance.now() - t0);
+        check(`Tab ${p}`);
+        gc();
+        t0 = performance.now();
+        store.undo();
+        read();
+        t.undo.push(performance.now() - t0);
+        check("元に戻す");
+        store.redo();
+        read();
+        // 足したカード（葉）を消す
+        gc();
+        t0 = performance.now();
+        store.transact("消す", (tx) => tx.deleteNode(id));
+        read();
+        t.del.push(performance.now() - t0);
+        check(`葉を消す ${id}`);
+      }
+      console.log(`形の編集（8 万枚・${map.n} 枚。ms）: 最初の Tab（作り直す）${first.toFixed(1)} · Tab ${fmt(t.tab)} · 元に戻す ${fmt(t.undo)} · 葉を消す ${fmt(t.del)}`);
+      // 最初の後はどれも、たどり直さずに直した（作り直さない）
+      expect(vm.engine.topoCounts.rebuilt).toBe(c0.rebuilt);
+      expect(vm.engine.topoCounts.spliced - c0.spliced).toBeGreaterThanOrEqual(12);
+      expect(vm.patchCounts.scope - c0.scope).toBeGreaterThanOrEqual(12);
+      expect(vm.patchCounts.forecast - c0.forecast).toBeGreaterThanOrEqual(12);
     },
     SLOW,
   );
