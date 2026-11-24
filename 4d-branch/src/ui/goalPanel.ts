@@ -12,9 +12,9 @@ import type { AppContext } from "../app/context";
 import { whenIdle } from "../app/idle";
 import { goalViewOf, type Analysis } from "../deepmap/core";
 import { fillGoalSlots, goalOverviewVM, goalSkeletonEl, goalStripEl, goalStripVM, goalViewKey } from "../deepmap/views";
-import { formatOku, goalAnchor, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
-import { goalCtxOf, goalFactOf, goalImpactStripInput } from "../model/goalImpact";
-import { goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, sameGoal, type GoalField } from "../model/goalForm";
+import { formatOku, goalAnchor, goalAnchorOfRoot, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
+import { goalCtxOf, goalFactOf, goalImpactStrip } from "../model/goalImpact";
+import { goalEditorStale, goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, sameGoal, type GoalField } from "../model/goalForm";
 import type { ImpactResult } from "../model/impact";
 import type { GNode } from "../model/types";
 import { h, isImeKey } from "./dom";
@@ -23,11 +23,15 @@ import { toast } from "./overlays";
 /** 「変える」で欄を開く（概要を作ったときに差し替わる） */
 let goalFocus: ((field?: GoalKey) => void) | null = null;
 
-/** 地図の 0 か月目（入口の meta.anchor。無ければ 3 か月ごとの地図の年月。どちらも無ければ今月から数える） */
+/**
+ * 地図の 0 か月目（入口の meta.anchor。無ければ 3 か月ごとの地図の年月。どちらも無ければ入口の期限 = 版 6 の地図を作った月。
+ * それも無ければ今月から数える）
+ */
 function anchorOf(app: AppContext, root: GNode | undefined): ReturnType<typeof goalAnchor> {
   const a = root?.meta?.anchor;
   if (typeof a === "string") return goalAnchor(a);
-  return goalAnchor(app.vm.deep.get()?.map.header.anchor);
+  const deep = goalAnchor(app.vm.deep.get()?.map.header.anchor);
+  return deep.clock ? goalAnchorOfRoot(root) : deep;
 }
 
 /** 入口のカード（3 年の分かれ道が無ければ undefined） */
@@ -76,9 +80,11 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
   const el = h("div", { class: "goal-wrap" }, view, edit, strip);
   let fields: GoalField[] = [];
   const inputs = new Map<GoalKey, HTMLInputElement>();
+  /** 欄を作ったときに閲覧のみだったか（変わったら作り直す: 書けるようになったタブで欄が止まったままにならない） */
+  let builtRo = false;
 
-  /** 欄を今の前提で作り直す（開くたび: 期限の範囲は地図の年月で変わる） */
-  const build = (): void => {
+  /** 欄を今の前提で作り直す（開くたび: 期限の範囲は地図の年月で変わる）。keep は入れかけの文字（作り直しても残す） */
+  const build = (keep?: ReadonlyMap<GoalKey, string>): void => {
     const root = rootOf(app);
     const anchor = anchorOf(app, root);
     const { cfg, assumed } = goalConfigOf(root);
@@ -86,6 +92,7 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
     inputs.clear();
     fieldsBox.replaceChildren();
     const readOnly = app.store.readOnly;
+    builtRo = readOnly;
     for (const f of fields) {
       const id = `goal-in-${f.key}`;
       const input = h("input", {
@@ -93,7 +100,7 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
         type: "text",
         dataset: { fk: `goal-${f.key}` },
         placeholder: goalFieldPlaceholder(f, anchor),
-        value: goalFieldValue(f, cfg, assumed, anchor),
+        value: keep?.get(f.key) ?? goalFieldValue(f, cfg, assumed, anchor),
         disabled: readOnly,
         // 事業の伸びはマイナスも入れる（数字だけの鍵盤にはマイナスが無いことがある）
         attrs: { id, inputmode: f.key === "bizGrow" ? "text" : "decimal", autocomplete: "off", maxlength: "16", "aria-describedby": `${id}-hint` },
@@ -177,7 +184,16 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
       by.textContent = row.by;
       kari.textContent = row.kari ?? "";
       kari.hidden = !row.kari;
-      if (!edit.hidden && app.store.readOnly) build();
+      if (goalEditorStale(!edit.hidden, builtRo, app.store.readOnly)) {
+        // 入れかけの文字と、どの欄にいたかは残す
+        const keep = new Map([...inputs].map(([k, x]) => [k, x.value] as const));
+        const at = [...inputs].find(([, x]) => x === document.activeElement)?.[0];
+        const wasCancel = document.activeElement === cancel;
+        build(keep);
+        const back = at ? inputs.get(at) : wasCancel && !app.store.readOnly ? inputs.values().next().value : undefined;
+        if (back && !back.disabled) back.focus();
+        else if (at || wasCancel) cancel.focus();
+      }
       goalFocus = open;
       refreshGoalViews(app);
       const vm = impactStripOf(app, imp);
@@ -280,8 +296,8 @@ function impactStripOf(app: AppContext, imp: ImpactResult): ReturnType<typeof go
   let id = impIds.get(imp);
   if (id === undefined) impIds.set(imp, (id = impNext++));
   const key = `imp${id}|${g.t.key}|${[...g.read.assumed].sort().join(",")}`;
-  const x = goalImpactStripInput(imp, app.store.doc, g, key);
-  return x ? goalStripVM(x) : null;
+  // 結果と前提が同じなら前の帯（見出しは概要を描き直すたびに呼ばれる: 行き先をなめ直さない）
+  return goalImpactStrip(imp, app.store.doc, g, key, goalStripVM);
 }
 
 /** 詳細の欄の「10 億」の 1 行（行き先・途中のカード。数が出せなければ null）。「前提を変える」つき */

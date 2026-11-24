@@ -1,7 +1,7 @@
 /*
  * 資産のゴール（「資産 10 億円」）の見た目: 見取り図の帯（src/deepmap/views/goal.ts）・芽の札・手の詳しい画面と道の終わりの 1 行・
  * 前提の欄（src/ui/goalPanel.ts）。色はアプリの名前（tokens.css）から作った --goal-* だけを使う。
- * 狭い画面（390px）が先: 3 つの数は 3 列のまま（1 つ約 115px）、前提の行は 1 行で「…」（押すと全文）、押す所は 44px 以上。
+ * 狭い画面（390px）が先: 3 つの数は 3 列のまま（1 つ約 115px）、前提の行は 1 行で「…」（「前提をすべて見る」で全文）、押す所は 44px 以上。
  * アプリはダーク基調。明るい見た目（:root[data-theme="light"]）の色も同じ名前で用意しておく。
  */
 
@@ -77,12 +77,12 @@
 .dm-goal-head {
   grid-area: head;
   min-width: 0;
-  overflow: hidden;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  /* 入らなければ「…」にせず、言葉の切れ目で 2 行に（「2056 年まで（仮）」まで見せる） */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
   color: var(--text-1);
 }
 .dm-goal-head b {
@@ -92,6 +92,7 @@
 }
 .dm-goal-more {
   grid-area: more;
+  align-self: start;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--accent-2);
@@ -220,7 +221,10 @@
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-2);
-  cursor: pointer;
+}
+/* 「前提をすべて見る」は前提の行を 1 行にする狭い画面だけ */
+.dm-goal-link.dm-goal-premise-more {
+  display: none;
 }
 .dm-goal-basis,
 .dm-goal-note {
@@ -267,12 +271,23 @@
   text-underline-offset: 3px;
 }
 @container dm (max-width: 687.98px) {
-  /* 前提の行は 1 行で「…」（押すと全文） */
+  /* 前提の行は 1 行で「…」（「前提をすべて見る」で全文） */
   .dm-goal-premise:not(.is-open) .dm-goal-premise-t {
     display: -webkit-box;
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+  .dm-goal-link.dm-goal-premise-more {
+    display: inline-block;
+  }
+  /* 押す所は 44px（行の高さは変えない: 上下に負の余白） */
+  .dm-goal-link {
+    display: inline-block;
+    min-height: 44px;
+    line-height: 44px;
+    margin-block: -12px;
+    padding-block: 0;
   }
   .dm-goal-tile {
     padding: 7px 6px 8px;
@@ -463,6 +478,14 @@
 
 /* 狭い所の帯（版 6 の見出しの欄の中: 幅 330px 以下）: 3 つの数を小さく、余白を詰める。もっと狭ければ 1 列に */
 @container goal (max-width: 330px) {
+  /* 版 6 の見出しの欄の中（スマホ）: 押す所は 44px（行の高さは変えない） */
+  .dm-goal-link {
+    display: inline-block;
+    min-height: 44px;
+    line-height: 44px;
+    margin-block: -12px;
+    padding-block: 0;
+  }
   .dm-goal-body {
     padding: 2px 8px 10px;
   }

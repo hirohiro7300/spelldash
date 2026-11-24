@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { spacingIssues } from "../../scripts/impact/textChecks";
 import { spaceJa } from "../../src/demo/compose/text";
 import { DEFAULT_GOAL, goalAnchor, goalConfigOf, GOAL_KEYS, type GoalKey } from "../../src/model/goal";
-import { goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, parseGoalField, sameGoal } from "../../src/model/goalForm";
+import { goalEditorStale, goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, parseGoalField, sameGoal } from "../../src/model/goalForm";
 
 const ANCHOR = goalAnchor("2026-11");
 const fields = goalFields(ANCHOR);
@@ -116,5 +116,19 @@ describe("見出しの 1 行", () => {
     expect(goalViewRow(all.cfg, all.assumed, ANCHOR)).toEqual({ name: "資産 10 億円", by: "・2050 年まで", kari: null });
     const row = goalViewRow(d.cfg, d.assumed, ANCHOR);
     spaced(`ゴールは${row.name}${row.by}${row.kari}`);
+  });
+});
+
+describe("閲覧のみの切り替え", () => {
+  it("開いている欄は、閲覧のみになったときも、書けるようになったときも作り直す（閉じていれば作り直さない）", () => {
+    // 閲覧のみで開いた欄: 書けるようになったら作り直す（止めた欄のままにしない）
+    expect(goalEditorStale(true, true, false)).toBe(true);
+    // 書けるときに開いた欄: 閲覧のみになったら作り直す
+    expect(goalEditorStale(true, false, true)).toBe(true);
+    // 変わっていなければ作り直さない（入れかけの文字をそのままに）
+    expect(goalEditorStale(true, true, true)).toBe(false);
+    expect(goalEditorStale(true, false, false)).toBe(false);
+    // 閉じている欄は開くときに作る
+    expect(goalEditorStale(false, true, false)).toBe(false);
   });
 });

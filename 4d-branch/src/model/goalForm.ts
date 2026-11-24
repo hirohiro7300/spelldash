@@ -120,3 +120,11 @@ export function goalViewRow(cfg: Readonly<GoalConfig>, assumed: ReadonlySet<Goal
   const n = [...assumed].filter((k) => k !== "target").length;
   return { name: `資産 ${formatOku(cfg.target)}`, by: `・${byYearOf(cfg, anchor.y)} 年まで`, kari: n > 0 ? `（前提 ${n} つは仮）` : null };
 }
+
+/**
+ * 開いている前提の欄を作り直すか: 作ったときと今とで閲覧のみかが違う（閲覧のみになった・書けるようになった。どちらも作り直して、
+ * 欄の止め方と「閲覧のみのため変えられません」を今に合わせる）
+ */
+export function goalEditorStale(open: boolean, builtReadOnly: boolean, readOnly: boolean): boolean {
+  return open && builtReadOnly !== readOnly;
+}

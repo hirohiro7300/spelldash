@@ -27,7 +27,7 @@ const handA = (annual = 360): Analysis => analyze(compileMap(fromDevTree(handTre
 /** 帯・注・今日の欄の文を全部 */
 function texts(vm: GoalOverviewVM): string[] {
   const s = vm.strip;
-  return [s.head, s.barText, s.aria, s.done, ...s.tiles.flatMap((t) => [t.label, t.value, t.sub]), s.leversHead, ...s.levers, s.frame, s.premise, s.basis, ...s.notes, s.nudge, vm.seedNote, vm.today, ...vm.seeds.flatMap((x) => [x.text, x.aria])].filter(
+  return [s.head, s.kari, s.barText, s.aria, s.done, ...s.tiles.flatMap((t) => [t.label, t.value, t.sub]), s.leversHead, ...s.levers, s.frame, s.premise, s.basis, ...s.notes, s.nudge, vm.seedNote, vm.today, ...vm.seeds.flatMap((x) => [x.text, x.aria])].filter(
     (x): x is string => typeof x === "string",
   );
 }
@@ -86,7 +86,10 @@ describe("見取り図の帯（仮の前提）", () => {
   const s = vm.strip;
 
   it("見出し・棒・棒の横の数は、期限の年と目安つき（ゴールは 10 億円・期限は 0 か月目の年 + 30）", () => {
-    expect(s.head).toBe("資産 10 億円・2056 年まで");
+    // 期限を入れていない: 見出し（たたんでも見える所）にも（仮）。仮の数も
+    expect(s.head).toBe("資産 10 億円・2056 年まで（仮）");
+    expect(s.kari).toBe("6 つは仮");
+    expect(s.aria).toContain("2056 年まで（前提 6 つは仮）");
     expect(s.barText).toMatch(/^2056 年に約 [\d.]+ (億|万)円（(\d+%|1% 未満)）・目安$/);
     expect(s.bar).not.toBeNull();
     expect(s.bar!.lo).toBeLessThanOrEqual(s.bar!.mid);
@@ -173,6 +176,7 @@ describe("見取り図の帯（入れた前提）", () => {
   it("期限までに届く前提なら、見込みと届く年（真ん中）を出す", () => {
     const s = goalOverviewVM(a, viewOf(a, { v: 1, target: 1000, save: 50, by: 2060 })).strip;
     expect(s.head).toBe("資産 1,000 万円・2060 年まで");
+    expect(s.kari).toBe("3 つは仮");
     expect(s.tiles[0]!.label).toBe("期限までに届く見込み");
     expect(s.tiles[0]!.value).toMatch(/^\d+%$/);
     expect(s.tiles[0]!.value).not.toBe("0%");
@@ -181,7 +185,42 @@ describe("見取り図の帯（入れた前提）", () => {
   it("目標を変えると、どの「10 億円」も目標の額になる", () => {
     const vm = goalOverviewVM(a, viewOf(a, { v: 1, target: 30_000 }));
     for (const x of texts(vm)) expect(x).not.toContain("10 億");
-    expect(vm.strip.head).toBe("資産 3 億円・2056 年まで");
+    expect(vm.strip.head).toBe("資産 3 億円・2056 年まで（仮）");
+  });
+});
+
+describe("帯の 3 つの数（入れた前提・届く年・事業の伸び）", () => {
+  // 真ん中あたりの行き先に事業の稼ぎがある地図（手で作った地図の真ん中は給与だけの道）
+  const a = analyze(compileMap(fromDevTree(randomTree(3))), 360);
+
+  it("「届くには事業が」の伸びは、下の手立ての行と同じ行き先（真ん中あたり）の数", () => {
+    let checked = 0;
+    for (const goal of [null, { v: 1, assets: 1000, save: 30 } as GoalStored, { v: 1, bizGrow: 5 } as GoalStored]) {
+      const s = goalOverviewVM(a, viewOf(a, goal)).strip;
+      const t3 = s.tiles[2]!;
+      const m = /^毎年 (\+[\d.]+%)$/.exec(t3.value);
+      if (!m) continue;
+      expect(t3.sub).toMatch(/^真ん中あたりの行き先で/);
+      const lever = s.levers.find((x) => x.startsWith("事業の稼ぎが毎年 "));
+      expect(lever, JSON.stringify(s.levers)).toBeDefined();
+      expect(lever!.startsWith(`事業の稼ぎが毎年 ${m[1]} 伸び続ける`)).toBe(true);
+      expect(s.leversHead).toContain("真ん中あたりの行き先で");
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("積立 0%・今の資産 0 では、棒の横・読み上げ・手立てに「0%」も「60% でも足りません」も出さない", () => {
+    const vm = goalOverviewVM(a, viewOf(a, { v: 1, save: 0, assets: 0 }));
+    const s = vm.strip;
+    expect(s.barText).toMatch(/^2056 年に約 0 万円・目安$/);
+    for (const x of [s.barText, s.aria, ...s.levers, ...s.tiles.flatMap((t) => [t.value, t.sub])]) {
+      expect(x).not.toMatch(/(^|[^\d.])0%/);
+      expect(x).not.toContain("60% でも足りません");
+      expect(x).not.toContain("60% 伸び続けても足りません");
+    }
+    expect(s.tiles[2]!.sub).toBe("積み立てない前提なので、事業の伸びでは数えません");
+    for (const x of texts(vm)) spaced(x);
   });
 });
 
@@ -192,12 +231,15 @@ describe("芽の札と「10 の手をひと目で」", () => {
     const vm = goalOverviewVM(a, viewOf(a));
     const iq = cm.firstMoves.find((f) => kindKey(cm, f) === "ind_quit")!;
     const keep = cm.firstMoves.find((f) => kindKey(cm, f) === "keep")!;
-    expect(vm.seeds.find((x) => x.node === iq)).toMatchObject({ text: "芽は選び方しだい", kind: "choice" });
+    // 札は短く（手の名前を削らない）、読み上げで何のことかまで言う
+    expect(vm.seeds.find((x) => x.node === iq)).toMatchObject({ text: "芽: 選び方", kind: "choice", aria: "芽（3 年後に給与の外の稼ぎが月 10 万円以上）は選び方しだい（おすすめの選び方では残らない）" });
     expect(vm.seeds.find((x) => x.node === keep)).toBeUndefined();
     const low = analyze(cm, 60);
     const vl = goalOverviewVM(low, viewOf(low));
-    expect(vl.seeds.find((x) => x.node === iq)).toMatchObject({ text: "芽 100%", kind: "seed" });
-    expect(vl.today).toMatch(/^10 億への芽が一番多い手: 辞めて独立する（芽 100%）。/);
+    expect(vl.seeds.find((x) => x.node === iq)).toMatchObject({ text: "芽 100%", kind: "seed", aria: "芽（3 年後に給与の外の稼ぎが月 10 万円以上）のある行き先 100%" });
+    // 今日の欄の割合は、届く見込みと読めないよう、その場で何の割合かを言う
+    expect(vl.today).toMatch(/^10 億へ伸びうる芽が一番多い手: 辞めて独立する（3 年後に事業の稼ぎが月 10 万円以上の行き先 100%）。/);
+    expect(vl.today).not.toContain("（芽 ");
     for (const x of [...texts(vm), ...texts(vl)]) spaced(x);
   });
 
