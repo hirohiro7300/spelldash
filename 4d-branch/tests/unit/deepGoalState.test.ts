@@ -84,9 +84,9 @@ describe("ctx.goal()（資産のゴールの数）", () => {
     const { store, vm } = setup();
     // ほかのテストで作っていない計算（年収を変える）
     const r0 = rootOf(store, vm.deep.get()!.root);
-    store.transact("年収", (tx) => tx.updateNode(r0.id, { meta: { ...r0.meta, impact: { ...(r0.meta.impact as object), annual: 410 } } }));
+    store.transact("年収", (tx) => tx.updateNode(r0.id, { meta: { ...r0.meta, impact: { ...(r0.meta.impact as object), annual: 400 } } }));
     const ctx = vm.deep.get()!;
-    expect(ctx.annual).toBe(410);
+    expect(ctx.annual).toBe(400);
     const a = ctx.analysis();
     expect(hasGoalBase(a)).toBe(false);
     expect(goalViewOf(a, false)).toBeNull();
