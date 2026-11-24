@@ -46,6 +46,7 @@ import {
 import type { DocData, GEdge, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
 import { deepOpenActions, openKey } from "./deepPanel";
+import { goalWidget } from "./goalPanel";
 import { clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { modalOpen, toast } from "./overlays";
@@ -718,11 +719,12 @@ export function offerImpactSalary(app: AppContext): void {
 function impactHeader(app: AppContext): { el: HTMLElement; update(imp: ImpactResult): void } {
   const title = h("h3", { class: "insp-label imp-title" });
   const salary = salaryWidget(app);
+  const goal = goalWidget(app);
   const main = h("p", { class: "imp-hl-main" });
   const sub = h("p", { class: "imp-hl-sub" });
   const counts = h("p", { class: "imp-counts" });
   const note = h("p", { class: "imp-note imp-head-note" });
-  const el = h("section", { class: "imp-sec imp-head" }, title, salary.el, main, sub, note, counts);
+  const el = h("section", { class: "imp-sec imp-head" }, title, salary.el, goal.el, main, sub, note, counts);
   return {
     el,
     update(imp) {
@@ -732,6 +734,7 @@ function impactHeader(app: AppContext): { el: HTMLElement; update(imp: ImpactRes
       const span = horizonText(imp.horizon);
       title.textContent = `${span}の影響（${from && to ? `${from} → ${to}・` : ""}税引き前）`;
       salary.update(imp);
+      goal.update(imp);
       const scen = scenarioOfValues(app, imp);
       const hl = headlineOf({ horizon: imp.horizon, value: imp.vRoot, statusQuo: imp.vSQ, best: recommendedValue(imp, !!scen), picks: imp.hasPicks, scenario: scen });
       const notes = [scenarioFreeNote(app, imp), summaryPicked(app, imp) ? SUMMARY_PICK_TEXT : null].filter((x): x is string => !!x);

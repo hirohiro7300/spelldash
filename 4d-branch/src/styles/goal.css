@@ -1,0 +1,117 @@
+/*
+ * 資産のゴール（「資産 10 億円」）の見た目: 前提の欄（src/ui/goalPanel.ts）。色はアプリの名前（tokens.css）から作った --goal-* だけを使う。
+ * 狭い画面（390px）が先: 3 つの数は 3 列のまま（1 つ約 115px）、前提の行は 1 行で「…」（押すと全文）、押す所は 44px 以上。
+ * アプリはダーク基調。明るい見た目（:root[data-theme="light"]）の色も同じ名前で用意しておく。
+ */
+
+:root {
+  --goal-gold: #ffb547;
+  --goal-gold-ink: #ffd08a;
+  --goal-gold-soft: rgba(255, 181, 71, 0.12);
+  --goal-gold-line: rgba(255, 181, 71, 0.42);
+  --goal-band: rgba(255, 181, 71, 0.26);
+  --goal-track: rgba(255, 255, 255, 0.07);
+  --goal-grey: var(--text-3);
+  --goal-grey-soft: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme="light"] {
+  --goal-gold: #b26a00;
+  --goal-gold-ink: #8a5200;
+  --goal-gold-soft: rgba(178, 106, 0, 0.08);
+  --goal-gold-line: rgba(178, 106, 0, 0.4);
+  --goal-band: rgba(178, 106, 0, 0.22);
+  --goal-track: rgba(0, 0, 0, 0.07);
+  --goal-grey: #5b6474;
+  --goal-grey-soft: rgba(0, 0, 0, 0.05);
+}
+
+/* ------------------------------------------------------------ 前提の欄（概要の見出し・年収の下） */
+.goal-wrap {
+  display: grid;
+  gap: 6px;
+}
+.goal-view {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.goal-view b {
+  color: var(--text-1);
+  font-weight: 650;
+}
+.goal-view[hidden],
+.goal-edit[hidden],
+.goal-ro[hidden] {
+  display: none;
+}
+.goal-edit {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--goal-gold-line);
+  background: var(--goal-gold-soft);
+}
+.goal-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px auto;
+  align-items: center;
+  gap: 2px 6px;
+  min-height: 44px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.goal-field-label {
+  color: var(--text-1);
+  font-weight: 600;
+}
+.input.goal-input {
+  width: 104px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.goal-field-unit {
+  font-size: 12px;
+}
+.goal-field-hint {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.goal-btns {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.goal-err {
+  font-size: 12px;
+  color: var(--warn);
+}
+.goal-err:empty {
+  display: none;
+}
+.goal-ro {
+  font-size: 12px;
+  color: var(--text-3);
+}
+/* 狭い画面: 名前は欄の上（入れる所は 44px） */
+@media (max-width: 520px) {
+  .goal-field {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .goal-field-label {
+    grid-column: 1 / -1;
+  }
+  .input.goal-input {
+    width: 100%;
+    min-height: 44px;
+  }
+}
