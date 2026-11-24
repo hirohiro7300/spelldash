@@ -434,3 +434,24 @@
     min-height: 44px;
   }
 }
+
+/* ------------------------------------------------------------ 詳細の欄の「10 億」の 1 行・版 6 の見出しの帯 */
+.imp-facts li.goal-fact {
+  display: block;
+  padding: 6px 8px;
+  border-left: 2px solid var(--goal-gold-line);
+  border-radius: 0 var(--r-sm, 6px) var(--r-sm, 6px) 0;
+  background: var(--goal-gold-soft);
+}
+.imp-facts li.goal-fact .goal-fact-k {
+  color: var(--goal-gold-ink);
+}
+.goal-fact .goal-change {
+  min-height: 0;
+}
+.goal-imp-strip[hidden] {
+  display: none;
+}
+.imp-node-body > .dm-goal {
+  margin-bottom: 10px;
+}

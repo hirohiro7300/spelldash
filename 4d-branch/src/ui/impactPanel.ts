@@ -46,7 +46,7 @@ import {
 import type { DocData, GEdge, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
 import { deepOpenActions, openKey } from "./deepPanel";
-import { goalWidget } from "./goalPanel";
+import { goalFactEl, goalRootStripEl, goalWidget } from "./goalPanel";
 import { clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { modalOpen, toast } from "./overlays";
@@ -1468,6 +1468,9 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
     const leaf = imp.kind.get(id) === "leaf";
     facts.append(li(leaf ? `この行き先の ${span}の稼ぎ ` : `この後一番良く選ぶと ${span} `, h("b", null, yen(tot, false)), `（ずっと今のままより ${yen(tot - imp.vSQ)}）`));
   }
+  // 資産のゴール（36 か月目より先は前提から出した目安: 作業メモ goal/design.md §4.5・§4.6）
+  const goal = goalFactEl(app, imp, id);
+  if (goal) facts.append(goal);
   wrap.append(facts);
   const line = stateLine(n.meta?.st, n.meta?.rr);
   if (line) wrap.append(h("p", { class: "imp-state" }, h("b", null, "その時: "), line));
@@ -1510,6 +1513,9 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
 }
 
 function rootBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen, slot: HTMLElement | null = null): void {
+  // 資産のゴールの帯（3 か月ごとの地図: 見取り図と同じ帯。版 6 は見出しの欄の下にある: 作業メモ goal/design.md §4.6）
+  const goal = goalRootStripEl(app, imp);
+  if (goal) wrap.append(goal);
   if (slot) wrap.append(slot);
   const dec = imp.decision.get(id);
   if (!dec || !dec.alts.length) return;

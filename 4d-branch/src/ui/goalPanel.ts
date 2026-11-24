@@ -4,13 +4,16 @@
 // 閲覧のみのタブでは値を見せるだけ。
 // 見取り図の帯・芽の札・今日の欄の 1 行（src/deepmap/views/goal.ts）は、ここで今の前提の数に埋め直す（前提を変えても見取り図は
 // 作り直されないため。数ができていなければ空いた時間に作って埋める）。帯の「前提を変える」「入れる」もここで受ける。
+// 版 6 の地図（年月も見取り図も無い）は、この欄の下に同じ帯をアプリの計算の行き先から出す（設計 §4.8）。
+// 詳細の欄の「10 億」の 1 文（行き先・途中のカード）と、今日のカードの帯（3 か月ごとの地図）もここで作る（設計 §4.5・§4.6）。
 
 import "../styles/goal.css";
 import type { AppContext } from "../app/context";
 import { whenIdle } from "../app/idle";
 import { goalViewOf, type Analysis } from "../deepmap/core";
-import { fillGoalSlots, goalOverviewVM, goalViewKey } from "../deepmap/views";
+import { fillGoalSlots, goalOverviewVM, goalSkeletonEl, goalStripEl, goalStripVM, goalViewKey } from "../deepmap/views";
 import { formatOku, goalAnchor, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
+import { goalCtxOf, goalFactOf, goalImpactStripInput } from "../model/goalImpact";
 import { goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, sameGoal, type GoalField } from "../model/goalForm";
 import type { ImpactResult } from "../model/impact";
 import type { GNode } from "../model/types";
@@ -66,7 +69,11 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
   const err = h("div", { class: "goal-err", role: "alert" });
   const edit = h("div", { class: "goal-edit", attrs: { role: "group", "aria-label": "資産のゴールの前提" } }, fieldsBox, h("div", { class: "goal-btns" }, ok, cancel, reset), ro, err);
   edit.hidden = true;
-  const el = h("div", { class: "goal-wrap" }, view, edit);
+  // 版 6 の地図の帯（アプリの計算の行き先から。3 か月ごとの地図では出さない: 見取り図と今日のカードに出す）
+  const strip = h("div", { class: "goal-imp-strip" });
+  strip.hidden = true;
+  let stripKey = "";
+  const el = h("div", { class: "goal-wrap" }, view, edit, strip);
   let fields: GoalField[] = [];
   const inputs = new Map<GoalKey, HTMLInputElement>();
 
@@ -159,7 +166,7 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
   listenGoalButtons(app);
   return {
     el,
-    update() {
+    update(imp) {
       const root = rootOf(app);
       el.hidden = !root;
       if (!root) return;
@@ -173,6 +180,19 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
       if (!edit.hidden && app.store.readOnly) build();
       goalFocus = open;
       refreshGoalViews(app);
+      const vm = impactStripOf(app, imp);
+      strip.hidden = !vm;
+      if (!vm) stripKey = "";
+      else if (vm.key !== stripKey) {
+        stripKey = vm.key;
+        const was = strip.querySelector("details");
+        const fresh = goalStripEl(vm);
+        // 見取り図の帯と同じ形だが、見取り図の数では埋めない（data-goal-key を外す）
+        delete fresh.dataset.goalKey;
+        fresh.dataset.goalImp = vm.key;
+        if (was) (fresh.querySelector("details") as HTMLDetailsElement).open = (was as HTMLDetailsElement).open;
+        strip.replaceChildren(fresh);
+      }
     },
   };
 }
@@ -238,4 +258,56 @@ export function refreshGoalViews(app: AppContext): void {
     if (app.vm.deep.get()?.analysis() !== a) return;
     fill(true);
   });
+}
+
+// ---------------------------------------------------------------- 版 6 の地図の帯・詳細の欄
+
+/** 計算の結果ごとの番号（帯の鍵） */
+const impIds = new WeakMap<ImpactResult, number>();
+let impNext = 1;
+
+/** 3 か月ごとの地図の見取り図の数がある（版 7: 入口に年月があるか、見取り図の計算がある） */
+function hasDeep(app: AppContext, imp: ImpactResult): boolean {
+  const root = imp.root ? app.store.doc.nodes[imp.root] : undefined;
+  return typeof root?.meta?.anchor === "string" || (imp.likeBasis && !!app.vm.deep.get());
+}
+
+/** 版 6 の地図の見出しの帯（3 か月ごとの地図・行き先の無い地図では null） */
+function impactStripOf(app: AppContext, imp: ImpactResult): ReturnType<typeof goalStripVM> | null {
+  if (!imp.active || hasDeep(app, imp)) return null;
+  const g = goalCtxOf(app.store.doc, imp);
+  if (!g) return null;
+  let id = impIds.get(imp);
+  if (id === undefined) impIds.set(imp, (id = impNext++));
+  const key = `imp${id}|${g.t.key}|${[...g.read.assumed].sort().join(",")}`;
+  const x = goalImpactStripInput(imp, app.store.doc, g, key);
+  return x ? goalStripVM(x) : null;
+}
+
+/** 詳細の欄の「10 億」の 1 行（行き先・途中のカード。数が出せなければ null）。「前提を変える」つき */
+export function goalFactEl(app: AppContext, imp: ImpactResult, id: string): HTMLElement | null {
+  const g = goalCtxOf(app.store.doc, imp);
+  const text = g ? goalFactOf(g.t, imp, app.store.doc, id) : null;
+  if (!g || !text) return null;
+  const name = formatOku(g.t.T).replace(/円$/, "");
+  return h(
+    "li",
+    { class: "goal-fact" },
+    h("b", { class: "goal-fact-k" }, name),
+    " ",
+    text,
+    " ",
+    h("button", { class: "imp-link goal-change", type: "button", title: "資産のゴールの前提を変える", dataset: { fk: "goal-fact" }, onClick: () => openGoalEditor(app) }, "前提を変える"),
+  );
+}
+
+/** 今日のカードの詳細の帯（3 か月ごとの地図: 見取り図と同じ帯。数ができていなければ場所だけ置き、空いた時間に埋める）。版 6 は見出しにあるので null */
+export function goalRootStripEl(app: AppContext, imp: ImpactResult): HTMLElement | null {
+  const ctx = imp.likeBasis ? app.vm.deep.get() : null;
+  if (!ctx) return null;
+  const a = ctx.analysis();
+  const view = goalViewOf(a, false);
+  if (view) return goalStripEl(goalOverviewVM(a, view).strip);
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => refreshGoalViews(app));
+  return goalSkeletonEl();
 }
