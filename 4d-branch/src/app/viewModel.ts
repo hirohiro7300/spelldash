@@ -1668,16 +1668,18 @@ export class ViewModel {
   countImpactUnder(heads: readonly ID[], isOpen: (id: ID) => boolean, stop = Infinity): { count: number; rows: number } {
     const info = this.scopeInfo();
     const seen = new Set<ID>(heads);
-    const queue: ID[] = [];
-    for (const h of heads) if (info.pos.has(h) && isOpen(h)) queue.push(h);
+    // 開いていて先のあるカードの子（先があるかを見るときに作った物をそのまま使う: 子を 2 度作らない）
+    const queue: ID[][] = [];
+    for (const h of heads) if (info.pos.has(h) && isOpen(h)) queue.push(this.impactKids(h, info));
     let count = 0;
     let rows = 0;
     for (let q = 0; q < queue.length && count <= stop; q++) {
-      for (const k of this.impactKids(queue[q]!, info)) {
+      for (const k of queue[q]!) {
         if (seen.has(k)) continue;
         seen.add(k);
         count++;
-        if (isOpen(k) && this.impactKids(k, info).length > 0) queue.push(k);
+        const kk = isOpen(k) ? this.impactKids(k, info) : null;
+        if (kk && kk.length > 0) queue.push(kk);
         else rows++;
       }
     }

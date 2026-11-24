@@ -180,11 +180,16 @@ export class Commands {
     if (!view.length && !docNodes.length) return;
     const collapse = !this.collapsedAll(nodes);
     if (view.length) {
-      if (collapse) this.vm.setImpactOpen([], view);
-      else this.vm.setImpactOpen(view, [], { reveal: true });
+      // 右のパネルの合わせ直し（この先をひらくの枚数を数え直す。書き換えた地図ではたどって数えるので机でも 10 ms ほど）は、開いた所を
+      // 描いた後に（まとめて開くと同じ。1 つ開く・閉じるの押してから描くまでに入れない: bulk の見直しの残り 2）
+      if (!docNodes.length) this.ui.panelAfterPaint = true;
+      const changed = collapse ? this.vm.setImpactOpen([], view) : this.vm.setImpactOpen(view, [], { reveal: true });
+      if (!changed) this.ui.panelAfterPaint = false;
     }
     if (docNodes.length) this.store.transact(collapse ? "折りたたむ" : "展開する", (tx) => docNodes.forEach((id) => tx.updateNode(id, { collapsed: collapse })));
-    if (collapse) this.ui.select(nodes);
+    // 閉じた先に選んでいた物は隠れるので、閉じたカードを選ぶ（もうそれだけを選んでいれば選び直さない: 詳細の欄を作り直さない）
+    const sel = this.ui.selection;
+    if (collapse && !(sel.edges.size === 0 && sel.nodes.size === nodes.length && nodes.every((id) => sel.nodes.has(id)))) this.ui.select(nodes);
   }
 
   /**
