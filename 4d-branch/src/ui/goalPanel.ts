@@ -2,10 +2,14 @@
 // 「ゴール 資産 10 億円・2056 年まで（前提 5 つは仮）［変える］」。変えるで 6 つの欄（目標・今の資産・積立の割合・利回り・事業の伸び・期限）。
 // 入れた物だけを入口の meta.goal に置く（元に戻せる。計算はやり直さない: C_PRESENT だけ）。入れない欄は仮の値で計算する。
 // 閲覧のみのタブでは値を見せるだけ。
-// 帯などの「前提を変える」「入れる」（data-goal-act）もここで受ける。
+// 見取り図の帯・芽の札・今日の欄の 1 行（src/deepmap/views/goal.ts）は、ここで今の前提の数に埋め直す（前提を変えても見取り図は
+// 作り直されないため。数ができていなければ空いた時間に作って埋める）。帯の「前提を変える」「入れる」もここで受ける。
 
 import "../styles/goal.css";
 import type { AppContext } from "../app/context";
+import { whenIdle } from "../app/idle";
+import { goalViewOf, type Analysis } from "../deepmap/core";
+import { fillGoalSlots, goalOverviewVM, goalViewKey } from "../deepmap/views";
 import { formatOku, goalAnchor, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
 import { goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, sameGoal, type GoalField } from "../model/goalForm";
 import type { ImpactResult } from "../model/impact";
@@ -168,6 +172,7 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
       kari.hidden = !row.kari;
       if (!edit.hidden && app.store.readOnly) build();
       goalFocus = open;
+      refreshGoalViews(app);
     },
   };
 }
@@ -195,5 +200,42 @@ function listenGoalButtons(app: AppContext): void {
     ev.preventDefault();
     const f = b.dataset.goalField as GoalKey | undefined;
     openGoalEditor(app, f || undefined);
+  });
+}
+
+/** 見取り図の帯などを埋め直すのを待っている計算 */
+const pending = new WeakSet<Analysis>();
+
+/**
+ * 見取り図の帯・芽の札・注・今日の欄の 1 行を、今の前提の数に埋め直す（鍵が同じ物は触らない）。数ができていなければ
+ * 空いた時間に 1 回作って埋める（起動の最初の絵には入れない）
+ */
+export function refreshGoalViews(app: AppContext): void {
+  if (typeof document === "undefined" || !document.querySelector(".dm-goal[data-goal-key]")) return;
+  const ctx = app.vm.deep.get();
+  if (!ctx) return;
+  const a = ctx.analysis();
+  const fill = (compute: boolean): void => {
+    const view = goalViewOf(a, compute);
+    if (!view) return;
+    // どの場所も今の数なら何もしない（題名の 1 文字などの変更で数の形を作らない）
+    const key = goalViewKey(view);
+    let stale = false;
+    for (const el of document.querySelectorAll<HTMLElement>("[data-goal-key]")) if (el.dataset.goalKey !== key) stale = true;
+    if (!stale) return;
+    // 手の名前は見取り図の行と同じ（文書のカードの題名）
+    fillGoalSlots(document, goalOverviewVM(a, view, { name: (n) => ctx.text().title(n) }));
+  };
+  if (goalViewOf(a, false)) {
+    fill(false);
+    return;
+  }
+  if (pending.has(a)) return;
+  pending.add(a);
+  whenIdle(() => {
+    pending.delete(a);
+    // その間に作り直された（別の計算）なら、次の更新に任せる
+    if (app.vm.deep.get()?.analysis() !== a) return;
+    fill(true);
   });
 }

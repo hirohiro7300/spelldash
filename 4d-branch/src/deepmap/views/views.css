@@ -655,10 +655,11 @@
 }
 .dm-glance-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* 名前の行の右に、資産のゴールの芽の札（無ければ幅 0: src/styles/goal.css）と差の札 */
+  grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas:
-    "name pill"
-    "bar bar";
+    "name seed pill"
+    "bar bar bar";
   align-items: center;
   gap: 2px 8px;
   min-height: 44px;
@@ -782,7 +783,11 @@
     column-gap: 10px;
   }
   .dm-glance-row {
-    grid-template-areas: "name pill bar";
+    /* 芽の札は名前の下（列は増やさない） */
+    grid-template-areas:
+      "name pill bar"
+      "seed pill bar";
+    row-gap: 0;
   }
   .dm-glance-axis-label {
     display: block;

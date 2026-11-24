@@ -13,7 +13,7 @@
 // 文書の形や数を書き換えた後（自分で足したカード・書き換えた見込み）も、見取り図と道は地図の元の数で出す（edited。画面がそう書く）。
 // どれも読まれたときに作り、材料（地図・形と数の版・年収・選んだ手の版）が同じなら前の物を返す（変更のたびには作らない: 作業メモ perf-4）
 
-import { analyze, goalBase, goalOf, overview, textRuntime, type Analysis, type CompiledMap, type GoalBase, type GoalSummary, type Overview, type TextSource } from "../deepmap/core";
+import { analyze, goalBase, goalOf, hasGoalBase, overview, setGoalSource, textRuntime, type Analysis, type CompiledMap, type GoalBase, type GoalSummary, type Overview, type TextSource } from "../deepmap/core";
 import { ym } from "../deepmap/views/format";
 import { F_STUB, ROLE_A } from "../deepmap/core/compile";
 import type { MapData } from "../deepmap/mapData";
@@ -526,6 +526,9 @@ export class DeepState {
     let picked: boolean | null = null;
     let docText: DeepText | null = null;
     let goalMemo: { raw: unknown; a: Analysis; g: DeepGoal } | null = null;
+    let goalSrcFor: Analysis | null = null;
+    // 作ってある物だけ（compute が false）: 設定によらない物がこの計算でできていれば、設定ごとの数を作る（覚えた設定ならそのまま）
+    const goalSrc = (compute: boolean): DeepGoal | null => (compute || hasGoalBase(ctx.analysis()) ? ctx.goal() : null);
     const store = this.store;
     const nodeOf = (i: number): GNode | undefined => {
       const id = ids[i] ?? (i >= 0 && i < map.n ? impactNodeId64(map.key(i)) : undefined);
@@ -539,17 +542,23 @@ export class DeepState {
       edited,
       scenario: sid,
       analysis: () => {
-        if (calc.a) return calc.a;
-        const t0 = performance.now();
-        // 選んだ手も見送った手も無い: 先に描いた見取り図と同じ計算を使う
-        if (isZero(st.arr)) calc.a = plainAnalysis(cm, annual);
-        else {
-          // 先に描いた見取り図が同じ選んだ手で数えていれば、その物（statusAnalysis）
-          calc.a = statusAnalysis(cm, annual, st.arr);
-          // 選んだ手の無い計算は、もう使わないので持ち続けない（10 本ほどの 8 万の列: 見直し perf-6）
-          plainMemo.delete(cm);
+        if (!calc.a) {
+          const t0 = performance.now();
+          // 選んだ手も見送った手も無い: 先に描いた見取り図と同じ計算を使う
+          if (isZero(st.arr)) calc.a = plainAnalysis(cm, annual);
+          else {
+            // 先に描いた見取り図が同じ選んだ手で数えていれば、その物（statusAnalysis）
+            calc.a = statusAnalysis(cm, annual, st.arr);
+            // 選んだ手の無い計算は、もう使わないので持ち続けない（10 本ほどの 8 万の列: 見直し perf-6）
+            plainMemo.delete(cm);
+          }
+          this.timings.analyze = performance.now() - t0;
         }
-        this.timings.analyze = performance.now() - t0;
+        // 画面の形（見取り図の帯・手の詳しい画面・道の終わり）が、この計算から資産のゴールの数を読めるように（この画面に渡す物の数）
+        if (goalSrcFor !== calc.a) {
+          goalSrcFor = calc.a;
+          setGoalSource(calc.a, goalSrc);
+        }
         return calc.a;
       },
       overview: () => {

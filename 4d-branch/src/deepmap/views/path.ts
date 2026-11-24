@@ -513,6 +513,8 @@ function endCard(vm: PathVM): HTMLElement {
     bodyEl(e.body(), vm.provisional),
     h("p", { class: "dm-tl-facts" }, e.facts.map((t, k) => h("span", { class: "dm-seg-t" }, nobr(t), k < e.facts.length - 1 ? "・" : null))),
     e.note ? h("p", { class: "dm-tl-note" }, e.note) : null,
+    // 資産のゴール（3 年後の月の稼ぎがそのまま続くと、期限の年の資産は…）
+    e.goal ? h("p", { class: "dm-tl-goal" }, nobr(e.goal), " ", h("button", { class: "dm-goal-link", attrs: { type: "button", "data-goal-act": "edit" } }, "前提を変える")) : null,
     vm.resetHref ? h("a", { class: "dm-btn", attrs: { href: vm.resetHref } }, vm.resetText) : null,
   );
 }

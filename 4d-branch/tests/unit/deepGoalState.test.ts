@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { rememberMapDoc } from "../../src/app/futureCache";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
-import { goalBase, goalOf } from "../../src/deepmap/core";
+import { goalBase, goalOf, goalViewOf, hasGoalBase } from "../../src/deepmap/core";
 import type { MapData } from "../../src/deepmap/mapData";
 import { buildQuarterDoc } from "../../src/demo/quarterDoc";
 import { DEFAULT_GOAL, goalAnchor, tablesFor } from "../../src/model/goal";
@@ -78,6 +78,31 @@ describe("ctx.goal()（資産のゴールの数）", () => {
     // 元に戻すと、前の設定の数（設定ごとに覚えた物）
     store.undo();
     expect(vm.deep.get()!.goal().summary).toBe(g0.summary);
+  });
+
+  it("画面の形が読む出どころ: 計算ごとに置き、作っていなければ（compute が false）行き先をなめずに null。作ってあれば今の前提の数", () => {
+    const { store, vm } = setup();
+    // ほかのテストで作っていない計算（年収を変える）
+    const r0 = rootOf(store, vm.deep.get()!.root);
+    store.transact("年収", (tx) => tx.updateNode(r0.id, { meta: { ...r0.meta, impact: { ...(r0.meta.impact as object), annual: 410 } } }));
+    const ctx = vm.deep.get()!;
+    expect(ctx.annual).toBe(410);
+    const a = ctx.analysis();
+    expect(hasGoalBase(a)).toBe(false);
+    expect(goalViewOf(a, false)).toBeNull();
+    expect(hasGoalBase(a)).toBe(false);
+    // 開いた画面（手の詳しい画面・道の終わり）は作る: ctx.goal() と同じ物
+    const g = goalViewOf(a, true);
+    expect(g).toBe(ctx.goal());
+    expect(goalViewOf(a, false)).toBe(g);
+    // 前提を変えると、同じ計算のまま、作ってある物から今の前提の数（見取り図の帯を埋め直す数）
+    const r = rootOf(store, ctx.root);
+    store.transact("10 億円の前提を変える", (tx) => tx.updateNode(ctx.root, { meta: { ...r.meta, goal: { v: 1, assets: 5000 } } }));
+    expect(vm.deep.get()!.analysis()).toBe(a);
+    const g1 = goalViewOf(a, false)!;
+    expect(g1).not.toBe(g);
+    expect(g1.read.cfg.assets).toBe(5000);
+    expect(g1.base).toBe(g!.base);
   });
 
   it("空いた時間の先回り: 計算・見取り図の数の後に、goalBase と今の設定の数を 1 歩ずつ作る", () => {

@@ -3,7 +3,7 @@
 //         地図の鍵・手の種類の鍵・結果の鍵（英字の名前）は画面に出さない。
 
 import { IMPACT_FILL, IMPACT_INK, impactBin, MINUS } from "../../model/impactFormat";
-import { factLabel, ymText, type DeltaBasis, type MoveCounts } from "../core";
+import { CHECKED_ANNUALS, factLabel, ymText, type DeltaBasis, type MoveCounts } from "../core";
 import type { MapData } from "../mapData";
 
 /** 3 桁ごとに区切った整数（「79,092」） */
@@ -226,6 +226,11 @@ export function baseText(b: DeltaBasis): string {
   return b === "q" ? "比べる元: この 3 か月は今のまま（差は、その後を標準の選び方で続けた見積もりどうしで比べる）" : "比べる元: この 3 か月は今のまま、その後は一番良い選び方";
 }
 /** 3 年の合計の幅の読み方（見取り図の最初・手の詳しい画面の見出し。作業メモ user-1） */
+/** 地図の深さを確かめた年収の幅の 1 文（見方の注と、資産のゴールの帯の注。外の年収のとき） */
+export function annualDepthNote(endYm: string): string {
+  return `地図の深さは年収 ${num(CHECKED_ANNUALS[0])}〜${num(CHECKED_ANNUALS[1])} 万円で確かめた: この間の年収なら、どの今日の手の一番良い道も 3 か月ごとに ${endYm}まで読める。外の年収では、一番良い道が途中から標準の続きの見積もりになることがある`;
+}
+
 export const FRAME_TEXT = "3 年後の幅は、この手より、この先の分かれ道での選び方と運で決まる";
 
 /** 見込みの割合を「名前 20%」でつなぐ（「全部可 20%、SpellDash だけ 45%、どちらも不可 35%」。名前の中の「・」と混ざらないように「、」。作業メモ reader-5） */

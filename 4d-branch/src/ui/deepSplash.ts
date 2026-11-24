@@ -6,6 +6,7 @@
 
 import "../deepmap/views/views.css";
 import "../styles/deep.css";
+import "../styles/goal.css";
 import { deepText, plainAnalysis, plainOverview, statusAnalysis } from "../app/deepState";
 import type { MapData } from "../deepmap/mapData";
 import { overviewVM, renderOverview, ym } from "../deepmap/views";

@@ -11,8 +11,9 @@
 
 import "../styles/tokens.css";
 import "../deepmap/views/views.css";
+import "../styles/goal.css";
 import "./preview.css";
-import { analyze, CHECKED_ANNUALS, compileMap, overview, type Analysis, type CompiledMap, type Overview, type TextSource } from "../deepmap/core";
+import { analyze, CHECKED_ANNUALS, compileMap, goalBase, goalOf, overview, setGoalSource, type Analysis, type CompiledMap, type GoalView, type Overview, type TextSource } from "../deepmap/core";
 import { clear, h } from "../deepmap/views/dom";
 import {
   findFirstMove,
@@ -34,6 +35,7 @@ import {
   type PageHandle,
   type PathPageHandle,
 } from "../deepmap/views";
+import { goalAnchor, goalConfigOf, tablesFor } from "../model/goal";
 import { parseAnnual } from "../model/impactText";
 import { composedText, composeStats, textSkew, type ComposeStats } from "./composeText";
 import { LoadError, loadMap, readEmbedded } from "./load";
@@ -109,6 +111,16 @@ function statusText(cm: CompiledMap): string {
 
 function compute(cm: CompiledMap, annual: number): Pick<State, "a" | "ov" | "text"> {
   const a = analyze(cm, annual);
+  // 資産のゴールは仮の前提だけ（試し版は前提を入れる所が無い。どれも（仮）と出る）
+  let goal: GoalView | null = null;
+  setGoalSource(a, () => {
+    if (!goal) {
+      const read = goalConfigOf(null);
+      const base = goalBase(a);
+      goal = { read, base, summary: goalOf(base, tablesFor(read.cfg, goalAnchor(cm.map.header.anchor))) };
+    }
+    return goal;
+  });
   // 本文にもこの年収の計算の芯の答え（おすすめ・数）を渡す（画面と本文で同じおすすめ。作業メモ truth-1）
   return { a, ov: overview(a), text: textSourceFor(cm.map, annual, a) };
 }

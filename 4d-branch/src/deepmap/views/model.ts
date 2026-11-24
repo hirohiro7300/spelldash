@@ -7,7 +7,6 @@
 import {
   altStubCounts,
   assertFresh,
-  CHECKED_ANNUALS,
   destClassOf,
   destinations,
   destLabel,
@@ -17,6 +16,7 @@ import {
   F_SUM,
   fanData,
   forkStrip,
+  goalViewOf,
   groupLabel,
   keepFan,
   kindKey,
@@ -38,6 +38,7 @@ import {
   type Dist,
   type EndsFrom,
   type FanPoint,
+  type GoalView,
   type MoveSummary,
   type Overview,
   type PathRow,
@@ -45,7 +46,9 @@ import {
   type PlanWhen,
   type TextSource,
 } from "../core";
+import { goalEndText, goalMoveVM, goalOverviewVM, type GoalMoveVM, type GoalOverviewVM, type GoalSeedVM } from "./goal";
 import {
+  annualDepthNote,
   baseText,
   basisLine,
   basisNote,
@@ -183,6 +186,8 @@ export interface GlanceRowVM {
   delta: PillVM | null;
   /** 3 年の合計の 10%・50%・90%（万円）。出せなければ null */
   range: { p10: number; p50: number; p90: number } | null;
+  /** 資産のゴールへの芽の札（芽の無い手・数がまだ無いときは null） */
+  seed: GoalSeedVM | null;
   aria: string;
 }
 
@@ -240,6 +245,11 @@ export interface OverviewVM {
   chain: ChainVM | null;
   /** 今日から真ん中あたりの道 */
   median: ChainVM | null;
+  /**
+   * 資産のゴール（帯・芽の札・注・今日の欄の 1 行）。数がまだ無ければ null（場所だけ置き、アプリが空いた時間に埋める。
+   * 出どころの無い画面でも同じ）
+   */
+  goal: GoalOverviewVM | null;
 }
 
 /** 分布の 10〜90% と真ん中の言葉 */
@@ -422,7 +432,8 @@ function medianOf(a: Analysis, x: number, where: string, prefix: string, ends: E
 }
 
 /** 「10 の手をひと目で」（共通の万円の軸に、どの手も 10〜90% の棒と真ん中の線。ずっと今のままの線） */
-function glanceOf(ov: Overview, rows: readonly OverviewRowVM[], basis: DeltaBasis | null): GlanceVM {
+function glanceOf(ov: Overview, rows: readonly OverviewRowVM[], basis: DeltaBasis | null, goal: GoalOverviewVM | null): GlanceVM {
+  const seeds = new Map((goal?.seeds ?? []).map((x) => [x.node, x] as const));
   let lo = Infinity;
   let hi = -Infinity;
   for (const r of rows) {
@@ -450,12 +461,14 @@ function glanceOf(ov: Overview, rows: readonly OverviewRowVM[], basis: DeltaBasi
     isPi: r.isPi,
     delta: r.delta,
     range: r.range,
+    seed: seeds.get(r.node) ?? null,
     aria: [
       r.name,
       r.delta ? `${r.delta.label} ${r.delta.text}` : null,
       r.range ? `3 年の合計 ${manRange(r.range.p10, r.range.p90)}（10〜90%）・真ん中 ${man(r.range.p50)}` : null,
       ov.vSQ !== null ? `ずっと今のまま ${man(ov.vSQ)}` : null,
       "押すとこの手の詳しい画面",
+      seeds.get(r.node)?.aria ?? null,
     ]
       .filter((x): x is string => !!x)
       .join("。"),
@@ -474,11 +487,21 @@ function glanceOf(ov: Overview, rows: readonly OverviewRowVM[], basis: DeltaBasi
   };
 }
 
-export function overviewVM(a: Analysis, ov: Overview = overview(a), opts: { name?: MoveNameOf } = {}): OverviewVM {
+/**
+ * 資産のゴールの数の出どころ（opts.goal: 渡した物。undefined なら計算ごとの出どころの、作ってある物だけ: 行き先をなめない）
+ */
+function goalViewFor(a: Analysis, given: GoalView | null | undefined, compute: boolean): GoalView | null {
+  return given !== undefined ? given : goalViewOf(a, compute);
+}
+
+export function overviewVM(a: Analysis, ov: Overview = overview(a), opts: { name?: MoveNameOf; goal?: GoalView | null } = {}): OverviewVM {
   assertFresh(a);
   const map = a.cm.map;
   const endYm = ym(map, a.cm.H);
   const rows = ov.moves.map((mv) => overviewRowVM(a, ov, mv, opts.name));
+  const gv = goalViewFor(a, opts.goal, false);
+  const names = new Map(rows.map((r) => [r.node, r.name] as const));
+  const goal = gv ? goalOverviewVM(a, gv, { name: (n) => names.get(n) }) : null;
   // 良い順（表示した差の大きい順。同じなら地図の値、次に並べる順）
   const value = new Map(ov.moves.map((m) => [m.node, m.value] as const));
   const order = new Map(ov.moves.map((m) => [m.node, m.k] as const));
@@ -511,7 +534,7 @@ export function overviewVM(a: Analysis, ov: Overview = overview(a), opts: { name
     lead,
     frame: FRAME_TEXT,
     basisLine: basis ? basisLine(basis) : null,
-    glance: glanceOf(ov, rows, basis),
+    glance: glanceOf(ov, rows, basis, goal),
     headline,
     keep,
     basis: ov.basis.delta,
@@ -520,6 +543,7 @@ export function overviewVM(a: Analysis, ov: Overview = overview(a), opts: { name
     worthNoise: ov.worthNoise ?? WORTH_NOISE,
     endYm,
     ...chainsOf(a, 0, "今日からの道", "今日から"),
+    goal,
   };
 }
 
@@ -851,6 +875,8 @@ export interface MoveDetailVM {
   strip: StripVM;
   plan: PlanRowVM[];
   dest: DestVM;
+  /** 資産のゴールの 1 行（この手の行き先の期限の資産・芽・一番近い行き先。数が無ければ null） */
+  goal: GoalMoveVM | null;
 }
 
 /** 今日の手 f（並べる順の鍵から）を探す。無ければ −1 */
@@ -878,7 +904,7 @@ function meanSplitText(ov: Overview, mv: MoveSummary): string | null {
   return `ずっと今のままより平均 ${manDelta(total)} ＝ この手の分 ${manDelta(own)}${restText} ＋ 3 か月待っても出る分 ${manDelta(later)}`;
 }
 
-export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a), opts: { name?: MoveNameOf } = {}): MoveDetailVM {
+export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a), opts: { name?: MoveNameOf; goal?: GoalView | null } = {}): MoveDetailVM {
   assertFresh(a);
   const cm = a.cm;
   const map = cm.map;
@@ -929,7 +955,14 @@ export function moveDetailVM(a: Analysis, f: number, ov: Overview = overview(a),
     strip: stripVM(a, f),
     plan: planVM(a, f),
     dest: destVM(a, f),
+    goal: goalOf(a, opts.goal, (gv) => goalMoveVM(a, gv, f)),
   };
+}
+
+/** 資産のゴールの数から作る物（数が無ければ null。画面を開いたときなので、作っていなければ作る） */
+function goalOf<T>(a: Analysis, given: GoalView | null | undefined, make: (gv: GoalView) => T | null): T | null {
+  const gv = goalViewFor(a, given, true);
+  return gv ? make(gv) : null;
 }
 
 // ------------------------------------------------------------ 道の画面（§5.4・§5.5）
@@ -1109,6 +1142,8 @@ export interface PathEndVM {
   summary: boolean;
   /** まとめた行き先の注記（作業メモ user-20） */
   note: string | null;
+  /** 資産のゴールの 1 文（3 年後の月の稼ぎがそのまま続くと…。数が無ければ null） */
+  goal: string | null;
 }
 
 export interface PathStartVM {
@@ -1384,7 +1419,7 @@ export function quietTitle(move: string, count: number, label: string | null): s
 }
 
 /** 道の画面の形。node は道を決めたカード（そこから下は一番ありそうな道）。from は道の始め（ふつう今日） */
-export function pathVM(a: Analysis, node: number, text: TextSource, opts: { from?: number } = {}): PathVM {
+export function pathVM(a: Analysis, node: number, text: TextSource, opts: { from?: number; goal?: GoalView | null } = {}): PathVM {
   assertFresh(a);
   const cm = a.cm;
   const map = cm.map;
@@ -1597,6 +1632,7 @@ export function pathVM(a: Analysis, node: number, text: TextSource, opts: { from
       : [`3 年の合計 ${man(total)}${vs ? `（${vs}）` : ""}`, `この道の見込み ${pct1(pv.p)}`],
     summary: pv.summary,
     note: pv.summary ? "この先は標準の続きの平均（3 年の合計と数字の行は、標準の選び方で続けた多くの道の平均。1 本の道の数ではない）" : null,
+    goal: goalOf(a, opts.goal, (gv) => goalEndText(a, gv, endNode)),
   };
   // 見出しの線: この道の月の稼ぎ（まとめた手の後は見積もり）と、ずっと今のまま（分かれがあれば真ん中）
   const sparkPath: PathSparkVM["path"] = [{ m: cm.month[start]!, v: Wrr[start]!, est: false }];
@@ -1690,7 +1726,7 @@ export function notesVM(a: Analysis, basis: DeltaBasis, worthAvailable: boolean,
       ? `${WORTH_LABEL}: 一番良い選び方どうしで、その種類の手を 3 年使える場合と、3 年ずっと使えない場合を比べた 3 年の稼ぎの差（使えないと減る分）。${man(noise)}未満（マイナスも）は見積もりの誤差の範囲なので「${WORTH_NONE}」（使えなくても、ほかの手で足りる）。「今やる vs 3 か月待つ」がマイナスでも、その種類を後で使う道があれば値打ちはある`
       : `「${WORTH_LABEL}」は、計算の前提を直した地図で入る（この地図にはまだ無い）`,
     "手の詳しい画面の「ずっと今のままより平均」の内訳: この手の分は「今やる vs 3 か月待つ」と同じ見積もり同士の差。その後の選び直しの分は、その後に一番良い選び方をすると標準の選び方の見積もりより増える分の、この手の後と 3 か月待った後の違い。3 か月待っても出る分は、この 3 か月は今のままで、その後に一番良い選び方をしても出る分",
-    `地図の深さは年収 ${num(CHECKED_ANNUALS[0])}〜${num(CHECKED_ANNUALS[1])} 万円で確かめた: この間の年収なら、どの今日の手の一番良い道も 3 か月ごとに ${yEnd}まで読める。外の年収では、一番良い道が途中から標準の続きの見積もりになることがある`,
+    annualDepthNote(yEnd),
     "一番ありそうな道: 3 か月ごとに一番良い手を選び、どの分かれでも見込みの一番大きい結果をたどった 1 本の道。見込みは、その道のとおりになる見込み。見込みの一番大きい結果は多くが『変わらない』方なので、3 年の合計は行き先の中で低い側に寄りやすい（道の画面に、行き先の中の位置を出している。真ん中あたりの道も選べる）",
     `道の画面: 行の年月は手を選ぶ月で、手はその次の月から 3 か月。お金の行の年月はその結果の月で、「月の稼ぎ」はその月の 1 か月の稼ぎ（かっこの中は前の行との差）、「ここまでの稼ぎ」は ${y0}からその月までの合計で、${yEnd}で 3 年の合計になる`,
     "道の画面のほかの結果・ほかの手: 押すと、そこから先を一番ありそうな道でたどり直す。結果の差はこの道の結果との 3 年の合計の差（その結果の後は一番良い選び方）、手の差はこの道の手との 3 年の合計の差。先を広げていない手（標準の続きの見積もり）に切り替えると、その先は多くの道の平均になる",

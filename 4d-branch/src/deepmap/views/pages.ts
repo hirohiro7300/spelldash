@@ -63,7 +63,15 @@ export function renderMoveDetail(vm: MoveDetailVM, opts: MoveDetailOpts): PageHa
         h("div", { class: "dm-move-pills" }, r.delta ? pill(r.delta) : null, r.worth ? pill(r.worth) : null),
         vm.basisLine ? h("p", { class: "dm-sub" }, vm.basisLine) : null,
         h("p", { class: "dm-frame" }, vm.frame),
-        h("ul", { class: "dm-facts" }, vm.facts.map((t) => h("li", null, nobr(t)))),
+        h(
+          "ul",
+          { class: "dm-facts" },
+          vm.facts.map((t) => h("li", null, nobr(t))),
+          // 資産のゴール（この手の行き先の期限の資産・芽・一番近い行き先と、その道へ）
+          vm.goal
+            ? h("li", { class: "dm-goal-fact" }, h("b", null, `${vm.goal.name}: `), nobr(vm.goal.text), vm.goal.href ? h("a", { class: "dm-goal-link", attrs: { href: vm.goal.href } }, vm.goal.linkText) : null)
+            : null,
+        ),
         decNote ? h("p", { class: "dm-sub" }, decNote) : null,
         chainLinks([vm.chain, vm.median], true),
       ),

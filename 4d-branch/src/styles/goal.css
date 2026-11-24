@@ -1,5 +1,6 @@
 /*
- * 資産のゴール（「資産 10 億円」）の見た目: 前提の欄（src/ui/goalPanel.ts）。色はアプリの名前（tokens.css）から作った --goal-* だけを使う。
+ * 資産のゴール（「資産 10 億円」）の見た目: 見取り図の帯（src/deepmap/views/goal.ts）・芽の札・手の詳しい画面と道の終わりの 1 行・
+ * 前提の欄（src/ui/goalPanel.ts）。色はアプリの名前（tokens.css）から作った --goal-* だけを使う。
  * 狭い画面（390px）が先: 3 つの数は 3 列のまま（1 つ約 115px）、前提の行は 1 行で「…」（押すと全文）、押す所は 44px 以上。
  * アプリはダーク基調。明るい見た目（:root[data-theme="light"]）の色も同じ名前で用意しておく。
  */
@@ -23,6 +24,324 @@
   --goal-track: rgba(0, 0, 0, 0.07);
   --goal-grey: #5b6474;
   --goal-grey-soft: rgba(0, 0, 0, 0.05);
+}
+
+/* ------------------------------------------------------------ 見取り図の帯 */
+.dm-goal {
+  min-width: 0;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--goal-gold-line);
+  background: linear-gradient(0deg, var(--goal-gold-soft), var(--goal-gold-soft)), var(--bg-panel);
+}
+/* 数ができる前（たたんだ帯と同じ高さ: 後で埋めても下が動かない） */
+.dm-goal.is-wait {
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  padding: 0 14px;
+}
+.dm-goal-wait {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dm-goal-box > summary {
+  list-style: none;
+}
+.dm-goal-box > summary::-webkit-details-marker {
+  display: none;
+}
+.dm-goal-sum {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head more"
+    "bar text";
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--r-lg);
+  cursor: pointer;
+}
+.dm-goal-sum:hover {
+  background: var(--bg-hover);
+}
+.dm-goal-sum:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
+.dm-goal-head {
+  grid-area: head;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-1);
+}
+.dm-goal-head b {
+  margin-right: 0.45em;
+  color: var(--goal-gold-ink);
+  font-weight: 720;
+}
+.dm-goal-more {
+  grid-area: more;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+.dm-goal-more::after {
+  content: "くわしく ▾";
+}
+.dm-goal-box[open] .dm-goal-more::after {
+  content: "たたむ ▴";
+}
+/* 棒: 0〜ゴール（直線）。真ん中まで塗り、10〜90% は薄い帯。3 年の万円の軸とは別の物 */
+.dm-goal-bar {
+  grid-area: bar;
+  position: relative;
+  height: 8px;
+  min-width: 60px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--goal-track);
+}
+.dm-goal-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: block;
+}
+.dm-goal-band {
+  background: var(--goal-band);
+}
+.dm-goal-fill {
+  left: 0;
+  min-width: 2px;
+  border-radius: 4px;
+  background: var(--goal-gold);
+}
+.dm-goal-bartext {
+  grid-area: text;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dm-goal-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 12px 12px;
+}
+.dm-goal-done {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--goal-gold-ink);
+}
+/* 3 つの数（どの幅でも 3 列） */
+.dm-goal-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.dm-goal-tile {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 8px 9px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-2);
+  background: var(--bg-panel-2);
+}
+.dm-goal-tile-label {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+.dm-goal-tile-value {
+  font-size: 20px;
+  font-weight: 720;
+  line-height: 1.2;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+/* 長い言葉の数（「80 年先でも届かない」）は小さく */
+.dm-goal-tile-value.is-long {
+  font-size: 15px;
+}
+.dm-goal-tile-sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+.dm-goal-levers {
+  display: grid;
+  gap: 4px;
+}
+.dm-goal-levers-head {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-1);
+}
+.dm-goal-levers ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0 0 0 1.1em;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.dm-goal-frame {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 3px solid var(--goal-gold-line);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.dm-goal-premise {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.dm-goal-basis,
+.dm-goal-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-3);
+}
+.dm-goal-nudge {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  background: var(--goal-gold-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--goal-gold-ink);
+}
+/* 「［前提を変える］」「［入れる］」「［その道を見る］」 */
+.dm-goal-link {
+  display: inline;
+  padding: 2px 2px;
+  margin: -2px 0;
+  border: 0;
+  background: none;
+  color: var(--accent-2);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dm-goal-link::before {
+  content: "［";
+  color: var(--text-3);
+  font-weight: 400;
+}
+.dm-goal-link::after {
+  content: "］";
+  color: var(--text-3);
+  font-weight: 400;
+}
+.dm-goal-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@container dm (max-width: 687.98px) {
+  /* 前提の行は 1 行で「…」（押すと全文） */
+  .dm-goal-premise:not(.is-open) .dm-goal-premise-t {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .dm-goal-tile {
+    padding: 7px 6px 8px;
+  }
+}
+
+/* ------------------------------------------------------------ 「10 の手をひと目で」の芽の札 */
+.dm-goal-seed {
+  grid-area: seed;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.dm-goal-seed:empty {
+  display: none;
+}
+.dm-goal-seed.is-seed {
+  color: var(--goal-gold-ink);
+  background: var(--goal-gold-soft);
+}
+.dm-goal-seed.is-seed::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--goal-gold);
+}
+.dm-goal-seed.is-choice {
+  color: var(--goal-grey);
+  background: var(--goal-grey-soft);
+}
+@container dm (min-width: 688px) {
+  .dm-goal-seed {
+    justify-self: start;
+    height: 16px;
+    margin-top: -2px;
+  }
+}
+
+.dm-goal-seednote:empty {
+  display: none;
+}
+
+/* ------------------------------------------------------------ 今日の欄・手の詳しい画面・道の終わり */
+.dm-goal-today {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.dm-goal-today[hidden] {
+  display: none;
+}
+.dm-goal-fact b {
+  color: var(--goal-gold-ink);
+}
+.dm-tl-goal {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  border-left: 3px solid var(--goal-gold-line);
+  background: var(--goal-gold-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
 }
 
 /* ------------------------------------------------------------ 前提の欄（概要の見出し・年収の下） */

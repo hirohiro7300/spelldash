@@ -5,12 +5,13 @@
 //                          設定ごとに覚える（4 つまで）。年収を変えたときだけ goalBase から作り直す
 //   goalInputAt(a, i)      カード 1 枚の 3 つの数（行き先は給与と事業に分ける。途中のカードは平均で、内訳なし）
 //   goalFrom(a, x, ends, t) 途中のカードの先の行き先（endsFrom の答えを使い回す）
+//   setGoalSource / goalViewOf  計算ごとの数の出どころ（アプリが置き、画面の形 src/deepmap/views/goal.ts が読む）
 //
 // 行き先の 3 つの数: T3 = 今日からそこまで + そこから 36 か月目までの稼ぎ（acc + V）、Rsal = 月給 × 給与の倍率、
 // Rbiz = 広告運用・独立 + SpellDash（3 年後の月の稼ぎ。Rsal + Rbiz = Wrr）。資産は 3 つの 1 次式で、係数はどれも 0 以上なので、
 // 期限の資産が一番大きい行き先も、要る伸びが一番小さい行き先も、3 つの数のパレート境界の上にある（境界だけ持てば足りる）。
 
-import { assetsAtBy, goalLeaf, growthNeeded, reachYearOf, savingNeeded, SEED_BIZ, type GoalInput, type GoalTables } from "../../model/goal";
+import { assetsAtBy, goalLeaf, growthNeeded, reachYearOf, savingNeeded, SEED_BIZ, type GoalInput, type GoalRead, type GoalTables } from "../../model/goal";
 import { F_SUM, ROLE_A, type CompiledMap } from "./compile";
 import type { Analysis } from "./passes";
 import type { EndsFrom } from "./path";
@@ -187,6 +188,36 @@ export function goalBase(a: Analysis): GoalBase {
   };
   bases.set(a, out);
   return out;
+}
+
+/** 設定によらない物を、この計算でもう作ってある（作っていなければ、画面は行き先をなめずに「数えています」を出す） */
+export function hasGoalBase(a: Analysis): boolean {
+  return bases.has(a);
+}
+
+/** 画面が読む資産のゴールの数（設定と、設定によらない物・設定ごとの数） */
+export interface GoalView {
+  readonly read: GoalRead;
+  readonly base: GoalBase;
+  readonly summary: GoalSummary;
+}
+
+/**
+ * 計算ごとの、資産のゴールの数の出どころ（アプリは文書の入口の meta.goal を読む。src/app/deepState.ts）。
+ * compute が false なら、作ってある物だけを返す（無ければ null: 行き先をなめない。画面は空いた時間に埋める）
+ */
+export type GoalSource = (compute: boolean) => GoalView | null;
+
+const sources = new WeakMap<Analysis, GoalSource>();
+
+/** 計算 a の資産のゴールの数の出どころを置く（同じ計算に置き直せば、後の物が使われる） */
+export function setGoalSource(a: Analysis, src: GoalSource): void {
+  sources.set(a, src);
+}
+
+/** 計算 a の資産のゴールの数（出どころが無い・compute が false で作っていなければ null） */
+export function goalViewOf(a: Analysis, compute: boolean): GoalView | null {
+  return sources.get(a)?.(compute) ?? null;
 }
 
 /** 一番良い行き先（境界の中で） */

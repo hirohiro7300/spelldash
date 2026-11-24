@@ -1,5 +1,5 @@
 // 「3 年の見取り図」（設計: 作業メモ SPEC v1 §5.1。作業メモ user-1・user-3・user-4・user-13・truth-2・truth-4・truth-18）
-// 上から: 見出しと読み方（3 年の幅は、この手より、この先の選び方と運で決まる）→「10 の手をひと目で」（共通の万円の軸に、
+// 上から: 見出しと読み方（3 年の幅は、この手より、この先の選び方と運で決まる）→ 資産のゴールの帯（src/deepmap/views/goal.ts）→「10 の手をひと目で」（共通の万円の軸に、
 // どの手も 3 年の合計の 10〜90% の棒と真ん中の線・ずっと今のままの点線。1 行 44px で、スマホの最初の画面に 10 行が入る）→
 // 段の色の見本と比べる元 → 今日の手ごとのカード（良い順）→ 今日から一番ありそうな道・真ん中あたりの道。
 // カードの中は起きる順: その手（名前・2 つの差）→ その手で分かること（3 か月後）→ この先の分かれ道（3 か月ごとの小さな帯と数）→
@@ -7,6 +7,7 @@
 // 狭い画面ではカードを縦に積み、判断・行き先の数の 1 行は手の詳しい画面にだけ出す（カードを短く）。広い画面では表のように 4 列に並べる。
 
 import { h, nobr, type Child } from "./dom";
+import { goalSeedEl, goalSkeletonEl, goalStripEl, type GoalOverviewVM } from "./goal";
 import { num } from "./format";
 import type { ChainVM, GlanceVM, OverviewRowVM, OverviewVM } from "./model";
 import { distBar, miniStrip, pill, pillValue, scaleLegend, splitBar } from "./parts";
@@ -97,7 +98,7 @@ function at(g: GlanceVM, v: number): string {
 }
 
 /** 「10 の手をひと目で」: 1 行 = 名前・今やる vs 3 か月待つ・共通の軸の 3 年の合計の棒（10〜90%・真ん中）（作業メモ user-3） */
-function glanceEl(g: GlanceVM, memo?: OverviewMemo, next: Map<string, Element> = new Map()): HTMLElement {
+function glanceEl(g: GlanceVM, goal: GoalOverviewVM | null, memo?: OverviewMemo, next: Map<string, Element> = new Map()): HTMLElement {
   const axis = h("div", { class: "dm-glance-axis", attrs: { "aria-hidden": "true" } });
   const ticks = h("span", { class: "dm-glance-ticks" });
   g.ticks.forEach((t, k) => ticks.append(h("span", { class: k === 0 ? "is-first" : k === g.ticks.length - 1 ? "is-last" : "", style: { left: at(g, t) } }, num(t))));
@@ -117,7 +118,8 @@ function glanceEl(g: GlanceVM, memo?: OverviewMemo, next: Map<string, Element> =
     : null;
   const list = h("ol", { class: "dm-glance-list" });
   const axisKey = JSON.stringify([g.lo, g.hi, g.ticks, g.keep]);
-  for (const r of g.rows) list.append(reuse(memo, next, `g${axisKey}${JSON.stringify(r)}`, () => glanceItem(g, r)));
+  const gk = goal?.key ?? "";
+  for (const r of g.rows) list.append(reuse(memo, next, `g${axisKey}${gk}${JSON.stringify(r)}`, () => glanceItem(g, r, gk)));
   return h(
     "section",
     { class: "dm-glance", attrs: { "aria-labelledby": "dm-glance-h" } },
@@ -126,11 +128,13 @@ function glanceEl(g: GlanceVM, memo?: OverviewMemo, next: Map<string, Element> =
     list,
     legend,
     g.note ? h("p", { class: "dm-glance-note" }, g.note) : null,
+    // 芽とは何か（資産のゴールの数ができたら埋める）
+    h("p", { class: "dm-glance-note dm-goal-seednote", dataset: { goalKey: gk } }, goal?.seedNote ?? ""),
   );
 }
 
 /** 「10 の手をひと目で」の 1 行 */
-function glanceItem(g: GlanceVM, r: GlanceVM["rows"][number]): HTMLLIElement {
+function glanceItem(g: GlanceVM, r: GlanceVM["rows"][number], goalKey: string): HTMLLIElement {
   const bar = h("span", { class: "dm-glance-bar", attrs: { "aria-hidden": "true" } });
   for (const t of g.ticks) bar.append(h("i", { class: "dm-glance-grid", style: { left: at(g, t) } }));
   if (g.keep !== null) bar.append(h("i", { class: "dm-glance-keep", style: { left: at(g, g.keep) } }));
@@ -149,6 +153,7 @@ function glanceItem(g: GlanceVM, r: GlanceVM["rows"][number]): HTMLLIElement {
       { class: `dm-glance-row${r.isPi ? " is-pi" : ""}${r.isBase ? " is-base" : ""}`, attrs: { href: r.href, "aria-label": r.aria } },
       h("span", { class: "dm-glance-name" }, r.name),
       dp ? h("span", { class: "dm-glance-pill" }, pillValue(dp)) : h("span", { class: "dm-glance-pill is-none" }, "差なし"),
+      goalSeedEl(r.node, r.seed, goalKey),
       bar,
     ),
   );
@@ -199,13 +204,22 @@ export function renderOverview(vm: OverviewVM, memo?: OverviewMemo): HTMLElement
       h("p", { class: "dm-lead" }, nobr(vm.lead)),
       h("p", { class: "dm-frame" }, vm.frame),
     ),
-    glanceEl(vm.glance, memo, next),
+    vm.goal ? goalStripEl(vm.goal.strip) : goalSkeletonEl(),
+    glanceEl(vm.glance, vm.goal, memo, next),
     h("div", { class: "dm-overview-tools" }, scaleLegend("カードの棒の色: ずっと今のままとの 3 年の合計の差（万円）")),
     keep,
     h("h3", { class: "dm-h3 dm-cards-h" }, `${num(vm.rows.length)} の手のくわしい見取り図（良い順）`),
     cols,
     list,
-    vm.headline || vm.chain || vm.median ? h("div", { class: "dm-today" }, vm.headline ? h("p", { class: "dm-headline" }, nobr(vm.headline)) : null, chainLinks([vm.chain, vm.median])) : null,
+    vm.headline || vm.chain || vm.median
+      ? h(
+          "div",
+          { class: "dm-today" },
+          vm.headline ? h("p", { class: "dm-headline" }, nobr(vm.headline)) : null,
+          h("p", { class: "dm-goal-today", attrs: { hidden: !vm.goal?.today }, dataset: { goalKey: vm.goal?.key ?? "" } }, vm.goal?.today ? nobr(vm.goal.today) : null),
+          chainLinks([vm.chain, vm.median]),
+        )
+      : null,
   );
   if (memo) memo.prev = next;
   return el;
