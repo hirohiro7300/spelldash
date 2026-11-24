@@ -33,6 +33,7 @@ import { ACCOUNT_NEWER_BLOCKED, accountNewerBanner, showNewerScreen } from "../u
 import { Commands } from "./commands";
 import type { AppContext, LoadOpts, ReplaceOpts } from "./context";
 import { editLocked } from "./editLock";
+import { idleSteps } from "./idle";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
 import type { FutureStats } from "../demo/futureBundle";
@@ -113,6 +114,7 @@ export class App implements AppContext {
   onBackupsChanged: () => void = () => undefined;
   focusSearch: () => void = () => undefined;
   focusInspectorTitle: () => void = () => undefined;
+  prewarmInspector: () => boolean = () => true;
   focusEdgeCondition: () => void = () => undefined;
   revealInList: (id: ID) => void = () => undefined;
   listIds: () => ID[] = () => [];
@@ -414,6 +416,10 @@ export class App implements AppContext {
       // ノードの ID → 地図の番号の表と、文章の組み立ての下ごしらえ
       c.indexOf(c.idOf(0));
       c.text().card(0);
+      // ノードの詳細の入れ物を先に作り、1 度配置しておく（起動の後の初めてのカードを選ぶが、机で 42〜56 ms と予算 30 ms を超えていた。
+      // 2 回目からは取っておいた入れ物を使って 25 ms ほど: P4 の見直し speed-select-desktop-edge）。作る・中身を合わせる・配置するの 3 歩に分ける。
+      // 見込みを数え終えてから（詳細の中身は見込みを読む。数え終える前に合わせると、その場で全部を数える 1 つの長い仕事になる）
+      this.vm.warmForecast(() => idleSteps(() => this.prewarmInspector()));
     };
     if (ric) ric(warm, { timeout: 3000 });
     else setTimeout(warm, 1500);

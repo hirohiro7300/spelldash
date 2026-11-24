@@ -269,12 +269,14 @@ function drawCompact(ctx: CanvasRenderingContext2D, n: GNode, left: number, top:
     if (rx1 - rx0 >= 16 * s) drawRisk(ctx, rx0, y0 + ph / 2 - 2 * s, rx1 - rx0, 4 * s, c.risk, a, 2 * s);
   }
   if (o.editing) return;
-  // 2 行目: 62% 以上はタイトル 2 行、それより小さければ短い名前 1 行（45% 未満は少し小さく）
+  // 2 行目: 62% 以上はタイトル 2 行、それより小さければタイトルの 1 行（入らなければ「…」で切る。45% 未満は少し小さく）。
+  // 前は短い名前（手の種類の名前「転職活動」）で、見取り図・本文・知らせが『給与の上がる転職先を探す』と呼ぶ同じカードを別の名前で
+  // 出していた（P4 の見直し reader-4: 1 枚のカードは 1 つの名前）
   const two = z >= 0.62;
   const fw = Math.round((z < 0.45 ? 10.5 : 11.5) * s * 2) / 2;
   ctx.font = `650 ${fw}px ${CANVAS_FONT}`;
   const maxW = Math.round(NODE_W - (hex ? BRANCH_TEXT_INSET : 0) * 2 - 12 * s);
-  const text = two ? n.title.trim() || "（無題）" : c.short;
+  const text = n.title.trim() || "（無題）";
   const lines = wrapText(ctx, text, maxW, two ? 2 : 1);
   const lh = fw * 1.18;
   const first = y0 + ph + 2 * s + fw * 0.88;

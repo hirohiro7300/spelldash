@@ -211,6 +211,10 @@ export class ViewModel {
   private forecastInputs = 0;
   /** 題名の版（見込みの行き先の並びで、同じ見込みの行き先を題名の順にする所だけが読む） */
   private titleVersion = 0;
+  /** どこかのノードの題が変わるたびに進む（組み立てた本文が手を文書の題で呼ぶ: 覚えを捨てる鍵） */
+  get titleStamp(): number {
+    return this.titleVersion;
+  }
   private forecastKey = "";
   private forecastTitles = 0;
   /** 見込みを数え直した回数（3 年の影響のエンジンが、合流のある地図で見込みが変わったかを見る） */

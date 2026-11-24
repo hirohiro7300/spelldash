@@ -11,6 +11,7 @@
 import "../deepmap/views/views.css";
 import "../styles/deep.css";
 import type { AppContext } from "../app/context";
+import { whenIdle } from "../app/idle";
 import { cardWithDocOdds, type DeepCtx } from "../app/deepState";
 import type { DeepPage } from "../app/uiState";
 import type { Analysis, Overview } from "../deepmap/core";
@@ -652,10 +653,37 @@ export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void
   oddsNote.hidden = true;
   const el = h("section", { class: "insp-section deep-body" }, h("h3", { class: "insp-label" }, "地図の文章", h("span", { class: "insp-count" }, "読むだけ")), nums, text, oddsNote, unfold, h("div", { class: "btn-row" }, copy, reset), note);
   let shownKey = "";
+  /** 本文を組み立てたときの題の版（本文は手を文書のカードの題で呼ぶ: reader-1。どこかの題が変わったら組み立て直す） */
+  let shownTitles = -1;
+  let titleWait = false;
   let composed = "";
   /** 写した後でも、読むだけの文章を全部見せる（押して開いた） */
   let unfolded = false;
+  /** 本文と数の行を組み立てて出す */
+  const compose = (ctx: DeepCtx, i: number): void => {
+    const t0 = performance.now();
+    shownTitles = app.vm.titleStamp;
+    const t = ctx.text();
+    const own = ctx.edited ? cardWithDocOdds(ctx, app.store.doc, app.vm.index.out, i) : null;
+    const row = own ? own.numbers : t.numbers(i);
+    const bodyText = own ? own.body : t.body(i);
+    clear(nums);
+    for (const x of row) nums.append(h("li", null, x));
+    nums.hidden = !row.length;
+    composed = [row.join("・"), bodyText].filter((x) => x.length > 0).join("\n");
+    text.textContent = bodyText || "（このカードには組み立てた本文が無い）";
+    oddsNote.hidden = !own;
+    app.vm.deep.timings.composed = performance.now() - t0;
+  };
+  /** 題が変わった後の組み立て直し（今すぐ。写すときに古い名前の文章を写さない） */
+  const titlesNow = (): void => {
+    if (shownTitles === app.vm.titleStamp) return;
+    const ctx = app.vm.deep.get();
+    const i = ctx ? ctx.indexOf(id) : -1;
+    if (ctx && i >= 0) compose(ctx, i);
+  };
   copy.addEventListener("click", () => {
+    titlesNow();
     const n = app.store.doc.nodes[id];
     if (!n || app.store.readOnly || !composed) return;
     const next = n.body.trim() ? `${composed}\n\n${n.body}` : composed;
@@ -692,18 +720,18 @@ export function buildComposedBody(app: AppContext, id: ID, focusNote: () => void
       const k = `${ctx.map.header.hash}|${ctx.annual}|${i}|${ctx.edited ? `${ver.topology}.${ver.numbers}` : ""}`;
       if (k !== shownKey) {
         shownKey = k;
-        const t0 = performance.now();
-        const t = ctx.text();
-        const own = ctx.edited ? cardWithDocOdds(ctx, app.store.doc, app.vm.index.out, i) : null;
-        const row = own ? own.numbers : t.numbers(i);
-        const bodyText = own ? own.body : t.body(i);
-        clear(nums);
-        for (const x of row) nums.append(h("li", null, x));
-        nums.hidden = !row.length;
-        composed = [row.join("・"), bodyText].filter((x) => x.length > 0).join("\n");
-        text.textContent = bodyText || "（このカードには組み立てた本文が無い）";
-        oddsNote.hidden = !own;
-        app.vm.deep.timings.composed = performance.now() - t0;
+        compose(ctx, i);
+      } else if (shownTitles !== app.vm.titleStamp && !titleWait) {
+        // どこかのカードの題が変わった（題を打っている途中など）: 本文の手の名前を、手が空いたときに組み立て直す（1 文字ごとに組み立てない）
+        titleWait = true;
+        whenIdle(() => {
+          titleWait = false;
+          if (!el.isConnected) {
+            shownKey = "";
+            return;
+          }
+          titlesNow();
+        }, 1000);
       }
       const ro = app.store.readOnly;
       const copied = copiedPrefix(n.body, id, composed) !== null;

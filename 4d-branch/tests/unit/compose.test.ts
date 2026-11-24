@@ -1873,4 +1873,37 @@ describe("P4・reader-1: 本文は手を、見取り図・道の画面・キャ�
     expect(titled).toBeGreaterThan(0);
     expect(caught).toBeGreaterThan(0);
   });
+
+  // P4 の見直し reader-1: 利用者が文書でカードの題を書き換えたら、見取り図・同じ判断の手・キャンバスはその題で出す。本文も同じ名前で呼ぶ
+  it("利用者が書き換えた手の題（rt.title）があれば、本文はその題で手を呼ぶ。題が地図のままなら本文は前と同じ", async () => {
+    const { map, rt } = await qs(360);
+    let renamedSeen = 0;
+    let checked = 0;
+    for (const i of all(map)) {
+      if (map.role(i) !== "s") continue;
+      const plain = composeCard(map, i, { annual: 360, rt });
+      const m = /(?:おすすめは|一番多いのは|一番の手は)『([^』]*)』/.exec(plain.body);
+      const rec = rt.recommended(i);
+      if (!m || rec < 0 || map.isBase(rec)) continue;
+      const gen = composeCard(map, rec, { annual: 360 }).title;
+      // 地図のままの題を返しても（文書の題が組み立てた題と同じ）、本文は変わらない
+      const same = composeCard(map, i, { annual: 360, rt: { ...rt, title: (x) => (x === rec ? gen : null) } });
+      expect(same.body).toBe(plain.body);
+      // 書き換えた題は、その名前で呼ぶ（前の名前では呼ばない）
+      const own = "昇格の面談を自分から申し込む";
+      const renamed = composeCard(map, i, { annual: 360, rt: { ...rt, title: (x) => (x === rec ? own : null) } });
+      expect(renamed.body, map.key(i)).toContain(`『${own}』`);
+      expect(renamed.body).not.toContain(`『${gen}』`);
+      renamedSeen++;
+      if (++checked >= 40) break;
+    }
+    expect(renamedSeen).toBeGreaterThan(0);
+    // 写し（複製）の文章も同じ
+    const i = all(map).find((x) => map.role(x) === "s" && rt.recommended(x) >= 0 && !map.isBase(rt.recommended(x)) && /おすすめは『/.test(composeCard(map, x, { annual: 360 }).body));
+    if (i !== undefined) {
+      const rec = rt.recommended(i);
+      const own = "自分で名付けた手";
+      expect(materializeBody(map, i, 360, { title: (x) => (x === rec ? own : null) })).toContain(`『${own}』`);
+    }
+  });
 });

@@ -1137,6 +1137,88 @@ async function storedProfile(browser, profile) {
         }
       });
 
+    // P4 の見直し: 起動の後の空いた時間に先に作ったノードの詳細（speed-select-desktop-edge）・本文は書き換えた手の題で手を呼ぶ（reader-1）・
+    // つながりの名前が見込みの札で切れない（reader-3）
+    await check(`${tag}: 先に作った詳細で初めて選んだカードの題と本文が出る・書き換えた手の題で本文が手を呼ぶ・つながりの名前が切れない`, async () => {
+      await page.goto(BASE, { waitUntil: "commit" });
+      await page.waitForFunction(() => !!window.__fourD?.app?.vm?.deep?.get() && !!window.__fourD.app.vm.forecastIfReady(), null, { timeout: 180_000, polling: 100 });
+      await settle(page, 2000);
+      const narrow = profile.viewport.width < 700;
+      // 先に作った詳細は今日の最初の手の物: 別の手を初めて選ぶ
+      const first = await page.evaluate(async () => {
+        const f = window.__fourD;
+        f.ui.setPrefs({ rightOpen: true });
+        const imp = f.app.vm.impact;
+        const id = imp.decision.get(imp.root).alts[1];
+        f.ui.select([id]);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const body = document.querySelector(".sidebar-right .insp-body-scroll");
+        const vis = (el) => !!el && el.getClientRects().length > 0;
+        const titles = [...body.querySelectorAll(".insp-title")].filter(vis).map((x) => x.value);
+        return { id, want: f.store.doc.nodes[id].title, titles, copy: !!body.querySelector(`[data-fk="body-copy:${id}"]`), prewarm: !!document.querySelector(".insp-prewarm") };
+      });
+      assert(first.titles.length === 1 && first.titles[0] === first.want, `初めて選んだカードの題が出ていない（${JSON.stringify(first)}）`);
+      assert(first.copy, `初めて選んだカードの組み立てた本文が、そのカードの物でない（${JSON.stringify(first)}）`);
+      assert(!first.prewarm, "先に作るための入れ物が残っている");
+      // つながり（出る）の名前: 見込みの札で切れない（札は次の行へ送る）
+      const conn = await page.evaluate(() =>
+        [...document.querySelectorAll(".sidebar-right .conn-row .conn-title")]
+          .filter((x) => x.getClientRects().length > 0)
+          .map((x) => ({ t: x.textContent, sw: x.scrollWidth, cw: x.clientWidth })),
+      );
+      assert(conn.length > 0, "つながりの行が無い");
+      const cut = conn.filter((x) => x.sw > x.cw + 1 && x.t.length <= 16);
+      assert(cut.length === 0, `つながりの名前が切れている（${JSON.stringify(cut)}）`);
+      // 本文が呼ぶ手の題を書き換える: 本文（詳細の地図の文章）がその題で呼ぶ。戻すと前の名前に戻る
+      const found = await page.evaluate(() => {
+        const f = window.__fourD;
+        const ctx = f.app.vm.deep.get();
+        const map = ctx.map;
+        for (let s = 1; s < map.n; s++) {
+          if (map.role(s) !== "s") continue;
+          const body = ctx.text().body(s);
+          for (let k = 0; k < map.childCount(s); k++) {
+            const a = map.child(s, k);
+            const t = ctx.text().title(a);
+            if (map.role(a) === "a" && t && body.includes(`『${t}』`)) return { s: ctx.idOf(s), a: ctx.idOf(a), old: t };
+          }
+        }
+        return null;
+      });
+      assert(found, "子の手を『』で呼ぶ本文が見つからない");
+      const NEW = "面談を自分から申し込む（自分の言葉）";
+      const r = await page.evaluate(
+        async ({ s, a, NEW }) => {
+          const f = window.__fourD;
+          f.app.cmd.updateNode(a, { title: NEW }, { label: "タイトルを編集" });
+          f.ui.select([s]);
+          await new Promise((res) => setTimeout(res, 1500));
+          const ctx = f.app.vm.deep.get();
+          const i = ctx.indexOf(s);
+          const shown = document.querySelector(".sidebar-right .deep-body-text")?.textContent ?? "";
+          return { body: ctx.text().body(i), shown, copy: f.app.vm.deep.materialize(s) ?? "" };
+        },
+        { ...found, NEW },
+      );
+      for (const [k, v] of Object.entries(r)) {
+        assert(v.includes(`『${NEW}』`), `${k}: 書き換えた手の題で呼んでいない（${v.slice(0, 300)}）`);
+        assert(!v.includes(`『${found.old}』`), `${k}: 前の手の題のまま（${v.slice(0, 300)}）`);
+      }
+      const back = await page.evaluate(
+        async ({ s, a, old }) => {
+          const f = window.__fourD;
+          f.app.cmd.updateNode(a, { title: old }, { label: "タイトルを編集" });
+          await new Promise((res) => setTimeout(res, 1500));
+          const ctx = f.app.vm.deep.get();
+          return { body: ctx.text().body(ctx.indexOf(s)), shown: document.querySelector(".sidebar-right .deep-body-text")?.textContent ?? "" };
+        },
+        found,
+      );
+      for (const [k, v] of Object.entries(back)) assert(v.includes(`『${found.old}』`) && !v.includes(NEW), `${k}: 題を戻しても前の名前に戻らない（${v.slice(0, 300)}）`);
+      await page.evaluate(() => window.__fourD.ui.clearSelection());
+      if (narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
+    });
+
     await check(`${tag}: コンソールのエラーが無い`, async () => {
       assert(errors.length === 0, errors.slice(0, 5).join("\n"));
     });

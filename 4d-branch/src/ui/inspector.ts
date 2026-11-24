@@ -245,6 +245,45 @@ export function buildInspector(app: AppContext): HTMLElement {
     t?.focus();
     t?.select();
   };
+  // ノードの詳細を、空いた時間に先に作っておく（1 歩目: 置かずに作って中身を合わせる。2 歩目: 見えない所に置いて 1 度配置し、外して取っておく）。
+  // 初めてカードを選んだときは、取っておいた入れ物を使う（2 回目から選ぶときと同じ道）。何かを選んでいる・作り直した・閉じた引き出しの中なら何もしない
+  let warm: { stage: HTMLElement; filled: number; slot: { el: HTMLElement; updaters: Updater[]; viewUpdaters: Updater[]; panel: NodePanel | null } } | null = null;
+  app.prewarmInspector = (): boolean => {
+    // 狭い画面（スマホ）では作らない: 4 倍遅いスマホでは組み立てた本文の 1 つで 150 ms ほどの長い仕事になる（予算 120 ms の選ぶの方が余裕がある）
+    const stale = (): boolean => key !== "none" || kept.has("node") || pendingSel !== 0 || isNarrowScreen() || !root.isConnected;
+    if (stale()) {
+      warm = null;
+      return true;
+    }
+    if (!warm) {
+      const imp = app.vm.impact;
+      const alts = imp.active && imp.root ? imp.decision.get(imp.root)?.alts : undefined;
+      const id = alts?.find((x) => store.doc.nodes[x]) ?? (imp.root && store.doc.nodes[imp.root] ? imp.root : null);
+      if (!id) return true;
+      const stage = h("div", { class: "insp-prewarm", attrs: { "aria-hidden": "true", inert: "" } });
+      const ups: Updater[] = [];
+      const vups: Updater[] = [];
+      const p = nodePanel(app, id, stage, (u) => ups.push(u), (u) => vups.push(u));
+      const el = stage.firstElementChild;
+      if (!(el instanceof HTMLElement)) return true;
+      warm = { stage, filled: 0, slot: { el, updaters: ups, viewUpdaters: vups, panel: p } };
+      return false;
+    }
+    if (warm.filled < warm.slot.updaters.length) {
+      // 中身を合わせる（1 歩で 1 つ: どの 1 つも短いが、全部では机で 40 ms ほど）
+      warm.slot.updaters[warm.filled++]!();
+      return false;
+    }
+    const w = warm;
+    warm = null;
+    body.append(w.stage);
+    // 配置させる（高さ 0 の見えない入れ物の中で。文字の組み・式の当てはめを済ませる）
+    void w.slot.el.offsetHeight;
+    w.stage.remove();
+    w.slot.el.remove();
+    kept.set("node", w.slot);
+    return true;
+  };
   app.focusEdgeCondition = () => {
     if (pendingSel) render();
     const t = body.querySelector<HTMLTextAreaElement>(".edge-condition");

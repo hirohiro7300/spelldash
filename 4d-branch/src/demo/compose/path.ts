@@ -307,6 +307,11 @@ export interface ComposeRuntime {
   treeValue?(a: number): number | null;
   /** 今日の手 a の先で、一番良い選び方で着く本当の行き先（まとめた物を除く・見込みのある物）の数と、そのうち見込み 1% 以上の数。無ければ null */
   reach?(a: number): { ends: number; ends1: number } | null;
+  /**
+   * カード i の、文書のカードの題（利用者が書き換えた名前。見取り図の行・同じ判断の手・キャンバス・道の画面はこの名前で出す: P4 の見直し
+   * reader-1）。本文が手を『』で呼ぶとき、組み立てた題と違えばこの名前で呼ぶ。地図のままの題（組み立てた題と同じ）・無い・仮の物は null
+   */
+  title?(i: number): string | null;
 }
 
 /** 1 枚を組み立てる間の道具一式（作るのは安い。重い物は地図ごとの覚えに置く） */

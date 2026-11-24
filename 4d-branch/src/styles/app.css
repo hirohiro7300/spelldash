@@ -1357,6 +1357,13 @@ button.tag-chip:hover {
   font-size: 11.5px;
   color: var(--warn);
 }
+/* 空いた時間に先に作ったノードの詳細を 1 度配置する入れ物（高さ 0・見えない。配置したらすぐ外す: src/ui/inspector.ts の prewarmInspector） */
+.insp-prewarm {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
 /* 取っておいた概要・ノードの詳細を、外さずに隠す（配置と文字の組みを持ったまま。src/ui/inspector.ts の render） */
 .insp-kept-off {
   content-visibility: hidden;
@@ -1765,17 +1772,22 @@ textarea.input {
   font-size: 11px;
 }
 .conn-row {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  /* 名前を先に置き、見込みの札が並ばなければ札を次の行（右寄せ）へ送る。札の長い行（「条件付き 77%（ほかと合わせて 46%）」）で、
+     スマホの幅では 3 つの「転職…」が数文字に切れて見分けられなかった（P4 の見直し reader-3） */
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 2px 6px;
 }
 .conn-dir {
+  flex: 0 0 16px;
   color: var(--text-3);
   display: grid;
   place-items: center;
 }
 .conn-node {
+  flex: 1 1 auto;
+  max-width: calc(100% - 22px);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1798,6 +1810,8 @@ textarea.input {
   font-size: 12.5px;
 }
 .conn-rel {
+  margin-left: auto;
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   gap: 5px;

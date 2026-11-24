@@ -1457,7 +1457,19 @@ function hasBest(map: MapData, d: number): boolean {
 function listName(c: Ctx, x: number): string {
   const { map } = c;
   if (map.isBase(x)) return "この 3 か月は今のまま";
-  return titleOf(c, x, []);
+  return nameOf(c, x);
+}
+
+/**
+ * カード x の名前: 組み立てた題（印つき）。文書で利用者が書き換えた題があれば、その題（画面のどこでもその名前で出る: P4 の見直し reader-1。
+ * 書き換えた題は利用者の言葉なので印を付けない。点検は地図の題だけを見る）
+ */
+function nameOf(c: Ctx, x: number): string {
+  const t = titleOf(c, x, []);
+  const own = c.rt?.title?.(x);
+  if (!own) return t;
+  const plain = own.replace(/[\u0001-\u0004]/g, "").trim();
+  return plain && plain !== spaceJa(strip(t)) ? plain : t;
 }
 
 /**
@@ -2559,7 +2571,7 @@ function nextParts(c: Ctx, n: number, p: number, trace: string[]): { head: strin
  * （「転職活動をする」）にすると、題に言い換えのある手（fc_switch は「給与の上がる転職先を探す」とも）で、1 つの画面に同じ手の
  * 名前が 2 つ並ぶ（P2 の確かめ F1）
  */
-const firstName = (c: Ctx, a: number): string => (c.map.isBase(a) ? "今のまま" : titleOf(c, a, []));
+const firstName = (c: Ctx, a: number): string => (c.map.isBase(a) ? "今のまま" : nameOf(c, a));
 
 /** 道の最初の状態（今日の手の結果。3 か月目）の覚え */
 function firstStateLink(link: Link): Link | null {
@@ -3122,7 +3134,7 @@ function leverOf(c: Ctx, link: Link): Lever | null {
 /** 3 か月の手の名前: 題（年月や「か月」を言う題は、結びの文の年月と重ねないように短い名前） */
 function quarterName(c: Ctx, a: number): string {
   // 手引きの歩みの題（数字は引いた項目の物）は、行き先では差し込みとして言う（行き先はその項目を引かない。点検 C1b）
-  const t = titleOf(c, a, []).replace(/\u0003([^\u0004]*)\u0004/g, (_, x: string) => slot(x));
+  const t = nameOf(c, a).replace(/\u0003([^\u0004]*)\u0004/g, (_, x: string) => slot(x));
   return /年|か月/.test(strip(t)) ? kindShort(c, c.map.kind(a) ?? "") : t;
 }
 

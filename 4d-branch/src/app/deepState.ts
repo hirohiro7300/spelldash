@@ -15,7 +15,7 @@ import { analyze, overview, textRuntime, type Analysis, type CompiledMap, type O
 import { ym } from "../deepmap/views/format";
 import { F_STUB, ROLE_A } from "../deepmap/core/compile";
 import type { MapData } from "../deepmap/mapData";
-import { composeCard, materializeBody, type Card } from "../demo/compose";
+import { composeCard, materializeBody, type Card, type ComposeRuntime } from "../demo/compose";
 import { impactNodeId64 } from "../demo/impact";
 import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
 import { loadPageMap, PAGE_Q, pageMapIfLoaded } from "../demo/pageBundle";
@@ -40,6 +40,8 @@ export interface DeepText extends TextSource {
 const textMemo = new WeakMap<MapData, { annual: number; text: DeepText }>();
 /** 画面と同じ計算で組み立てた文章（計算ごと。おすすめ・3 年の値を、その年収と選んだ手の計算から書く） */
 const textMemoA = new WeakMap<Analysis, DeepText>();
+/** アプリの画面の本文（手を文書のカードの題で呼ぶ: DeepCtx.text）。計算ごとに、題の版と ID の並びが同じ間だけ */
+const ownTextMemo = new WeakMap<Analysis, { stamp: number; ids: readonly ID[]; memo: Map<number, Card> }>();
 
 /**
  * 組み立てた文章。a はその年収の画面と同じ計算（あれば、本文の「おすすめ」「一番の手」と 3 年の値をその計算で書く。無ければ地図に
@@ -119,7 +121,7 @@ export function cardWithDocOdds(ctx: DeepCtx, doc: DocData, out: ReadonlyMap<ID,
   for (const f of fams) for (const c of kids(f)) pOf(c);
   if (!differs) return null;
   const view: MapData = Object.create(map, { p: { value: pOf } });
-  const card = composeCard(view, i, { annual: ctx.annual, rt: textRuntime(ctx.analysis()) });
+  const card = composeCard(view, i, { annual: ctx.annual, rt: { ...textRuntime(ctx.analysis()), title: (x) => ctx.ownTitle(x) } });
   return card;
 }
 
@@ -142,6 +144,11 @@ export interface DeepCtx {
    * 地図の題名を書いていない「—」・空の物だけ、組み立てた名前（作業メモ SPEC v1 §4.3・見直し equiv-4）。本文と数の行は組み立てた物
    */
   text(): DeepText;
+  /**
+   * 地図の番号 i のカードの、文書のカードの題（利用者が書き換えた名前。無い・仮の物は null）。組み立てた本文が手をこの名前で呼ぶ
+   * （見取り図・同じ判断の手・キャンバスと同じ名前: P4 の見直し reader-1）
+   */
+  ownTitle(i: number): string | null;
   /** 地図の番号 i のカードの年月（「2027 年 2 月」）と親のカードの番号（今日は −1）。パネルの行・検索の行に使う（見直し user-6・gaps-11） */
   place(i: number): { ym: string; parent: number };
   /** 文書のカードの地図の番号（地図のカードでなければ −1） */
@@ -493,6 +500,10 @@ export class DeepState {
     let picked: boolean | null = null;
     let docText: DeepText | null = null;
     const store = this.store;
+    const nodeOf = (i: number): GNode | undefined => {
+      const id = ids[i] ?? (i >= 0 && i < map.n ? impactNodeId64(map.key(i)) : undefined);
+      return id ? store.doc.nodes[id] : undefined;
+    };
     const ctx: DeepCtx = {
       map,
       cm,
@@ -524,13 +535,24 @@ export class DeepState {
       },
       text: () => {
         if (docText) return docText;
-        const base = deepText(map, annual, ctx.analysis());
-        const nodeOf = (i: number) => {
-          const id = ids[i] ?? (i >= 0 && i < map.n ? impactNodeId64(map.key(i)) : undefined);
-          return id ? store.doc.nodes[id] : undefined;
+        const an = ctx.analysis();
+        const base = deepText(map, annual, an);
+        // 本文と数の行は、手を文書のカードの題で呼んで組み立てる（利用者が書き換えた題: reader-1）。題を書き換えていなければ
+        // 組み立てた物と同じ文章。覚えは計算ごとに持ち、どこかの題が変わったら捨てる（読まれたカードだけ組み立て直す）
+        const rt: ComposeRuntime = { ...textRuntime(an), title: (i) => ctx.ownTitle(i) };
+        const card = (i: number): Card => {
+          let m = ownTextMemo.get(an);
+          const stamp = vm.titleStamp;
+          if (!m || m.stamp !== stamp || m.ids !== ids) ownTextMemo.set(an, (m = { stamp, ids, memo: new Map() }));
+          let c = m.memo.get(i);
+          if (!c) m.memo.set(i, (c = composeCard(map, i, { annual, rt })));
+          return c;
         };
         docText = {
           ...base,
+          card,
+          body: (i) => card(i).body,
+          numbers: (i) => card(i).numbers,
           title: (i) => {
             const t = nodeOf(i)?.title;
             return placeholderTitle(t) ? base.title(i) : t!.trim();
@@ -543,6 +565,10 @@ export class DeepState {
           },
         };
         return docText;
+      },
+      ownTitle: (i) => {
+        const t = nodeOf(i)?.title;
+        return placeholderTitle(t) ? null : t!.trim();
       },
       place: (i) => ({ ym: ym(map, cm.month[i] ?? 0), parent: i > 0 ? (cm.parent[i] ?? -1) : -1 }),
       indexOf: (id) => {
@@ -608,6 +634,7 @@ export class DeepState {
     const ctx = this.get();
     if (!ctx) return null;
     const i = ctx.indexOf(id);
-    return i >= 0 ? materializeBody(ctx.map, i, ctx.annual) : null;
+    // 手は文書のカードの題で呼ぶ（画面の本文と同じ名前: reader-1）
+    return i >= 0 ? materializeBody(ctx.map, i, ctx.annual, { title: (x) => ctx.ownTitle(x) }) : null;
   }
 }

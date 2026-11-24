@@ -51,6 +51,8 @@ export interface AppContext {
   resyncCloud(): void;
   focusSearch: () => void;
   focusInspectorTitle: () => void;
+  /** 詳細のパネルのノードの詳細を、空いた時間に先に作っておく（起動の後の初めてのカードを選ぶを待たせない: P4 の見直し）。1 歩ずつ。終わったら true */
+  prewarmInspector: () => boolean;
   focusEdgeCondition: () => void;
   revealInList: (id: ID) => void;
   refreshList: () => void;
