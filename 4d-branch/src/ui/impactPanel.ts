@@ -45,6 +45,7 @@ import {
 } from "../model/impactText";
 import type { DocData, GEdge, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
+import { keepFocus } from "./bulkOpen";
 import { deepOpenActions, openKey } from "./deepPanel";
 import { goalFactEl, goalRootStripEl, goalWidget } from "./goalPanel";
 import { clear, h, isImeKey } from "./dom";
@@ -1167,7 +1168,7 @@ function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Se
  * 前の版の欄（今決めること・やる価値・避けたい手・大事な判断・分布・行き先・見方・前提）は「くわしい数」にたたみ、
  * 開いたときに作る（見取り図と同じ数・同じ言葉で。起動と選び直しで作らない: 見直し user-5・perf-6・perf-7）
  */
-export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(): boolean } {
+export function buildImpactOverview(app: AppContext): { el: HTMLElement; openEl: HTMLElement; update(): boolean; updateOpen(): void } {
   const head = impactHeader(app);
   const flips = h("section", { class: "imp-sec imp-flips" });
   const decide = h("section", { class: "imp-sec imp-decide" });
@@ -1205,8 +1206,8 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
     clear(moreBody);
     if (q) {
       moreBody.append(...sections, legend.el, premise);
-      el.append(head.el, flips, more, deepOpen, actions);
-    } else el.append(head.el, ...sections, premise, legend.el, deepOpen, actions);
+      el.append(head.el, flips, more, actions);
+    } else el.append(head.el, ...sections, premise, legend.el, actions);
     moreDirty = true;
   };
   /** 欄を今の結果で作る（3 か月ごとの地図のくわしい数は、開いているときだけ） */
@@ -1246,13 +1247,32 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
     fillDist(app, imp, dist);
     fillEnds(app, imp, ends, seen);
   });
+  /** 今日の「この先をひらく」（開いた後の枚数は見えているカードで変わる。開閉・選択で作り直す。見え方の版）。キーボードの部品は同じ物へ */
+  const refreshOpen = (): void => {
+    const deep = app.vm.impact.active ? app.vm.deep.get() : null;
+    const dk = deep ? openKey(app, deep) : "";
+    if (dk === deepOpenKey) return;
+    deepOpenKey = dk;
+    keepFocus(deepOpen, () => {
+      clear(deepOpen);
+      const row = deep ? deepOpenActions(app, deep, 0) : null;
+      if (row) deepOpen.append(row);
+    });
+  };
+  // 今日の「この先をひらく」（まとめて開く）は、概要の先頭（見取り図の前）に置く: openEl（長い見取り図の下に埋めない: 見直し reader-2）
+  deepOpen.hidden = true;
   return {
     el,
+    openEl: deepOpen,
+    updateOpen() {
+      if (!el.hidden) refreshOpen();
+    },
     update() {
       const imp = app.vm.impact;
       el.hidden = !imp.active;
       if (!imp.active) {
         last = null;
+        deepOpen.hidden = true;
         return false;
       }
       const deep = app.vm.deep.get();
@@ -1263,14 +1283,7 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
       resetBtn.hidden = !resetCommand(app);
       expandBtn.hidden = !!deep;
       deepOpen.hidden = !deep;
-      // 開いた後の枚数は見えているカードで変わる（開閉・選択で作り直す。見え方の版）
-      const dk = deep ? openKey(app, deep) : "";
-      if (dk !== deepOpenKey) {
-        deepOpenKey = dk;
-        clear(deepOpen);
-        const row = deep ? deepOpenActions(app, deep, 0) : null;
-        if (row) deepOpen.append(row);
-      }
+      refreshOpen();
       // 数が変わった・書いた題名が変わった（題名の入力）ときだけ作り直す
       if (imp !== last || seen.changed(app.store.doc)) {
         last = imp;

@@ -17,6 +17,8 @@ export interface CommandHooks {
   startEdit(id: ID): void;
   reveal(id: ID): void;
   confirm(opts: { title: string; body: string; ok: string; danger?: boolean }): Promise<boolean>;
+  /** ⌘Z でまとめて開く・たたむを戻した（お知らせ） */
+  bulkUndone?(): void;
 }
 
 const CHILD_TYPE: Record<NodeType, NodeType> = { goal: "action", action: "result", branch: "action", result: "action" };
@@ -684,6 +686,12 @@ export class Commands {
   }
 
   undo(): void {
+    // 直前がまとめて開く・たたむなら、文書の取り消しより先にそれを戻す（開いた形は文書の履歴に入れないが、1 回の操作 = 1 回の
+    // 元に戻す: 見直し data-undo-toast-only・reader-3）
+    if (this.vm.undoBulkOpen()) {
+      this.hooks.bulkUndone?.();
+      return;
+    }
     if (!this.store.history.canUndo) return;
     this.store.undo();
     this.afterHistory();

@@ -9,7 +9,7 @@ import type { GEdge, GNode, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
 import { MOD, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
-import { buildComposedBody, buildDeepNodeBlock, buildDeepOverview, buildDeepPage, type DeepPageHandle } from "./deepPanel";
+import { buildComposedBody, buildDeepMultiOpen, buildDeepNodeBlock, buildDeepOverview, buildDeepPage, type DeepPageHandle } from "./deepPanel";
 import { PREV_BODY_META } from "../persist/legacyMap";
 import { buildImpactNodeBlock, buildImpactOverview, focusLost, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
@@ -72,6 +72,8 @@ export function buildInspector(app: AppContext): HTMLElement {
   let pendingForce = false;
   /** 押して選んだ後の作り直しを、次のフレームの頭に待たせている（requestAnimationFrame の番号） */
   let pendingSel = 0;
+  /** これより多くのカードが見えているときは、押して選んだ詳細をキャンバスを描いた後に作る */
+  const BIG_CANVAS = 1500;
   const render = (force = false) => {
     // どの作り直しも今の選択から作る: 待たせていた分はここで済む
     if (pendingSel) {
@@ -179,7 +181,7 @@ export function buildInspector(app: AppContext): HTMLElement {
       const id = k.slice(5);
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
     } else if (k.startsWith("multi:")) multiPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
-    else overviewPanel(app, body, (u) => updaters.push(u));
+    else overviewPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     // 新しく作った物（後ろに足された物）。隠した概要があれば、その前へ移す（まだ配置していないので、移しても配置はやり直さない）
     const fresh: Element[] = [];
     for (let c = last0 ? last0.nextElementSibling : body.firstElementChild; c; c = c.nextElementSibling) fresh.push(c);
@@ -204,10 +206,22 @@ export function buildInspector(app: AppContext): HTMLElement {
     // 選んだときは今までどおりすぐ作る（押した後にフォーカスを詳細の部品へ移す所がある）
     const ev = typeof window !== "undefined" ? window.event : undefined;
     if (ev instanceof PointerEvent && (ev.type === "pointerup" || ev.type === "pointerdown") && ev.target instanceof HTMLCanvasElement) {
-      if (!pendingSel) pendingSel = requestAnimationFrame(() => {
-        pendingSel = 0;
-        render();
-      });
+      // まとめて開いてキャンバスに多くのカードが見えている間（1,500 枚より多い）は、選んだカードの光りを先に描き、詳細はその後の
+      // フレームで（2,600 枚を描くフレームに詳細の作り直しと配置を重ねると、机で 30 ms・スマホで 120 ms を超えた: 見直し speed-selectbig-confirmed）
+      const big = app.vm.drawNodes.length > BIG_CANVAS;
+      if (!pendingSel)
+        pendingSel = requestAnimationFrame(() => {
+          if (!big) {
+            pendingSel = 0;
+            render();
+            return;
+          }
+          setTimeout(() => {
+            if (!pendingSel) return;
+            pendingSel = 0;
+            render();
+          }, 0);
+        });
       return;
     }
     render();
@@ -230,11 +244,39 @@ export function buildInspector(app: AppContext): HTMLElement {
     // パネルの開け閉め・幅で、題名と文章の欄の高さを測り直す
     fitEpoch++;
     render();
+    // 閉じていた引き出しを開いた: 閉じている間に合わせなかった見え方の欄を合わせる
+    if (viewStale && !hiddenDrawer()) {
+      viewStale = false;
+      if (!pendingSel) for (const u of viewUpdaters) u();
+    }
   });
   // 3 年の分かれ道の開閉は見え方だけ（文書の変更は届かない）: 折りたたみのボタンなどをキャンバスでの開閉に合わせる
+  let viewLater = 0;
+  /** 狭い画面で引き出しを閉じている間に、見え方の欄を合わせずにおいた（開いたときに合わせる） */
+  let viewStale = false;
+  const hiddenDrawer = () => isNarrowScreen() && !ui.prefs.rightOpen;
   ui.on("visual", () => {
     // 次のフレームで作り直す（前に選んでいた物の欄を合わせても捨てるだけ）
     if (pendingSel) return;
+    // 狭い画面で引き出しを閉じている: 見えないパネルの枚数を数え直さない（開いたときに合わせる。まとめて開いて 2,600 枚見えている
+    // 間に C で 1 つ開くたびに、書き換えた地図の数え直しで数百 ms かかっていた）
+    if (hiddenDrawer()) {
+      viewStale = true;
+      ui.panelAfterPaint = false;
+      return;
+    }
+    // まとめて開いた: キャンバスを描いた後に合わせる（その間にほかの合わせ直しが来たら、そのときの欄で 1 回だけ）
+    if (ui.panelAfterPaint || viewLater) {
+      ui.panelAfterPaint = false;
+      if (viewLater) return;
+      viewLater = requestAnimationFrame(() =>
+        setTimeout(() => {
+          viewLater = 0;
+          if (!pendingSel) for (const u of viewUpdaters) u();
+        }, 0),
+      );
+      return;
+    }
     for (const u of viewUpdaters) u();
   });
   // 閲覧のみになった・編集できるようになった（別のタブに引き継がれた・引き継いだ・アカウントに新しい版の内容があった）: 欄を作り直す
@@ -1122,6 +1164,11 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
   const head = h("div", { class: "multi-head" });
   const summary = h("div", { class: "type-summary" });
   wrap.append(head, summary);
+  // 3 か月ごとの地図のカードを選んでいれば「選んだ M 枚の先をひらく」を頭に（まとめて開く C）
+  const bulk = buildDeepMultiOpen(app);
+  wrap.append(bulk.el);
+  push(() => bulk.update());
+  pushView(() => bulk.update());
 
   const mergeBtn = h("button", { class: "btn btn-primary btn-block", type: "button", title: "選んだノードからの道を 1 つのノードに合流させる", onClick: () => cmd.mergeInto(ids()) }, icon("merge", 15), "合流ノードを作る");
   const mergeHint = h("p", { class: "muted small" }, "選んだすべてのノードから、新しい「結果」ノードへ線を引きます。既存のノードへ合流させるときは、ノード右の ● をそのノードへドラッグします（複数選択中は全部から線が出ます）。");
@@ -1219,7 +1266,7 @@ function forkCount(fc: { reach: ReadonlyMap<ID, unknown> }, doc: { nodes: Record
   return c;
 }
 
-function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void): void {
+function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void, pushView: (u: Updater) => void): void {
   const { store, vm, ui } = app;
   const wrap = h("div", { class: "insp-overview" });
   root.append(wrap);
@@ -1230,9 +1277,12 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
   const deep = buildDeepOverview(app);
   // 3 年の分かれ道（v2）: 3 年の影響・今決めること・分布・行き先（あれば下の「行き先の見込み」の代わり）
   const impact = buildImpactOverview(app);
+  // 開閉（見え方だけ）で、今日の「この先をひらく」の枚数を合わせる（文書の変更は届かない）
+  pushView(() => impact.updateOpen());
   // 未来の道筋: 行き先（その先が無いノード）の見込み
   const ends = h("div", { class: "forecast-ends" });
-  wrap.append(deep.el, impact.el, ends, stats, bars, insight);
+  // 今日から開く（まとめて開く）は見取り図のすぐ後（3 年の影響の数の前。概要の先頭は見取り図: SPEC §5.1。見直し reader-2）
+  wrap.append(deep.el, impact.openEl, impact.el, ends, stats, bars, insight);
   wrap.append(
     h(
       "div",

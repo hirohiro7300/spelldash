@@ -1101,6 +1101,41 @@ button.tag-chip:hover {
 .future-btn.has-new .future-new {
   display: inline-block;
 }
+/* まとめて開く（3 か月ごとの地図があるときだけ置く: App.syncDeep） */
+.bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(91, 192, 160, 0.16);
+  color: #bfeadb;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bulk-btn:hover {
+  background: rgba(91, 192, 160, 0.28);
+  color: #fff;
+}
+.bulk-btn:focus-visible {
+  outline: 2px solid #5bc0a0;
+  outline-offset: 1px;
+}
+@media (max-width: 420px) {
+  /* 狭い画面: 2 つの文字つきボタンと拡大の部品を 1 行に収める（余白を詰める） */
+  .zoom-ctl .future-btn,
+  .zoom-ctl .bulk-btn {
+    padding: 0 7px 0 6px;
+    gap: 4px;
+  }
+  .zoom-ctl .zoom-label {
+    min-width: 40px;
+  }
+}
 .zoom-sep {
   width: 1px;
   height: 18px;
@@ -2907,6 +2942,25 @@ textarea.input {
 .toast-close {
   width: 24px;
   height: 24px;
+}
+/* ボタンが 2 つ（まとめて開いた後の「元に戻す」「見取り図で見る」）: 文の後ろに並べ、狭い画面では文の下に折り返す */
+.toast.has-two {
+  flex-wrap: wrap;
+}
+.toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+@media (max-width: 640px) {
+  .toast.has-two .toast-text {
+    flex: 1 1 calc(100% - 40px);
+  }
+  .toast.has-two .toast-actions {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
 }
 
 /* ------------------------------------------------------------ 操作ガイド */

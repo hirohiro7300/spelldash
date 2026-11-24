@@ -167,6 +167,7 @@ export class CanvasView {
     store.on("change", () => this.requestRender());
     ui.on("visual", () => this.requestRender());
     ui.on("hover", () => this.requestRender());
+    ui.on("pick", () => this.requestRender());
     ui.on("selection", () => {
       this.flowHold = performance.now() + FLOW_HOLD_MS;
     });
@@ -383,6 +384,28 @@ export class CanvasView {
     }
     if (!anchor || !kids) return;
     const cam = this.camera;
+    if (ids.length > 1) {
+      // まとめて開いた（いくつものカードを一度に）: 開いた所の全体が見える大きさまで引く（下限まで）。収まれば真ん中に、
+      // 収まらなければ開いた所の左上（開き始めたカードの所）から見せる（拡大率をそのままにすると、何百枚開いても画面がほとんど
+      // 変わらず、縦に長い開き方では上半分が空く: 見直し reader-1）
+      const L = this.insets.left + 16;
+      const T = this.insets.top + 16;
+      const R = this.width - this.insets.right - 16;
+      const B = this.height - this.insets.bottom - 16;
+      const bw = maxX - minX;
+      const bh = maxY - minY;
+      // 引く下限: 広い画面は 12%（形が見える）。狭い画面は 30%（2,600 枚のうち画面に入る数が多すぎると、描くのが 1 回に数百 ms かかる。
+      // 収まらない分は左上から見せる）
+      const floor = this.width < 640 ? 0.3 : 0.12;
+      const zf = Math.min((R - L) / bw, (B - T) / bh);
+      const z = Math.min(1, Math.max(floor, zf));
+      const fits = zf >= floor;
+      const fx = (R - L) / bw >= z;
+      const x = fx ? L + (R - L - bw * z) / 2 - minX * z : L - minX * z;
+      const y = fits ? T + (B - T - bh * z) / 2 - minY * z : T - minY * z;
+      this.animateTo({ zoom: z, x, y }, 320);
+      return;
+    }
     let z = cam.zoom;
     let x = cam.x;
     let y = cam.y;
@@ -494,12 +517,12 @@ export class CanvasView {
     const hw = (BADGE_W * k) / 2 + 2 / z;
     const hh = (BADGE_H * k) / 2 + 2 / z;
     if (badges) {
+      // 位置を先に見る（印を出しているかは文書を引くので、近い物だけ。まとめて開いて 2,600 枚見えていても押すたびに全部を引かない）
       for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
         const id = this.vm.drawNodes[i]!;
-        if (!this.badgeVisible(id, lod)) continue;
         const p = this.pos(id);
         const c = badgeCenter(p.x, p.y);
-        if (Math.abs(w.x - c.x) <= hw && Math.abs(w.y - c.y) <= hh) return { kind: "badge", node: id };
+        if (Math.abs(w.x - c.x) <= hw && Math.abs(w.y - c.y) <= hh && this.badgeVisible(id, lod)) return { kind: "badge", node: id };
       }
     }
     for (const b of this.stubBoxes) if (w.x >= b.x && w.x <= b.x + b.w && w.y >= b.y && w.y <= b.y + b.h) return { kind: "stub", edge: b.id };
@@ -515,10 +538,9 @@ export class CanvasView {
       const down = Math.min(Math.max(hh, BADGE_TOUCH_PX / 2 / z), Math.max(hh, IMPACT_ROW - HALF_H * 2));
       for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
         const id = this.vm.drawNodes[i]!;
-        if (!this.vm.inImpact(id) || !this.badgeVisible(id, lod)) continue;
         const p = this.pos(id);
         const c = badgeCenter(p.x, p.y);
-        if (Math.abs(w.x - c.x) <= tw && w.y >= c.y - hh && w.y <= c.y + down) return { kind: "badge", node: id };
+        if (Math.abs(w.x - c.x) <= tw && w.y >= c.y - hh && w.y <= c.y + down && this.vm.inImpact(id) && this.badgeVisible(id, lod)) return { kind: "badge", node: id };
       }
     }
     for (let i = this.labelBoxes.length - 1; i >= 0; i--) {
@@ -744,6 +766,8 @@ export class CanvasView {
           : (fcOf(), cards.labelRankBase(imp))
         : null;
     const pillBox = this.pillTmp;
+    // 「ほかのカードも選ぶ」の間は、選んだカードに太い枠と印（どれを選んだかが縮小しても分かるように: 見直し reader-6）
+    const picking = this.ui.multiPick;
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
       const p = this.pos(id);
@@ -776,6 +800,7 @@ export class CanvasView {
       };
       if (card) {
         drawImpactNode(ctx, n, p.x, p.y, opts, card, pills ? pillBox : null);
+        if (selected && picking) pickMark(ctx, p.x, p.y, z);
         if (pills && pillBox.w > 0 && card.pill) pills.push({ id, text: card.pill, x: pillBox.x * z + cam.x, y: pillBox.y * z + cam.y, w: pillBox.w * z, h: pillBox.h * z, font: pillBox.font * z });
         if (lod === "low") cardBoxes.push({ x0: (p.x - HALF_W) * z + cam.x, y0: (p.y - HALF_H) * z + cam.y, x1: (p.x + HALF_W) * z + cam.x, y1: (p.y + HALF_H) * z + cam.y });
         if (lod === "low" || lod === "dot") {
@@ -791,6 +816,7 @@ export class CanvasView {
         continue;
       }
       drawNode(ctx, n, p.x, p.y, opts);
+      if (selected && picking) pickMark(ctx, p.x, p.y, z);
       // ふつうのカードの箱も目印の重なりに使う（「前の版で決めたこと」の詰まった列で、目標の目印が上のカードを隠していた: 見直し reader-3）
       if (lod === "low") cardBoxes.push({ x0: (p.x - HALF_W) * z + cam.x, y0: (p.y - HALF_H) * z + cam.y, x1: (p.x + HALF_W) * z + cam.x, y1: (p.y + HALF_H) * z + cam.y });
       if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ x: p.x, y: p.y, text: null, n, reach: fcOf()?.active ? fcNow!.reach.get(id)?.p : undefined, color: NODE_TYPES[n.type].color, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, dot: null });
@@ -1040,4 +1066,29 @@ export function clipToWidth(ctx: CanvasRenderingContext2D, text: string, maxW: n
     else hi = mid - 1;
   }
   return lo > 0 ? `${chars.slice(0, lo).join("")}…` : "";
+}
+
+/** 「ほかのカードも選ぶ」で選んだカードの印（画面で 3 px の枠と、右上の丸）。世界の座標で描く（ctx はカメラの変換のまま） */
+function pickMark(ctx: CanvasRenderingContext2D, x: number, y: number, z: number): void {
+  const pad = 5 / z;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#5BC0A0";
+  ctx.lineWidth = 3 / z;
+  ctx.beginPath();
+  ctx.roundRect(x - HALF_W - pad, y - HALF_H - pad, (HALF_W + pad) * 2, (HALF_H + pad) * 2, 14 / z + pad);
+  ctx.stroke();
+  const r = Math.max(9 / z, 6);
+  ctx.fillStyle = "#5BC0A0";
+  ctx.beginPath();
+  ctx.arc(x + HALF_W, y - HALF_H, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#0c0f15";
+  ctx.lineWidth = r * 0.28;
+  ctx.beginPath();
+  ctx.moveTo(x + HALF_W - r * 0.45, y - HALF_H);
+  ctx.lineTo(x + HALF_W - r * 0.1, y - HALF_H + r * 0.35);
+  ctx.lineTo(x + HALF_W + r * 0.45, y - HALF_H - r * 0.35);
+  ctx.stroke();
+  ctx.restore();
 }

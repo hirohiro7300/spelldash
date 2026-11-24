@@ -114,6 +114,8 @@ export interface UiEvents {
   expand: ID[];
   /** 右のパネルの 3 か月ごとの地図の画面（手の詳しい画面・道の画面）が変わった */
   deep: DeepPage | null;
+  /** ほかのカードも選ぶ（UiState.multiPick）を入れた・やめた */
+  pick: boolean;
 }
 
 /** 時点（再生中は毎フレーム変わる）だけの変更か。パネルの作り直しはしない（押したボタンが差し替わってクリックが消えるため） */
@@ -245,6 +247,32 @@ export class UiState {
     this.emitter.emit("visual", undefined);
     if (opened.length) this.emitter.emit("expand", opened);
     this.savePrefsSoon();
+  }
+
+  /**
+   * 開いているノードを、前に持っていた形（まとめて開く前の物）にまるごと戻す（お知らせの「元に戻す」。描き直しの合図 1 回・設定の書き込み 1 回）
+   */
+  replaceImpactOpen(all: Record<ID, ID[]>): void {
+    this.prefs = { ...this.prefs, impactOpen: all };
+    this.emitter.emit("visual", undefined);
+    this.savePrefsSoon();
+  }
+
+  /**
+   * ほかのカードも選ぶ（タッチで ⇧ の代わり: 押すたびに選びに足す・外す）。保存しない（このタブの間だけ）
+   */
+  multiPick = false;
+
+  /**
+   * 次の「visual」での右のパネルの合わせ直しを、キャンバスを描いた後に回す（まとめて開くの 1 回: 2,600 枚を開いた仕事を、
+   * キャンバスを描く仕事とパネルを作り直す仕事に分ける。スマホで 1 つの長い仕事にしない: 見直し speed-phone-open-one-long-task）
+   */
+  panelAfterPaint = false;
+
+  setMultiPick(on: boolean): void {
+    if (this.multiPick === on) return;
+    this.multiPick = on;
+    this.emitter.emit("pick", on);
   }
 
   private savePrefsSoon(): void {

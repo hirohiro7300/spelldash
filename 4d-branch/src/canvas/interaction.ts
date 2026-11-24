@@ -114,8 +114,8 @@ export class Interaction {
       return;
     }
     const hit = this.view.hitTest(p.x, p.y);
-    // 選択に足す: Shift・⌘（Mac）/ Shift・Ctrl（ほか）
-    const additive = ev.shiftKey || ev.metaKey || (!isMac && ev.ctrlKey);
+    // 選択に足す: Shift・⌘（Mac）/ Shift・Ctrl（ほか）。「ほかのカードも選ぶ」の間は押すたびに足す・外す（タッチで ⇧ の代わり: 作業メモ bulk §2 C）
+    const additive = ev.shiftKey || ev.metaKey || (!isMac && ev.ctrlKey) || this.ui.multiPick;
     switch (hit.kind) {
       case "port": {
         if (this.store.readOnly) return;
@@ -360,8 +360,23 @@ export class Interaction {
       }
     }
     this.lastMove = p;
-    this.updateHover();
+    // 押して離した後の印の当たり（hover）は、選んだ物を描いた後に（2,600 枚見えている間は当たりを探すのに数十 ms かかる。
+    // 指ではそもそも hover が無い: 見直し speed-selectbig-confirmed）
+    if (ev.pointerType === "touch") this.ui.setHover(null, null);
+    else this.hoverAfterPaint();
   };
+
+  private hoverLater = 0;
+
+  private hoverAfterPaint(): void {
+    if (this.hoverLater) return;
+    this.hoverLater = requestAnimationFrame(() =>
+      setTimeout(() => {
+        this.hoverLater = 0;
+        this.updateHover();
+      }, 0),
+    );
+  }
 
   private onCancel = (ev: PointerEvent) => {
     this.pointers.delete(ev.pointerId);

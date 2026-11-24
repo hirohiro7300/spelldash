@@ -96,6 +96,7 @@ async function open(browser, profile, opts = {}) {
       }
     }, opts.seedSheet);
   }
+  await ctx.addInitScript(noNativeDialogs);
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
@@ -108,6 +109,15 @@ async function open(browser, profile, opts = {}) {
   assert(n > 50_000, `地図のカードが少なすぎる（${n} 枚）。PAGE_Q のビルドではないかもしれない`);
   await settle(page, 500);
   return { ctx, page, errors };
+}
+
+/** ブラウザの確認・知らせ（confirm・alert・prompt）は使わない（Artifact の画面では動かない）。使ったらページのエラーにする */
+function noNativeDialogs() {
+  for (const k of ["confirm", "alert", "prompt"]) {
+    window[k] = () => {
+      throw new Error(`window.${k} を使った（ページの中の確かめを使う）`);
+    };
+  }
 }
 
 /** 横にはみ出していないか（ページと、右のパネルの中） */
@@ -332,14 +342,21 @@ async function runProfile(browser, profile) {
       const moves = sec.locator(".deep-open-moves button");
       assert((await moves.count()) >= 5, `手ごとに開くボタンが少ない（${await moves.count()}）`);
       const btn = moves.first();
+      // 今日の詳細は資産のゴールの帯の下にある（机でも画面の外になりうる）。画面の外の欄は描画を後回しにする（content-visibility）ので、人と同じく寄せて、描いてから読む
+      await btn.scrollIntoViewIfNeeded();
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       const label = await btn.innerText();
       const m = /1 年先まで ([\d,]+) 枚/.exec(label);
       assert(m, `手ごとのボタンに区切りと枚数が無い（${label}）`);
       const want = Number(m[1].replace(/,/g, ""));
-      // 今日から全部の「1 年先まで」（10 の手の全部・縦に 1,400 行）は開かず、見取り図で見る
-      const all = sec.locator(".deep-open-row:not(.deep-open-moves) button");
-      const allText = (await all.allInnerTexts()).join(" / ");
-      assert(/見取り図で見る（1 年先まで/.test(allText), `今日から全部の「1 年先まで」が見取り図にならない（${allText}）`);
+      // 今日から全部は「この時期まで全部ひらく」（まとめて開く D）: 1 年後（縦に 1,400 行）は聞いてから開き、3,000 枚を超える時期は
+      // 選べず（多すぎて開けません）、見取り図で見る（見直し user-8・作業メモ bulk §2 D）
+      const opts = await sec.locator("select[aria-label='開く時期'] option").evaluateAll((os) => os.map((o) => ({ t: o.textContent, d: o.disabled })));
+      assert(opts.length === 12, `時期が 12 でない（${opts.length}）`);
+      assert(opts.some((o) => /1\s年後/.test(o.t) && !o.d), `1 年後が選べない（${JSON.stringify(opts)}）`);
+      assert(opts.filter((o) => o.d).every((o) => /多すぎて開けません/.test(o.t)) && opts.at(-1).d, `3,000 枚を超える時期が選べる（${JSON.stringify(opts)}）`);
+      const allText = (await sec.locator(".deep-open-quarter button").allInnerTexts()).join(" / ");
+      assert(/見取り図で見る（\d{4}\u00a0年 \d+\u00a0月から先）/.test(allText), `多すぎる時期の「見取り図で見る」が無い（${allText}）`);
       assert((await sec.locator("button", { hasText: "全部" }).count()) === 0, "「全部」と書いたボタンがある");
       await shot(page, `${tag}-07-open-actions`);
       const fk = await btn.getAttribute("data-fk");
@@ -777,12 +794,367 @@ async function runProfile(browser, profile) {
       }
     });
 
+    await bulkChecks(page, tag, profile);
+
     await check(`${tag}: コンソールのエラーが無い`, async () => {
       assert(!errors.length, errors.join("\n"));
     });
   } finally {
     await ctx.close();
   }
+}
+
+/** 見えているカードの数（キャンバス） */
+const drawn = (page) => page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length));
+
+/** 見えているカードのうち、地図の番号 tops の先の物（頭は含まない）の数 */
+const drawnInside = (page, tops) =>
+  page.evaluate((ts) => {
+    const f = window.__fourD;
+    const vm = f.app.vm;
+    vm.ensure();
+    const deep = vm.deep.get();
+    let n = 0;
+    for (const id of vm.drawNodes) {
+      const j = deep.indexOf(id);
+      if (ts.some((t) => j > t && j < t + deep.cm.size[t])) n++;
+    }
+    return n;
+  }, tops);
+
+/** ボタンの文の「（N 枚）」の N */
+const cardsOf = (text) => {
+  const m = /([\d,]+)\s枚）/.exec(text);
+  return m ? Number(m[1].replace(/,/g, "")) : NaN;
+};
+
+/** 出ているお知らせの文 */
+const toasts = (page) => page.evaluate(() => [...document.querySelectorAll(".toast:not(.closing)")].map((t) => t.textContent).join(" / "));
+
+/** 出ているお知らせを閉じる（次の確かめのお知らせと混ぜない） */
+const dropToasts = (page) => page.evaluate(() => document.querySelectorAll(".toast:not(.closing) .toast-close").forEach((b) => b.click()));
+
+/** 右のパネル（狭い画面では引き出し）を開いて、カード（地図の番号）を選ぶ */
+async function selectCard(page, i) {
+  const id = await page.evaluate((k) => {
+    const f = window.__fourD;
+    const deep = f.app.vm.deep.get();
+    const id = deep.idOf(k);
+    f.ui.select([id]);
+    f.ui.setPrefs({ rightOpen: true });
+    return id;
+  }, i);
+  await settle(page, 300);
+  return id;
+}
+
+/**
+ * まとめて開く（作業メモ bulk/design.md）: A 段数・B 見込みの高い道・C 複数のカード（狭い画面は「ほかのカードも選ぶ」）・D 同じ時期まで
+ * （キーボードだけで）。押す前の枚数 = 開いた後のキャンバスの増え方・大きい物はページの中で聞く（やめる・開く）・お知らせの「元に戻す」
+ */
+async function bulkChecks(page, tag, profile) {
+  const narrow = profile.viewport.width < 700;
+  const reset = async () => {
+    await dropToasts(page);
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.ui.setMultiPick(false);
+      f.app.vm.resetImpactOpen();
+      f.ui.clearSelection();
+    });
+    await settle(page, 300);
+  };
+  const shotB = async (name) => {
+    await settle(page, 250);
+    await shot(page, `${tag}-bulk-${name}`);
+  };
+
+  await check(`${tag}: まとめて開く A（段数）: ボタンの枚数どおりに開き、お知らせの「元に戻す」で前の形に戻る。どの段数も枚数つき`, async () => {
+    await reset();
+    const f = await page.evaluate(() => window.__fourD.app.vm.deep.get().cm.firstMoves[0]);
+    const id = await selectCard(page, f);
+    const sec = page.locator(".sidebar-right .deep-open-sec:visible");
+    await sec.waitFor();
+    const texts = await sec.locator(".deep-open-depth button").allTextContents();
+    assert(texts.length >= 3, `段数のボタンが少ない（${texts.join(" / ")}）`);
+    for (const t of texts) assert(Number.isFinite(cardsOf(t)), `枚数の無いボタン（${t}）`);
+    assert(/3\sか月先まで/.test(texts[0]) && texts.some((t) => /半年先まで/.test(t)) && texts.some((t) => /1\s年先まで/.test(t)), `段数が 3 か月・半年・1 年でない（${texts.join(" / ")}）`);
+    await sec.locator(".deep-open-depth button").first().scrollIntoViewIfNeeded();
+    await noOverflow(page, "段数で開く");
+    await shotB("A-before");
+    const btn = sec.locator(`[data-fk="open:12:${id}"]`);
+    const want = cardsOf(await btn.textContent());
+    const title = await btn.getAttribute("title");
+    assert(/開いた後のキャンバス [\d,]+ 枚/.test(title), `開いた後の全体の枚数が無い（${title}）`);
+    const before = await drawn(page);
+    const inside = await drawnInside(page, [f]);
+    await btn.click();
+    await settle(page, 600);
+    const after = await drawn(page);
+    assert(after === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${after}）`);
+    const t = await toasts(page);
+    assert(/から\s1\u00a0年先までの判断と手を開いた（383\u00a0枚）|から\s1\u00a0年先までの判断と手を開いた（[\d,]+\u00a0枚）/.test(t) && /元に戻す/.test(t) && /見取り図で見る/.test(t), `お知らせが違う（${t}）`);
+    if (narrow) assert(!(await page.evaluate(() => window.__fourD.ui.prefs.rightOpen)), "スマホで開いた後に引き出しが開いたまま");
+    await shotB("A-after");
+    await page.locator(".toast:not(.closing) .toast-action", { hasText: "元に戻す" }).click();
+    await settle(page, 400);
+    assert((await drawn(page)) === before, `元に戻すで前の枚数に戻らない（${await drawn(page)} / ${before}）`);
+    await reset();
+  });
+
+  await check(`${tag}: まとめて開く A（大きい段数）: 1,000 枚を超えるときはページの中で聞く。「やめる」で何も開かず、「開く」で開き、「この先をまとめてたたむ」で閉じる`, async () => {
+    await reset();
+    // 2 年先までが 3,000 枚の内に入る今日の手
+    const f = await page.evaluate(() => {
+      const deep = window.__fourD.app.vm.deep.get();
+      const cm = deep.cm;
+      for (const f of cm.firstMoves) {
+        const end = f + cm.size[f];
+        let n = 0;
+        for (let j = f + 1; j < end; j++) if (cm.month[cm.parent[j]] < cm.month[f] + 24) n++;
+        if (n > 1100 && n < 2900) return f;
+      }
+      return -1;
+    });
+    assert(f >= 0, "2 年先までが 3,000 枚に入る手が無い");
+    const id = await selectCard(page, f);
+    const btn = page.locator(`.sidebar-right [data-fk="open:24:${id}"]`);
+    await btn.waitFor();
+    const want = cardsOf(await btn.textContent());
+    assert(/開く前に確かめます/.test(await btn.getAttribute("title")), "大きい段数のボタンに「確かめます」が無い");
+    const before = await drawn(page);
+    await btn.click();
+    const dlg = page.locator(".modal[role='dialog']");
+    await dlg.waitFor();
+    const dt = await dlg.innerText();
+    assert(new RegExp(`${want.toLocaleString("en-US")} 枚を開きます`).test(dt) && /元に戻す/.test(dt) && /この先をまとめてたたむ/.test(dt), `確かめの文が違う（${dt}）`);
+    await shotB("A-confirm");
+    await dlg.getByRole("button", { name: "やめる" }).click();
+    await page.waitForFunction(() => !document.querySelector(".modal-backdrop:not(.closing)"));
+    await settle(page, 300);
+    assert((await drawn(page)) === before, "「やめる」の後に開いた");
+    if (narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
+    await settle(page, 200);
+    await btn.click();
+    await dlg.waitFor();
+    await dlg.getByRole("button", { name: "開く" }).click();
+    await settle(page, 800);
+    const inside = await drawnInside(page, [f]);
+    assert(inside === want, `開いた後の手の先の枚数が合わない（${inside} / ${want}）`);
+    assert((await drawn(page)) <= 3000, "3,000 枚を超えた");
+    if (narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
+    await settle(page, 300);
+    const fold = page.locator(`.sidebar-right [data-fk="fold:${id}"]`);
+    await fold.waitFor();
+    assert(cardsOf(await fold.textContent()) === want, `まとめてたたむの枚数が違う（${await fold.innerText()}）`);
+    await fold.click();
+    await settle(page, 400);
+    assert((await drawnInside(page, [f])) === 0, "まとめてたたむの後に手の先が見える");
+    const left = await page.evaluate((k) => {
+      const f = window.__fourD;
+      const deep = f.app.vm.deep.get();
+      return [...f.app.vm.impactOpenSet(deep.root)].filter((x) => {
+        const j = deep.indexOf(x);
+        return j >= k && j < k + deep.cm.size[k];
+      }).length;
+    }, f);
+    assert(left === 0, `まとめてたたんだのに手の先の開いた印が残っている（${left}）`);
+    await reset();
+  });
+
+  await check(`${tag}: まとめて開く B（見込みの高い道）: 5 本・10 本に見込みと枚数。押すと道の上だけを開き、行き先が見える`, async () => {
+    await reset();
+    const f = await page.evaluate(() => window.__fourD.app.vm.deep.get().cm.firstMoves[1]);
+    const id = await selectCard(page, f);
+    const row = page.locator(".sidebar-right .deep-open-likely:visible");
+    await row.waitFor();
+    const texts = await row.locator("button").allTextContents();
+    // 数は増える枚数（今開いている物に道を足す: 見直し reader-5）
+    assert(texts.length === 2 && /^5\s本（見込み \d+%・[\d,]+\s枚増える）$/.test(texts[0].trim()) && /^10\s本（\d+%・[\d,]+\s枚増える）$/.test(texts[1].trim()), `見込みの高い道のボタンが違う（${texts.join(" / ")}）`);
+    const inside0 = await drawnInside(page, [f]);
+    await row.scrollIntoViewIfNeeded();
+    await shotB("B-before");
+    const want = Number(/([\d,]+)\s枚増える/.exec(texts[0])[1].replace(/,/g, ""));
+    await row.locator(`[data-fk="likely:5:${id}"]`).click();
+    await settle(page, 600);
+    assert((await drawnInside(page, [f])) === inside0 + want, `開いた後の枚数が合わない（${await drawnInside(page, [f])} / ${inside0} + ${want}）`);
+    // 開いたのは押した手の先の道の上だけ（開いた印はどれも手の先。兄弟は閉じたまま +N の札）
+    const out = await page.evaluate((k) => {
+      const f = window.__fourD;
+      const deep = f.app.vm.deep.get();
+      return [...f.app.vm.impactOpenSet(deep.root)].map((x) => deep.indexOf(x)).filter((j) => j > k && j < k + deep.cm.size[k] && deep.cm.kidOff[j + 1] > deep.cm.kidOff[j]).length;
+    }, f);
+    assert(out > 0 && out < want, `道の上だけを開いていない（開いた ${out}・見える ${want}）`);
+    const t = await toasts(page);
+    // 「道」を 2 度言わない（見直し reader-8）。数は増えた枚数
+    assert(/見込みの高い\s5\s本の道を開いた（[\d,]+\s枚増えた）/.test(t) && !/道\s5\s本の道/.test(t), `お知らせが違う（${t}）`);
+    await shotB("B-after");
+    await reset();
+  });
+
+  await check(`${tag}: まとめて開く C（複数のカード）: 「ほかのカードも選ぶ」で${narrow ? "タップする" : "押す"}たびに足し、帯の「まとめて開く」から、選んだ全部の先を一度に開く`, async () => {
+    await reset();
+    // 今日と今日の手が見える所へ（狭い画面は今日の手を開いておく）
+    const moves = await page.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const deep = vm.deep.get();
+      const ms = [...deep.cm.firstMoves].slice(0, 3);
+      vm.setImpactOpen([deep.root]);
+      vm.ensure();
+      f.app.view.fit([deep.root, ...ms.map((m) => deep.idOf(m))], { animate: false, minZoom: 0.3 });
+      return ms;
+    });
+    const id0 = await selectCard(page, moves[0]);
+    const toggle = page.locator(`.sidebar-right [data-fk="bulk-pick:${id0}"]`);
+    await toggle.waitFor();
+    assert((await toggle.getAttribute("aria-pressed")) === "false", "「ほかのカードも選ぶ」が押してある");
+    await toggle.click();
+    await settle(page, 300);
+    const bar = page.locator(".pick-bar");
+    assert(await bar.isVisible(), "選んでいる間の帯が無い");
+    if (narrow) assert(!(await page.evaluate(() => window.__fourD.ui.prefs.rightOpen)), "スマホで引き出しが閉じない（カードを押せない）");
+    else assert((await toggle.getAttribute("aria-pressed")) === "true", "押した印が付かない");
+    for (const m of moves.slice(1)) {
+      await page.evaluate((k) => {
+        const f = window.__fourD;
+        const deep = f.app.vm.deep.get();
+        f.app.view.centerOn(deep.idOf(k));
+      }, m);
+      await settle(page, 400);
+      const pt = await page.evaluate((k) => {
+        const f = window.__fourD;
+        const deep = f.app.vm.deep.get();
+        const v = f.app.view;
+        const p = f.app.vm.posOf(deep.idOf(k));
+        const s = v.camera.toScreen(p.x, p.y);
+        const r = v.canvas.getBoundingClientRect();
+        return { x: r.left + s.x, y: r.top + s.y };
+      }, m);
+      if (narrow) await page.touchscreen.tap(pt.x, pt.y);
+      else await page.mouse.click(pt.x, pt.y);
+      await settle(page, 300);
+    }
+    const n = await page.evaluate(() => window.__fourD.ui.selection.nodes.size);
+    assert(n === 3, `${narrow ? "タップ" : "押す"}で選びに足せない（${n} 枚）`);
+    const barText = await bar.innerText();
+    assert(/3\s枚を選んでいます/.test(barText), `帯の数が違う（${barText}）`);
+    await noOverflow(page, "選んでいる間の帯");
+    await shotB("C-before");
+    // 帯に押し方の 1 行（タッチでは title が出ない）。ボタンは「開き方を選ぶ」（帯のボタンでは開かない: 見直し reader-6）
+    assert(/カードを押すと足す・外す/.test(barText), `帯に押し方が無い（${barText}）`);
+    await bar.getByRole("button", { name: "開き方を選ぶ" }).click();
+    await settle(page, 500);
+    const sec = page.locator(".sidebar-right .deep-multi:visible");
+    await sec.waitFor();
+    const head = await sec.locator(".insp-label").textContent();
+    assert(/選んだ 3 枚の先をひらく/.test(head), `見出しが違う（${head}）`);
+    const focusIn = await page.evaluate(() => !!document.activeElement?.closest(".deep-multi"));
+    assert(focusIn, "「まとめて開く」の後のフォーカスが選び方に無い");
+    const btn = sec.locator("[data-fk='multi-open:12']");
+    const want = cardsOf(await btn.textContent());
+    const before = await drawn(page);
+    const inside = await drawnInside(page, moves);
+    await noOverflow(page, "選んだカードの先をひらく");
+    await shotB("C-panel");
+    await btn.click();
+    const dlg = page.locator(".modal[role='dialog']");
+    if (await dlg.isVisible().catch(() => false)) await dlg.getByRole("button", { name: "開く" }).click();
+    await settle(page, 700);
+    assert((await drawn(page)) === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${await drawn(page)}）`);
+    assert(/選んだ 3 枚から\s1\u00a0年先まで/.test(await toasts(page)), `お知らせが違う（${await toasts(page)}）`);
+    await shotB("C-after");
+    // 開いたら「ほかのカードも選ぶ」は終わる（次に押したカードを選びに足さない。選んだ物はそのまま: 見直し reader-6）
+    const st = await page.evaluate(() => ({ pick: window.__fourD.ui.multiPick, n: window.__fourD.ui.selection.nodes.size }));
+    assert(!st.pick && st.n === 3 && !(await bar.isVisible()), `開いた後も選ぶのが続く・選びが外れた（${JSON.stringify(st)}）`);
+    // Esc で選ぶのを終える（選んだ物はそのまま）
+    await page.evaluate(() => window.__fourD.ui.setMultiPick(true));
+    await page.evaluate(() => window.__fourD.app.view.canvas.focus());
+    await page.keyboard.press("Escape");
+    await settle(page, 200);
+    const st2 = await page.evaluate(() => ({ pick: window.__fourD.ui.multiPick, n: window.__fourD.ui.selection.nodes.size }));
+    assert(!st2.pick && st2.n === 3 && !(await bar.isVisible()), `Esc で選ぶのが終わらない・選びが外れた（${JSON.stringify(st2)}）`);
+    await reset();
+  });
+
+  await check(`${tag}: まとめて開く D（同じ時期まで）: キーボードだけで時期を選んで開く。大きい時期は確かめ（Esc でやめる・Enter で開く）`, async () => {
+    await reset();
+    await page.evaluate(() => {
+      window.__fourD.ui.setPrefs({ rightOpen: true });
+      window.__fourD.app.view.canvas.focus();
+    });
+    await settle(page, 400);
+    // ⇧C で「この先をひらく」へ
+    await page.keyboard.press("Shift+C");
+    await settle(page, 300);
+    const inSec = await page.evaluate(() => !!document.activeElement?.closest(".imp-deep-open .deep-open-sec"));
+    assert(inSec, `⇧C で「この先をひらく」にフォーカスが行かない（${await page.evaluate(() => document.activeElement?.outerHTML?.slice(0, 120))}）`);
+    // Tab で時期の欄へ
+    for (let k = 0; k < 20; k++) {
+      if (await page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "開く時期")) break;
+      await page.keyboard.press("Tab");
+    }
+    assert(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "開く時期"), "Tab で時期の欄へ行けない");
+    const sec = page.locator(".sidebar-right .imp-deep-open .deep-open-sec");
+    await sec.scrollIntoViewIfNeeded();
+    await shotB("D-before");
+    // 1 年後（既定）から 2 つ上（半年後: 1,000 枚に満たず、縦も 320 行の内）へ
+    const v0 = await page.evaluate(() => document.activeElement.value);
+    assert(v0 === "12", `既定の時期が 1 年後でない（${v0}）`);
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("ArrowUp");
+    await settle(page, 100);
+    const sel = await page.evaluate(() => ({ v: document.activeElement.value, go: document.querySelector(".sidebar-right .imp-deep-open [data-fk='quarter-open']").textContent }));
+    assert(sel.v === "6", `矢印で時期が変わらない（${JSON.stringify(sel)}）`);
+    const want = cardsOf(sel.go);
+    await page.keyboard.press("Tab");
+    assert(await page.evaluate(() => document.activeElement?.dataset.fk === "quarter-open"), "Tab で「開く」へ行けない");
+    const before = await drawn(page);
+    const inside = await drawnInside(page, [0]);
+    await page.keyboard.press("Enter");
+    await settle(page, 700);
+    assert((await page.locator(".modal[role='dialog']").count()) === 0, "1,000 枚に満たないのに確かめが出た");
+    assert((await drawn(page)) === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${await drawn(page)}）`);
+    await shotB("D-after-6m");
+    // 1 年後: 確かめが出る。Esc でやめる
+    if (narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
+    await settle(page, 300);
+    const q = page.locator(".sidebar-right .imp-deep-open select[aria-label='開く時期']");
+    await q.focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    assert((await q.inputValue()) === "12", `矢印で 1 年後へ戻れない（${await q.inputValue()}）`);
+    const go = page.locator(".sidebar-right .imp-deep-open [data-fk='quarter-open']");
+    const want12 = cardsOf(await go.textContent());
+    await go.focus();
+    const b2 = await drawn(page);
+    await page.keyboard.press("Enter");
+    const dlg = page.locator(".modal[role='dialog']");
+    await dlg.waitFor();
+    assert(new RegExp(`${want12.toLocaleString("en-US")} 枚を開きます`).test(await dlg.innerText()), `確かめの見出しが違う（${await dlg.innerText()}）`);
+    assert(/縦に約 [\d,]+ 行/.test(await dlg.innerText()) && /最初の形に戻す/.test(await dlg.innerText()), "確かめに縦の長さ・戻し方が無い");
+    await shotB("D-confirm");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector(".modal-backdrop:not(.closing)"));
+    await settle(page, 300);
+    assert((await drawn(page)) === b2, "Esc でやめたのに開いた");
+    await go.focus();
+    await page.keyboard.press("Enter");
+    await dlg.waitFor();
+    await page.waitForFunction(() => document.activeElement?.textContent === "開く");
+    await page.keyboard.press("Enter");
+    await settle(page, 900);
+    const after = await drawn(page);
+    assert(after > b2, "開いていない");
+    const inside12 = await drawnInside(page, [0]);
+    assert(inside12 === want12 && after <= 3000, `1 年後の枚数が合わない（${inside12} / ${want12}・全体 ${after}）`);
+    await shotB("D-after-1y");
+    // 元に戻す（1 年後のお知らせ）: 半年後の形へ
+    await page.locator(".toast:not(.closing)", { hasText: "2027" }).last().locator(".toast-action", { hasText: "元に戻す" }).click();
+    await settle(page, 500);
+    assert((await drawn(page)) === b2, `元に戻すで半年後の形に戻らない（${await drawn(page)} / ${b2}）`);
+    await reset();
+  });
 }
 
 /**
@@ -838,7 +1210,8 @@ const storedBody = (page) =>
     const doc = await get("doc");
     const meta = await get("meta");
     db.close();
-    return { version: doc?.version, maps: doc?.maps?.length ?? 0, nodes: doc ? Object.keys(doc.nodes).length : 0, chars: JSON.stringify(doc ?? null).length, meta, sheet: doc?.meta?.releaseSheet ?? null };
+    const raw = JSON.stringify(doc ?? null);
+    return { version: doc?.version, maps: doc?.maps?.length ?? 0, nodes: doc ? Object.keys(doc.nodes).length : 0, chars: raw.length, raw, meta, sheet: doc?.meta?.releaseSheet ?? null };
   });
 
 /**
@@ -849,6 +1222,7 @@ async function storedProfile(browser, profile) {
   const tag = profile.name;
   console.log(`\n[${tag}] ${profile.viewport.width}×${profile.viewport.height}${profile.mobile ? "・タッチ" : ""}・保存してあった版 6 の文書から`);
   const ctx = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: DPR, isMobile: profile.mobile, hasTouch: profile.mobile });
+  await ctx.addInitScript(noNativeDialogs);
   const errors = [];
   let page = null;
   try {
@@ -1033,6 +1407,8 @@ async function storedProfile(browser, profile) {
       const sec = page.locator(".sidebar-right .deep-open-sec:visible");
       await sec.waitFor();
       const btn = sec.locator(".deep-open-moves button").first();
+      await btn.scrollIntoViewIfNeeded();
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       const label = await btn.innerText();
       const m = /1 年先まで ([\d,]+) 枚/.exec(label);
       assert(m, `手ごとのボタンに区切りと枚数が無い（${label}）`);
@@ -1061,14 +1437,14 @@ async function storedProfile(browser, profile) {
         f.ui.setPrefs({ rightOpen: true });
       }, id);
       await settle(page, 400);
-      const labels = await page.locator(".sidebar-right .insp-section .insp-label").allInnerTexts();
+      const labels = await page.locator(".sidebar-right .insp-section .insp-label").allTextContents();
       assert(labels.some((x) => x.trim() === "前の版のメモ"), `「前の版のメモ」が無い（${labels.join("・")}）`);
       await shot(page, `${tag}-06-prev-note`);
       // メモを書き換えたら「前の版のメモ」ではなくなる。元に戻すと戻る（見直し data-3）
       const ta = page.locator('.sidebar-right textarea[data-fk="body"]');
       await ta.fill("書き直したメモ");
       await settle(page, 300);
-      const labels2 = await page.locator(".sidebar-right .insp-section .insp-label").allInnerTexts();
+      const labels2 = await page.locator(".sidebar-right .insp-section .insp-label").allTextContents();
       const mark2 = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].meta.prevBody ?? null, id);
       assert(!labels2.some((x) => x.trim() === "前の版のメモ") && mark2 === null, `書き換えた後も「前の版のメモ」のまま（${labels2.join("・")}・${mark2}）`);
       await page.evaluate(() => window.__fourD.store.undo());
@@ -1097,6 +1473,45 @@ async function storedProfile(browser, profile) {
       assert((await page.locator(".sidebar-right .deep-ov .dm-glance-row").count()) === 10, "開き直した後に見取り図が無い");
       console.log(`      開き直した後の 3 年の影響の形: ${after.compile}・保存した本体 ${b.chars} 文字`);
       await shot(page, `${tag}-07-reopened`);
+    });
+
+    await check(`${tag}: まとめて開いた形（同じ時期まで）は開き直しても同じ。文書の保存（薄い形）は書き直さない（開く・閉じるは見え方の設定だけ）`, async () => {
+      await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection(), window.__fourD.ui.setPrefs({ rightOpen: true })));
+      await settle(page, 400);
+      await page.evaluate(() => window.__fourD.persistence.flush());
+      const b0 = await storedBody(page);
+      const q = page.locator(".sidebar-right .imp-deep-open select[aria-label='開く時期']");
+      await q.waitFor();
+      await q.selectOption("6");
+      const go = page.locator(".sidebar-right .imp-deep-open [data-fk='quarter-open']");
+      const want = cardsOf(await go.textContent());
+      await go.click();
+      await settle(page, 800);
+      // 引き上げた文書には自分のカード（地図の番号が無い）もある: 今日の先に見えている物は、範囲の見えているカード全部（見直し data-counts-ignore-user-edits）
+      const insideAll = () => page.evaluate(() => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
+        vm.ensure();
+        const root = vm.deep.get().root;
+        return vm.drawNodes.filter((id) => id !== root && vm.inImpact(id)).length;
+      });
+      assert((await insideAll()) === want, `半年後までの枚数が合わない（${await insideAll()} / ${want}）`);
+      // 設定は 200 ms 後に 1 回書く。文書の保存は無い（書き直していない）
+      await page.waitForTimeout(500);
+      const dirty = await page.evaluate(() => window.__fourD.persistence.hasUnsaved);
+      await page.evaluate(() => window.__fourD.persistence.flush());
+      const b1 = await storedBody(page);
+      assert(!dirty && b1.raw === b0.raw && JSON.stringify(b1.meta) === JSON.stringify(b0.meta), `まとめて開いたら文書の保存が変わった（${b0.chars} → ${b1.chars} 文字・保存待ち ${dirty}）`);
+      const prefs = await page.evaluate(() => localStorage.getItem("4d-branch:prefs").length);
+      assert(prefs < 100_000, `設定が大きい（${prefs} 字）`);
+      const shown = await page.evaluate(() => (window.__fourD.app.vm.ensure(), [...window.__fourD.app.vm.drawNodes].sort()));
+      await page.reload();
+      await ready();
+      await settle(page, 1200);
+      const again = await page.evaluate(() => (window.__fourD.app.vm.ensure(), [...window.__fourD.app.vm.drawNodes].sort()));
+      assert(again.length === shown.length && again.every((x, k) => x === shown[k]), `開き直したら見えるカードが違う（${shown.length} → ${again.length}）`);
+      await page.evaluate(() => window.__fourD.app.vm.resetImpactOpen());
+      await settle(page, 300);
     });
 
     // 概要の「やる価値が大きい手」は、見込みを空いた時間に数え終えてから入れる（perf-1）。概要はカードを選んでいる間も取っておいて

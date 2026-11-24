@@ -51,6 +51,10 @@ const BUDGET = {
   close: [100, 400],
   jump: [100, 400],
   yearOpen: [300, 1200],
+  bulkOpen: [300, 1200],
+  bulkLongTask: [null, null],
+  selectBig: [30, 120],
+  openBig: [100, 400],
   structural: [400, 1600],
   structuralUndo: [400, 1600],
   scenario: [150, 600],
@@ -81,6 +85,10 @@ const LABEL = {
   close: "1 つ閉じる（C）",
   jump: "カードへ寄る（検索の候補から隠れたカードへ）",
   yearOpen: "1 年先まで開く（今日を選んだ詳細の、手ごとの「1 年先まで（N 枚）」を押す。今日から全部は縦に長すぎて見取り図で見る: 見直し user-8）",
+  bulkOpen: "まとめて開く（今日から「2027 年 11 月まで」約 2,600 枚: 時期を選んで「開く」→ ページの中の確かめの「開く」を押してから。作業メモ bulk §5。予算は時間で区切って開くと同じ）",
+  bulkLongTask: "（参考・予算なし）まとめて開くの間の一番長い仕事（ms。開くは 1 回の仕事: 予算はまとめて開くの行で見る）",
+  selectBig: "まとめて開いたまま（約 2,600 枚）カードを選ぶ（予算はカードを選ぶと同じ）",
+  openBig: "まとめて開いたまま（約 2,600 枚）1 つ開く（C。予算は 1 つ開くと同じ）",
   structural: "地図の中の形の編集（カードに子を足す: Tab）",
   structuralUndo: "形の編集を元に戻す",
   scenario: "シナリオを変える",
@@ -572,6 +580,82 @@ async function measureProfile(browser, profile) {
   }
 
   await traceHeap(cdp, "1 年先までの後");
+  // まとめて開く（D: 今日から 2027 年 11 月まで。1,000 枚を超えるので確かめの「開く」を押す）。開いたまま、カードを選ぶ・1 つ開く
+  // 画面の中に見えている地図のカード（パネル・お知らせに隠れていない物）
+  const visibleCards = () =>
+    page.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const v = f.app.view;
+      vm.ensure();
+      const r = v.canvas.getBoundingClientRect();
+      return vm.drawNodes.filter((id) => {
+        if (!vm.inImpact(id)) return false;
+        const p = vm.posOf(id);
+        if (!p) return false;
+        const s = v.camera.toScreen(p.x, p.y);
+        const x = r.left + s.x;
+        const y = r.top + s.y;
+        if (x < r.left + 20 || x > r.right - 20 || y < r.top + 20 || y > r.bottom - 20) return false;
+        return document.elementFromPoint(x, y) === v.canvas;
+      });
+    });
+  const dropToasts = () => page.evaluate(() => document.querySelectorAll(".toast:not(.closing) .toast-close").forEach((b) => b.click()));
+  for (let k = 0; k < ROUNDS; k++) {
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.app.vm.resetImpactOpen();
+      f.ui.clearSelection();
+    });
+    if (narrow) await openRight();
+    const q = page.locator(".sidebar-right .imp-deep-open select[aria-label='開く時期']");
+    await q.waitFor({ timeout: 10_000 });
+    await q.selectOption("12");
+    await page.locator(".sidebar-right .imp-deep-open [data-fk='quarter-open']").click();
+    const ok = page.locator(".modal[role='dialog'] .btn-primary", { hasText: "開く" });
+    await ok.waitFor({ timeout: 10_000 });
+    await page.evaluate(() => window.__budget.frames());
+    await page.evaluate(() => {
+      window.__long = window.__budget.watchLong();
+      window.__long.mark();
+      window.__budget.arm("pointerdown", "click");
+    });
+    await ok.click();
+    push("bulkOpen", await page.evaluate(() => window.__budget.wait()));
+    await page.waitForTimeout(1500);
+    const lt = await page.evaluate(() => window.__long.stop());
+    push("bulkLongTask", lt.length ? Math.max(...lt) : 0);
+    r.bulkCards = await page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length));
+    if (narrow) await closePanels();
+    // 開いたまま選ぶ（見えているカードを押す）
+    await page.evaluate(() => window.__budget.frames());
+    await dropToasts();
+    for (let t = 0, done = 0; done < 3 && t < 30; t++) {
+      const ids = await visibleCards();
+      const id = ids.length ? ids[(t * 37 + k * 11 + 5) % ids.length] : null;
+      await page.evaluate(() => window.__fourD.ui.clearSelection());
+      await page.evaluate(() => window.__budget.frames());
+      if (id && (await canvasClick(id, "selectBig"))) done++;
+    }
+    // 開いたまま 1 つ開く（C）: 見えている閉じたカード
+    const cid = await page.evaluate((kk) => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      vm.ensure();
+      const list = vm.drawNodes.filter((x) => vm.inImpact(x) && vm.isCollapsed(x));
+      return list[(kk * 13 + 7) % Math.max(1, list.length)] ?? null;
+    }, k);
+    if (cid) {
+      await page.evaluate((nid) => (window.__fourD.ui.select([nid]), window.__fourD.app.view.canvas.focus()), cid);
+      await page.evaluate(() => window.__budget.frames());
+      await page.evaluate(() => window.__budget.arm("keydown", "keydown"));
+      await page.keyboard.press("c");
+      push("openBig", await page.evaluate(() => window.__budget.wait()));
+    }
+    await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection()));
+    await page.evaluate(() => window.__budget.frames());
+  }
+  await traceHeap(cdp, "まとめて開くの後");
   // 地図の中の形の編集: 見えている状態のカードを選んで Tab（子を足す）→ 書き始めをやめて元に戻す。
   // 狭い画面の最初の形は今日だけなので、今日の手を 2 つ開いておく（測らない）
   await page.evaluate(() => {
@@ -886,6 +970,7 @@ async function main() {
   console.log(table(results, fails));
   for (const [p, r] of Object.entries(results)) {
     if (r.yearCards) console.log(`${p}: 1 年先まで開いたときに見えるカード ${r.yearCards} 枚（ヒープを測ったときは ${r.heapOpenCards ?? "—"} 枚）`);
+    if (r.bulkCards) console.log(`${p}: まとめて開いた（2027 年 11 月まで）ときに見えるカード ${r.bulkCards} 枚`);
     if (r.heapPartsBoot?.length) console.log(`${p}: 起動後（落ち着いた後）のヒープの内訳（MB: JS / ArrayBuffer など / DOM）${r.heapPartsBoot.map((x) => `${x.used.toFixed(1)} / ${x.backing.toFixed(1)} / ${x.embedder.toFixed(1)}`).join("・")}`);
     if (r.heapParts?.length) console.log(`${p}: ヒープの内訳（MB: JS / ArrayBuffer など / DOM）${r.heapParts.map((x) => `${x.used.toFixed(1)} / ${x.backing.toFixed(1)} / ${x.embedder.toFixed(1)}`).join(" → ")}`);
     if (r.longTaskCounts) console.log(`${p}: 変更の後 3 秒の長い仕事の数 ${r.longTaskCounts.join(" / ")}（シナリオ・年収・これにする）`);

@@ -45,6 +45,10 @@ export function buildBottomBar(app: AppContext): HTMLElement {
   let playing: { raf: number; from: number; to: number; t0: number; lastDay: number; lastAt: number } | null = null;
   let scheduled = false;
   let hoverId: ID | null = null;
+  /** ノードごとの期限の印の位置（無ければ null）と、その材料の鍵 */
+  const markAt = new Map<ID, { id: ID; x: number; y: number; type: NodeType } | null>();
+  let markKey = "";
+  let markDoc: unknown = null;
 
   /** 時間軸の幅の材料（期限の版と今日）。同じなら作り直さない */
   let rangeKey = "";
@@ -161,35 +165,65 @@ export function buildBottomBar(app: AppContext): HTMLElement {
     ctx.font = `700 10px ${font}`;
     ctx.fillText("今日", tx + 3, 15);
 
-    // 期限の印
+    // 期限の印（ノードごとの位置は、文書の版・時間軸の幅・大きさが同じ間は覚えておく: まとめて開いて 2,600 枚見えている間に選ぶたびに、
+    // 期限の日付を読み直していた。作業メモ bulk §5）
     markers = [];
     const doc = store.doc;
     const sel = ui.selection.nodes;
-    for (const id of vm.drawNodes) {
-      const n = doc.nodes[id]!;
-      if (!n.time.due) continue;
-      const x = xOf(dayNumber(n.time.due));
-      const y = laneY(n.type);
-      markers.push({ id, x, y, type: n.type });
+    const mkKey = `${store.revision}|${vm.index.version.dates}|${vm.index.version.topo}|${range.start}|${range.end}|${width}|${height}`;
+    if (mkKey !== markKey || doc !== markDoc) {
+      markKey = mkKey;
+      markDoc = doc;
+      markAt.clear();
     }
+    for (const id of vm.drawNodes) {
+      let mk = markAt.get(id);
+      if (mk === undefined) {
+        const n = doc.nodes[id];
+        mk = n && n.time.due ? { id, x: xOf(dayNumber(n.time.due)), y: laneY(n.type), type: n.type } : null;
+        markAt.set(id, mk);
+      }
+      if (mk) markers.push(mk);
+    }
+    // 同じ所に重なる同じ色の印は 1 つにまとめて描く（重ねて塗った濃さ 1 − Π(1 − 濃さ) は同じ。3 か月ごとの地図は期限が 3 か月ごとなので、
+    // 2,600 枚見えていても印の置き場は数十: 1 つずつ塗ると選ぶたびに 2,600 回塗っていた）。選んだ・ホバーした印は大きく、上に描く
+    const diamond = (x: number, y: number, s: number) => {
+      ctx.moveTo(x, y - s);
+      ctx.lineTo(x + s, y);
+      ctx.lineTo(x, y + s);
+      ctx.lineTo(x - s, y);
+      ctx.closePath();
+    };
+    const stacks = new Map<string, { x: number; y: number; type: NodeType; clear: number }>();
+    const bigs: Array<{ mk: (typeof markers)[number]; alpha: number }> = [];
     for (const mk of markers) {
       const v = vm.nodes.get(mk.id)!;
-      const big = sel.has(mk.id) || hoverId === mk.id;
-      const s = big ? 6.5 : 4.2;
-      ctx.globalAlpha = Math.max(0.28, v.alpha);
+      const alpha = Math.max(0.28, v.alpha);
+      if (sel.has(mk.id) || hoverId === mk.id) {
+        bigs.push({ mk, alpha });
+        continue;
+      }
+      const key = `${mk.x}|${mk.y}|${mk.type}`;
+      const st = stacks.get(key);
+      if (st) st.clear *= 1 - alpha;
+      else stacks.set(key, { x: mk.x, y: mk.y, type: mk.type, clear: 1 - alpha });
+    }
+    for (const st of stacks.values()) {
+      ctx.globalAlpha = 1 - st.clear;
+      ctx.fillStyle = NODE_TYPES[st.type].color;
+      ctx.beginPath();
+      diamond(st.x, st.y, 4.2);
+      ctx.fill();
+    }
+    for (const { mk, alpha } of bigs) {
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = NODE_TYPES[mk.type].color;
       ctx.beginPath();
-      ctx.moveTo(mk.x, mk.y - s);
-      ctx.lineTo(mk.x + s, mk.y);
-      ctx.lineTo(mk.x, mk.y + s);
-      ctx.lineTo(mk.x - s, mk.y);
-      ctx.closePath();
+      diamond(mk.x, mk.y, 6.5);
       ctx.fill();
-      if (big) {
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
 

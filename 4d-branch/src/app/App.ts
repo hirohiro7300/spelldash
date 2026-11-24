@@ -28,6 +28,7 @@ import { buildListView } from "../ui/listView";
 import { openReleaseSheet, type DecidedCards } from "../ui/releaseSheet";
 import { startTour } from "../ui/onboarding";
 import { closeMenus, closeToasts, confirmDialog, menuOpen, modalOpen, showMenu, toast, type MenuEntry } from "../ui/overlays";
+import { bulkUndone } from "../ui/bulkOpen";
 import { buildTopbar } from "../ui/topbar";
 import { ACCOUNT_NEWER_BLOCKED, accountNewerBanner, showNewerScreen } from "../ui/newerScreen";
 import { Commands } from "./commands";
@@ -114,6 +115,8 @@ export class App implements AppContext {
   onBackupsChanged: () => void = () => undefined;
   focusSearch: () => void = () => undefined;
   focusInspectorTitle: () => void = () => undefined;
+  /** 「ほかのカードも選ぶ」の間の帯（上の帯の並びの最後） */
+  private pickBarEl: HTMLElement | null = null;
   prewarmInspector: () => boolean = () => true;
   focusEdgeCondition: () => void = () => undefined;
   revealInList: (id: ID) => void = () => undefined;
@@ -135,6 +138,8 @@ export class App implements AppContext {
   private futureNewerTold = false;
   /** 「未来の道筋」のボタン（古い版の地図があれば「新」の印を付ける） */
   private futureBtn: HTMLElement | null = null;
+  /** 地図の右下の「まとめて開く」（3 か月ごとの地図があるときだけ置く） */
+  private bulkBtn: HTMLElement | null = null;
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null = null;
   onCloudChanged: () => void = () => undefined;
   private adopting = false;
@@ -188,6 +193,7 @@ export class App implements AppContext {
         else this.revealInList(id);
       },
       confirm: (o) => confirmDialog(o),
+      bulkUndone: () => bulkUndone(),
     });
     this.editor = new InlineEditor(this.view, this.store, this.cmd);
     this.interaction = new Interaction(this.view, this.store, this.ui, this.vm, this.cmd, {
@@ -212,6 +218,9 @@ export class App implements AppContext {
       h("span", null, "未来の道筋"),
       h("span", { class: "future-new", attrs: { "aria-hidden": "true" } }, "新"),
     );
+    // まとめて開く（3 か月ごとの地図があるときだけ）: パネルの「この先をひらく」へ（スマホは引き出しを開いて。見直し reader-2）
+    // 3 か月ごとの地図があるときだけ置く（syncDeep。無い間は操作の並びに入れない）
+    this.bulkBtn = h("button", { class: "bulk-btn", type: "button", dataset: { fk: "bulk-entry" }, title: "まとめて開く（選んだカードの先を段数で・見込みの高い道・同じ時期まで: ⇧C）", onClick: () => this.focusBulkOpen() }, icon("expand", 15), h("span", null, "まとめて開く"));
     const zoomCtl = h(
       "div",
       { class: "zoom-ctl" },
@@ -241,6 +250,10 @@ export class App implements AppContext {
     this.view.root.append(minimap.el, zoomCtl, this.emptyHint);
     this.listEl = buildListView(this);
     this.banner = h("div", { class: "banner-area", attrs: { "aria-live": "polite" } });
+    // 「ほかのカードも選ぶ」の間の帯は、キャンバスの下（拡大の部品の上）に出す（上の帯の下に出すと、スマホでは一番上の手の
+    // カードを覆って押せなかった: 見直し reader-6）
+    this.pickBarEl = this.pickBar();
+    this.view.root.append(this.pickBarEl);
     // 狭い画面でパネルを重ねて出しているとき、外側を押すと閉じる
     const scrim = h("div", { class: "overlay-scrim", attrs: { "aria-hidden": "true" } });
     scrim.addEventListener("click", () => this.ui.setPrefs({ leftOpen: false, rightOpen: false }));
@@ -382,6 +395,11 @@ export class App implements AppContext {
   /** 3 か月ごとの地図（版 7）があるか（右のパネルを少し広く・狭い画面の引き出しは幅いっぱいに。src/styles/deep.css） */
   private syncDeep(): void {
     const on = !!this.vm.deep.get();
+    const bb = this.bulkBtn;
+    if (bb && on !== bb.isConnected) {
+      if (on) this.futureBtn?.after(bb);
+      else bb.remove();
+    }
     if (this.shell.classList.contains("has-deep") === on) return;
     this.shell.classList.toggle("has-deep", on);
     setTimeout(() => this.view.resize(), 60);
@@ -521,10 +539,11 @@ export class App implements AppContext {
     // アカウントに新しい版の内容があるときの帯は、開き直すまで同じ物を先頭に出したまま（保存の状態が変わるたびに描き直しても、
     // 「ページを開き直す」のフォーカスを外さない）
     const held = this.heldByAccount ? (this.newerBanner ??= accountNewerBanner()) : null;
-    for (const c of [...b.children]) if (c !== held) c.remove();
+    const pick = this.pickBarEl;
+    for (const c of [...b.children]) if (c !== held && c !== pick) c.remove();
     if (held && held.parentElement !== b) b.prepend(held);
     const per = this.persistence;
-    const add = (tone: string, iconName: string, text: string, ...actions: HTMLElement[]) => b.append(h("div", { class: `banner tone-${tone}` }, icon(iconName, 15), h("span", { class: "banner-text" }, text), ...actions));
+    const add = (tone: string, iconName: string, text: string, ...actions: HTMLElement[]) => b.insertBefore(h("div", { class: `banner tone-${tone}` }, icon(iconName, 15), h("span", { class: "banner-text" }, text), ...actions), pick && pick.parentElement === b ? pick : null);
     if (this.ephemeral) {
       const back = h("button", { class: "btn btn-sm", type: "button" }, "ふだんの画面へ");
       back.addEventListener("click", () => {
@@ -693,6 +712,8 @@ export class App implements AppContext {
         { label: "状態", icon: "check", disabled: ro, submenu: statusSub },
         { label: "プロジェクト", icon: "folder", disabled: ro || !projSub.length, submenu: projSub },
         { label: collapsed ? "展開する" : "この先を折りたたむ", icon: collapsed ? "expand" : "collapse", shortcut: "C", disabled: (ro && !viewOnly) || !canCollapse, run: () => cmd.toggleCollapse(ids) },
+        // 3 か月ごとの地図のカード: まとめて開く（パネルの選び方へ。長押しのメニューからも: 見直し reader-2）
+        ...(this.vm.deep.get() && ids.some((id) => (this.vm.deep.get()?.indexOf(id) ?? -1) >= 0) ? ([{ label: "まとめて開く…", icon: "expand", shortcut: "⇧C", run: () => this.focusBulkOpen() }] as MenuEntry[]) : []),
         "sep",
         { label: "経路をたどって表示", icon: "fit", hint: "上流と下流をまとめて画面に収める", run: () => this.fitPaths(ids) },
         { label: "複製", icon: "copy", shortcut: `${MOD}D`, disabled: ro, run: () => cmd.duplicate(ids) },
@@ -819,7 +840,9 @@ export class App implements AppContext {
           return;
         case "Escape":
           closeMenus();
-          if (this.ui.search) this.ui.setSearch("");
+          // 「ほかのカードも選ぶ」の間は、まずそれを終える（選んだ物はそのまま）
+          if (this.ui.multiPick) this.ui.setMultiPick(false);
+          else if (this.ui.search) this.ui.setSearch("");
           else this.ui.clearSelection();
           return;
       }
@@ -859,7 +882,11 @@ export class App implements AppContext {
           return;
         case "c":
         case "C":
-          if (nodes.length) this.cmd.toggleCollapse(nodes);
+          // ⇧C: まとめて開く（右のパネルの「この先をひらく」の最初の部品へ）
+          if (ev.shiftKey) {
+            ev.preventDefault();
+            this.focusBulkOpen();
+          } else if (nodes.length) this.cmd.toggleCollapse(nodes);
           return;
         case "f":
         case "F":
@@ -1605,6 +1632,51 @@ export class App implements AppContext {
 
   openBackups(): void {
     openBackupDialog(this);
+  }
+
+  /**
+   * 「ほかのカードも選ぶ」の間、キャンバスの上に出す帯: 「M 枚を選んでいます」［まとめて開く］［終わる］（まとめて開く C。タッチで ⇧ の代わり）。
+   * 入れた・やめたときに、パネルの「ほかのカードも選ぶ」の押した印（aria-pressed）も合わせる
+   */
+  private pickBar(): HTMLElement {
+    const count = h("span", { class: "pick-bar-count", attrs: { "aria-live": "polite" } });
+    // 押すとどうなるかを帯に書く（タッチでは title が出ない: 見直し reader-6）
+    const hint = h("span", { class: "pick-bar-hint" }, "カードを押すと足す・外す");
+    const go = h("button", { class: "btn btn-sm btn-primary", type: "button", dataset: { fk: "pick-open" }, title: "選んだカードの先をどこまで開くかを選ぶ（右のパネルへ: ⇧C）", onClick: () => this.focusBulkOpen() }, icon("expand", 14), "開き方を選ぶ");
+    const end = h("button", { class: "btn btn-sm", type: "button", dataset: { fk: "pick-end" }, title: "ほかのカードも選ぶを終える（Esc。選んだ物はそのまま）", onClick: () => this.ui.setMultiPick(false) }, "終わる");
+    const bar = h("div", { class: "pick-bar", role: "toolbar", ariaLabel: "ほかのカードも選ぶ" }, h("span", { class: "pick-bar-text" }, count, hint), go, end);
+    bar.hidden = true;
+    const sync = () => {
+      bar.hidden = !this.ui.multiPick;
+      const n = this.ui.selection.nodes.size;
+      count.textContent = `${n.toLocaleString("en-US")}\u00a0枚を選んでいます`;
+      go.disabled = n === 0;
+    };
+    this.ui.on("pick", (on) => {
+      sync();
+      for (const b of document.querySelectorAll("[data-pick-toggle]")) b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    this.ui.on("selection", () => {
+      if (this.ui.multiPick) sync();
+    });
+    return bar;
+  }
+
+  /** まとめて開く（⇧C・選んでいる間の帯の「まとめて開く」）: 右のパネルを開き、出している「この先をひらく」の最初の部品へ */
+  focusBulkOpen(): void {
+    if (!this.ui.prefs.rightOpen) this.ui.setPrefs({ rightOpen: true });
+    requestAnimationFrame(() => {
+      const secs = [...document.querySelectorAll<HTMLElement>(".sidebar-right .deep-multi:not([hidden]), .sidebar-right .deep-open-sec")];
+      const sec = secs.find((x) => x.checkVisibility?.() ?? x.offsetParent !== null);
+      // 新しいまとめて開く（段数の最初のボタン・時期を選ぶ）を先に。無ければ欄の最初の部品（見直し reader-8）
+      const t = sec?.querySelector<HTMLElement>("[data-bulk-first]:not(:disabled)") ?? sec?.querySelector<HTMLElement>("button:not(:disabled), select:not(:disabled)");
+      if (!sec || !t) {
+        toast("まとめて開ける地図のカードを選んでいません", { ms: 2400 });
+        return;
+      }
+      sec.scrollIntoView({ block: "start" });
+      t.focus();
+    });
   }
 
   openHelp(): void {

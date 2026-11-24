@@ -76,12 +76,15 @@ export function buildTopbar(app: AppContext): HTMLElement {
   const redoBtn = h("button", { class: "icon-btn redo-btn", type: "button", ariaLabel: "やり直す", onClick: () => cmd.redo() }, icon("redo", 17));
   const updateHistory = () => {
     const hist = store.history;
-    undoBtn.disabled = !hist.canUndo || store.readOnly;
+    // 直前がまとめて開く・たたむなら、それを戻す（見え方だけなので閲覧のみでも）
+    const bulk = app.vm.canUndoBulkOpen;
+    undoBtn.disabled = !bulk && (!hist.canUndo || store.readOnly);
     redoBtn.disabled = !hist.canRedo || store.readOnly;
-    undoBtn.title = hist.undoLabel ? `元に戻す: ${hist.undoLabel}（${MOD}Z）` : `元に戻す（${MOD}Z）`;
+    undoBtn.title = bulk ? `元に戻す: まとめて開く・たたむ（${MOD}Z）` : hist.undoLabel ? `元に戻す: ${hist.undoLabel}（${MOD}Z）` : `元に戻す（${MOD}Z）`;
     redoBtn.title = hist.redoLabel ? `やり直す: ${hist.redoLabel}（${MOD}⇧Z）` : `やり直す（${MOD}⇧Z）`;
   };
   store.on("history", updateHistory);
+  app.ui.on("visual", updateHistory);
   updateHistory();
 
   // ---- 保存状態・メニュー
