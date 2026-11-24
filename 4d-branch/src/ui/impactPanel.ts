@@ -1405,12 +1405,20 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
       const short = typeof t?.meta?.short === "string" ? (t.meta.short as string) : "";
       const label = e?.label?.trim() || short || title || "（無題）";
       const line = e?.condition?.trim() ?? "";
+      // 本文はこの結果を線の名前（label）で呼び、キャンバスのカード・つながりの並びはカードの題で出す。違えば題も並べて、同じ物だと読めるように（P4 の見直し reader-2）
+      const card = title.trim() && title.trim() !== label ? title.trim() : "";
       sec.append(
         h(
           "button",
           { class: "imp-out-row", type: "button", title, dataset: { id: o.node, fk: `out:${o.node}` }, onClick: () => goTo(app, o.node, false) },
           h("span", { class: "imp-out-pct" }, formatShare(o.w)),
-          h("span", { class: "imp-out-text" }, h("span", { class: "imp-out-label" }, label), line && line !== NO_LINE && line !== label ? h("span", { class: "imp-out-line" }, line) : null),
+          h(
+            "span",
+            { class: "imp-out-text" },
+            h("span", { class: "imp-out-label" }, label),
+            card ? h("span", { class: "imp-out-card" }, `カード「${card}」`) : null,
+            line && line !== NO_LINE && line !== label ? h("span", { class: "imp-out-line" }, line) : null,
+          ),
           deltaPill(o.u, { size: "sm" }),
         ),
       );
@@ -1426,6 +1434,12 @@ function altBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, 
   }
 }
 
+/** 結果 id の線の名前（本文が『』で呼ぶ名前）。カードの題と同じ・無いなら null */
+function outcomeName(doc: DocData, edge: ID, id: ID): string | null {
+  const lab = doc.edges[edge]?.label?.trim() ?? "";
+  return lab && lab !== (doc.nodes[id]?.title ?? "").trim() ? lab : null;
+}
+
 function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLElement, seen: Seen, slot: HTMLElement | null = null): void {
   const doc = app.store.doc;
   const n = doc.nodes[id];
@@ -1434,7 +1448,9 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
   const o = imp.outcome.get(id);
   const facts = h("ul", { class: "imp-facts" });
   if (o) {
-    facts.append(li("この結果になる見込み ", h("b", null, formatShare(o.w)), "（この手を選んだ場合）"));
+    // 本文（この手・同じ手のほかの結果のカード）はこの結果を線の名前で『』に入れて呼ぶ。カードの題と違えばその名前で言う（P4 の見直し reader-2）
+    const named = outcomeName(doc, o.edge, id);
+    facts.append(li(named ? `『${named}』になる見込み ` : "この結果になる見込み ", h("b", null, formatShare(o.w)), "（この手を選んだ場合）"));
     if (doc.nodes[o.alt]) facts.append(li(h("span", null, "この手:"), h("button", { class: "imp-link imp-alt-link", type: "button", title: "この手を選ぶ", dataset: { fk: `alt:${o.alt}` }, onClick: () => goTo(app, o.alt, false) }, seen.title(doc, o.alt) || "（無題）")));
   }
   const reach = app.vm.forecast.reach.get(id);

@@ -1219,6 +1219,42 @@ async function storedProfile(browser, profile) {
       if (narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
     });
 
+    // P4 の見直し reader-2: 本文は結果を線の名前（『大きく上げて転職』）で呼び、キャンバスのカードとつながりは題（「転職で給与 1.18 倍」）で出す。
+    // 手の詳細の「結果」の行にはカードの題も並べ、結果のカードの詳細はその名前で見込みを言う（どちらの名前からも同じカードだと読める）
+    await check(`${tag}: 手の詳細の結果の行にカードの題が並び、結果のカードは本文の呼ぶ名前で見込みを言う`, async () => {
+      const r = await page.evaluate(async () => {
+        const f = window.__fourD;
+        f.ui.setPrefs({ rightOpen: true });
+        const doc = f.store.doc;
+        const imp = f.app.vm.impact;
+        const frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        let hit = null;
+        for (const [id, o] of imp.outcome) {
+          const lab = doc.edges[o.edge]?.label?.trim() ?? "";
+          const title = doc.nodes[id]?.title?.trim() ?? "";
+          if (lab && title && lab !== title && imp.alt.has(o.alt)) {
+            hit = { id, alt: o.alt, lab, title };
+            break;
+          }
+        }
+        if (!hit) return null;
+        f.ui.select([hit.alt]);
+        await frame();
+        const row = document.querySelector(`.sidebar-right .imp-out-row[data-id="${hit.id}"]`);
+        const out = { ...hit, label: row?.querySelector(".imp-out-label")?.textContent ?? null, card: row?.querySelector(".imp-out-card")?.textContent ?? null };
+        f.ui.select([hit.id]);
+        await frame();
+        out.fact = document.querySelector(".sidebar-right .imp-facts li")?.textContent ?? null;
+        f.ui.clearSelection();
+        return out;
+      });
+      assert(r, "線の名前とカードの題が違う結果が見つからない");
+      assert(r.label === r.lab, `結果の行の名前が線の名前でない（${JSON.stringify(r)}）`);
+      assert(r.card === `カード「${r.title}」`, `結果の行にカードの題が並ばない（${JSON.stringify(r)}）`);
+      assert(r.fact?.startsWith(`『${r.lab}』になる見込み`), `結果のカードが本文の呼ぶ名前で見込みを言わない（${JSON.stringify(r)}）`);
+      if (profile.viewport.width < 700) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
+    });
+
     await check(`${tag}: コンソールのエラーが無い`, async () => {
       assert(errors.length === 0, errors.slice(0, 5).join("\n"));
     });

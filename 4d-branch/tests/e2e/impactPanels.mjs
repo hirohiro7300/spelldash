@@ -1379,15 +1379,21 @@ async function main() {
     await page.waitForTimeout(500);
     assert((await page.evaluate(() => [...window.__fourD.ui.selection.nodes][0])) === id, "行き先が選ばれない");
     assert(await onScreen(page, id), "行き先のカードが画面に入らない");
-    const p = await page.evaluate(() => {
+    const p = await page.evaluate((id) => {
       const box = document.querySelector(".imp-node.is-outcome");
+      const doc = window.__fourD.store.doc;
+      const o = window.__fourD.app.vm.impact.outcome.get(id);
+      const lab = (o && doc.edges[o.edge]?.label?.trim()) || "";
       return {
+        // 本文が呼ぶ線の名前がカードの題と違えば、その名前で見込みを言う（P4 の見直し reader-2）
+        named: lab && lab !== (doc.nodes[id]?.title ?? "").trim() ? lab : null,
         facts: box?.querySelector(".imp-facts")?.textContent ?? "",
         state: box?.querySelector(".imp-state")?.textContent ?? "",
         trail: [...(box?.querySelectorAll(".imp-trail-step") ?? [])].map((s) => ({ when: s.querySelector(".imp-trail-when").textContent, cur: s.classList.contains("is-current") })),
       };
-    });
-    assert(/この結果になる見込み \d+%（この手を選んだ場合）/.test(p.facts) && /この手:.+/.test(p.facts), `見込み: ${p.facts}`);
+    }, id);
+    const head = p.named ? `『${p.named}』になる見込み ` : "この結果になる見込み ";
+    assert(p.facts.startsWith(head) && /になる見込み \d+%（この手を選んだ場合）/.test(p.facts) && /この手:.+/.test(p.facts), `見込み: ${p.facts}`);
     assert(/この道で [\d.]+% · おすすめの選び方で [\d.]+%/.test(p.facts), `この道で: ${p.facts}`);
     assert(/この結果なら 今のままより/.test(p.facts) && /この行き先の 3 年の稼ぎ [\d,]+ 万円（ずっと今のままより [+−±]/.test(p.facts), `3 年の稼ぎ: ${p.facts}`);
     assert(/^その時: (会社員|週 4 日勤務|独立)/.test(p.state) && p.state.includes("SpellDash"), `状態: ${p.state}`);
