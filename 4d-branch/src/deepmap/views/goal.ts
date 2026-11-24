@@ -374,6 +374,12 @@ function editBtn(text: string, field: GoalKey | null, title: string): HTMLButton
   return h("button", { class: "dm-goal-link", title, attrs: { type: "button", "data-goal-act": "edit", "data-goal-field": field } }, text);
 }
 
+/** 3 つの数の値（言葉の途中で折り返さないよう、「でも」の後ろだけで折り返す: 「80 年先でも / 届かない」） */
+function tileValue(v: string): Array<ReturnType<typeof nobr>[number] | HTMLElement> {
+  const [a, b] = v.split(/(?<=でも)/, 2);
+  return b ? [...nobr(a!), h("wbr"), ...nobr(b)] : nobr(v);
+}
+
 /** 数ができる前の帯（たたんだ帯と同じ高さ。数ができたら埋める） */
 export function goalSkeletonEl(): HTMLElement {
   return h(
@@ -400,7 +406,7 @@ export function goalStripEl(vm: GoalStripVM): HTMLElement {
       h(
         "div",
         { class: "dm-goal-tiles" },
-        vm.tiles.map((x) => h("div", { class: "dm-goal-tile" }, h("span", { class: "dm-goal-tile-label" }, x.label), h("b", { class: `dm-goal-tile-value${x.value.length > 7 ? " is-long" : ""}` }, nobr(x.value)), h("span", { class: "dm-goal-tile-sub" }, nobr(x.sub)))),
+        vm.tiles.map((x) => h("div", { class: "dm-goal-tile" }, h("span", { class: "dm-goal-tile-label" }, x.label), h("b", { class: `dm-goal-tile-value${x.value.length > 7 ? " is-long" : ""}` }, tileValue(x.value)), h("span", { class: "dm-goal-tile-sub" }, nobr(x.sub)))),
       ),
     );
   if (vm.leversHead && vm.levers.length)

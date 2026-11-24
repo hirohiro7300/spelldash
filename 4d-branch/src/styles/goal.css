@@ -28,6 +28,8 @@
 
 /* ------------------------------------------------------------ 見取り図の帯 */
 .dm-goal {
+  /* 帯の幅で 3 つの数の大きさを決める（版 6 の見出しの欄の中など、狭い所に置いたとき） */
+  container: goal / inline-size;
   min-width: 0;
   border-radius: var(--r-lg);
   border: 1px solid var(--goal-gold-line);
@@ -53,10 +55,11 @@
 }
 .dm-goal-sum {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* 見出しは「くわしく」の左まで全部使う（棒の横の文の幅で見出しが「…」にならないよう、真ん中の列は 2 行目の文だけの分） */
+  grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas:
-    "head more"
-    "bar text";
+    "head head more"
+    "bar text text";
   align-items: center;
   gap: 4px 10px;
   min-height: 44px;
@@ -171,6 +174,8 @@
   font-weight: 720;
   line-height: 1.2;
   color: var(--text-1);
+  /* 言葉の途中では折り返さない（空白と「でも」の後ろで。入らないときだけどこでも） */
+  word-break: keep-all;
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
@@ -454,4 +459,31 @@
 }
 .imp-node-body > .dm-goal {
   margin-bottom: 10px;
+}
+
+/* 狭い所の帯（版 6 の見出しの欄の中: 幅 330px 以下）: 3 つの数を小さく、余白を詰める。もっと狭ければ 1 列に */
+@container goal (max-width: 330px) {
+  .dm-goal-body {
+    padding: 2px 8px 10px;
+  }
+  .dm-goal-tiles {
+    gap: 4px;
+  }
+  .dm-goal-tile {
+    padding: 6px 5px 7px;
+  }
+  .dm-goal-tile-value {
+    font-size: 16px;
+  }
+  .dm-goal-tile-value.is-long {
+    font-size: 12px;
+  }
+}
+@container goal (max-width: 280px) {
+  .dm-goal-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dm-goal-tile-value.is-long {
+    font-size: 14px;
+  }
 }
