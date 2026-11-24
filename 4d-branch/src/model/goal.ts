@@ -15,6 +15,9 @@
 //   SpellDash    : 有料会員と学校の席の入金から、手数料とサーバー代（と広告費）を引いた額。売上そのものではない
 // 給与は額面。どれも税の前（GOAL_BASIS_NOTE）。
 
+import type { ImpactResult } from "./impact";
+import type { ID } from "./types";
+
 /** 設定の鍵（画面の並び順） */
 export type GoalKey = "target" | "assets" | "save" | "ret" | "bizGrow" | "by";
 export const GOAL_KEYS: readonly GoalKey[] = ["target", "assets", "save", "ret", "bizGrow", "by"];
@@ -63,7 +66,11 @@ export const GOAL_RANGE: Readonly<Record<GoalKey, readonly [number, number]>> = 
 
 /** 期限の決まり: 0 か月目の年 + 30 */
 export const BY_DEFAULT_YEARS = 30;
-/** 「芽」: 3 年後に給与の外の稼ぎ（広告運用・独立・SpellDash）が月この額（万円）以上 */
+/**
+ * 「芽」: 3 年後に給与の外の稼ぎ（広告運用・独立・SpellDash）が月この額（万円）以上。r7 の木で 5・10・15 万円を測って決めた
+ * （10 万円: 週 4 日勤務 23%・学校で試す 5〜6%・ほかは 0〜2% で、年収 360・540 で同じ並び。5 万円はどの手も 36〜73% で甘く、
+ * 15 万円は 1 つの手のほかは 0%。作業メモ goal/build/seed.md）
+ */
 export const SEED_BIZ = 10;
 /** 事業を売る場合の値打ち（年の事業の稼ぎの何倍か。目安） */
 export const SALE_MULT = 5;
@@ -185,6 +192,8 @@ export interface GoalTables {
   readonly s: number;
   readonly q: number;
   readonly h: number;
+  /** q^K（36 か月目から期限まで） */
+  readonly qK: number;
   /** 年ごとの係数（添え字 j: y36 + j 年の、0 か月目と同じ月） */
   readonly alpha: Float64Array;
   readonly beta: Float64Array;
@@ -232,7 +241,7 @@ function buildTables(cfg: Readonly<GoalConfig>, anchor: GoalAnchor, key: string,
       hk *= h;
     }
   }
-  const out: GoalTables = { key, cfg: { ...cfg, by }, anchor, y0, y36, by, jBy, K, T: cfg.target, s, q, h, alpha, beta, gs, gb, grid: new Float64Array(grid ? G_N : 0) };
+  const out: GoalTables = { key, cfg: { ...cfg, by }, anchor, y0, y36, by, jBy, K, T: cfg.target, s, q, h, qK: Math.pow(q, K), alpha, beta, gs, gb, grid: new Float64Array(grid ? G_N : 0) };
   if (grid) fillGrid(out.grid, q, K);
   return out;
 }
@@ -327,8 +336,7 @@ export function savingNeeded(t: GoalTables, T3: number): number {
   const K = t.K;
   const A36 = assetsAt36(t, T3);
   if (t.q === 1) return (t.T - A36) / K;
-  const qK = Math.pow(t.q, K);
-  return ((t.T - A36 * qK) * (t.q - 1)) / (qK - 1);
+  return ((t.T - A36 * t.qK) * (t.q - 1)) / (t.qK - 1);
 }
 
 /** 今日から years 年、毎月同じ額を積み立てて target に届くのに要る額（万円/月。利回り ret %/年。くわしく の比べる数） */
@@ -418,6 +426,21 @@ export function goalLeaf(t: GoalTables, x: GoalInput): GoalLeaf {
     salaryOnly,
     seed: split && Rbiz >= SEED_BIZ,
   };
+}
+
+/**
+ * アプリの計算（ImpactResult）のカード 1 枚の 3 つの数。行き先は 36 か月の後に足した月（tail）の分を引いて地図の 3 年に戻す
+ * （T3 = acc + value − tail × rate）。行き先で月の稼ぎの内訳（meta.rr）があれば給与と事業に分ける。無ければ内訳なし
+ */
+export function goalInputOfImpact(imp: ImpactResult, id: ID, rr?: unknown): GoalInput | null {
+  const acc = imp.acc.get(id);
+  const v = imp.value.get(id);
+  const r = imp.rate.get(id);
+  if (acc === undefined || v === undefined || r === undefined) return null;
+  const T3 = acc + v - imp.tail * r;
+  const x = Array.isArray(rr) && rr.length === 3 && rr.every((c) => typeof c === "number" && Number.isFinite(c)) ? (rr as number[]) : null;
+  if (x && imp.kind.get(id) === "leaf") return { T3, Rsal: imp.S * x[0]!, Rbiz: x[1]! + x[2]!, split: true };
+  return { T3, Rsal: r, Rbiz: 0, split: false };
 }
 
 /** 期限の年の資産の幅（利回り RET_BAND の 2 つ） */

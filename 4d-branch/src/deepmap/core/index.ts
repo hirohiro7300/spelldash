@@ -8,6 +8,7 @@
 //   endsFrom / placeIn / medianEnd  そのカードから先の行き先・道の 3 年の合計の位置・真ん中あたりの道
 //   destinations(a, 手 | null)    行き先を種類ごとにまとめる
 //   heatValues(a)                 カードごとの 3 年の合計 − ずっと今のまま（地図の塗り）
+//   goalBase / goalOf(base, 表)   資産のゴール（10 億円）までの数（今日の手ごと・おすすめ・ずっと今のまま。設定は src/model/goal.ts）
 
 export * from "./compile";
 export * from "./passes";
@@ -19,3 +20,4 @@ export * from "./path";
 export * from "./dest";
 export * from "./text";
 export * from "./time";
+export * from "./goal";
