@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { spacingIssues } from "../../scripts/impact/textChecks";
-import { GOAL_RAIL_DX, GOAL_STUB_LOW_CAP, GoalRail, goalRailText, goalStubLabel, type GoalScene } from "../../src/canvas/goalRail";
+import { GOAL_RAIL_DX, GOAL_STUB_LABEL_CAP, GOAL_STUB_LOW_CAP, GoalRail, goalRailText, goalStubLabel, type GoalRailHost, type GoalScene } from "../../src/canvas/goalRail";
 import type { ImpactCard } from "../../src/canvas/impactCards";
 import { spaceJa } from "../../src/demo/compose/text";
 import { NODE_W } from "../../src/model/constants";
@@ -75,26 +75,43 @@ function scene(n: number, opts: Partial<GoalScene> & { seedEvery?: number; z?: n
 }
 
 describe("ゴールのカードと札の文字", () => {
-  it("カード: ゴール・資産 10 億円・期限（仮）・今の道の期限の資産（何割・目安）。札は机とスマホで短さが違う。どれも言葉の間がそろう", () => {
-    const x = goalRailText({ key: "k", T: 100_000, by: 2056, byKari: true, mid: 4600 });
+  it("カード: ゴール・資産 10 億円・期限（仮）・おすすめの道の期限の資産（何割・目安）。札はだれの数かと目安を並べ、机とスマホで短さが違う", () => {
+    const x = goalRailText({ key: "k", T: 100_000, by: 2056, byKari: true, mid: 4600, path: "pi" });
     expect(x.name).toBe("資産 10 億円");
     expect(x.by).toBe("2056 年まで（仮）");
-    expect(x.now).toBe("今の道 0.46 億（5%）目安");
-    expect(x.chipWide).toBe("→ ゴール 10 億円 5%");
-    expect(x.chipNarrow).toBe("10億 5% ›");
-    expect(x.aria).toContain("目安");
-    // 札（「→ ゴール 10 億円 5%」「10億 5% ›」: 設計どおりの詰めた形）のほかは、地図の文と同じ言葉の間
+    expect(x.now).toBe("おすすめの道 0.46 億（5%）目安");
+    expect(x.chipWide).toBe("→ ゴール 10 億円（おすすめの道 5%・目安）");
+    expect(x.chipNarrow).toBe("10億 · おすすめ 5%目安 ›");
+    expect(x.aria).toContain("おすすめの選び方では約 0.46 億円（ゴールの 5%）の目安");
+    // 読み上げは見えている文字から始まる（声で押すときに見えている文字で呼べる: 見直し reader-2）
+    expect(x.aria.startsWith("ゴール、資産 10 億円、2056 年まで（仮）")).toBe(true);
+    expect(x.chipAria.startsWith("ゴール 10 億円（おすすめの道 5%・目安）")).toBe(true);
+    expect(x.chipAriaNarrow.startsWith("10億 · おすすめ 5%目安")).toBe(true);
+    for (const a of [x.chipAria, x.chipAriaNarrow]) {
+      expect(a).toContain("2056 年にゴールの 5% の資産（目安）");
+      expect(a).toContain("地図の 3 年後の列の右です");
+    }
+    // 札（「10億 · おすすめ 5%目安 ›」: 設計どおりの詰めた形）のほかは、地図の文と同じ言葉の間
     for (const s of [x.name, x.by, x.now!, x.aria, x.chipAria]) spaced(s);
   });
 
+  it("おすすめの選び方が無い地図（ずっと今のままの数）は「今のまま」と書く（見直し reader-3）", () => {
+    const x = goalRailText({ key: "k", T: 100_000, by: 2056, byKari: false, mid: 4600, path: "keep" });
+    expect(x.now).toBe("今のまま 0.46 億（5%）目安");
+    expect(x.chipWide).toBe("→ ゴール 10 億円（今のまま 5%・目安）");
+    expect(x.chipNarrow).toBe("10億 · 今のまま 5%目安 ›");
+    expect(x.aria).toContain("ずっと今のままなら約 0.46 億円");
+    expect(x.aria).not.toContain("おすすめ");
+  });
+
   it("0% は出さない（期限の資産が 0）。目標を変えればその目標（3 億円）。1 億より下の目標は万円", () => {
-    const zero = goalRailText({ key: "k", T: 100_000, by: 2056, byKari: false, mid: 0 });
+    const zero = goalRailText({ key: "k", T: 100_000, by: 2056, byKari: false, mid: 0, path: "pi" });
     expect(zero.chipWide).toBe("→ ゴール 10 億円");
     expect(zero.chipNarrow).toBe("10億 ›");
-    expect(zero.now).toBe("今の道 0 万円・目安");
-    expect(goalRailText({ key: "k", T: 30_000, by: 2050, byKari: false, mid: 3000 }).chipWide).toBe("→ ゴール 3 億円 10%");
-    expect(goalRailText({ key: "k", T: 5000, by: 2050, byKari: false, mid: 500 }).chipNarrow).toBe("5,000万 10% ›");
-    expect(goalRailText({ key: "k", T: 100_000, by: 2056, byKari: false, mid: null }).now).toBeNull();
+    expect(zero.now).toBe("おすすめの道 0 万円・目安");
+    expect(goalRailText({ key: "k", T: 30_000, by: 2050, byKari: false, mid: 3000, path: "pi" }).chipWide).toBe("→ ゴール 3 億円（おすすめの道 10%・目安）");
+    expect(goalRailText({ key: "k", T: 5000, by: 2050, byKari: false, mid: 500, path: "pi" }).chipNarrow).toBe("5,000万 · おすすめ 10%目安 ›");
+    expect(goalRailText({ key: "k", T: 100_000, by: 2056, byKari: false, mid: null, path: null }).now).toBeNull();
   });
 
   it("選んだ行き先の線の札: 「2056 年 0.45 億円（5%）目安」", () => {
@@ -172,7 +189,7 @@ describe("行き先からゴールへの線", () => {
     expect(g.emph).toBe(2);
     expect(g.labeled).toBe(true);
     expect(g.strokes).toBeLessThanOrEqual(9);
-    const text = calls.find((c) => c.op === "fillText")!;
+    const text = calls.find((c) => c.op === "fillText" && String(c.args[0]).startsWith("2056 年 "))!;
     // 札は選んだ行き先の期限の資産（5,000 万円 = ゴールの 5%）
     expect(text.args[0]).toBe("2056 年 0.5 億円（5%）目安");
   });
@@ -188,5 +205,90 @@ describe("行き先からゴールへの線", () => {
     expect(g.stubs).toBe(0);
     expect(g.railSx).toBeNull();
     expect(g.state).toBe("");
+  });
+
+  it("線の札「10億の 5%」: 近いときだけ、行の間を空けて 12 本まで。いちばん上に「2056 年・目安」。0% は出さない（見直し reader-4）", () => {
+    const { ctx, calls } = recorder();
+    const g = new GoalRail(
+      () => {},
+      () => {},
+    );
+    // 行 128 × 拡大 0.5 = 64px ごと: 見えている線の数だけ札（12 本まで）
+    g.draw(scene(40, { ctx }));
+    expect(g.stubLabels).toBeGreaterThan(5);
+    expect(g.stubLabels).toBeLessThanOrEqual(Math.min(g.stubs, GOAL_STUB_LABEL_CAP));
+    const texts = calls.filter((c) => c.op === "fillText").map((c) => String(c.args[0]));
+    expect(texts.filter((t) => t === "10億の 5%").length).toBe(g.stubLabels);
+    expect(texts).toContain("2056 年・目安");
+    // 札はゴールの列の手前（右の端は列の 6px 左）
+    const labels = calls.filter((c) => c.op === "fillText" && c.args[0] === "10億の 5%");
+    for (const c of labels) expect((c.args[1] as number) + 7 * 7).toBeCloseTo(1000 - 80 - 6, 6);
+    // 行が詰まると（拡大 0.1 より上でも 1 行 13px）間を空ける: 12 本まで・行の間 15px 以上
+    const dense = new GoalRail(
+      () => {},
+      () => {},
+    );
+    const r2 = recorder();
+    dense.draw(scene(400, { ctx: r2.ctx, z: 0.3, cx: 1000 - 80 - GOAL_RAIL_DX * 0.3, pos: (id) => ({ x: impactColX(24), y: Number(id.slice(1)) * 40 }) }));
+    expect(dense.stubLabels).toBe(GOAL_STUB_LABEL_CAP);
+    const ys = r2.calls.filter((c) => c.op === "fillText" && c.args[0] === "10億の 5%").map((c) => c.args[2] as number);
+    for (let k = 1; k < ys.length; k++) expect(ys[k]! - ys[k - 1]!).toBeGreaterThanOrEqual(15);
+    // 縮めたとき（low）は出さない・0% の行き先には出さない
+    const low = new GoalRail(
+      () => {},
+      () => {},
+    );
+    low.draw(scene(40, { z: 0.2, cx: 1000 - 80 - GOAL_RAIL_DX * 0.2 }));
+    expect(low.stubLabels).toBe(0);
+    const zero = new GoalRail(
+      () => {},
+      () => {},
+    );
+    zero.draw(scene(40, { card: () => card(false, 0.001) }));
+    expect(zero.stubs).toBeGreaterThan(0);
+    expect(zero.stubLabels).toBe(0);
+  });
+
+  it("選んだ行き先の札は画面の右で切れない（「目安」が残る）。入らなければカードの上へ（見直し reader-5）", () => {
+    const { ctx, calls } = recorder();
+    const g = new GoalRail(
+      () => {},
+      () => {},
+    );
+    // 狭い画面（390）で、カードの右の端が 300px: 札（約 20 文字 × 7px）は右に入らない
+    const z = 0.42;
+    const x0 = 300;
+    const cx = x0 - (impactColX(24) + NODE_W / 2) * z;
+    g.draw(scene(10, { ctx, width: 390, height: 844, z, cx, cy: 200, selected: "e3" }));
+    expect(g.labeled).toBe(true);
+    expect(g.labelRight!).toBeLessThanOrEqual(390 - 4);
+    const text = calls.find((c) => c.op === "fillText" && String(c.args[0]).startsWith("2056 年 "))!;
+    expect(String(text.args[0]).endsWith("目安")).toBe(true);
+    // カードの上の縁の上（線の高さ 3 × 128 × 0.42 + 200 から、カードの半分の高さより上）
+    expect(text.args[2] as number).toBeLessThan(3 * 128 * z + 200 - (96 / 2) * z);
+  });
+
+  it("今日の手のカードの上の縁に芽の札（近いときだけ・カードに入らなければ出さない）。数だけ数える（見直し reader-4）", () => {
+    const { ctx, calls } = recorder();
+    const g = new GoalRail(
+      () => {},
+      () => {},
+    );
+    const moves = new Map([
+      ["m0", "芽 14%"],
+      ["m1", "芽: 選び方"],
+    ]);
+    (g as unknown as { host: GoalRailHost }).host = { info: () => ({ key: "k", T: 100_000, by: 2056, byKari: false, mid: 4600, path: "pi", moves }), open() {} };
+    const pos = (id: string) => (id.startsWith("m") ? { x: 300, y: Number(id.slice(1)) * 128 } : { x: impactColX(24), y: Number(id.slice(1)) * 128 });
+    g.draw(scene(5, { ctx, z: 0.62, cx: 100, cy: 100, pos, drawn: ["m0", "m1", "m2"] }));
+    expect(g.moveTags).toBe(2);
+    const texts = calls.filter((c) => c.op === "fillText").map((c) => String(c.args[0]));
+    expect(texts).toContain("芽 14%");
+    expect(texts).toContain("芽: 選び方");
+    // キャンバスに出ていない手には出さない・縮めたとき（low）は出さない
+    g.draw(scene(5, { z: 0.62, cx: 100, cy: 100, pos, drawn: ["m1"] }));
+    expect(g.moveTags).toBe(1);
+    g.draw(scene(5, { z: 0.2, cx: 100, cy: 100, pos, drawn: ["m0", "m1"] }));
+    expect(g.moveTags).toBe(0);
   });
 });

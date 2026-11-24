@@ -265,6 +265,8 @@ export class App implements AppContext {
         const r = el.getBoundingClientRect();
         if (r.height > 0) top = Math.max(top, r.bottom - c.top);
       }
+      // 机で目盛りの下の端に寄せたゴールの札（スマホの札は目盛りの帯の中なので数えない: 見直し data-2）
+      top = Math.max(top, this.view.goal.chipBottom());
       const z = zoomCtl.getBoundingClientRect();
       let bottomEdge = z.height > 0 ? z.top : c.bottom;
       const stack = document.getElementById("toast-stack");

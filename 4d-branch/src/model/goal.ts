@@ -608,7 +608,18 @@ export function okuRange(lo: number, hi: number, oku: boolean): string {
   const b = formatOku(hi, oku);
   if (a === b) return a;
   const unit = (x: string): string => x.replace(/^[\d.,]+ /, "");
-  return unit(a) === unit(b) ? `${a.replace(/ (?:億|万)円$/, "")}〜${b}` : `${a}〜${b}`;
+  if (unit(a) !== unit(b)) return `${a}〜${b}`;
+  // 億の幅は両端の小数の桁をそろえる（「0.4〜0.52」でなく「0.40〜0.52 億円」: 見直し reader-7）
+  const plain = /^\d+(?:\.(\d+))? 億円$/;
+  const da = plain.exec(a);
+  const db = plain.exec(b);
+  if (da && db) {
+    const d = Math.max(da[1]?.length ?? 0, db[1]?.length ?? 0);
+    const x = (Math.max(0, lo) / 10_000).toFixed(d);
+    const y = (Math.max(0, hi) / 10_000).toFixed(d);
+    if (d > 0 && x !== y) return `${x}〜${y} 億円`;
+  }
+  return `${a.replace(/ (?:億|万)円$/, "")}〜${b}`;
 }
 
 /** 月の額（万円/月）: 100 より下は小数 1 桁まで（「10.5 万円」）、それより上は整数（「1,590 万円」） */

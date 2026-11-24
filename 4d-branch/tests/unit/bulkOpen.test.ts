@@ -643,6 +643,29 @@ describe("まとめて開く: 見直しの直し", () => {
     expect(ui.prefs.impactOpen).toBe(opened);
   });
 
+  it("お知らせの「元に戻す」: その後にまとめて開いていても、お知らせの操作（文書）を戻し、開いた形はそのまま（data-1）", () => {
+    const doc = build(map);
+    const { store, ui, vm } = setup(doc);
+    let undone = 0;
+    const cmd = new Commands(store, ui, vm, { toast() {}, viewCenter: () => ({ x: 0, y: 0 }), startEdit() {}, reveal() {}, confirm: async () => true, bulkUndone: () => undone++ });
+    const ctx = vm.deep.get()!;
+    const f = cm.firstMoves[0]!;
+    // 前提を変えた・題名を変えた など、お知らせに「元に戻す」が付く操作 → そのお知らせが出ている間にまとめて開く
+    cmd.updateNode(ctx.idOf(f), { title: "お知らせの操作" });
+    const action = cmd.undoAction();
+    const plan = shapePlan(cm, [{ i: f, lim: cm.month[f]! + 12 }], nowOf(vm, ctx));
+    const snap = applyRun(vm, ctx, plan.open, plan.close)!;
+    expect(snap).not.toBeNull();
+    action.run();
+    expect(undone).toBe(0);
+    expect(store.doc.nodes[ctx.idOf(f)]!.title).not.toBe("お知らせの操作");
+    expect(ui.prefs.impactOpen).toBe(snap.after);
+    // 文書を戻した後の ⌘Z は、まとめて開くを戻さない（版が進んだ）。まとめて開くのお知らせの「元に戻す」は効く
+    expect(vm.canUndoBulkOpen).toBe(false);
+    expect(vm.restoreOpen(snap)).toBe(true);
+    expect(ui.prefs.impactOpen).toBe(snap.before);
+  });
+
   it("隠れているカード（上のカードが閉じている）からは開かない。「キャンバスに出す」で出すと開ける（data-hidden-head-false-toast）", () => {
     const doc = build(map);
     const { store, ui, vm } = setup(doc);

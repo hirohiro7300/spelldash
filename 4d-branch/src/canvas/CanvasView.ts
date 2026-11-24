@@ -17,7 +17,7 @@ import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, grid
 import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, labelMaxW, rectsIntersect, type EdgeGeom } from "./geometry";
 import { ImpactCards, binStroke } from "./impactCards";
 import { drawImpactNode, type PillRect } from "./impactDraw";
-import { GOAL_RAIL_DX, GoalRail } from "./goalRail";
+import { GOAL_CARD_W, GOAL_CARD_W_NARROW, GOAL_RAIL_DX, GoalRail } from "./goalRail";
 import { onPixelRatioChange } from "./pixelRatio";
 import { CANVAS_FONT, wrapText } from "./text";
 
@@ -454,7 +454,8 @@ export class CanvasView {
       // 収まらなければ開いた所の左上（開き始めたカードの所）から見せる（拡大率をそのままにすると、何百枚開いても画面がほとんど
       // 変わらず、縦に長い開き方では上半分が空く: 見直し reader-1）
       const L = this.insets.left + 16;
-      const T = this.insets.top + 16;
+      // お知らせの帯・目盛りの下に寄せたゴールの札の下から（帯が出ていると札もその下へ下がる: 見直し data-2）
+      const T = Math.max(this.insets.top, this.covered().top) + 16;
       const R = this.width - this.insets.right - 16;
       const B = this.height - this.insets.bottom - 16;
       const bw = maxX - minX;
@@ -975,6 +976,7 @@ export class CanvasView {
       onPath: (id) => vm.node(id).path,
       selected: sel.size === 1 ? (sel.values().next().value ?? null) : null,
       t: this.cards.goal(imp, doc),
+      drawn: vm.drawNodes,
     });
   }
 
@@ -985,7 +987,7 @@ export class CanvasView {
     if (!root || !this.vm.hasOverlay(root) || !this.measurable) return;
     const rx = this.vm.posOf(root)!.x + GOAL_RAIL_DX;
     const z = this.camera.zoom;
-    const cw = this.width < 640 ? 128 : 176;
+    const cw = this.width < 640 ? GOAL_CARD_W_NARROW : GOAL_CARD_W;
     const sx = Math.max(this.width * 0.4, this.width - cw - 40);
     this.animateTo({ zoom: z, x: sx - rx * z, y: this.camera.y }, 380);
   }
@@ -1024,9 +1026,12 @@ export class CanvasView {
     const texts: string[] = [];
     const placed: Array<[number, number]> = [];
     const free = (a: number, b: number) => !placed.some(([x0, x1]) => a < x1 + 10 && b > x0 - 10);
+    // スマホでゴールの札を目盛りの帯の中に置いている: その所には年月を書かない（札が目盛りのゴールの札も兼ねる）
+    const slot = this.goal.rulerSlot();
+    if (slot) placed.push(slot);
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
-    // 判断・結果の列（年月）を先に、次に右の端のゴール（「→ ゴール 資産 10 億円（目安）」）、間が空いていれば手の列（その 3 か月）
+    // 判断・結果の列（年月）を先に、次に右の端のゴール（「→ ゴール 資産 10 億円」）、間が空いていれば手の列（その 3 か月）
     const gt = this.vm.impact.active ? this.cards.goal(this.vm.impact, doc) : null;
     for (const pass of [0, 1]) {
       if (pass === 1 && gt) this.rulerGoal(rp.x, gt, free, placed, texts);
@@ -1044,7 +1049,12 @@ export class CanvasView {
         if (d === 24) text = `${text}（3 年後）`;
         const w = ctx.measureText(text).width;
         // 端の列は画面の中へ寄せる（入口の列が左の端にあっても「今日」が切れない）
-        const x0 = Math.max(6, Math.min(W - w - 6, sx - w / 2));
+        let x0 = Math.max(6, Math.min(W - w - 6, sx - w / 2));
+        // スマホの札にかかるなら、列の目印にかかる所まで札の左（右の札）・右（左の札）へずらす
+        if (slot && !free(x0, x0 + w)) {
+          const alt = slot[0] > W / 2 ? slot[0] - 10 - w : slot[1] + 10;
+          if (alt >= 6 && alt + w <= W - 6 && alt <= sx + 8 && alt + w >= sx - 8) x0 = alt;
+        }
         if (!free(x0, x0 + w)) continue;
         placed.push([x0, x0 + w]);
         texts.push(text);
@@ -1061,8 +1071,9 @@ export class CanvasView {
   }
 
   /**
-   * 目盛りのゴールの札: ゴールの列が見えていれば列の右に、右の外なら目盛りの右の端に「→ ゴール 資産 10 億円（目安）」
-   * （入らなければ「→ ゴール」）。左の外（ゴールより右を見ている）なら出さない
+   * 目盛りのゴールの札: ゴールの列が見えていれば列の右に、右の外なら目盛りの右の端に「→ ゴール 資産 10 億円」
+   * （入らなければ「→ ゴール」）。左の外（ゴールより右を見ている）なら出さない。目標は自分で決めた額なので「目安」は付けない
+   * （目安は 3 年より先の資産の見込みの方: 見直し reader-8）
    */
   private rulerGoal(rootX: number, t: GoalTables, free: (a: number, b: number) => boolean, placed: Array<[number, number]>, texts: string[]): void {
     const ctx = this.ctx;
@@ -1070,7 +1081,7 @@ export class CanvasView {
     const sx = (rootX + GOAL_RAIL_DX) * this.camera.zoom + this.camera.x;
     if (sx < 0) return;
     ctx.font = `650 11px ${CANVAS_FONT}`;
-    for (const text of [`→ ゴール ${goalName(t)}（目安）`, "→ ゴール"]) {
+    for (const text of [`→ ゴール ${goalName(t)}`, "→ ゴール"]) {
       const w = ctx.measureText(text).width;
       const x0 = Math.max(6, Math.min(W - w - 6, sx + 6));
       if (!free(x0, x0 + w)) continue;

@@ -4,11 +4,16 @@
 //                実線、その先は点線（3 年より先は前提から出した目安なので）。芽の行き先は金色、ほかは灰色。4 本の線にまとめて描く。
 //                選んだ道（選んだカードの前後）があれば、その道の行き先の線は濃く、ほかは 25% の濃さ（濃い 4 本と薄い 4 本）。
 //                縮めたとき（low・dot）は芽の線だけを 1px で 400 本まで
-//   選んだ行き先 線の右に「2056 年 0.45 億円（5%）目安」。スマホでゴールの列が画面の右の外なら、そのカードから右の札まで破線を 1 本
+//   線の札       見えている線（近いとき）のゴールの列の手前に「10億の 4%」（行の間が詰まらないよう 12 本まで。いちばん上に
+//                「2056 年・目安」）。どの行き先がゴールにどれだけ近いかを、選ばずに比べられる（見直し reader-4）
+//   選んだ行き先 線の右に「2056 年 0.45 億円（5%）目安」（画面の右で切れない: 入らなければカードの上へ）。スマホでゴールの列が
+//                画面の右の外なら、札の上の端からその上の目盛りの札まで破線を 1 本
+//   今日の手     近いとき（full・compact）、今日の手のカードの上の縁に金色の札「芽 14%」（見取り図の芽の札と同じ。見直し reader-4）
 //   ゴールのカード DOM のボタン 1 つ（.goal-rail。キャンバスの入れ物の中）。目盛りのすぐ下、ゴールの列の右。フレームごとに位置を
-//                1 度だけ書く（変わったときだけ）。列が画面の外なら端に札で寄せる（机「→ ゴール 10 億円 5%」・スマホ「10億 5% ›」）。
-//                上に置くので、下の操作・お知らせには重ならない。文字は空いた時間に入れる（起動の最初の絵には出さない）。
-//                押すと: カードは前提と内訳を開く・札はゴールの列が見える所へ動く
+//                1 度だけ書く（変わったときだけ）。列が画面の外なら端に札で寄せる（机「→ ゴール 10 億円（おすすめの道 5%・目安）」は
+//                目盛りの下の右・スマホ「10億 · おすすめ 5%目安 ›」は目盛りの帯の中の右: カードを並べる所に重ねない。見直し reader-1）。
+//                スマホでカードが列の右に入らなければ札にする（列の左に置くと 3 年後の列のカードに重なる）。
+//                文字は空いた時間に入れる（起動の最初の絵には出さない）。押すと: カードは前提と内訳を開く・札はゴールの列が見える所へ動く
 // 地図の文書にもデータにも何も足さない（描くだけ）。数は行き先のカードの札（ImpactCards の card.goal: 計算の結果ごとに作る）から。
 
 import { whenIdle } from "../app/idle";
@@ -17,7 +22,7 @@ import { impactColX } from "../model/impactLayout";
 import type { ID } from "../model/types";
 import { h } from "../ui/dom";
 import type { Lod } from "./draw";
-import { HALF_W } from "./geometry";
+import { HALF_H, HALF_W } from "./geometry";
 import type { ImpactCard } from "./impactCards";
 import { CANVAS_FONT } from "./text";
 
@@ -29,12 +34,20 @@ export const GOAL_RAIL_DX = impactColX(GOAL_RAIL_DEPTH);
 export const GOAL_STUB_LOW_CAP = 400;
 /** 狭い画面（スマホの縦向き）の幅 */
 const NARROW = 640;
+/** 目盛りの帯の高さ（CanvasView の RULER_H と同じ。スマホの札はこの帯の中） */
+const RULER_H = 26;
+/** 線の札の上限と、札の行の間（px） */
+export const GOAL_STUB_LABEL_CAP = 12;
+const LABEL_GAP = 15;
+/** 札の左右の余白（CSS の .goal-rail.is-chip の padding と同じ: 机 13px・スマホ 10px） */
+const CHIP_PAD = 13;
+const CHIP_PAD_NARROW = 10;
 /** カードと札の、目盛りの下からの間（px）と、画面の端からの間 */
 const GAP_TOP = 8;
 const GAP_SIDE = 12;
-/** ゴールのカードの幅（CSS の .goal-rail と同じ） */
-const CARD_W = 176;
-const CARD_W_NARROW = 128;
+/** ゴールのカードの幅（CSS の .goal-rail と同じ。机は「おすすめの道 0.46 億（5%）目安」が 1 行に入る幅） */
+export const GOAL_CARD_W = 204;
+export const GOAL_CARD_W_NARROW = 128;
 /** 札の高さ（CSS の .goal-rail.is-chip の min-height と同じ） */
 const CHIP_H = 36;
 
@@ -47,8 +60,12 @@ export interface GoalRailInfo {
   /** 期限の年と、期限を入れていない（仮） */
   by: number;
   byKari: boolean;
-  /** 今の道（おすすめの選び方）の期限の年の資産の真ん中（万円・目安）。出せなければ null */
+  /** 期限の年の資産の真ん中（万円・目安。path の選び方で）。出せなければ null */
   mid: number | null;
+  /** mid の出どころ: pi = おすすめの選び方（「おすすめの道」）・keep = ずっと今のまま（おすすめが無い地図。「今のまま」） */
+  path: "pi" | "keep" | null;
+  /** 今日の手のカードの芽の札（「芽 14%」「芽: 選び方」。芽の無い手は入れない） */
+  moves?: ReadonlyMap<ID, string>;
 }
 
 /** アプリが渡す物（数の出どころと、カードを押したときに開く物） */
@@ -83,6 +100,8 @@ export interface GoalScene {
   selected: ID | null;
   /** 前提の係数（札の年と単位） */
   t: GoalTables | null;
+  /** キャンバスに出ているカード（今日の手の芽の札を出すか。無ければ出さない） */
+  drawn?: readonly ID[];
 }
 
 /** 線の 8 つの組（金の実線・金の点線・灰の実線・灰の点線、それぞれ濃い / 薄い）の色（近い: full・compact） */
@@ -120,21 +139,40 @@ function shareOf(mid: number | null, T: number): string | null {
 }
 
 /** カードと札の文字（テストで確かめる。DOM を使わない） */
-export function goalRailText(x: GoalRailInfo): { name: string; by: string; now: string | null; chipWide: string; chipNarrow: string; aria: string; chipAria: string } {
+export function goalRailText(x: GoalRailInfo): {
+  name: string;
+  by: string;
+  now: string | null;
+  chipWide: string;
+  chipNarrow: string;
+  aria: string;
+  chipAria: string;
+  chipAriaNarrow: string;
+} {
   const goal = formatOku(x.T);
   const oku = x.T >= 10_000;
   const share = shareOf(x.mid, x.T);
-  const now = x.mid !== null ? `今の道 ${formatOku(x.mid, oku).replace(/ 億円$/, " 億")}${share ? `（${share}）` : "・"}目安` : null;
+  // 何の道の数か（おすすめの選び方か、ずっと今のままか: 地図の「今のまま」と同じ言葉。見直し reader-3）
+  const keep = x.path === "keep";
+  const pathName = keep ? "今のまま" : "おすすめの道";
+  const pathLong = keep ? "ずっと今のままなら" : "おすすめの選び方では";
+  const now = x.mid !== null ? `${pathName} ${formatOku(x.mid, oku).replace(/ 億円$/, " 億")}${share ? `（${share}）` : "・"}目安` : null;
   const by = `${x.by} 年まで${x.byKari ? "（仮）" : ""}`;
-  const aria = `ゴールは資産 ${goal}、${x.by} 年まで${x.byKari ? "（期限は仮）" : ""}。${x.mid !== null ? `今の道では約 ${formatOku(x.mid, oku)}${share ? `（ゴールの ${share}）` : ""}の目安。` : ""}押すと前提と内訳を開きます`;
+  const aria = `ゴール、資産 ${goal}、${by}。${x.mid !== null ? `${pathLong}約 ${formatOku(x.mid, oku)}${share ? `（ゴールの ${share}）` : ""}の目安。` : ""}押すと前提と内訳を開きます`;
+  // 札の何割かは、だれの数か（おすすめの道・今のまま）と「目安」を並べる（見込みの % と読み違えない: 見直し reader-2）
+  const chipWide = `→ ゴール ${goal}${share ? `（${pathName} ${share}・目安）` : ""}`;
+  const chipNarrow = `${shortGoal(x.T)}${share ? ` · ${keep ? "今のまま" : "おすすめ"} ${share}目安` : ""} ›`;
+  // 読み上げは見えている文字から始める（声で押すときに、見えている文字で呼べる）
+  const tail = `${share ? `${pathLong} ${x.by} 年にゴールの ${share} の資産（目安）。` : ""}ゴールは ${by}、地図の 3 年後の列の右です。押すとゴールの所へ動きます`;
   return {
     name: `資産 ${goal}`,
     by,
     now,
-    chipWide: `→ ゴール ${goal}${share ? ` ${share}` : ""}`,
-    chipNarrow: `${shortGoal(x.T)}${share ? ` ${share}` : ""} ›`,
+    chipWide,
+    chipNarrow,
     aria,
-    chipAria: `ゴールの資産 ${goal}（${x.by} 年まで）は地図の 3 年後の列の右です${share ? `。今の道ではゴールの ${share}（目安）` : ""}。押すとゴールの所へ動きます`,
+    chipAria: `${chipWide.replace(/^→ /, "")}。${tail}`,
+    chipAriaNarrow: `${chipNarrow.replace(/ ›$/, "")}。${tail}`,
   };
 }
 
@@ -158,8 +196,14 @@ export class GoalRail {
   emph = 0;
   /** 線を描いた回数（stroke。まとめて描けているか） */
   strokes = 0;
+  /** 線の札（「10億の 4%」）を描いた数（確かめ用: 数だけ） */
+  stubLabels = 0;
+  /** 今日の手のカードに芽の札を描いた数（確かめ用: 数だけ） */
+  moveTags = 0;
   /** 選んだ行き先の線の札を描いた（確かめ用） */
   labeled = false;
+  /** 選んだ行き先の札の右の端（画面の px。描いていなければ null: 画面の右で切れていないかの確かめ用） */
+  labelRight: number | null = null;
   /** スマホで選んだ行き先から右の札へ破線を描いた（確かめ用） */
   connector = false;
   /** 直近のフレームのゴールの列の画面の x（列を描かなかったら null） */
@@ -179,6 +223,10 @@ export class GoalRail {
   private placedNarrow = false;
   private dirty = false;
   private readonly segs: number[][] = Array.from({ length: 8 }, () => []);
+  /** 線の札の候補（y・x0・割合の文字・芽。フレームごとに使い回す） */
+  private readonly cands: Array<{ y: number; x0: number; share: string; seed: boolean }> = [];
+  /** キャンバスに出ている今日の手（出ているカードの並びと芽の札が変わったときだけ作り直す） */
+  private moveCache: { drawn: readonly ID[] | null; moves: ReadonlyMap<ID, string> | null; ids: ID[] } = { drawn: null, moves: null, ids: [] };
 
   /** pan: 札を押したとき、ゴールの列が見える所へ動かす。redraw: 文字を入れた後に描き直す */
   constructor(
@@ -224,16 +272,40 @@ export class GoalRail {
     }
   }
 
-  /** 札の右の端から左へ伸びる幅（スマホの破線の行き先。文字を入れたときに測る） */
+  /** 札の幅（文字を入れたときに測る） */
   private chipWidth(): number {
     return this.narrow ? this.chipW.narrow : this.chipW.wide;
   }
+
+  /** 札が端に寄っている（カードでない） */
+  private get docked(): boolean {
+    return this.state === "right" || this.state === "left";
+  }
+
+  /**
+   * スマホで札を目盛りの帯の中に置いているとき、その横の範囲（画面の px）。目盛りはこの範囲に年月を書かない。
+   * 机・カードのとき・札を出していないときは null
+   */
+  rulerSlot(): [number, number] | null {
+    if (!this.narrow || !this.docked || !this.text) return null;
+    const w = this.chipWidth();
+    return this.state === "right" ? [this.width - GAP_SIDE - w, this.width - GAP_SIDE] : [GAP_SIDE, GAP_SIDE + w];
+  }
+
+  /** 机で札を目盛りの下に置いているときの、札の下の端（画面の px。カードを並べる所から外すため）。それ以外は 0 */
+  chipBottom(): number {
+    if (this.narrow || !this.docked || !this.text) return 0;
+    return RULER_H + GAP_TOP + this.bannerH + CHIP_H;
+  }
+
+  private width = 0;
 
   /** 線とゴールの列を描く（画面の座標）。続けてゴールのカードを置く */
   draw(s: GoalScene): void {
     const { ctx, width: W, height: H, z, cx, cy, lod, t } = s;
     const rx = s.railX * z + cx;
     this.railSx = rx;
+    this.width = W;
     this.narrow = W < NARROW;
     let strokes = 0;
     // ゴールの列（薄い金色の破線。目盛りの下から下まで）
@@ -254,6 +326,8 @@ export class GoalRail {
     const near = lod === "full" || lod === "compact";
     const segs = this.segs;
     for (const a of segs) a.length = 0;
+    const cands = this.cands;
+    cands.length = 0;
     let n = 0;
     let emph = 0;
     let far = 0;
@@ -284,6 +358,8 @@ export class GoalRail {
         if (rx > xs && xs < W + 2) segs[grp + 1]!.push(Math.max(-2, xs), xr, y);
         n++;
         if (on) emph++;
+        // 線の札の候補（丸めて 0% は出さない。選んだ行き先は線の右に札があるので出さない）
+        if (near && id !== s.selected && Math.round(g.frac * 100) >= 1) cands.push({ y, x0, share: formatGoalShare(g.frac), seed: g.seed });
       }
     }
     for (let k = 0; k < 8; k++) {
@@ -307,15 +383,21 @@ export class GoalRail {
     this.stubs = n;
     this.emph = emph;
     this.labeled = false;
+    this.labelRight = null;
     this.connector = false;
-    // 選んだ行き先: 線の右に期限の年の資産
+    // スマホで行き先を選んでいるときは、選んだ札と右の上への破線だけ（ほかの線の札は破線と重なる）
+    this.stubLabels = cands.length && t && !(this.narrow && sel) ? this.drawStubLabels(ctx, s, Math.min(rx, W), t) : 0;
+    this.moveTags = near ? this.drawMoveTags(ctx, s) : 0;
+    // 選んだ行き先: 線の右に期限の年の資産（画面の右で切れない。「目安」が最初に切れないよう、入らなければカードの上へ）
     if (sel && t) {
       const text = goalStubLabel(t, sel.atBy);
       ctx.font = `650 11px ${CANVAS_FONT}`;
       ctx.textBaseline = "alphabetic";
       ctx.lineJoin = "round";
-      const x = Math.max(4, sel.x0 + 8);
-      const y = sel.y - 6;
+      const tw = ctx.measureText(text).width;
+      const fits = sel.x0 + 8 + tw <= W - 4;
+      const x = Math.max(4, Math.min(sel.x0 + 8, W - tw - 4));
+      const y = fits ? sel.y - 6 : sel.y - HALF_H * z - 6;
       if (x < W && y > s.top + 10) {
         ctx.strokeStyle = "rgba(7,9,13,0.92)";
         ctx.lineWidth = 4;
@@ -323,26 +405,123 @@ export class GoalRail {
         ctx.fillStyle = "rgba(255,208,138,1)";
         ctx.fillText(text, x, y);
         this.labeled = true;
+        this.labelRight = x + tw;
       }
-      // スマホでゴールの列が右の外: そのカードから右の札まで破線を 1 本
-      if (this.narrow && rx > W && sel.x0 < W - 4 && this.text) {
-        const ex = W - GAP_SIDE - this.chipWidth();
-        const ey = s.top + GAP_TOP + this.bannerH + CHIP_H / 2;
-        ctx.save();
-        ctx.setLineDash([4, 4]);
-        ctx.lineWidth = 1.4;
-        ctx.strokeStyle = "rgba(255,181,71,0.8)";
-        ctx.beginPath();
-        ctx.moveTo(Math.max(0, sel.x0), sel.y);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-        ctx.restore();
-        strokes++;
-        this.connector = true;
+      // スマホでゴールの列が右の外: 札の右の上の端から、目盛りの帯の札まで破線を 1 本（札の文字に重ねない）
+      if (this.narrow && rx > W && sel.x0 < W - 4 && this.text && this.state === "right") {
+        const ex = W - GAP_SIDE - this.chipWidth() / 2;
+        const ey = s.top;
+        const sx = this.labeled ? Math.min(W - 4, x + tw) : Math.max(0, sel.x0);
+        const sy = this.labeled ? y - 12 : sel.y;
+        if (sy > ey + 4) {
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 1.4;
+          ctx.strokeStyle = "rgba(255,181,71,0.8)";
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          ctx.restore();
+          strokes++;
+          this.connector = true;
+        }
       }
     }
     this.strokes = strokes;
-    this.place(W, rx);
+    this.place(W, rx, s);
+  }
+
+  /**
+   * 線の札「10億の 4%」を、ゴールの列（画面の外なら右の端）の手前に、行の間が詰まらないよう 12 本まで。いちばん上の札の上に
+   * 「2056 年・目安」。机で札が右の上にあれば、その高さには出さない。描いた数を返す
+   */
+  private drawStubLabels(ctx: CanvasRenderingContext2D, s: GoalScene, right: number, t: GoalTables): number {
+    const cands = this.cands;
+    cands.sort((a, b) => a.y - b.y);
+    const goal = shortGoal(t.T);
+    const minY = Math.max(s.top + 24, this.state === "right" ? this.chipBottom() + 14 : 0);
+    ctx.font = `650 10.5px ${CANVAS_FONT}`;
+    ctx.textBaseline = "alphabetic";
+    ctx.lineJoin = "round";
+    let drawn = 0;
+    let lastY = -Infinity;
+    let firstY: number | null = null;
+    let firstX = 0;
+    for (const c of cands) {
+      if (drawn >= GOAL_STUB_LABEL_CAP) break;
+      const y = c.y - 4;
+      if (y < minY || y > s.height - 4 || y - lastY < LABEL_GAP) continue;
+      const text = `${goal}の ${c.share}`;
+      const tw = ctx.measureText(text).width;
+      const x = right - tw - 6;
+      // 線が短すぎる（カードのすぐ右がゴールの列）なら出さない
+      if (x < c.x0 + 6) continue;
+      ctx.strokeStyle = "rgba(7,9,13,0.9)";
+      ctx.lineWidth = 3.5;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = c.seed ? "rgba(255,200,120,0.98)" : "rgba(200,208,222,0.92)";
+      ctx.fillText(text, x, y);
+      if (firstY === null) {
+        firstY = y;
+        firstX = right - 6;
+      }
+      lastY = y;
+      drawn++;
+    }
+    // いちばん上に、どの年の・目安の数か
+    if (firstY !== null && firstY - 13 > s.top + 10) {
+      const head = `${t.by} 年・目安`;
+      ctx.font = `500 10px ${CANVAS_FONT}`;
+      const hw = ctx.measureText(head).width;
+      ctx.strokeStyle = "rgba(7,9,13,0.9)";
+      ctx.lineWidth = 3.5;
+      ctx.strokeText(head, firstX - hw, firstY - 13);
+      ctx.fillStyle = "rgba(150,160,178,0.95)";
+      ctx.fillText(head, firstX - hw, firstY - 13);
+    }
+    return drawn;
+  }
+
+  /** 今日の手のカードの上の縁（真ん中）にかけて金色の札「芽 14%」（近いときだけ。カードの幅の半分に入らなければ出さない）。描いた数を返す */
+  private drawMoveTags(ctx: CanvasRenderingContext2D, s: GoalScene): number {
+    const moves = this.host?.info(false)?.moves ?? null;
+    if (!moves || !moves.size || !s.drawn) return 0;
+    const c = this.moveCache;
+    if (c.drawn !== s.drawn || c.moves !== moves) {
+      c.drawn = s.drawn;
+      c.moves = moves;
+      c.ids = s.drawn.filter((id) => moves.has(id));
+    }
+    if (!c.ids.length) return 0;
+    const { z, cx, cy } = s;
+    ctx.font = `700 10px ${CANVAS_FONT}`;
+    ctx.textBaseline = "middle";
+    let n = 0;
+    for (const id of c.ids) {
+      const text = moves.get(id)!;
+      const p = s.pos(id);
+      const mx = p.x * z + cx;
+      const top = (p.y - HALF_H) * z + cy;
+      if (mx < -60 || mx > s.width + 60 || top < s.top || top > s.height) continue;
+      const tw = ctx.measureText(text).width;
+      const w = tw + 12;
+      if (w > HALF_W * z) continue;
+      const x = mx - w / 2;
+      ctx.beginPath();
+      // 下の端はカードの上の縁から 4px（中の左上の札にかからない）
+      ctx.roundRect(x, top - 10, w, 14, 7);
+      ctx.fillStyle = "rgba(40,30,12,0.96)";
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(255,181,71,0.85)";
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,200,120,1)";
+      ctx.fillText(text, x + 6, top - 2.5);
+      n++;
+    }
+    ctx.textBaseline = "alphabetic";
+    return n;
   }
 
   /** ゴールの列を描かない（3 か月ごとの地図でない・入口が見えていない）: カードも隠す */
@@ -350,7 +529,10 @@ export class GoalRail {
     this.stubs = 0;
     this.emph = 0;
     this.strokes = 0;
+    this.stubLabels = 0;
+    this.moveTags = 0;
     this.labeled = false;
+    this.labelRight = null;
     this.connector = false;
     this.railSx = null;
     this.state = "";
@@ -358,7 +540,7 @@ export class GoalRail {
   }
 
   /** カードを置く（列が見えていれば列の右、外なら端の札）。書くのは変わったときだけ */
-  private place(W: number, rx: number): void {
+  private place(W: number, rx: number, s: GoalScene): void {
     const el = this.el;
     if (!el || !this.host) return;
     const info = this.host.info(false);
@@ -371,10 +553,14 @@ export class GoalRail {
     }
     // 前提が変わった: 前の文字のまま置き、空いた時間に入れ直す
     if (info.key !== this.filledKey) this.ask();
-    const cw = this.narrow ? CARD_W_NARROW : CARD_W;
-    // 列の右に入らなければ列の左に（列が画面の中なら札にしない）。列が画面の外なら端の札
-    const x = rx + 8 + cw <= W - 8 ? rx + 8 : rx - 8 - cw;
-    const state: GoalRail["state"] = rx > W - 4 || (x !== rx + 8 && x < 8) ? (rx < 0 ? "left" : "right") : rx < 4 ? "left" : "card";
+    const cw = this.narrow ? GOAL_CARD_W_NARROW : GOAL_CARD_W;
+    // 列の右に入らなければ列の左に。ただし 3 年後の列（36 か月目）のカードの右の端より左に入るときだけ（カードに重ねない）。
+    // スマホは左に置かない（入らなければ札: 目盛りの帯の中）
+    const colRight = rx - (GOAL_RAIL_DX - impactColX(GOAL_RAIL_DEPTH - 2) - HALF_W) * s.z;
+    const right = rx + 8 + cw <= W - 8;
+    const leftOk = !this.narrow && rx - 8 - cw >= Math.max(8, colRight + 8);
+    const x = right ? rx + 8 : rx - 8 - cw;
+    const state: GoalRail["state"] = rx > W - 4 || (!right && !leftOk) ? (rx < 0 ? "left" : "right") : rx < 4 ? "left" : "card";
     if (el.hidden) el.hidden = false;
     if (state !== this.state || this.narrow !== this.placedNarrow || this.dirty) {
       this.state = state;
@@ -402,7 +588,8 @@ export class GoalRail {
     // 左の外（ゴールより右へ動かした）: 矢印を左へ
     if (state === "left") chip = this.narrow ? `‹ ${chip.replace(/ ›$/, "")}` : chip.replace(/^→ /, "← ");
     p.chip.textContent = chip;
-    el.setAttribute("aria-label", state === "card" ? x.aria : state === "left" ? x.chipAria.replace("は地図の 3 年後の列の右です", "は今見ている所より左です") : x.chipAria);
+    const chipAria = this.narrow ? x.chipAriaNarrow : x.chipAria;
+    el.setAttribute("aria-label", state === "card" ? x.aria : state === "left" ? chipAria.replace("地図の 3 年後の列の右です", "今見ている所より左です") : chipAria);
   }
 
   /** 空いた時間に数を作って文字を入れる（1 度に 1 回だけ頼む） */
@@ -420,15 +607,15 @@ export class GoalRail {
       this.filledKey = info.key;
       this.parts.name.textContent = x.name;
       this.parts.by.textContent = x.by;
-      // 「目安」の途中で折り返さない（数と目安をそれぞれ 1 かたまりに）
-      const head = (x.now ?? "").replace(/目安$/, "");
-      this.parts.now.replaceChildren(h("span", null, head), " ", h("span", null, x.now ? "目安" : ""));
+      // 言葉の途中で折り返さない（道の名前・数・目安をそれぞれ 1 かたまりに）
+      const m = /^(\S+) (.+?)・?目安$/.exec(x.now ?? "");
+      this.parts.now.replaceChildren(...(m ? [h("span", null, m[1]!), " ", h("span", null, m[2]!), " ", h("span", null, "目安")] : []));
       this.parts.now.hidden = !x.now;
-      // 札の幅（スマホの破線の行き先）: CSS と同じ文字の形で測る（DOM を測らない）
+      // 札の幅（目盛りの空ける所・スマホの破線の行き先）: CSS と同じ文字の形で測る（DOM を測らない）
       const c = measureCtx();
       if (c) {
         c.font = `650 12px ${CANVAS_FONT}`;
-        this.chipW = { wide: c.measureText(x.chipWide).width + 26, narrow: c.measureText(x.chipNarrow).width + 26 };
+        this.chipW = { wide: c.measureText(x.chipWide).width + 2 * CHIP_PAD, narrow: c.measureText(x.chipNarrow).width + 2 * CHIP_PAD_NARROW };
       }
       // 次のフレームで札の文字と読み上げも入れ直す
       this.dirty = true;

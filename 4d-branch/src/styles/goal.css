@@ -559,8 +559,8 @@
   left: 0;
   z-index: 4;
   box-sizing: border-box;
-  /* 机は「今の道 0.46 億（5%）目安」が 1 行に入る幅（src/canvas/goalRail.ts の CARD_W と同じ） */
-  width: 176px;
+  /* 机は「おすすめの道 0.46 億（5%）目安」が 1 行に入る幅（src/canvas/goalRail.ts の GOAL_CARD_W と同じ） */
+  width: 204px;
   display: grid;
   gap: 1px;
   margin: 0;
@@ -650,6 +650,19 @@
   content: "";
   position: absolute;
   inset: -5px;
+}
+/* スマホの札は目盛りの帯（26px）の中の端: まとめて開いた後の 1 行目など、カードを並べる所に重ねない（見直し reader-1）。
+   押す所は帯の高さのまま横へ広げる（下のカードの側へは広げない） */
+.goal-rail.is-chip.is-narrow {
+  top: 1px;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.goal-rail.is-chip.is-narrow::before {
+  inset: -1px -6px -1px -6px;
 }
 .goal-rail.is-chip > :not(.goal-rail-chip) {
   display: none;

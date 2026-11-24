@@ -96,7 +96,7 @@ describe("見取り図の帯（仮の前提）", () => {
     expect(s.bar!.mid).toBeLessThanOrEqual(s.bar!.hi);
     expect(s.bar!.hi).toBeLessThanOrEqual(1);
     expect(s.aria).toContain("ゴールは資産 10 億円、2056 年まで");
-    expect(s.aria).toContain("10〜90% で");
+    expect(s.aria).toContain("行き先の真ん中の 8 割は");
     expect(s.aria).toContain("地図が数えるのは 2029 年 11 月までの額面の稼ぎです");
   });
 
@@ -292,12 +292,12 @@ describe("手の詳しい画面と道の終わり", () => {
   const a = handA();
   const view = viewOf(a);
 
-  it("手ごとの「10 億」の 1 行: 期限の資産の幅（10〜90%・目安）と、一番近い行き先への道", () => {
+  it("手ごとの「10 億」の 1 行: 期限の資産の幅（真ん中の 8 割・目安）と、一番近い行き先への道", () => {
     for (const f of a.cm.firstMoves) {
       const g = goalMoveVM(a, view, f);
       expect(g).not.toBeNull();
       expect(g!.name).toBe("10 億");
-      expect(g!.text).toMatch(/^この手の行き先の 2056 年の資産は .+（10〜90%・目安）。/);
+      expect(g!.text).toMatch(/^この手の行き先の 2056 年の資産は、多くが .+（真ん中の 8 割・目安）。/);
       spaced(g!.text);
       if (g!.href) {
         expect(parseRoute(g!.href).name).toBe("path");

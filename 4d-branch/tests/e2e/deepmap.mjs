@@ -284,7 +284,8 @@ async function runProfile(browser, profile) {
       await page.evaluate(() => window.__fourD.app.view.fit(undefined, { animate: false }));
       await settle(page, 150);
       const t = await page.evaluate(() => window.__fourD.app.view.rulerTexts);
-      assert(t.some((x) => x.startsWith("今日 2026 年 11 月")), `目盛りに今日が無い（${t.join("・")}）`);
+      const dbg = await page.evaluate(() => { const v = window.__fourD.app.view; return JSON.stringify({ on: v.rulerShown, slot: v.goal.rulerSlot(), st: v.goal.state, z: v.camera.zoom, w: v.width }); });
+      assert(t.some((x) => x.startsWith("今日 2026 年 11 月")), `目盛りに今日が無い（${t.join("・")}）${dbg}`);
       // 1 年先まで開いて、まとめた行き先の列と線を見る
       const r = await page.evaluate(() => {
         const f = window.__fourD;
@@ -851,6 +852,9 @@ const goalRail = (page) =>
       emph: g.emph,
       strokes: g.strokes,
       labeled: g.labeled,
+      labelRight: g.labelRight,
+      stubLabels: g.stubLabels,
+      moveTags: g.moveTags,
       connector: g.connector,
       state: g.state,
       railSx: g.railSx,
@@ -972,7 +976,7 @@ async function goalChecks(page, tag, profile) {
     await dropToasts(page);
   });
 
-  await check(`${tag}: ゴール: 地図のいちばん右のゴール。見えていなければ右の端の札（${narrow ? "10億 5% ›" : "→ ゴール 10 億円 5%"}）・行き先からゴールへ線（goalStubs）・選んだ行き先の線は濃く札つき・札を押すとゴールの列へ・カードを押すと前提の欄`, async () => {
+  await check(`${tag}: ゴール: 地図のいちばん右のゴール。見えていなければ右の端の札（${narrow ? "目盛りの帯の中に「10億 · おすすめ 5%目安 ›」" : "→ ゴール 10 億円（おすすめの道 5%・目安）"}）・行き先からゴールへ線（goalStubs）・選んだ行き先の線は濃く札つき・札を押すとゴールの列へ・カードを押すと前提の欄`, async () => {
     await page.evaluate(() => {
       const f = window.__fourD;
       f.app.vm.resetImpactOpen();
@@ -984,7 +988,10 @@ async function goalChecks(page, tag, profile) {
     await settle(page, 900);
     let g = await goalRail(page);
     assert(g.state === "right", `今日に寄った画面でゴールが右の端の札でない（${JSON.stringify(g)}）`);
-    assert(narrow ? /^10億 \d+% ›$/.test(g.text) : /^→ ゴール 10 億円 \d+%$/.test(g.text), `札の文字: ${g.text}`);
+    assert(narrow ? /^10億 · おすすめ \d+%目安 ›$/.test(g.text) : /^→ ゴール 10 億円（おすすめの道 \d+%・目安）$/.test(g.text), `札の文字: ${g.text}`);
+    // 読み上げは見えている文字から始まる（声で押すとき: 見直し reader-2）
+    assert(g.aria && g.aria.startsWith(g.text.replace(/ ›$/, "").replace(/^→ /, "")), `読み上げが見えている文字から始まらない（${g.aria}）`);
+    if (narrow) assert(g.box.bottom <= 26.5 && g.box.top >= 0, `スマホの札が目盛りの帯の中に無い（${JSON.stringify(g.box)}）`);
     assert(g.aria && g.aria.includes("押すとゴールの所へ動きます"), `読み上げのボタンが無い（${g.aria}）`);
     const covers = await page.evaluate(() => {
       const c = document.querySelector(".goal-rail").getBoundingClientRect();
@@ -995,6 +1002,9 @@ async function goalChecks(page, tag, profile) {
     });
     assert(covers === 0, "ゴールの札が下の操作・お知らせ・帯に重なる");
     assert(g.stubs === 0, `行き先が見えていないのに線がある（${g.stubs}）`);
+    // 行き先が見えていなくても、今日の手のカードに芽の札（札のほかにもゴールの印がある: 見直し reader-4）
+    const zNow = await page.evaluate(() => window.__fourD.app.view.camera.zoom);
+    if (zNow >= 0.3) assert(g.moveTags >= 1, `今日の手のカードに芽の札が無い（拡大 ${Math.round(zNow * 100)}%）`);
     await shot(page, `${tag}-goal-04-chip`);
     // 行き先を開いて寄る: 線が引かれる
     const { end } = await openGoalEnds(page, 40);
@@ -1014,7 +1024,11 @@ async function goalChecks(page, tag, profile) {
     });
     assert(g.stubs > 0 && g.stubs <= ends, `線の数（${g.stubs}・見えている高さの行き先 ${ends}）`);
     assert(g.strokes <= 5, `線をまとめて描いていない（${g.strokes} 回）`);
-    assert(g.ruler.length === 1, `目盛りにゴールが無い（${g.ruler.join("・")}）`);
+    // 目盛りのゴールの札（目安は付けない: 目標は自分で決めた額。見直し reader-8）。スマホで札が目盛りの帯の中にあれば、札がその役
+    if (narrow && g.state !== "card") assert(g.ruler.length === 0 && g.box && g.box.bottom <= 26.5, `スマホの目盛りのゴール（${g.ruler.join("・")}・${JSON.stringify(g.box)}）`);
+    else assert(g.ruler.length === 1 && !g.ruler[0].includes("目安"), `目盛りにゴールが無い・目安が付く（${g.ruler.join("・")}）`);
+    // 線の札「10億の 4%」（行の間を空けて 12 本まで: 見直し reader-4）
+    assert(g.stubLabels >= 1 && g.stubLabels <= 12 && g.stubLabels <= g.stubs, `線の札の数（${g.stubLabels}・線 ${g.stubs}）`);
     await shot(page, `${tag}-goal-05-stubs`);
     // 選ぶ: その行き先の線は濃く、線の右に「2056 年 0.45 億円（5%）目安」
     await page.evaluate((id) => window.__fourD.ui.select([id]), end);
@@ -1023,6 +1037,8 @@ async function goalChecks(page, tag, profile) {
     g = await goalRail(page);
     assert(g.emph >= 1 && g.labeled, `選んだ行き先の線が濃くない・札が無い（${JSON.stringify(g)}）`);
     if (narrow && g.state === "right") assert(g.connector, "スマホで選んだ行き先から右の札への破線が無い");
+    // 選んだ行き先の札は画面の右で切れない（「目安」が残る: 見直し reader-5）
+    assert(g.labelRight !== null && g.labelRight <= g.width, `選んだ行き先の札が画面の右で切れる（${g.labelRight} / ${g.width}）`);
     const fact = await page.evaluate(() => document.querySelector(".sidebar-right .goal-fact")?.textContent ?? "");
     if (!narrow) assert(/\d{4} 年の資産は約 [\d.]+ 億円.*目安/.test(fact) && fact.includes("前提を変える"), `詳細の欄の「10 億」の 1 文: ${fact}`);
     await shot(page, `${tag}-goal-06-end-selected`);
@@ -1033,7 +1049,7 @@ async function goalChecks(page, tag, profile) {
       g = await goalRail(page);
     }
     assert(g.state === "card" && g.railSx > 0 && g.railSx < g.width, `札を押してもゴールの列へ動かない（${JSON.stringify(g)}）`);
-    assert(/^ゴール 資産 10 億円 \d{4} 年まで(（仮）)? 今の道 [\d.]+ 億（\d+%） ?目安$/.test(g.text), `ゴールのカードの文字: ${g.text}`);
+    assert(/^ゴール 資産 10 億円 \d{4} 年まで(（仮）)? おすすめの道 [\d.]+ 億（\d+%） ?目安$/.test(g.text), `ゴールのカードの文字: ${g.text}`);
     assert(g.aria && g.aria.includes("押すと前提と内訳を開きます"), `読み上げ: ${g.aria}`);
     assert(g.box.top >= 26, `ゴールのカードが目盛りに重なる（${JSON.stringify(g.box)}）`);
     await shot(page, `${tag}-goal-07-rail-card`);
@@ -1049,7 +1065,29 @@ async function goalChecks(page, tag, profile) {
     await settle(page, 200);
   });
 
-  await check(`${tag}: ゴール: 途中のカードの詳細に「この先の行き先: 期限の年の資産（10〜90%・目安）」`, async () => {
+  await check(`${tag}: ゴール: 選んだすぐ後に方針を変えて計算が作り直されても、「この先の行き先」が「数えています」のまま残らない（見直し data-3）`, async () => {
+    const i = await page.evaluate(() => window.__fourD.app.vm.deep.get().cm.firstMoves[3]);
+    await page.evaluate((k) => {
+      const f = window.__fourD;
+      f.ui.select([f.app.vm.deep.get().idOf(k)]);
+      f.ui.setPrefs({ rightOpen: true });
+    }, i);
+    // 1 文を数え始める前（400ms + 空いた時間）に方針を変える
+    await page.waitForTimeout(80);
+    const sid = await page.evaluate(() => {
+      const f = window.__fourD;
+      const before = f.app.vm.deep.get();
+      const id = Object.keys(f.store.doc.scenarios)[0] ?? null;
+      f.ui.setPrefs({ scenarioId: id });
+      return { id, rebuilt: f.app.vm.deep.get() !== before };
+    });
+    assert(sid.id && sid.rebuilt, `方針を変えても地図の画面に渡す物が作り直されない（${JSON.stringify(sid)}）`);
+    await page.waitForFunction(() => /この先の行き先: \d{4} 年の資産/.test(document.querySelector(".sidebar-right .deep-goal")?.textContent ?? ""), null, { timeout: 10_000 });
+    await page.evaluate(() => (window.__fourD.ui.setPrefs({ scenarioId: null }), window.__fourD.ui.clearSelection()));
+    await settle(page, 200);
+  });
+
+  await check(`${tag}: ゴール: 途中のカードの詳細に「この先の行き先: 期限の年の資産は多くが…（真ん中の 8 割・目安）」`, async () => {
     const id = await selectCard(page, await page.evaluate(() => window.__fourD.app.vm.deep.get().cm.firstMoves[2]));
     const line = page.locator(".sidebar-right .deep-goal");
     await line.waitFor({ timeout: 10_000 });
@@ -1057,7 +1095,7 @@ async function goalChecks(page, tag, profile) {
     // 詳細の下の欄は画面の外では描かない（content-visibility）: 文は textContent で読む
     await line.scrollIntoViewIfNeeded();
     const t = (await line.textContent()) ?? "";
-    assert(/この先の行き先: \d{4} 年の資産 [\d.〜]+ ?億円（10〜90%・目安）/.test(t), `途中のカードの 1 文: ${t}`);
+    assert(/この先の行き先: \d{4} 年の資産は多くが [\d.〜]+ ?億円（真ん中の 8 割・目安）/.test(t), `途中のカードの 1 文: ${t}`);
     assert(t.includes("前提を変える"), `手のカードの 1 文に「前提を変える」が無い: ${t}`);
     await noOverflow(page, "途中のカードの詳細");
     await page.evaluate(() => window.__fourD.ui.clearSelection());
@@ -1106,7 +1144,7 @@ const bulkInView = (page, tops, head) =>
       vm.ensure();
       const deep = vm.deep.get();
       const cr = v.canvas.getBoundingClientRect();
-      const covers = [...document.querySelectorAll(".banner-area > *, .toast:not(.closing), .zoom-ctl, .pick-bar")]
+      const covers = [...document.querySelectorAll(".banner-area > *, .toast:not(.closing), .zoom-ctl, .pick-bar, .goal-rail")]
         .filter((e) => e.checkVisibility())
         .map((e) => e.getBoundingClientRect())
         .filter((r) => r.width > 0 && r.height > 0);
@@ -1144,6 +1182,57 @@ async function assertBulkView(page, profile, what, tops, head, opts = { fresh: t
   if (profile.viewport.width >= 700) return;
   const r = await bulkInView(page, tops, head);
   assert(r.zoom >= 0.4 - 1e-6 && r.head && r.area >= 3 && (!opts.fresh || r.fresh >= 1), `${what}: 開いた後の画面で読めるカードが足りない（拡大 ${Math.round(r.zoom * 100)}%・開き始めたカード ${r.head ? "見える" : "見えない"}・開いた所 ${r.area} 枚・新しく出た ${r.fresh} 枚）`);
+}
+
+/**
+ * スマホでまとめて開いた後: ゴールの札（.goal-rail）がどのカードにも重ならない（札は目盛りの帯の中: 見直し reader-1）。
+ * tap: 目盛りの下で一番上の行の一番右のカード（帯・お知らせ・拡大縮小に覆われていない物）を押すと、そのカードを選び、画面は
+ * ゴールの列へ動かない
+ */
+async function assertChipClear(page, what, tap = false) {
+  const r = await page.evaluate(() => {
+    const f = window.__fourD;
+    const v = f.app.view;
+    const vm = f.app.vm;
+    vm.ensure();
+    const el = document.querySelector(".goal-rail");
+    const g = el && el.checkVisibility() ? el.getBoundingClientRect() : null;
+    const cr = v.canvas.getBoundingClientRect();
+    const covers = [...document.querySelectorAll(".banner-area > *, .toast:not(.closing), .zoom-ctl, .pick-bar")]
+      .filter((e) => e.checkVisibility())
+      .map((e) => e.getBoundingClientRect())
+      .filter((c) => c.width > 0 && c.height > 0);
+    const over = (b, c) => b.left < c.right && b.right > c.left && b.top < c.bottom && b.bottom > c.top;
+    const z = v.camera.zoom;
+    const hw = 106 * z;
+    const hh = 48 * z;
+    let hit = 0;
+    let best = null;
+    for (const id of vm.drawNodes) {
+      const p = vm.posOf(id);
+      const s = v.camera.toScreen(p.x, p.y);
+      const b = { left: cr.left + s.x - hw, right: cr.left + s.x + hw, top: cr.top + s.y - hh, bottom: cr.top + s.y + hh };
+      if (b.right <= cr.left || b.left >= cr.right || b.bottom <= cr.top + 26 || b.top >= cr.bottom) continue;
+      if (g && over(b, g)) hit++;
+      if (b.top < cr.top + 26 || b.left < cr.left || b.right > cr.right || b.bottom > cr.bottom || covers.some((c) => over(b, c))) continue;
+      if (!best || b.top < best.b.top - 4 || (Math.abs(b.top - best.b.top) <= 4 && b.left > best.b.left)) best = { id, b };
+    }
+    return {
+      hit,
+      state: v.goal.state,
+      chip: g && { top: g.top - cr.top, bottom: g.bottom - cr.top, left: g.left - cr.left, right: g.right - cr.left },
+      best: best && { id: best.id, x: (best.b.left + best.b.right) / 2 + hw * 0.4, y: best.b.top + Math.max(4, Math.min(14, hh / 2)) },
+      cam: v.camera.x,
+    };
+  });
+  assert(r.hit === 0, `${what}: ゴールの札がカード ${r.hit} 枚に重なる（${JSON.stringify(r.chip)}）`);
+  if (r.chip && r.state !== "card") assert(r.chip.bottom <= 26 + 0.5, `${what}: スマホの札が目盛りの帯の外（${JSON.stringify(r.chip)}）`);
+  if (!tap || !r.best) return;
+  await page.touchscreen.tap(r.best.x, r.best.y);
+  await settle(page, 600);
+  const after = await page.evaluate(() => ({ sel: [...window.__fourD.ui.selection.nodes], cam: window.__fourD.app.view.camera.x, state: window.__fourD.app.view.goal.state }));
+  assert(after.sel.length === 1 && after.sel[0] === r.best.id, `${what}: 右の上のカードを押しても選べない（${JSON.stringify(after.sel)} / ${r.best.id}）`);
+  assert(Math.abs(after.cam - r.cam) < 40, `${what}: 右の上のカードを押したら画面が動いた（${Math.round(r.cam)} → ${Math.round(after.cam)}）`);
 }
 
 /** 出ているお知らせの文 */
@@ -1211,6 +1300,7 @@ async function bulkChecks(page, tag, profile) {
     await settle(page, 600);
     const after = await drawn(page);
     await assertBulkView(page, profile, "A", [f], f);
+    if (narrow) await assertChipClear(page, "A");
     assert(after === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${after}）`);
     const t = await toasts(page);
     assert(/から\s1\u00a0年先までの判断と手を開いた（383\u00a0枚）|から\s1\u00a0年先までの判断と手を開いた（[\d,]+\u00a0枚）/.test(t) && /元に戻す/.test(t) && /見取り図で見る/.test(t), `お知らせが違う（${t}）`);
@@ -1221,6 +1311,21 @@ async function bulkChecks(page, tag, profile) {
     assert((await drawn(page)) === before, `元に戻すで前の枚数に戻らない（${await drawn(page)} / ${before}）`);
     await reset();
   });
+
+  if (narrow)
+    await check(`${tag}: まとめて開く: スマホで 1 年先まで開いた後、ゴールの札は目盛りの帯の中でカードに重ならず、右の上のカードを押すとそのカードを選ぶ（見直し reader-1）`, async () => {
+      await reset();
+      const f = await page.evaluate(() => window.__fourD.app.vm.deep.get().cm.firstMoves[0]);
+      const id = await selectCard(page, f);
+      const sec = page.locator(".sidebar-right .deep-open-sec:visible");
+      await sec.waitFor();
+      await sec.locator(`[data-fk="open:12:${id}"]`).click();
+      await settle(page, 800);
+      await dropToasts(page);
+      await settle(page, 300);
+      await assertChipClear(page, "1 年先まで", true);
+      await reset();
+    });
 
   await check(`${tag}: まとめて開く A（大きい段数）: 1,000 枚を超えるときはページの中で聞く。「やめる」で何も開かず、「開く」で開き、「この先をまとめてたたむ」で閉じる`, async () => {
     await reset();
@@ -1385,8 +1490,15 @@ async function bulkChecks(page, tag, profile) {
     if (await dlg.isVisible().catch(() => false)) await dlg.getByRole("button", { name: "開く" }).click();
     await settle(page, 700);
     await assertBulkView(page, profile, "C", moves, moves[0]);
+    if (narrow) await assertChipClear(page, "C");
     assert((await drawn(page)) === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${await drawn(page)}）`);
     assert(/選んだ 3 枚から\s1\u00a0年先まで/.test(await toasts(page)), `お知らせが違う（${await toasts(page)}）`);
+    // スマホ（キーが無い）では「F で…」と言わず、押せる「選んだカードを見る」（見直し reader-6）
+    {
+      const tt = await toasts(page);
+      if (narrow) assert(!/F\s?で/.test(tt) && /選んだカードを見る/.test(tt), `スマホのお知らせにキーの案内がある・押せる道が無い（${tt}）`);
+      else assert(/F\s?で選んだカードを画面に収めます/.test(tt), `机のお知らせに F の案内が無い（${tt}）`);
+    }
     await shotB("C-after");
     // 開いたら「ほかのカードも選ぶ」は終わる（次に押したカードを選びに足さない。選んだ物はそのまま: 見直し reader-6）
     const st = await page.evaluate(() => ({ pick: window.__fourD.ui.multiPick, n: window.__fourD.ui.selection.nodes.size }));
@@ -1474,6 +1586,7 @@ async function bulkChecks(page, tag, profile) {
     const after = await drawn(page);
     assert(after > b2, "開いていない");
     await assertBulkView(page, profile, "D（1 年後）", [0], 0, { fresh: false });
+    if (narrow) await assertChipClear(page, "D（1 年後）");
     const inside12 = await drawnInside(page, [0]);
     assert(inside12 === want12 && after <= 3000, `1 年後の枚数が合わない（${inside12} / ${want12}・全体 ${after}）`);
     await shotB("D-after-1y");
@@ -1708,7 +1821,8 @@ async function storedProfile(browser, profile) {
       });
       await settle(page, 150);
       const t = await page.evaluate(() => window.__fourD.app.view.rulerTexts);
-      assert(t.some((x) => x.startsWith("今日 2026 年 11 月")), `目盛りに今日が無い（${t.join("・")}）`);
+      const dbg = await page.evaluate(() => { const v = window.__fourD.app.view; return JSON.stringify({ on: v.rulerShown, slot: v.goal.rulerSlot(), st: v.goal.state, z: v.camera.zoom, w: v.width }); });
+      assert(t.some((x) => x.startsWith("今日 2026 年 11 月")), `目盛りに今日が無い（${t.join("・")}）${dbg}`);
       // 狭い画面では右の引き出し（概要）がキャンバスを覆うので、閉じてから目盛りを写す（P2 の確かめ F3）
       if (profile.mobile) {
         await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));

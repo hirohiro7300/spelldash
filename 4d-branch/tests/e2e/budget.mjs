@@ -585,7 +585,9 @@ async function measureProfile(browser, profile) {
 
   await traceHeap(cdp, "1 年先までの後");
   // まとめて開く（D: 今日から 2027 年 11 月まで。1,000 枚を超えるので確かめの「開く」を押す）。開いたまま、カードを選ぶ・1 つ開く
-  // 画面の中に見えている地図のカード（パネル・お知らせに隠れていない物）
+  // 画面の中にある地図のカード（並べた順）と、それぞれがパネル・お知らせ・札に隠れているか。選ぶカードは隠れているかを見る前の並びで
+  // 決め、隠れていれば次の隠れていないカードへ進む（重ねる部品の大きさが変わっても、比べる 2 つのビルドで同じカードを押す:
+  // 見直し perf-1）
   const visibleCards = () =>
     page.evaluate(() => {
       const f = window.__fourD;
@@ -593,17 +595,31 @@ async function measureProfile(browser, profile) {
       const v = f.app.view;
       vm.ensure();
       const r = v.canvas.getBoundingClientRect();
-      return vm.drawNodes.filter((id) => {
-        if (!vm.inImpact(id)) return false;
+      const ids = [];
+      const hidden = [];
+      for (const id of vm.drawNodes) {
+        if (!vm.inImpact(id)) continue;
         const p = vm.posOf(id);
-        if (!p) return false;
+        if (!p) continue;
         const s = v.camera.toScreen(p.x, p.y);
         const x = r.left + s.x;
         const y = r.top + s.y;
-        if (x < r.left + 20 || x > r.right - 20 || y < r.top + 20 || y > r.bottom - 20) return false;
-        return document.elementFromPoint(x, y) === v.canvas;
-      });
+        if (x < r.left + 20 || x > r.right - 20 || y < r.top + 20 || y > r.bottom - 20) continue;
+        ids.push(id);
+        hidden.push(document.elementFromPoint(x, y) !== v.canvas);
+      }
+      return { ids, hidden };
     });
+  /** 並べた順の n 番目から、隠れていない最初のカード */
+  const pickShown = (list, n) => {
+    for (let k = 0; k < list.ids.length; k++) {
+      const j = (n + k) % list.ids.length;
+      if (!list.hidden[j]) return list.ids[j];
+    }
+    return null;
+  };
+  /** 選ぶの 1 回ごとの記録（SELECT_LOG=1: カード・その種類・時間。値は出さない） */
+  const selLog = process.env.SELECT_LOG === "1" ? [] : null;
   const dropToasts = () => page.evaluate(() => document.querySelectorAll(".toast:not(.closing) .toast-close").forEach((b) => b.click()));
   for (let k = 0; k < ROUNDS; k++) {
     await page.evaluate(() => {
@@ -635,11 +651,22 @@ async function measureProfile(browser, profile) {
     await page.evaluate(() => window.__budget.frames());
     await dropToasts();
     for (let t = 0, done = 0; done < 3 && t < 30; t++) {
-      const ids = await visibleCards();
-      const id = ids.length ? ids[(t * 37 + k * 11 + 5) % ids.length] : null;
+      const list = await visibleCards();
+      const id = list.ids.length ? pickShown(list, (t * 37 + k * 11 + 5) % list.ids.length) : null;
       await page.evaluate(() => window.__fourD.ui.clearSelection());
       await page.evaluate(() => window.__budget.frames());
-      if (id && (await canvasClick(id, "selectBig"))) done++;
+      const n0 = r.selectBig?.length ?? 0;
+      if (id && (await canvasClick(id, "selectBig"))) {
+        done++;
+        if (selLog && (r.selectBig?.length ?? 0) > n0) {
+          const kind = await page.evaluate((nid) => {
+            const f = window.__fourD;
+            const n = f.store.doc.nodes[nid];
+            return `${f.app.vm.impact.kind.get(nid) ?? "-"}/${n?.meta?.fork ?? n?.type ?? "-"}`;
+          }, id);
+          selLog.push({ round: k, id, kind, ms: Math.round(r.selectBig.at(-1)) });
+        }
+      }
     }
     // 開いたまま 1 つ開く（C）: 見えている閉じたカード
     const cid = await page.evaluate((kk) => {
@@ -968,6 +995,10 @@ async function measureProfile(browser, profile) {
   });
   push("heapBrowse", await heapMB(cdp, r.heapParts));
   r.errors = s.errors.slice(0, 5);
+  if (selLog) {
+    r.selectBigLog = selLog;
+    console.log(`  selectBig の 1 回ごと: ${selLog.map((x) => `${x.kind} ${x.ms}ms`).join("・")}`);
+  }
   await s.ctx.close();
   return r;
 }

@@ -188,7 +188,7 @@ export function goalStripVM(x: GoalStripInput): GoalStripVM {
   const aria = [
     `ゴールは${goal}、${t.by} 年まで${kari ? `（前提 ${kari}）` : ""}`,
     at ? `今の前提では ${t.by} 年に約 ${formatOku(at.p50, oku)}${share ? `、${share}` : ""}` : null,
-    at ? `10〜90% で ${okuRange(at.p10, at.p90, oku)}` : null,
+    at ? `行き先の真ん中の 8 割は ${okuRange(at.p10, at.p90, oku)}` : null,
     "目安",
     frame.split("。")[0]!,
   ]
@@ -304,7 +304,7 @@ export function goalMoveVM(a: Analysis, view: GoalView, f: number): GoalMoveVM |
   const t = view.summary.tables;
   const oku = okuOf(t);
   const name = formatOku(t.T).replace(/円$/, "");
-  const parts: string[] = [`この手の行き先の ${t.by} 年の資産は ${okuRange(s.atBy.p10, s.atBy.p90, oku)}（10〜90%・目安）。`];
+  const parts: string[] = [`この手の行き先の ${t.by} 年の資産は、多くが ${okuRange(s.atBy.p10, s.atBy.p90, oku)}（真ん中の 8 割・目安）。`];
   if (s.seed > 0) parts.push(`芽のある行き先 ${formatGoalShare(s.seed)}。`);
   let href: string | null = null;
   let linkText = "その道を見る";
@@ -331,13 +331,13 @@ export function goalMoveVM(a: Analysis, view: GoalView, f: number): GoalMoveVM |
 }
 
 /**
- * 途中のカードの「この先の行き先」の 1 文（そのカードからおすすめの選び方で着く行き先の、期限の年の資産の 10〜90% と芽の割合。
+ * 途中のカードの「この先の行き先」の 1 文（そのカードからおすすめの選び方で着く行き先の、期限の年の資産の真ん中の 8 割（10〜90%）と芽の割合。
  * goalFrom の答えから）。数が出せなければ null
  */
 export function goalFromLine(t: GoalTables, s: GoalScope): string | null {
   if (!s.atBy) return null;
   const seed = s.seed > 0 ? `・芽のある行き先 ${formatGoalShare(s.seed)}` : "";
-  return `この先の行き先: ${t.by} 年の資産 ${okuRange(s.atBy.p10, s.atBy.p90, okuOf(t))}（10〜90%・目安）${seed}`;
+  return `この先の行き先: ${t.by} 年の資産は多くが ${okuRange(s.atBy.p10, s.atBy.p90, okuOf(t))}（真ん中の 8 割・目安）${seed}`;
 }
 
 /** 道の終わり（地図の番号 i の行き先）の 1 文。数が出せなければ null */

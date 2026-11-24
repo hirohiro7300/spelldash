@@ -12,12 +12,12 @@ import type { AppContext } from "../app/context";
 import { whenIdle } from "../app/idle";
 import { goalViewOf, type Analysis } from "../deepmap/core";
 import { fillGoalSlots, goalOverviewVM, goalSkeletonEl, goalStripEl, goalStripVM, goalViewKey } from "../deepmap/views";
-import { formatOku, goalAnchor, goalAnchorOfRoot, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
+import { formatGoalShare, formatOku, goalAnchor, goalAnchorOfRoot, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
 import { goalCtxOf, goalFactOf, goalImpactStrip } from "../model/goalImpact";
 import { goalEditorStale, goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, sameGoal, type GoalField } from "../model/goalForm";
 import type { GoalRailHost, GoalRailInfo } from "../canvas/goalRail";
 import type { ImpactResult } from "../model/impact";
-import type { GNode } from "../model/types";
+import type { GNode, ID } from "../model/types";
 import { h, isImeKey } from "./dom";
 import { toast } from "./overlays";
 
@@ -209,7 +209,6 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
         const fresh = goalStripEl(vm);
         // 見取り図の帯と同じ形だが、見取り図の数では埋めない（data-goal-key を外す）
         delete fresh.dataset.goalKey;
-        fresh.dataset.goalImp = vm.key;
         // 見出しの行に期限の年がある（帯の 1 行目）: 棒の横は「約 0.44 億円（4%）・目安」だけ
         const bt = fresh.querySelector<HTMLElement>(".dm-goal-bartext");
         if (bt) bt.textContent = vm.barText.replace(/^\d+ 年に/, "");
@@ -288,6 +287,9 @@ export function refreshGoalViews(app: AppContext): void {
 /** 計算の結果ごとの番号（帯の鍵） */
 const impIds = new WeakMap<ImpactResult, number>();
 let impNext = 1;
+/** 前提ごとの番号（帯の鍵に前提の数を入れない） */
+const tableIds = new Map<string, number>();
+let tableNext = 1;
 
 /** 3 か月ごとの地図の見取り図の数がある（版 7: 入口に年月があるか、見取り図の計算がある） */
 function hasDeep(app: AppContext, imp: ImpactResult): boolean {
@@ -302,7 +304,10 @@ function impactStripOf(app: AppContext, imp: ImpactResult): ReturnType<typeof go
   if (!g) return null;
   let id = impIds.get(imp);
   if (id === undefined) impIds.set(imp, (id = impNext++));
-  const key = `imp${id}|${g.t.key}|${[...g.read.assumed].sort().join(",")}`;
+  // 鍵に前提の数そのもの（今の資産など）を入れない: 同じ前提に同じ番号（見直し data-4）
+  let tid = tableIds.get(g.t.key);
+  if (tid === undefined) tableIds.set(g.t.key, (tid = tableNext++));
+  const key = `imp${id}|t${tid}|${[...g.read.assumed].sort().join(",")}`;
   // 結果と前提が同じなら前の帯（見出しは概要を描き直すたびに呼ばれる: 行き先をなめ直さない）
   return goalImpactStrip(imp, app.store.doc, g, key, goalStripVM);
 }
@@ -365,8 +370,16 @@ export function goalRailHost(app: AppContext): GoalRailHost {
       const scope = s.pi ?? s.keep;
       const mid = scope?.atBy?.p50 ?? null;
       const byKari = view.read.assumed.has("by");
+      // どの選び方の数か（おすすめの選び方・無ければずっと今のまま: カードの「おすすめの道」「今のまま」。見直し reader-3）
+      const path: GoalRailInfo["path"] = s.pi ? "pi" : s.keep ? "keep" : null;
+      // 今日の手のカードの芽の札（見取り図の「10 の手をひと目で」の芽の札と同じ言葉: 見直し reader-4）
+      const moves = new Map<ID, string>();
+      for (const m of s.moves) {
+        const text = m.seed > 0 ? `芽 ${formatGoalShare(m.seed)}` : m.choiceOnly ? "芽: 選び方" : null;
+        if (text) moves.set(ctx.idOf(m.node), text);
+      }
       // 鍵は数そのもの（選び方の計算の入れ物が作り直されても、同じ数なら同じ鍵: カードの文字を書き直さない）
-      const info: GoalRailInfo = { key: `${s.tables.T}|${s.tables.by}|${byKari ? 1 : 0}|${mid === null ? "-" : mid.toFixed(1)}`, T: s.tables.T, by: s.tables.by, byKari, mid };
+      const info: GoalRailInfo = { key: `${s.tables.T}|${s.tables.by}|${byKari ? 1 : 0}|${path ?? "-"}|${mid === null ? "-" : mid.toFixed(1)}`, T: s.tables.T, by: s.tables.by, byKari, mid, path, moves };
       memo = { ctx, raw, info, imp, root: rootNode };
       return info;
     },

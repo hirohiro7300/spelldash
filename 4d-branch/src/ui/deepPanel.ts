@@ -559,6 +559,9 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
   if (!ctx0 || ctx0.indexOf(id) < 0) return null;
   const el = h("section", { class: "deep-node" });
   let key = "";
+  /** 詰めたときの地図の画面に渡す物（作り直されたら詰め直す: 選んだ手・方針・書き換えで計算が変わると、開くボタンと
+   * 「この先の行き先」の 1 文が前の物のまま・「数えています…」のまま残った。見直し data-3） */
+  let shown: DeepCtx | null = null;
   return {
     el,
     update() {
@@ -568,8 +571,9 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
       if (!ctx || i < 0) return;
       // 資産のゴールの前提（入口の meta.goal）が変わったら「この先の行き先」の 1 文も作り直す
       const k = `${openKey(app, ctx)}|${i}|${JSON.stringify(app.store.doc.nodes[ctx.root]?.meta?.goal ?? null)}`;
-      if (k === key) return;
+      if (k === key && ctx === shown) return;
       key = k;
+      shown = ctx;
       keepFocus(el, () => fillNodeBlock(ctx, i));
     },
   };
@@ -612,7 +616,7 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
 }
 
 /**
- * 途中のカードの「この先の行き先: 2056 年の資産 0.40〜0.52 億円（10〜90%・目安）・芽のある行き先 9%」（作業メモ goal/design.md §4.6）。
+ * 途中のカードの「この先の行き先: 2056 年の資産は多くが 0.40〜0.52 億円（真ん中の 8 割・目安）・芽のある行き先 9%」（作業メモ goal/design.md §4.6）。
  * そのカードの先の行き先をなめる（O(部分木)）ので、選んだフレームでは場所だけ置き、空いた時間に埋める。手のカードは詳細の欄に
  * 「10 億」の 1 行が無いので、前提を変える入口も並べる（結果・状態のカードは詳細の欄の 1 行にある）
  */

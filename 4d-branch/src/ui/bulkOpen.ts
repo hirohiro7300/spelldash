@@ -236,13 +236,20 @@ export async function runBulk(app: AppContext, ctx: DeepCtx, r: BulkRun): Promis
   }
   const n = r.paths ? `${num(Math.max(0, added))} 枚増えた` : `${num(r.count)} 枚`;
   // 離れたいくつものカードから開いたときは、選んだ所を全部見る道を添える（F は選んだカードを画面に収める: 見直し reader-1）
-  const far = (r.tops?.length ?? 1) > 1 ? "。F で選んだカードを画面に収めます" : "";
+  // スマホ（キーが無い）では F と言わず、押せる「選んだカードを見る」にする（見取り図で見るがあれば、そちらを残して文を外す: 見直し reader-6）
+  const multi = (r.tops?.length ?? 1) > 1;
+  const touch = isNarrowScreen();
+  const far = multi && !touch ? "。F で選んだカードを画面に収めます" : "";
+  const fitTops = (): void => {
+    const ids = (r.tops ?? [r.head]).filter((t) => isDrawn(app, ctx, t)).map((t) => ctx.idOf(t));
+    if (ids.length) app.view.fit(ids);
+  };
   bulkToast(`${r.from}から${keepNum(what)}${r.paths ? "" : "の判断と手"}を開いた（${keepNum(n)}）${far}`, {
     tone: "ok",
     ms: 8000,
     action: { label: "元に戻す", run: () => undoOpen(app, snap) },
     // 見取り図で見るを押しても、お知らせの「元に戻す」は残す（見直し data-undo-toast-only）
-    action2: r.mapLink ? { label: "見取り図で見る", run: r.mapLink, keep: true } : undefined,
+    action2: r.mapLink ? { label: "見取り図で見る", run: r.mapLink, keep: true } : multi && touch ? { label: "選んだカードを見る", run: fitTops, keep: true } : undefined,
   });
   return true;
 }

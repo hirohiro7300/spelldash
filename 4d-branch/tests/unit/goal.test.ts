@@ -375,6 +375,10 @@ describe("数と文の書き方", () => {
     expect(goalPremiseLine(t10, all, [3300, 6400])).toContain("1〜5% なら 0.33〜0.64 億円）");
     expect(okuRange(5000, 5000, true)).toBe("0.5 億円");
     expect(okuRange(6832, 13000, false)).toBe("6,832 万円〜1.3 億円");
+    // 億の幅は両端の小数の桁をそろえる（見直し reader-7）
+    expect(okuRange(4000, 5200, true)).toBe("0.40〜0.52 億円");
+    expect(okuRange(30000, 35000, true)).toBe("3.0〜3.5 億円");
+    expect(okuRange(9500, 10400, true)).toBe("0.95〜1.04 億円");
     for (const s of [goalPremiseLine(t5, all, [6832, 13000]), goalPremiseLine(t10, all, [67, 216])]) spaced(s);
   });
 

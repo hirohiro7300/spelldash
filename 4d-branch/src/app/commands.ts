@@ -266,7 +266,8 @@ export class Commands {
       label: "元に戻す",
       run: () => {
         const top = this.store.history.undoStack[this.store.history.undoStack.length - 1];
-        if (entry && top === entry) this.undo();
+        // 文書の取り消しだけ（その後のまとめて開くは戻さない: お知らせの操作そのものを戻す。見直し data-1）
+        if (entry && top === entry) this.undoDoc();
         // 上部の「元に戻す」・⌘Z でもう戻してある（やり直しの側にある）: 読み込んだ・別の操作をした、とは言わない
         else if (entry && this.store.history.redoStack.includes(entry)) this.hooks.toast("この操作はもう元に戻してあります");
         // 履歴ごと入れ替わった（初めての同期・別の端末の内容に譲った など）: 上部の「元に戻す」でも戻せない
@@ -697,6 +698,11 @@ export class Commands {
       this.hooks.bulkUndone?.();
       return;
     }
+    this.undoDoc();
+  }
+
+  /** 文書の取り消しだけ（まとめて開く・たたむの先回りをしない。お知らせの「元に戻す」から） */
+  private undoDoc(): void {
     if (!this.store.history.canUndo) return;
     this.store.undo();
     this.afterHistory();
