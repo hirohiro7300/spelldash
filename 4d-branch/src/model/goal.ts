@@ -260,9 +260,9 @@ function fillGrid(out: Float64Array, q: number, K: number): void {
   }
 }
 
-/** 設定の鍵（数を収めた後の設定と 0 か月目） */
+/** 設定の鍵（数を収めた後の設定と 0 か月目。今月から数えたかも入れる: 地図が数える範囲の文が変わる） */
 export function goalKey(cfg: Readonly<GoalConfig>, anchor: GoalAnchor): string {
-  return JSON.stringify([cfg.target, cfg.assets, cfg.save, cfg.ret, cfg.bizGrow, byYearOf(cfg, anchor.y), anchor.y, anchor.mo]);
+  return JSON.stringify([cfg.target, cfg.assets, cfg.save, cfg.ret, cfg.bizGrow, byYearOf(cfg, anchor.y), anchor.y, anchor.mo, anchor.clock ? 1 : 0]);
 }
 
 const LRU = 4;
@@ -596,7 +596,7 @@ export function goalFrameLine(t: GoalTables): string {
   const end = goalYm(t.anchor, MAP_MONTHS);
   const g = t.cfg.bizGrow;
   const rest = g === 0 ? "3 年後の月の稼ぎがそのまま続く" : `3 年後の月の稼ぎが続き、事業の稼ぎだけ毎年 ${formatGrowth(g)} 変わる`;
-  const from = t.anchor.clock ? " 今月から数えて " : " ";
+  const from = t.anchor.clock ? "、今月から数えて " : " ";
   return `地図が数えるのは${from}${end}までの額面の稼ぎです。その先は「${rest}」と置いた目安で、運・景気・税は入っていません。`;
 }
 
