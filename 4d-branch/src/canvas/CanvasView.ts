@@ -494,12 +494,12 @@ export class CanvasView {
     const hw = (BADGE_W * k) / 2 + 2 / z;
     const hh = (BADGE_H * k) / 2 + 2 / z;
     if (badges) {
+      // 位置を先に見る（印を出しているかは文書を引くので、近い物だけ。まとめて開いて 2,600 枚見えていても押すたびに全部を引かない）
       for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
         const id = this.vm.drawNodes[i]!;
-        if (!this.badgeVisible(id, lod)) continue;
         const p = this.pos(id);
         const c = badgeCenter(p.x, p.y);
-        if (Math.abs(w.x - c.x) <= hw && Math.abs(w.y - c.y) <= hh) return { kind: "badge", node: id };
+        if (Math.abs(w.x - c.x) <= hw && Math.abs(w.y - c.y) <= hh && this.badgeVisible(id, lod)) return { kind: "badge", node: id };
       }
     }
     for (const b of this.stubBoxes) if (w.x >= b.x && w.x <= b.x + b.w && w.y >= b.y && w.y <= b.y + b.h) return { kind: "stub", edge: b.id };
@@ -515,10 +515,9 @@ export class CanvasView {
       const down = Math.min(Math.max(hh, BADGE_TOUCH_PX / 2 / z), Math.max(hh, IMPACT_ROW - HALF_H * 2));
       for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
         const id = this.vm.drawNodes[i]!;
-        if (!this.vm.inImpact(id) || !this.badgeVisible(id, lod)) continue;
         const p = this.pos(id);
         const c = badgeCenter(p.x, p.y);
-        if (Math.abs(w.x - c.x) <= tw && w.y >= c.y - hh && w.y <= c.y + down) return { kind: "badge", node: id };
+        if (Math.abs(w.x - c.x) <= tw && w.y >= c.y - hh && w.y <= c.y + down && this.vm.inImpact(id) && this.badgeVisible(id, lod)) return { kind: "badge", node: id };
       }
     }
     for (let i = this.labelBoxes.length - 1; i >= 0; i--) {

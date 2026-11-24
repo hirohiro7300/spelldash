@@ -9,7 +9,7 @@ import type { GEdge, GNode, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
 import { MOD, clear, h, isImeKey, isTypingTarget, setValue } from "./dom";
 import { icon } from "./icons";
-import { buildComposedBody, buildDeepNodeBlock, buildDeepOverview, buildDeepPage, type DeepPageHandle } from "./deepPanel";
+import { buildComposedBody, buildDeepMultiOpen, buildDeepNodeBlock, buildDeepOverview, buildDeepPage, type DeepPageHandle } from "./deepPanel";
 import { PREV_BODY_META } from "../persist/legacyMap";
 import { buildImpactNodeBlock, buildImpactOverview, focusLost, impactEdgeKind, keyboardFocus } from "./impactPanel";
 import { toast } from "./overlays";
@@ -179,7 +179,7 @@ export function buildInspector(app: AppContext): HTMLElement {
       const id = k.slice(5);
       if (doc.edges[id]) edgePanel(app, id, body, (u) => updaters.push(u));
     } else if (k.startsWith("multi:")) multiPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
-    else overviewPanel(app, body, (u) => updaters.push(u));
+    else overviewPanel(app, body, (u) => updaters.push(u), (u) => viewUpdaters.push(u));
     // 新しく作った物（後ろに足された物）。隠した概要があれば、その前へ移す（まだ配置していないので、移しても配置はやり直さない）
     const fresh: Element[] = [];
     for (let c = last0 ? last0.nextElementSibling : body.firstElementChild; c; c = c.nextElementSibling) fresh.push(c);
@@ -1122,6 +1122,11 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
   const head = h("div", { class: "multi-head" });
   const summary = h("div", { class: "type-summary" });
   wrap.append(head, summary);
+  // 3 か月ごとの地図のカードを選んでいれば「選んだ M 枚の先をひらく」を頭に（まとめて開く C）
+  const bulk = buildDeepMultiOpen(app);
+  wrap.append(bulk.el);
+  push(() => bulk.update());
+  pushView(() => bulk.update());
 
   const mergeBtn = h("button", { class: "btn btn-primary btn-block", type: "button", title: "選んだノードからの道を 1 つのノードに合流させる", onClick: () => cmd.mergeInto(ids()) }, icon("merge", 15), "合流ノードを作る");
   const mergeHint = h("p", { class: "muted small" }, "選んだすべてのノードから、新しい「結果」ノードへ線を引きます。既存のノードへ合流させるときは、ノード右の ● をそのノードへドラッグします（複数選択中は全部から線が出ます）。");
@@ -1219,7 +1224,7 @@ function forkCount(fc: { reach: ReadonlyMap<ID, unknown> }, doc: { nodes: Record
   return c;
 }
 
-function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void): void {
+function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => void, pushView: (u: Updater) => void): void {
   const { store, vm, ui } = app;
   const wrap = h("div", { class: "insp-overview" });
   root.append(wrap);
@@ -1230,6 +1235,8 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
   const deep = buildDeepOverview(app);
   // 3 年の分かれ道（v2）: 3 年の影響・今決めること・分布・行き先（あれば下の「行き先の見込み」の代わり）
   const impact = buildImpactOverview(app);
+  // 開閉（見え方だけ）で、今日の「この先をひらく」の枚数を合わせる（文書の変更は届かない）
+  pushView(() => impact.updateOpen());
   // 未来の道筋: 行き先（その先が無いノード）の見込み
   const ends = h("div", { class: "forecast-ends" });
   wrap.append(deep.el, impact.el, ends, stats, bars, insight);

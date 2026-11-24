@@ -114,6 +114,8 @@ export class App implements AppContext {
   onBackupsChanged: () => void = () => undefined;
   focusSearch: () => void = () => undefined;
   focusInspectorTitle: () => void = () => undefined;
+  /** 「ほかのカードも選ぶ」の間の帯（上の帯の並びの最後） */
+  private pickBarEl: HTMLElement | null = null;
   prewarmInspector: () => boolean = () => true;
   focusEdgeCondition: () => void = () => undefined;
   revealInList: (id: ID) => void = () => undefined;
@@ -241,6 +243,9 @@ export class App implements AppContext {
     this.view.root.append(minimap.el, zoomCtl, this.emptyHint);
     this.listEl = buildListView(this);
     this.banner = h("div", { class: "banner-area", attrs: { "aria-live": "polite" } });
+    // 「ほかのカードも選ぶ」の間の帯は、上の帯（一時表示・閲覧のみ など）の下に並べる（重ねて押す所を隠さない）
+    this.pickBarEl = this.pickBar();
+    this.banner.append(this.pickBarEl);
     // 狭い画面でパネルを重ねて出しているとき、外側を押すと閉じる
     const scrim = h("div", { class: "overlay-scrim", attrs: { "aria-hidden": "true" } });
     scrim.addEventListener("click", () => this.ui.setPrefs({ leftOpen: false, rightOpen: false }));
@@ -521,10 +526,11 @@ export class App implements AppContext {
     // アカウントに新しい版の内容があるときの帯は、開き直すまで同じ物を先頭に出したまま（保存の状態が変わるたびに描き直しても、
     // 「ページを開き直す」のフォーカスを外さない）
     const held = this.heldByAccount ? (this.newerBanner ??= accountNewerBanner()) : null;
-    for (const c of [...b.children]) if (c !== held) c.remove();
+    const pick = this.pickBarEl;
+    for (const c of [...b.children]) if (c !== held && c !== pick) c.remove();
     if (held && held.parentElement !== b) b.prepend(held);
     const per = this.persistence;
-    const add = (tone: string, iconName: string, text: string, ...actions: HTMLElement[]) => b.append(h("div", { class: `banner tone-${tone}` }, icon(iconName, 15), h("span", { class: "banner-text" }, text), ...actions));
+    const add = (tone: string, iconName: string, text: string, ...actions: HTMLElement[]) => b.insertBefore(h("div", { class: `banner tone-${tone}` }, icon(iconName, 15), h("span", { class: "banner-text" }, text), ...actions), pick && pick.parentElement === b ? pick : null);
     if (this.ephemeral) {
       const back = h("button", { class: "btn btn-sm", type: "button" }, "ふだんの画面へ");
       back.addEventListener("click", () => {
@@ -819,7 +825,9 @@ export class App implements AppContext {
           return;
         case "Escape":
           closeMenus();
-          if (this.ui.search) this.ui.setSearch("");
+          // 「ほかのカードも選ぶ」の間は、まずそれを終える（選んだ物はそのまま）
+          if (this.ui.multiPick) this.ui.setMultiPick(false);
+          else if (this.ui.search) this.ui.setSearch("");
           else this.ui.clearSelection();
           return;
       }
@@ -859,7 +867,11 @@ export class App implements AppContext {
           return;
         case "c":
         case "C":
-          if (nodes.length) this.cmd.toggleCollapse(nodes);
+          // ⇧C: まとめて開く（右のパネルの「この先をひらく」の最初の部品へ）
+          if (ev.shiftKey) {
+            ev.preventDefault();
+            this.focusBulkOpen();
+          } else if (nodes.length) this.cmd.toggleCollapse(nodes);
           return;
         case "f":
         case "F":
@@ -1605,6 +1617,48 @@ export class App implements AppContext {
 
   openBackups(): void {
     openBackupDialog(this);
+  }
+
+  /**
+   * 「ほかのカードも選ぶ」の間、キャンバスの上に出す帯: 「M 枚を選んでいます」［まとめて開く］［終わる］（まとめて開く C。タッチで ⇧ の代わり）。
+   * 入れた・やめたときに、パネルの「ほかのカードも選ぶ」の押した印（aria-pressed）も合わせる
+   */
+  private pickBar(): HTMLElement {
+    const count = h("span", { class: "pick-bar-count", attrs: { "aria-live": "polite" } });
+    const go = h("button", { class: "btn btn-sm btn-primary", type: "button", dataset: { fk: "pick-open" }, title: "選んだカードの先をまとめて開く（右のパネルの選び方へ: ⇧C）", onClick: () => this.focusBulkOpen() }, icon("expand", 14), "まとめて開く");
+    const end = h("button", { class: "btn btn-sm", type: "button", dataset: { fk: "pick-end" }, title: "ほかのカードも選ぶを終える（Esc。選んだ物はそのまま）", onClick: () => this.ui.setMultiPick(false) }, "終わる");
+    const bar = h("div", { class: "pick-bar", role: "toolbar", ariaLabel: "ほかのカードも選ぶ" }, count, go, end);
+    bar.hidden = true;
+    const sync = () => {
+      bar.hidden = !this.ui.multiPick;
+      const n = this.ui.selection.nodes.size;
+      count.textContent = `${n.toLocaleString("en-US")}\u00a0枚を選んでいます`;
+      go.disabled = n === 0;
+    };
+    this.ui.on("pick", (on) => {
+      sync();
+      for (const b of document.querySelectorAll("[data-pick-toggle]")) b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    this.ui.on("selection", () => {
+      if (this.ui.multiPick) sync();
+    });
+    return bar;
+  }
+
+  /** まとめて開く（⇧C・選んでいる間の帯の「まとめて開く」）: 右のパネルを開き、出している「この先をひらく」の最初の部品へ */
+  focusBulkOpen(): void {
+    if (!this.ui.prefs.rightOpen) this.ui.setPrefs({ rightOpen: true });
+    requestAnimationFrame(() => {
+      const secs = [...document.querySelectorAll<HTMLElement>(".sidebar-right .deep-multi:not([hidden]), .sidebar-right .deep-open-sec")];
+      const sec = secs.find((x) => x.checkVisibility?.() ?? x.offsetParent !== null);
+      const t = sec?.querySelector<HTMLElement>("button:not(:disabled), select:not(:disabled)");
+      if (!sec || !t) {
+        toast("まとめて開ける地図のカードを選んでいません", { ms: 2400 });
+        return;
+      }
+      sec.scrollIntoView({ block: "nearest" });
+      t.focus();
+    });
   }
 
   openHelp(): void {

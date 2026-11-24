@@ -16,7 +16,8 @@ import { cardWithDocOdds, type DeepCtx } from "../app/deepState";
 import type { DeepPage } from "../app/uiState";
 import type { Analysis, Overview } from "../deepmap/core";
 import { findFirstMove, findPathToken, kindSlug, moveDetailVM, notesSection, notesVM, overviewVM, parseRoute, pathVM, renderMoveDetail, renderOverview, renderPathPage, ym, type MoveDetailVM, type OverviewMemo, type OverviewVM, type PathVM } from "../deepmap/views";
-import { DEEP_OPEN_CAP, DEEP_OPEN_ROWS, deepHorizons, horizonOpen, type DeepHorizon } from "../model/deepOpen";
+import { DEEP_OPEN_CAP, DEEP_OPEN_ROWS, deepHorizons, horizonOpen, likelyPaths, likelyReady, quarterOpens, quarterOpensReady, type DeepHorizon } from "../model/deepOpen";
+import { buildMultiOpen, cardName, depthRows, drawnSplit, foldBtn, keepFocus, likelyRows, pickToggle, quarterRows, runBulk } from "./bulkOpen";
 import type { ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
 import { clear, h } from "./dom";
@@ -447,85 +448,94 @@ export function deepOpenActions(app: AppContext, ctx: DeepCtx, i: number): HTMLE
   return openActions(app, ctx, i, ctx.idOf(i));
 }
 
-function openActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElement | null {
-  const hs = deepHorizons(ctx.cm, i);
-  if (!hs.length) return null;
-  // 今見えているカードのうち、このカードの先の物（開いた後の全体 = それ以外 + 開いた後のこのカードの先）
-  app.vm.ensure();
-  const outsideOf = (k: number): number => {
-    const end = k + ctx.cm.size[k]!;
-    let inside = 0;
-    for (const nid of app.vm.drawNodes) {
-      const j = ctx.indexOf(nid);
-      if (j > k && j < end) inside++;
-    }
-    return app.vm.drawNodes.length - inside;
-  };
-  const outside = outsideOf(i);
-  const row = h("div", { class: "deep-open-row" });
-  const label = (x: DeepHorizon) => (x.toEnd ? `${ym(ctx.map, ctx.cm.H)}まで` : `${x.months / 12} 年先まで`);
-  /** キャンバスで読める区切りか（全体で 3,000 枚まで・縦に 320 行まで: 見直し user-8） */
-  const fits = (x: DeepHorizon, out: number) => out + x.count <= DEEP_OPEN_CAP && x.rows <= DEEP_OPEN_ROWS;
-  let over: DeepHorizon | null = null;
-  for (const x of hs) {
-    const total = outside + x.count;
-    if (!fits(x, outside)) {
-      over ??= x;
-      continue;
-    }
-    row.append(openButton(app, ctx, i, x, label(x), `この先の${label(x)}の判断と手を開く（開いた後のキャンバス ${num(total)} 枚）`, `${label(x)}（${num(x.count)} 枚）`));
-  }
-  // 今日（地図の入口）: 手ごとに開く方を先に（今日の「1 年先まで」は 10 の手の全部で縦に長く、キャンバスでは読めない: 見直し user-8）
-  const perMove: HTMLElement[] = [];
-  if (i === 0) {
-    const kids = ctx.cm.kids;
-    for (let s = ctx.cm.kidOff[0]!; s < ctx.cm.kidOff[1]!; s++) {
-      const f = kids[s]!;
-      const fx = deepHorizons(ctx.cm, f).find((x) => fits(x, outsideOf(f)));
-      if (!fx) continue;
-      // 手の名前は見取り図の行と同じ（文書のカードの題名: 見直し R3）
-      const name = ctx.text().title(f).trim() || "（無題）";
-      perMove.push(openButton(app, ctx, f, fx, label(fx), `「${name}」の先の${label(fx)}の判断と手を開く`, `${name}（${label(fx)} ${num(fx.count)} 枚）`));
-    }
-  }
-  if (over) {
-    // 上限を超える・縦に長すぎる: 見取り図（この手の詳しい画面・今日なら見取り図）で見る
-    const f = ctx.cm.first[i] ?? -1;
-    const why = outside + over.count > DEEP_OPEN_CAP ? `キャンバスに出せるのは全体で ${num(DEEP_OPEN_CAP)} 枚まで` : `縦に ${num(over.rows)} 行（キャンバスで読めるのは ${num(DEEP_OPEN_ROWS)} 行まで）`;
-    row.append(
-      h(
-        "button",
-        {
-          class: "btn btn-sm deep-open is-map",
-          type: "button",
-          dataset: { fk: `open-map:${id}` },
-          title: `${label(over)}は ${num(over.count)} 枚（${why}）`,
-          onClick: () => {
-            if (f >= 0) app.ui.openDeep({ kind: "move", f });
-            else showDeepOverview(app);
-          },
-        },
-        icon("layers", 14),
-        `見取り図で見る（${label(over)} ${num(over.count)} 枚）`,
-      ),
-    );
-  }
-  return h(
-    "div",
-    { class: "deep-open-sec" },
-    h("h3", { class: "insp-label" }, "この先をひらく", h("span", { class: "insp-count" }, `キャンバスは全体で ${num(DEEP_OPEN_CAP)} 枚まで`)),
-    perMove.length ? h("p", { class: "deep-open-note" }, "手ごとに開く（今日の手の先を、その手のカードから）") : null,
-    perMove.length ? h("div", { class: "deep-open-row deep-open-moves" }, ...perMove) : null,
-    perMove.length ? h("p", { class: "deep-open-note" }, "今日から全部") : null,
-    row,
-  );
+/** 見取り図で見る（そのカードの今日の手の詳しい画面。今日なら見取り図） */
+export function mapLinkOf(app: AppContext, ctx: DeepCtx, i: number): () => void {
+  const f = ctx.cm.first[i] ?? -1;
+  return () => (f >= 0 ? app.ui.openDeep({ kind: "move", f }) : showDeepOverview(app));
+}
+
+/** 複数選択の詳細の頭に置く「選んだ M 枚の先をひらく」（まとめて開く C） */
+export function buildDeepMultiOpen(app: AppContext): { el: HTMLElement; update(): void } {
+  return buildMultiOpen(app, (ctx, i) => mapLinkOf(app, ctx, i));
 }
 
 /**
- * 時間で区切って開くボタン（カード k から区切り x まで）。開いた後は、狭い画面なら引き出しを閉じ、開いたカードの所へキャンバスを寄せ
- * （開き始めたカードとその次の列が見える所: 見直し user-8）、何を開いたかと「見取り図で見る」をお知らせに出す
+ * 「この先をひらく」の欄（カードの詳細と概要の今日）。まとめて開く（作業メモ bulk/design.md）:
+ *   今日      手ごとに開く・この時期まで全部ひらく（D）・見込みの高い道だけ（B）・ほかのカードも選ぶ
+ *   カード    どこまで開くか（A）・見込みの高い道だけ（B）・この先をまとめてたたむ・ほかのカードも選ぶ
+ * どのボタンも押す前に開いた後の枚数を出す。キャンバス全体で 3,000 枚を超えるものは開かず「見取り図で見る」
  */
-function openButton(app: AppContext, ctx: DeepCtx, k: number, x: DeepHorizon, what: string, title: string, text: string): HTMLElement {
+function openActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElement | null {
+  const t0 = performance.now();
+  const el = buildOpenActions(app, ctx, i, id);
+  app.vm.deep.timings.openActions = performance.now() - t0;
+  return el;
+}
+
+function buildOpenActions(app: AppContext, ctx: DeepCtx, i: number, id: ID): HTMLElement | null {
+  const hs = deepHorizons(ctx.cm, i);
+  if (!hs.length) return null;
+  const mapLink = mapLinkOf(app, ctx, i);
+  // 今見えているカードのうち、このカードの先の物（開いた後の全体 = それ以外 + 開いた後のこのカードの先）
+  const outsideOf = (k: number): number => {
+    const { drawn, inside } = drawnSplit(app, ctx, [k]);
+    return drawn - inside;
+  };
+  /** 見えているカードの数と、このカードの先の物の数（どの行も同じ物を使う: 1 回だけなめる） */
+  const split = drawnSplit(app, ctx, [i]);
+  const label = (x: DeepHorizon) => (x.toEnd ? `${ym(ctx.map, ctx.cm.H)}まで` : `${x.months / 12} 年先まで`);
+  /** 手ごとに開くで、キャンバスで読める区切りか（全体で 3,000 枚まで・縦に 320 行まで: 見直し user-8） */
+  const fits = (x: DeepHorizon, out: number) => out + x.count <= DEEP_OPEN_CAP && x.rows <= DEEP_OPEN_ROWS;
+  const parts: Array<HTMLElement | null> = [];
+  if (i === 0) {
+    // 今日（地図の入口）: 手ごとに開く方を先に（今日の「1 年先まで」は 10 の手の全部で縦に長い: 見直し user-8）
+    const perMove: HTMLElement[] = [];
+    const kids = ctx.cm.kids;
+    for (let s = ctx.cm.kidOff[0]!; s < ctx.cm.kidOff[1]!; s++) {
+      const f = kids[s]!;
+      const out = outsideOf(f);
+      const fx = deepHorizons(ctx.cm, f).find((x) => fits(x, out));
+      if (!fx) continue;
+      // 手の名前は見取り図の行と同じ（文書のカードの題名: 見直し R3）
+      const name = ctx.text().title(f).trim() || "（無題）";
+      perMove.push(openButton(app, ctx, f, fx, out, label(fx), `「${name}」の先の${label(fx)}の判断と手を開く`, `${name}（${label(fx)} ${num(fx.count)} 枚）`));
+    }
+    if (perMove.length) parts.push(h("p", { class: "deep-open-note" }, "手ごとに開く（今日の手の先を、その手のカードから）"), h("div", { class: "deep-open-row deep-open-moves" }, ...perMove));
+    // 今日から時期まで（D）と見込みの高い道（B）は 8 万枚をなめて数える。まだ数えていなければ（起動の直後）、空いた時間に数えてから出す
+    // （起動して触れるまでを待たせない。数えた物は覚えるので、その後の作り直しではすぐ出す）
+    const later = (sp = drawnSplit(app, ctx, [0])): HTMLElement[] => [...(quarterRows(app, ctx, mapLink, sp) ?? []), ...(likelyRows(app, ctx, 0, mapLink, sp) ?? [])];
+    if (quarterOpensReady(ctx.cm) && likelyReady(ctx.analysis(), 0)) parts.push(...later(split));
+    else {
+      const slot = h("div", { class: "deep-open-later", attrs: { "aria-busy": "true" } }, h("p", { class: "deep-open-note" }, "この時期まで全部ひらく・見込みの高い道を数えています…"));
+      parts.push(slot);
+      whenIdle(() => {
+        if (!slot.isConnected || app.vm.deep.get() !== ctx) return;
+        quarterOpens(ctx.cm);
+        likelyPaths(ctx.analysis(), 0, 5);
+        whenIdle(() => {
+          if (slot.isConnected && app.vm.deep.get() === ctx) slot.replaceWith(...later());
+        });
+      });
+    }
+  } else {
+    parts.push(...(depthRows(app, ctx, i, mapLink, split) ?? []));
+    parts.push(...(likelyRows(app, ctx, i, mapLink, split) ?? []));
+  }
+  const tools = h("div", { class: "deep-open-row deep-open-tools" });
+  if (i > 0) {
+    const fold = foldBtn(app, ctx, i, split);
+    if (fold) tools.append(fold);
+  }
+  tools.append(pickToggle(app, `bulk-pick:${id}`));
+  parts.push(tools);
+  return h("div", { class: "deep-open-sec" }, h("h3", { class: "insp-label" }, "この先をひらく", h("span", { class: "insp-count" }, `キャンバスは全体で ${num(DEEP_OPEN_CAP)} 枚まで`)), ...parts);
+}
+
+/**
+ * 手ごとに開くボタン（今日の手 k から区切り x まで。開いている物に足す）。開いた後は、狭い画面なら引き出しを閉じ、開いたカードの所へ
+ * キャンバスを寄せ（見直し user-8）、何を開いたかと「元に戻す」「見取り図で見る」をお知らせに出す
+ */
+function openButton(app: AppContext, ctx: DeepCtx, k: number, x: DeepHorizon, outside: number, what: string, title: string, text: string): HTMLElement {
   const kid = ctx.idOf(k);
   return h(
     "button",
@@ -535,22 +545,9 @@ function openButton(app: AppContext, ctx: DeepCtx, k: number, x: DeepHorizon, wh
       dataset: { fk: `open:${x.months}:${kid}` },
       title,
       onClick: () => {
-        // 開き始めたカードを先頭に（キャンバスはそのカードを寄せる所の目印にする）
-        const ids = horizonOpen(ctx.cm, k, x).map((j) => ctx.idOf(j));
-        if (ids[0] !== kid) ids.unshift(kid);
-        app.vm.setImpactOpen(ids, [], { reveal: true });
-        if (app.ui.prefs.view !== "map") app.ui.setPrefs({ view: "map" });
-        if (isNarrowScreen() && app.ui.prefs.rightOpen) app.ui.setPrefs({ rightOpen: false });
-        const n = app.store.doc.nodes[kid];
-        const name = k === 0 ? "今日" : `「${(n?.title ?? "").trim() || "（無題）"}」`;
-        const f = ctx.cm.first[k] ?? -1;
-        // 「1 年」「383 枚」は 1 かたまりで折り返す（390 の幅で「から1」と「年先まで…」に割れていた: 見直し reader-4。F4 と同じ）。
-        // 数で始まる区切りの前は、ボタンと同じく空ける
-        const keep = (t: string) => t.replace(/(\d) /g, "$1\u00a0");
-        toast(`${name}から${/^\d/.test(what) ? " " : ""}${keep(what)}の判断と手を開いた（${num(x.count)}\u00a0枚）`, {
-          tone: "ok",
-          action: { label: "見取り図で見る", run: () => (f >= 0 ? app.ui.openDeep({ kind: "move", f }) : showDeepOverview(app)) },
-        });
+        app.vm.ensure();
+        const drawn = app.vm.drawNodes.length;
+        void runBulk(app, ctx, { from: cardName(app, ctx, k), what, open: horizonOpen(ctx.cm, k, x), close: [], head: k, count: x.count, rows: x.rows, total: outside + x.count, drawn, back: "この先をまとめてたたむ", mapLink: mapLinkOf(app, ctx, k) });
       },
     },
     icon("expand", 14),
@@ -577,40 +574,44 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
       const k = `${openKey(app, ctx)}|${i}`;
       if (k === key) return;
       key = k;
-      const t0 = performance.now();
-      clear(el);
-      const a = ctx.analysis();
-      const btns = h("div", { class: "deep-node-btns" });
-      if (i === 0) {
-        // 今日: 一番ありそうな道（見込み X%）
-        const vm = overviewVM(a, ctx.overview());
-        if (vm.chain) btns.append(h("button", { class: "btn btn-sm btn-primary", type: "button", dataset: { fk: `deep-chain:${id}` }, onClick: () => app.ui.openDeep({ kind: "path", node: vm.chain!.node }) }, icon("split", 14), vm.chain.text));
-        btns.append(
-          h(
-            "button",
-            {
-              class: "btn btn-sm",
-              type: "button",
-              dataset: { fk: `deep-overview:${id}` },
-              onClick: () => showDeepOverview(app),
-            },
-            icon("layers", 14),
-            "3 年の見取り図",
-          ),
-        );
-      } else {
-        btns.append(
-          h("button", { class: "btn btn-sm btn-primary", type: "button", dataset: { fk: `deep-path:${id}` }, title: "今日からこのカードを通って 2029 年 11 月まで、3 か月に 1 行で読む", onClick: () => app.ui.openDeep({ kind: "path", node: i }) }, icon("split", 14), `この先の道を読む（${ym(ctx.map, ctx.cm.H)}まで）`),
-        );
-        const f = ctx.cm.first[i] ?? -1;
-        if (f >= 0) btns.append(h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `deep-move:${id}` }, onClick: () => app.ui.openDeep({ kind: "move", f }) }, icon("layers", 14), "この手の見取り図"));
-      }
-      el.append(btns);
-      const opens = openActions(app, ctx, i, id);
-      if (opens) el.append(opens);
-      app.vm.deep.timings.nodeBlock = performance.now() - t0;
+      keepFocus(el, () => fillNodeBlock(ctx, i));
     },
   };
+
+  function fillNodeBlock(ctx: DeepCtx, i: number): void {
+    const t0 = performance.now();
+    clear(el);
+    const a = ctx.analysis();
+    const btns = h("div", { class: "deep-node-btns" });
+    if (i === 0) {
+      // 今日: 一番ありそうな道（見込み X%）
+      const vm = overviewVM(a, ctx.overview());
+      if (vm.chain) btns.append(h("button", { class: "btn btn-sm btn-primary", type: "button", dataset: { fk: `deep-chain:${id}` }, onClick: () => app.ui.openDeep({ kind: "path", node: vm.chain!.node }) }, icon("split", 14), vm.chain.text));
+      btns.append(
+        h(
+          "button",
+          {
+            class: "btn btn-sm",
+            type: "button",
+            dataset: { fk: `deep-overview:${id}` },
+            onClick: () => showDeepOverview(app),
+          },
+          icon("layers", 14),
+          "3 年の見取り図",
+        ),
+      );
+    } else {
+      btns.append(
+        h("button", { class: "btn btn-sm btn-primary", type: "button", dataset: { fk: `deep-path:${id}` }, title: "今日からこのカードを通って 2029 年 11 月まで、3 か月に 1 行で読む", onClick: () => app.ui.openDeep({ kind: "path", node: i }) }, icon("split", 14), `この先の道を読む（${ym(ctx.map, ctx.cm.H)}まで）`),
+      );
+      const f = ctx.cm.first[i] ?? -1;
+      if (f >= 0) btns.append(h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `deep-move:${id}` }, onClick: () => app.ui.openDeep({ kind: "move", f }) }, icon("layers", 14), "この手の見取り図"));
+    }
+    el.append(btns);
+    const opens = openActions(app, ctx, i, id);
+    if (opens) el.append(opens);
+    app.vm.deep.timings.nodeBlock = performance.now() - t0;
+  }
 }
 
 // ------------------------------------------------------------ 組み立てた本文（読むだけ）と自分のメモ（作業メモ SPEC §4.4・safety-10）

@@ -411,3 +411,48 @@
   line-height: 1.5;
   color: var(--text-3);
 }
+
+/* まとめて開く（src/ui/bulkOpen.ts。作業メモ bulk） */
+.deep-quarter {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 40px;
+}
+.deep-open-tools {
+  margin-top: 4px;
+}
+.deep-pick[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text-1);
+}
+.deep-multi {
+  margin-bottom: 14px;
+}
+/* 「ほかのカードも選ぶ」の間の帯（キャンバスの上の帯の並び .banner-area の最後。目盛りがあればその下） */
+.pick-bar {
+  pointer-events: auto;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 5px 6px 5px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--accent-line);
+  background: rgba(16, 20, 30, 0.94);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.pick-bar[hidden] {
+  display: none;
+}
+.pick-bar .btn {
+  min-height: 36px;
+}
+.pick-bar-count {
+  font-variant-numeric: tabular-nums;
+}

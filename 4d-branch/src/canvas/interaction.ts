@@ -114,8 +114,8 @@ export class Interaction {
       return;
     }
     const hit = this.view.hitTest(p.x, p.y);
-    // 選択に足す: Shift・⌘（Mac）/ Shift・Ctrl（ほか）
-    const additive = ev.shiftKey || ev.metaKey || (!isMac && ev.ctrlKey);
+    // 選択に足す: Shift・⌘（Mac）/ Shift・Ctrl（ほか）。「ほかのカードも選ぶ」の間は押すたびに足す・外す（タッチで ⇧ の代わり: 作業メモ bulk §2 C）
+    const additive = ev.shiftKey || ev.metaKey || (!isMac && ev.ctrlKey) || this.ui.multiPick;
     switch (hit.kind) {
       case "port": {
         if (this.store.readOnly) return;

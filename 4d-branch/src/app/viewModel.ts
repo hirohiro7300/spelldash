@@ -27,6 +27,7 @@
 
 import { ForecastPlan, reachP, type ForecastResult, type PlanSteps } from "../model/forecast";
 import { flowOuts, forkKindOf, isFlowEdge, isImpactRoot } from "../model/forks";
+import { OPEN_LIST_BOUND } from "../model/deepOpen";
 import { DocIndex, isIndexKey } from "../model/docIndex";
 import type { ImpactResult } from "../model/impact";
 import { ImpactEngine, type EngineInputs } from "../model/impactEngine";
@@ -60,6 +61,12 @@ interface SearchBuild {
   pos: number;
 }
 
+/** まとめて開く前と後の、開いている形（UiState.prefs.impactOpen の物そのもの。比べるのは同じ物か） */
+export interface OpenSnapshot {
+  before: Record<ID, ID[]>;
+  after: Record<ID, ID[]>;
+}
+
 export interface NodeVis {
   hidden: boolean;
   alpha: number;
@@ -86,6 +93,21 @@ export interface EdgeVis {
   path: boolean;
   cross: boolean;
   offScenario: boolean;
+}
+
+/** 選ぶだけの近道に取っておく線の材料（選びに寄らない所） */
+interface SelEdge {
+  id: ID;
+  source: ID;
+  target: ID;
+  hiddenBase: boolean;
+  cross: boolean;
+  offScenario: boolean;
+  /** 元と先のノードの見え方（濃さはその場で書き換わる） */
+  a: NodeVis | undefined;
+  b: NodeVis | undefined;
+  /** この線の見え方（選ぶだけの近道でその場で書き換える） */
+  vis: EdgeVis;
 }
 
 const HIDDEN_NODE: NodeVis = { hidden: true, alpha: 0, match: false, path: false, ghost: false, future: false, offScenario: false, collapsedCount: 0, collapsed: false, inProject: false };
@@ -196,6 +218,38 @@ export class ViewModel {
   readonly edges = new Map<ID, EdgeVis>();
   /** 描く順（隠れていないもの。文書の順で、選択中は最後＝上） */
   drawNodes: ID[] = [];
+  /** 見えるノードの集まりの版（選ぶだけの近道では変わらない。見えるノードから数えた物を覚える鍵） */
+  visibleGen = 0;
+  /** 選ぶだけの変更で見え方を作り直すための、前の compute の材料（computeSelectionOnly） */
+  private selCache: {
+    doc: DocData;
+    rev: number;
+    prefs: object;
+    search: string;
+    idxKey: string;
+    info: ImpactScopeInfo;
+    shown: (id: ID) => boolean;
+    edgeOk: (e: GEdge) => boolean;
+    sid: ID | null;
+    edgeInScen: (e: GEdge) => boolean;
+    ids: ID[];
+    pre: number[];
+    vis: NodeVis[];
+    edges: SelEdge[];
+    hiddenCount: number;
+  } | null = null;
+  /** 見えるノードの候補と線の、文書の順に並べた物（compute。見える物の材料が同じ間は使い回す） */
+  private orderCache: {
+    doc: DocData;
+    rev: number;
+    topo: number;
+    visible: ReadonlySet<ID> | null;
+    scope: ReadonlySet<ID> | null;
+    colHidden: ReadonlySet<ID> | null;
+    users: readonly ID[];
+    candidates: ID[];
+    edgeIds: ID[];
+  } | null = null;
   drawEdges: ID[] = [];
   /** 折りたたんだ接続（線の付け根だけ描く） */
   stubEdges: Array<{ id: ID; count: number }> = [];
@@ -225,7 +279,7 @@ export class ViewModel {
   /** 3 年の影響のエンジン（文書の変更を受け、読まれたときに要る所だけやり直す） */
   readonly engine = new ImpactEngine();
   /** 葉を足す・消すだけの変更で、範囲・木と見込みの計画をたどり直さずに直した回数（確かめ用） */
-  readonly patchCounts = { scope: 0, forecast: 0 };
+  readonly patchCounts = { scope: 0, forecast: 0, selectionOnly: 0 };
   /** 3 か月ごとの地図（版 7）の見取り図・道の画面・組み立てた本文に渡す物（src/app/deepState.ts） */
   readonly deep: DeepState;
   /** 検索の索引（初めて探すときに作る。それまでは変更を受けても何もしない） */
@@ -693,6 +747,7 @@ export class ViewModel {
   // ------------------------------------------------------------ 見え方
 
   private compute(): void {
+    if (this.computeSelectionOnly()) return;
     const doc = this.store.doc;
     const prefs = this.ui.prefs;
     const idx = this.index;
@@ -781,8 +836,13 @@ export class ViewModel {
 
     // 5) ノード: 見えるノードと自分のノード（範囲の外）だけ。隠れた地図のカードは作らない（HIDDEN_NODE を返す）
     const users = this.userPart(info).users;
+    // 見えるノードの候補とその線を文書の順に並べた物は、見える物の材料（見え方の結果・自分のノード・文書の版）が同じなら前の物を使う
+    // （選ぶ・検索・時点・薄さだけの変更では並べ直さない: まとめて開いて 2,600 枚見えている間に選ぶと、並べ直しで机でも 10 ms を超えていた。作業メモ bulk §5）
+    const order = this.orderCache;
+    const sameOrder = !!order && order.doc === doc && order.rev === this.store.revision && order.topo === idx.version.topo && order.visible === visible && order.scope === scope && order.colHidden === colHidden && order.users === users;
     let candidates: ID[];
-    if (visible) {
+    if (sameOrder) candidates = order!.candidates;
+    else if (visible) {
       const set = new Set<ID>(visible);
       for (const u of users) set.add(u);
       candidates = [...set];
@@ -792,7 +852,7 @@ export class ViewModel {
       for (const id of scope!) if (!colHidden!.has(id)) set.add(id);
       candidates = [...set];
     }
-    candidates.sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
+    if (!sameOrder) candidates.sort((a, b) => idx.nodeOrder(a) - idx.nodeOrder(b));
     this.nodes.clear();
     const draw: ID[] = [];
     const drawTop: ID[] = [];
@@ -800,6 +860,10 @@ export class ViewModel {
     /** 見えている 3 年の分かれ道のノード（重ねる位置を作る材料。文書の順） */
     const visibleScope: ID[] = [];
     const hitHas = sres ? (id: ID) => sres.has(id) : () => false;
+    // 選ぶだけの変更で作り直すための材料（経路で薄くする前の濃さ・線の選びに寄らない所）
+    const selIds: ID[] = [];
+    const selPre: number[] = [];
+    const selVis: NodeVis[] = [];
     for (const id of candidates) {
       const n = doc.nodes[id];
       if (!n) continue;
@@ -814,6 +878,7 @@ export class ViewModel {
       if (future) alpha = Math.min(alpha, 0.18);
       const match = hitHas(id);
       if (this.searchActive && !match) alpha = Math.min(alpha, 0.14);
+      const alphaPre = alpha;
       const path = !!paths?.nodes.has(id);
       if (this.pathActive && !path && !siblings.has(id)) alpha = Math.min(alpha, 0.3);
       const inImpact = info.pos.has(id);
@@ -821,7 +886,11 @@ export class ViewModel {
       const collapsedCount = closed ? (counts.get(id) ?? 0) : 0;
       // 3 年の分かれ道は、閉じていて、同じ範囲の子（閉じると隠れる物）があるときだけ折りたたみの印を出す
       const collapsed = inImpact ? closed && this.hasStops(id, stops) : n.collapsed;
-      this.nodes.set(id, { hidden, alpha, match, path, ghost: isGhost, future, offScenario, collapsedCount, collapsed, inProject });
+      const vis: NodeVis = { hidden, alpha, match, path, ghost: isGhost, future, offScenario, collapsedCount, collapsed, inProject };
+      this.nodes.set(id, vis);
+      selIds.push(id);
+      selPre.push(alphaPre);
+      selVis.push(vis);
       if (!hidden) {
         visibleCount++;
         (sel.nodes.has(id) ? drawTop : draw).push(id);
@@ -833,12 +902,18 @@ export class ViewModel {
 
     // 6) 接続: 元が見えるノード・自分のノードの線だけ（描く線はどれも元が見える。文書の順）
     this.edges.clear();
-    const edgeIds: ID[] = [];
-    for (const id of candidates) for (const eid of idx.out.get(id) ?? []) edgeIds.push(eid);
-    edgeIds.sort((a, b) => idx.edgeOrder(a) - idx.edgeOrder(b));
+    let edgeIds: ID[];
+    if (sameOrder) edgeIds = order!.edgeIds;
+    else {
+      edgeIds = [];
+      for (const id of candidates) for (const eid of idx.out.get(id) ?? []) edgeIds.push(eid);
+      edgeIds.sort((a, b) => idx.edgeOrder(a) - idx.edgeOrder(b));
+      this.orderCache = { doc, rev: this.store.revision, topo: idx.version.topo, visible, scope, colHidden, users, candidates, edgeIds };
+    }
     const edgesNormal: ID[] = [];
     const edgesTop: ID[] = [];
     const stubs: Array<{ id: ID; count: number }> = [];
+    const selEdges: SelEdge[] = [];
     for (const id of edgeIds) {
       const e = doc.edges[id];
       if (!e) continue;
@@ -849,6 +924,7 @@ export class ViewModel {
       // 元のノードの折りたたみで止まる線は描かない（3 年の分かれ道の閉じたカードは、同じ範囲の子への道の線だけ）
       const srcClosed = collapsedOf(e.source) && stops(e);
       let hidden = !a || !b || a.hidden || b.hidden || (hideScen && offScenario) || srcClosed || e.collapsed;
+      const hiddenBase = hidden;
       const incident = sel.nodes.has(e.source) || sel.nodes.has(e.target) || sel.edges.has(id);
       if (prefs.edgeMode === "selection" && !incident) hidden = true;
       if (prefs.edgeMode === "cross" && !cross && !incident) hidden = true;
@@ -856,7 +932,9 @@ export class ViewModel {
       if (offScenario) alpha = Math.min(alpha, 0.16);
       const path = !!paths?.edges.has(id);
       if (this.pathActive && !path && !siblings.has(id)) alpha = Math.min(alpha, 0.2);
-      this.edges.set(id, { hidden, alpha, path, cross, offScenario });
+      const ev: EdgeVis = { hidden, alpha, path, cross, offScenario };
+      this.edges.set(id, ev);
+      selEdges.push({ id, source: e.source, target: e.target, hiddenBase, cross, offScenario, a, b, vis: ev });
       if (!hidden) (path || sel.edges.has(id) ? edgesTop : edgesNormal).push(id);
       if (e.collapsed && a && !a.hidden && !srcClosed && !(hideScen && offScenario)) stubs.push({ id, count: counts.get(id) ?? 0 });
     }
@@ -865,6 +943,90 @@ export class ViewModel {
 
     // 7) 3 年の分かれ道の重ねる位置（開いている所・見えている物・形が変わったときだけ並べ直す）
     this.updateOverlay(info, opens, visibleScope);
+    this.visibleGen++;
+    // 検索している間は、検索の索引ができたときにも作り直すので、選ぶだけの近道は使わない
+    this.selCache = this.searchActive
+      ? null
+      : { doc, rev: this.store.revision, prefs, search: this.ui.search, idxKey: this.idxKey(), info, shown, edgeOk, sid, edgeInScen, ids: selIds, pre: selPre, vis: selVis, edges: selEdges, hiddenCount: this.hiddenCount };
+  }
+
+  /** 見え方の索引の版（選ぶだけの近道を使えるか: 文書の版と合わせて見る） */
+  private idxKey(): string {
+    const v = this.index.version;
+    return `${v.topo}|${v.flow}|${v.members}|${v.dates}|${v.roots}|${v.scen}|${v.collapse}|${v.content}|${this.appliedRev}|${this.index.source === this.store.doc}`;
+  }
+
+  /**
+   * 選ぶだけの変更（文書・設定・検索・開いている所が前と同じ）: 見えるノードと線は前と同じなので、経路（選んだ物の上流・下流）と
+   * それで薄くする濃さ・選んだ物を上に描く順・選んだ物に触れる線だけを作り直す（文書を引き直さない・並べ直さない）。
+   * まとめて開いて 2,600 枚見えている間も、選ぶを予算（机 30 ms・スマホ 120 ms）に収める（作業メモ bulk §5）。使えなければ false
+   */
+  private computeSelectionOnly(): boolean {
+    const c = this.selCache;
+    const doc = this.store.doc;
+    const prefs = this.ui.prefs;
+    if (!c || c.doc !== doc || c.rev !== this.store.revision || c.prefs !== prefs || c.search !== this.ui.search || c.idxKey !== this.idxKey()) return false;
+    const idx = this.index;
+    const sel = this.ui.selection;
+    const { info, shown, edgeOk, sid, edgeInScen } = c;
+    // 4) 経路（compute と同じ）
+    const selected = [...sel.nodes].filter((id) => !!doc.nodes[id] && shown(id));
+    this.pathActive = prefs.pathHighlight && selected.length > 0;
+    const paths = this.pathActive ? computePaths(doc, idx, selected, (e) => edgeOk(e) && (!sid || edgeInScen(e)) && shown(e.source) && shown(e.target)) : null;
+    const siblings = new Set<ID>();
+    if (paths && info.roots.length) {
+      for (const id of selected) {
+        if (!info.pos.has(id)) continue;
+        for (const eid of idx.inc.get(id) ?? []) {
+          const e = doc.edges[eid];
+          const d = e && doc.nodes[e.source];
+          if (!e || !d || !isFlowEdge(e) || !info.pos.has(d.id)) continue;
+          const outs = flowOuts(doc, idx.out, d.id);
+          if (forkKindOf(d, outs) !== "decision") continue;
+          for (const o of outs) {
+            if (!shown(o.target)) continue;
+            siblings.add(o.target);
+            siblings.add(o.id);
+          }
+        }
+      }
+    }
+    // 5) ノード: 前の材料から濃さと経路だけ（見えるノードは前と同じなので、前の物をその場で書き換える: 2,600 枚分を作り直さない）
+    const draw: ID[] = [];
+    const drawTop: ID[] = [];
+    for (let k = 0; k < c.ids.length; k++) {
+      const id = c.ids[k]!;
+      const vis = c.vis[k]!;
+      const path = !!paths?.nodes.has(id);
+      let alpha = c.pre[k]!;
+      if (this.pathActive && !path && !siblings.has(id)) alpha = Math.min(alpha, 0.3);
+      vis.alpha = alpha;
+      vis.path = path;
+      if (!vis.hidden) (sel.nodes.has(id) ? drawTop : draw).push(id);
+    }
+    this.drawNodes = draw.concat(drawTop);
+    this.hiddenCount = c.hiddenCount;
+    // 6) 線: 選びに触れる物の隠し方・濃さ・経路だけ（折りたたんだ線の印は前のまま。前の物をその場で書き換える）
+    const edgesNormal: ID[] = [];
+    const edgesTop: ID[] = [];
+    for (const r of c.edges) {
+      let hidden = r.hiddenBase;
+      const incident = sel.nodes.has(r.source) || sel.nodes.has(r.target) || sel.edges.has(r.id);
+      if (prefs.edgeMode === "selection" && !incident) hidden = true;
+      if (prefs.edgeMode === "cross" && !r.cross && !incident) hidden = true;
+      let alpha = Math.min(r.a?.alpha ?? 0, r.b?.alpha ?? 0);
+      if (r.offScenario) alpha = Math.min(alpha, 0.16);
+      const path = !!paths?.edges.has(r.id);
+      if (this.pathActive && !path && !siblings.has(r.id)) alpha = Math.min(alpha, 0.2);
+      const ev = r.vis;
+      ev.hidden = hidden;
+      ev.alpha = alpha;
+      ev.path = path;
+      if (!hidden) (path || sel.edges.has(r.id) ? edgesTop : edgesNormal).push(r.id);
+    }
+    this.drawEdges = edgesNormal.concat(edgesTop);
+    this.patchCounts.selectionOnly++;
+    return true;
   }
 
   /** 折りたたんでいるか: 3 年の分かれ道は見え方の「開いているノード」、それ以外は文書の collapsed */
@@ -1465,7 +1627,54 @@ export class ViewModel {
       const list = r === undefined ? undefined : opened.get(r);
       if (list && list[0] !== head) list.unshift(head);
     }
-    for (const [r, s] of next) this.ui.setImpactOpen(r, [...s], opts.reveal ? (opened.get(r) ?? []) : []);
+    for (const [r, s] of next) {
+      if (s.size > OPEN_LIST_BOUND) this.pruneHiddenOpens(s, info);
+      this.ui.setImpactOpen(r, [...s], opts.reveal ? (opened.get(r) ?? []) : []);
+    }
+    return true;
+  }
+
+  /**
+   * 開いたカードの印が多すぎる（OPEN_LIST_BOUND を超えた）とき、閉じたカードの中に隠れている物を捨てる（見えている形は変わらない。
+   * 設定を膨らませない: 作業メモ bulk §6）。O(印の数 × 深さ)
+   */
+  private pruneHiddenOpens(s: Set<ID>, info: ImpactScopeInfo): void {
+    const drop: ID[] = [];
+    for (const id of s) {
+      let p = info.pos.get(id);
+      if (p === undefined) continue;
+      for (p = info.parent[p]!; p >= 0; p = info.parent[p]!) {
+        if (!s.has(info.order[p]!)) {
+          drop.push(id);
+          break;
+        }
+      }
+    }
+    for (const id of drop) s.delete(id);
+  }
+
+  /** そのカードの入口で、今開いているカード（見え方。書き換えない） */
+  impactOpenSet(id: ID): ReadonlySet<ID> {
+    const info = this.scopeInfo();
+    const p = info.pos.get(id);
+    if (p === undefined) return new Set();
+    return this.openSetOf(info.roots[info.rootOf[p]!]!, info);
+  }
+
+  /**
+   * まとめて開く・たたむ（1 回の setImpactOpen: 設定の書き込み 1 回・描き直しの合図 1 回）。元に戻すための前と後の形を返す
+   * （開いている形は文書・履歴に入れないので、⌘Z ではなくお知らせの「元に戻す」で戻す: 作業メモ bulk §4）
+   */
+  bulkOpen(open: Iterable<ID>, close: Iterable<ID>, opts: { reveal?: boolean } = {}): OpenSnapshot | null {
+    const before = this.ui.prefs.impactOpen;
+    if (!this.setImpactOpen(open, close, opts)) return null;
+    return { before, after: this.ui.prefs.impactOpen };
+  }
+
+  /** まとめて開く前の形に戻す。その後にほかの開く・たたむがあれば戻さず false */
+  restoreOpen(snap: OpenSnapshot): boolean {
+    if (this.ui.prefs.impactOpen !== snap.after) return false;
+    this.ui.replaceImpactOpen(snap.before);
     return true;
   }
 

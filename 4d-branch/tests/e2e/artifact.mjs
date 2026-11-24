@@ -442,6 +442,70 @@ await check("未来の道筋を追加で読み込むと、見込み（線の %�
   assert((await cloudState(A.page)) === "synced", await cloudState(A.page));
 });
 
+await check("まとめて開く（同じ時期まで）: 大きい時期はページの中の確かめで聞き（ブラウザの confirm は使わない）、お知らせの「元に戻す」で戻る。アカウントの写しは書き直さない", async () => {
+  // 未来の道筋だけの端末（デモのまま開き直すと自動で開く）。開く・閉じるは見え方だけ: アカウントの写しは変わらない
+  const U = "data/users/u_bulk/fourd";
+  const B = await newDevice({ uid: "u_bulk", autoFuture: true });
+  try {
+    const page = B.page;
+    await page.getByRole("dialog", { name: "4D Branch へようこそ" }).waitFor();
+    await page.getByRole("button", { name: "すぐに使う" }).click();
+    await page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await page.reload({ waitUntil: "load" });
+    await page.waitForFunction(() => !!window.__fourD?.app?.vm?.deep?.get(), null, { timeout: 60000 });
+    // Artifact の画面ではブラウザの確かめ・知らせは動かない: 使ったらエラーにする
+    await page.evaluate(() => {
+      for (const k of ["confirm", "alert", "prompt"])
+        window[k] = () => {
+          throw new Error(`window.${k} を使った`);
+        };
+    });
+    // 新しい地図の知らせ（版 7）が出ていれば閉じる
+    const sheet = page.locator(".rel-sheet").getByRole("button", { name: "見取り図を見る" });
+    await page.waitForTimeout(800);
+    if (await sheet.count()) {
+      await sheet.click();
+      await page.waitForFunction(() => !document.querySelector(".modal-backdrop:not(.closing)"));
+    }
+    await page.evaluate(() => window.__fourD.app.cloud.flush());
+    await page.waitForFunction(() => window.__fourD?.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+    const gen0 = JSON.parse(dbStore.get(U)).gen;
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.app.vm.resetImpactOpen();
+      f.ui.clearSelection();
+      f.ui.setPrefs({ rightOpen: true });
+    });
+    const q = page.locator(".sidebar-right .imp-deep-open select[aria-label='開く時期']");
+    await q.waitFor({ timeout: 30000 });
+    await q.selectOption("12");
+    const before = await page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length));
+    await page.locator(".sidebar-right .imp-deep-open [data-fk='quarter-open']").click();
+    const dlg = page.getByRole("dialog", { name: /枚を開きます/ });
+    await dlg.waitFor();
+    await dlg.getByRole("button", { name: "やめる" }).click();
+    // 閉じる動きが済んで外れるまで（次に開いた確かめと 2 つ並ばない）
+    await page.waitForFunction(() => !document.querySelector(".modal-backdrop"));
+    const same = await page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length));
+    assert(same === before, `やめたのに開いた（${before} → ${same}）`);
+    await page.locator(".sidebar-right .imp-deep-open [data-fk='quarter-open']").click();
+    await dlg.waitFor();
+    await dlg.getByRole("button", { name: "開く" }).click();
+    await page.waitForFunction((b) => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length > b + 1000), before);
+    const toast = page.locator(".toast:not(.closing)", { hasText: /2027\s年\s11\s月まで/ });
+    await toast.waitFor();
+    SHOTS && (await page.screenshot({ path: path.join(SHOTS, "artifact-bulk-open.png") }));
+    await toast.getByRole("button", { name: "元に戻す" }).click();
+    await page.waitForFunction((b) => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.drawNodes.length === b), before);
+    await page.evaluate(() => window.__fourD.app.cloud.flush());
+    const gen1 = JSON.parse(dbStore.get(U)).gen;
+    assert(gen1 === gen0, `開く・戻すでアカウントの写しを書き直した（${gen0} → ${gen1}）`);
+  } finally {
+    await B.ctx.close();
+  }
+});
+
 await check("デモのまま同期していた端末で開き直すと、同期を待ってから未来の道筋が自動で開き、アカウントの写しも新しくなる（別の端末でも 1 つだけ出る）", async () => {
   const U = "data/users/u_demo/fourd";
   const D = await newDevice({ uid: "u_demo", autoFuture: true });

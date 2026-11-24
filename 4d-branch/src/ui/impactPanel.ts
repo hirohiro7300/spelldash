@@ -45,6 +45,7 @@ import {
 } from "../model/impactText";
 import type { DocData, GEdge, ID } from "../model/types";
 import { isNarrowScreen } from "./breakpoints";
+import { keepFocus } from "./bulkOpen";
 import { deepOpenActions, openKey } from "./deepPanel";
 import { clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
@@ -1153,7 +1154,7 @@ function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Se
  * 前の版の欄（今決めること・やる価値・避けたい手・大事な判断・分布・行き先・見方・前提）は「くわしい数」にたたみ、
  * 開いたときに作る（見取り図と同じ数・同じ言葉で。起動と選び直しで作らない: 見直し user-5・perf-6・perf-7）
  */
-export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(): boolean } {
+export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(): boolean; updateOpen(): void } {
   const head = impactHeader(app);
   const flips = h("section", { class: "imp-sec imp-flips" });
   const decide = h("section", { class: "imp-sec imp-decide" });
@@ -1232,8 +1233,23 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
     fillDist(app, imp, dist);
     fillEnds(app, imp, ends, seen);
   });
+  /** 今日の「この先をひらく」（開いた後の枚数は見えているカードで変わる。開閉・選択で作り直す。見え方の版）。キーボードの部品は同じ物へ */
+  const refreshOpen = (): void => {
+    const deep = app.vm.impact.active ? app.vm.deep.get() : null;
+    const dk = deep ? openKey(app, deep) : "";
+    if (dk === deepOpenKey) return;
+    deepOpenKey = dk;
+    keepFocus(deepOpen, () => {
+      clear(deepOpen);
+      const row = deep ? deepOpenActions(app, deep, 0) : null;
+      if (row) deepOpen.append(row);
+    });
+  };
   return {
     el,
+    updateOpen() {
+      if (!el.hidden) refreshOpen();
+    },
     update() {
       const imp = app.vm.impact;
       el.hidden = !imp.active;
@@ -1249,14 +1265,7 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
       resetBtn.hidden = !resetCommand(app);
       expandBtn.hidden = !!deep;
       deepOpen.hidden = !deep;
-      // 開いた後の枚数は見えているカードで変わる（開閉・選択で作り直す。見え方の版）
-      const dk = deep ? openKey(app, deep) : "";
-      if (dk !== deepOpenKey) {
-        deepOpenKey = dk;
-        clear(deepOpen);
-        const row = deep ? deepOpenActions(app, deep, 0) : null;
-        if (row) deepOpen.append(row);
-      }
+      refreshOpen();
       // 数が変わった・書いた題名が変わった（題名の入力）ときだけ作り直す
       if (imp !== last || seen.changed(app.store.doc)) {
         last = imp;

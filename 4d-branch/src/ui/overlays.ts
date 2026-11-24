@@ -302,6 +302,8 @@ export function confirmDialog(opts: { title: string; body: string; ok: string; c
 
 export interface ToastOpts {
   action?: { label: string; run: () => void };
+  /** 2 つ目のボタン（まとめて開いた後の「元に戻す」と「見取り図で見る」など。狭い画面では文の下に折り返す） */
+  action2?: { label: string; run: () => void };
   tone?: "info" | "warn" | "error" | "ok";
   ms?: number;
   /** 閉じたとき（時間切れ・閉じるボタン・ボタンを押した・新しいお知らせに押し出された・返した関数で閉じた）に 1 回だけ呼ぶ */
@@ -332,27 +334,29 @@ export function toast(text: string, opts: ToastOpts = {}): () => void {
     opts.onClose?.();
   };
   toastClosers.set(el, close);
-  if (opts.action) {
-    const a = opts.action;
-    // 1 回だけ効かせる（閉じかけのお知らせはまだ押せるので、ダブルクリックの 2 回目で同じことを繰り返さない）
-    let fired = false;
-    el.append(
-      h(
-        "button",
-        {
-          class: "toast-action",
-          type: "button",
-          onClick: () => {
-            if (fired) return;
-            fired = true;
-            close();
-            a.run();
-          },
+  // 1 回だけ効かせる（閉じかけのお知らせはまだ押せるので、ダブルクリックの 2 回目で同じことを繰り返さない。2 つあってもどちらか 1 回）
+  let fired = false;
+  const actions = [opts.action, opts.action2].filter((a): a is { label: string; run: () => void } => !!a);
+  const actBtns = actions.map((a) =>
+    h(
+      "button",
+      {
+        class: "toast-action",
+        type: "button",
+        onClick: () => {
+          if (fired) return;
+          fired = true;
+          close();
+          a.run();
         },
-        a.label,
-      ),
-    );
-  }
+      },
+      a.label,
+    ),
+  );
+  if (actBtns.length > 1) {
+    el.classList.add("has-two");
+    el.append(h("span", { class: "toast-actions" }, ...actBtns));
+  } else el.append(...actBtns);
   el.append(h("button", { class: "toast-close icon-btn", type: "button", ariaLabel: "閉じる", onClick: close }, icon("x", 14)));
   stack.append(el);
   // 4 つ目からは古い物を押し出す（すぐ外す）
@@ -361,7 +365,7 @@ export function toast(text: string, opts: ToastOpts = {}): () => void {
     first.remove();
     toastClosers.get(first)?.();
   }
-  timer = setTimeout(close, opts.ms ?? (opts.action ? 6000 : 3200));
+  timer = setTimeout(close, opts.ms ?? (actions.length ? 6000 : 3200));
   return close;
 }
 
