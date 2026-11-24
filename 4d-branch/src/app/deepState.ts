@@ -8,10 +8,12 @@
 //   方針         数は方針（シナリオ）で絞らない（SPEC §5.11。方針の外の手は、キャンバスとパネルで薄くするだけ）
 //   年収         3 年の影響の年収（入口の meta.impact.annual）
 //   文章         文章の組み立て（src/demo/compose）。カードごと・年収ごとに 1 回だけ、読まれたときに組み立てる（全部を先に組み立てない）
+//   資産のゴール 入口の meta.goal（10 億円の前提）で、計算ごとの goalBase と設定ごとの goalOf を読む（ctx.goal()）。前提を変えても
+//                計算（analyze・overview）はやり直さない（鍵 calcKey に入れない。読むたびに入口の meta.goal を見る）
 // 文書の形や数を書き換えた後（自分で足したカード・書き換えた見込み）も、見取り図と道は地図の元の数で出す（edited。画面がそう書く）。
 // どれも読まれたときに作り、材料（地図・形と数の版・年収・選んだ手の版）が同じなら前の物を返す（変更のたびには作らない: 作業メモ perf-4）
 
-import { analyze, overview, textRuntime, type Analysis, type CompiledMap, type Overview, type TextSource } from "../deepmap/core";
+import { analyze, goalBase, goalOf, overview, textRuntime, type Analysis, type CompiledMap, type GoalBase, type GoalSummary, type Overview, type TextSource } from "../deepmap/core";
 import { ym } from "../deepmap/views/format";
 import { F_STUB, ROLE_A } from "../deepmap/core/compile";
 import type { MapData } from "../deepmap/mapData";
@@ -19,10 +21,11 @@ import { composeCard, materializeBody, type Card, type ComposeRuntime } from "..
 import { impactNodeId64 } from "../demo/impact";
 import { quarterIdIndex, quarterIdTable } from "../demo/quarterIds";
 import { loadPageMap, PAGE_Q, pageMapIfLoaded } from "../demo/pageBundle";
+import { goalAnchor, tablesFor, type GoalRead, type GoalTables } from "../model/goal";
 import { compiledMapOf, statusCode } from "../model/impactGraph";
 import type { DocData, GEdge, GNode, ID } from "../model/types";
 import { edgeProb } from "../model/forecast";
-import { chanceWeights, isFlowEdge } from "../model/forks";
+import { chanceWeights, goalConfigOf, isFlowEdge } from "../model/forks";
 import { Emitter } from "../store/emitter";
 import type { Store } from "../store/store";
 import { mapOfBuiltDoc } from "./futureCache";
@@ -125,6 +128,18 @@ export function cardWithDocOdds(ctx: DeepCtx, doc: DocData, out: ReadonlyMap<ID,
   return card;
 }
 
+/** 資産のゴールの数（入口の meta.goal の設定で。どれも 36 か月目より先は目安） */
+export interface DeepGoal {
+  /** 設定（入れていない鍵は仮の値。assumed に入る） */
+  readonly read: GoalRead;
+  /** 年ごとの係数（地図の 0 か月目から） */
+  readonly tables: GoalTables;
+  /** 設定によらない物（計算ごとに 1 つ） */
+  readonly base: GoalBase;
+  /** 今日の手ごと・おすすめ・ずっと今のままの数 */
+  readonly summary: GoalSummary;
+}
+
 /** 文書の 3 年の分かれ道が同梱の地図のとき、画面に渡す物 */
 export interface DeepCtx {
   readonly map: MapData;
@@ -139,6 +154,11 @@ export interface DeepCtx {
   /** 計算（選んだ手・見送った手を入れた、おすすめの選び方とずっと今のまま） */
   analysis(): Analysis;
   overview(): Overview;
+  /**
+   * 資産のゴールの数（入口の meta.goal を読むたびに見る。前提だけを変えたときは計算をやり直さず、設定ごとの数だけ作る。
+   * 同じ計算・同じ meta.goal なら同じ物）
+   */
+  goal(): DeepGoal;
   /**
    * 文章（道の画面・行き先の名前）。題名と短い名前は文書のカードの物（キャンバス・詳細・検索と同じ名前。書き換えればそれが出る）。
    * 地図の題名を書いていない「—」・空の物だけ、組み立てた名前（作業メモ SPEC v1 §4.3・見直し equiv-4）。本文と数の行は組み立てた物
@@ -282,7 +302,10 @@ export class DeepState {
   /** 選んだ手の配列を作り直した回数（画面に渡す物の鍵。同じ版の鍵でも配列が替われば作り直す） */
   private statusStamp = 0;
   private readonly emitter = new Emitter<{ ready: void }>();
-  /** かかった時間（確かめ用。ms）: 計算（analyze）・見取り図の数（overview）・画面（見取り図・ページ・カードの詳細の地図の部分） */
+  /**
+   * かかった時間（確かめ用。ms）: 計算（analyze）・見取り図の数（overview）・資産のゴールの設定ごとの数（goal）・画面（見取り図・ページ・
+   * カードの詳細の地図の部分）
+   */
   readonly timings: Record<string, number> = {};
 
   constructor(
@@ -326,6 +349,9 @@ export class DeepState {
         if (!ctx) return true;
         if (k === 0) ctx.analysis();
         else if (k === 1) ctx.overview();
+        // 資産のゴール: 設定によらない物（行き先を 1 回なめる）と、今の設定の数を 1 歩ずつ（見取り図の帯を空いた時間に埋める）
+        else if (k === 2) goalBase(ctx.analysis());
+        else if (k === 3) ctx.goal();
         else {
           // おすすめの値は 1 回の逆にたどる計算を分けて、空いた時間の 1 歩ずつ（perf-10）
           const imp = this.vm.impact;
@@ -499,6 +525,7 @@ export class DeepState {
     this.calc = calc;
     let picked: boolean | null = null;
     let docText: DeepText | null = null;
+    let goalMemo: { raw: unknown; a: Analysis; g: DeepGoal } | null = null;
     const store = this.store;
     const nodeOf = (i: number): GNode | undefined => {
       const id = ids[i] ?? (i >= 0 && i < map.n ? impactNodeId64(map.key(i)) : undefined);
@@ -532,6 +559,21 @@ export class DeepState {
         calc.ov = plainOverview(cm, an);
         this.timings.overview = performance.now() - t0;
         return calc.ov;
+      },
+      goal: () => {
+        const an = ctx.analysis();
+        // 入口の meta.goal は前提を変えたときだけ別の物になる（題名・位置などの変更では同じ物のまま）
+        const raw = store.doc.nodes[root]?.meta?.goal;
+        if (goalMemo && goalMemo.a === an && goalMemo.raw === raw) return goalMemo.g;
+        const read = goalConfigOf(store.doc.nodes[root]);
+        const tables = tablesFor(read.cfg, goalAnchor(map.header.anchor));
+        const base = goalBase(an);
+        const t0 = performance.now();
+        const summary = goalOf(base, tables);
+        this.timings.goal = performance.now() - t0;
+        const g: DeepGoal = { read, tables, base, summary };
+        goalMemo = { raw, a: an, g };
+        return g;
       },
       text: () => {
         if (docText) return docText;
