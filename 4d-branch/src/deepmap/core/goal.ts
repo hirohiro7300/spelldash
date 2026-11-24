@@ -301,8 +301,10 @@ function bestOf(cm: CompiledMap, f: GoalFrontier, t: GoalTables): [GoalBest | nu
   return [at, gr];
 }
 
-/** 重み付きの 3 つの数から範囲の数を作る */
-function scopeOf(t: GoalTables, node: number, items: ArrayLike<number>, count: number, extra: { mass: number; est: number; seed: number; seedExists: boolean; best: GoalBest | null; bestGrow: GoalBest | null }): GoalScope {
+/**
+ * 重み付きの 3 つの数（[T3, Rsal, Rbiz, 見込み] を 4 つずつ）から範囲の数を作る。版 6 の地図（アプリの計算の行き先）からも使う
+ */
+export function goalScopeOf(t: GoalTables, node: number, items: ArrayLike<number>, count: number, extra: { mass: number; est: number; seed: number; seedExists: boolean; best: GoalBest | null; bestGrow: GoalBest | null }): GoalScope {
   const at = new Weighted();
   const ry = new Weighted();
   const cr = new Weighted();
@@ -359,7 +361,7 @@ function scopeOf(t: GoalTables, node: number, items: ArrayLike<number>, count: n
 
 function bucketScope(cm: CompiledMap, b: GoalBucket, t: GoalTables): GoalScope {
   const [best, bestGrow] = bestOf(cm, b.frontier, t);
-  return scopeOf(t, b.node, b.items, b.count, { mass: b.mass, est: b.est, seed: b.seed, seedExists: b.treeMaxBiz >= SEED_BIZ, best, bestGrow });
+  return goalScopeOf(t, b.node, b.items, b.count, { mass: b.mass, est: b.est, seed: b.seed, seedExists: b.treeMaxBiz >= SEED_BIZ, best, bestGrow });
 }
 
 /** 設定ごとの数（同じ計算・同じ設定なら同じ物を返す。4 つまで覚える） */
@@ -425,7 +427,7 @@ export function goalFrom(a: Analysis, x: number, ends: EndsFrom, t: GoalTables):
     if (cm.flags[i]! & F_SUM) est += m;
     if (Rbiz > maxBiz) maxBiz = Rbiz;
   }
-  return scopeOf(t, x, items, k, { mass, est, seed, seedExists: maxBiz >= SEED_BIZ, best: null, bestGrow: null });
+  return goalScopeOf(t, x, items, k, { mass, est, seed, seedExists: maxBiz >= SEED_BIZ, best: null, bestGrow: null });
 }
 
 /** 行き先 1 つの数（選んだカード・道の終わり。O(log)） */

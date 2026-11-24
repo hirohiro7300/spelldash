@@ -7,8 +7,8 @@
 // 36 か月目より先の数はどれも「目安」か「前提」と並べる。「届く見込み 0%」は出さない（届く年か、届かないときの資産を出す）。
 // 数は計算ごとの出どころ（goalViewOf。アプリは文書の入口の meta.goal を読む）から。出どころが無い画面（起動の絵）は帯の場所だけ。
 
-import { BIZ_MIN, formatGoalShare, formatGrowth, formatManMonthly, formatOku, formatTimes, G_MAX, GOAL_BASIS_NOTE, goalBand, goalFrameLine, goalLeafLine, goalLeaf, goalLeverLines, goalLevers, goalName, goalPremiseLine, goalSeedNote, REACH_CAP_Y, assetsAtBy, type GoalInput, type GoalKey, type GoalTables } from "../../model/goal";
-import { CHECKED_ANNUALS, F_BASE, goalInputAt, kindKey, type Analysis, type GoalBest, type GoalBucket, type GoalScope, type GoalView } from "../core";
+import { BIZ_MIN, formatGoalShare, formatGrowth, formatManMonthly, formatOku, formatTimes, G_MAX, GOAL_BASIS_NOTE, goalBand, goalFrameLine, goalLeafLine, goalLeaf, goalLeverLines, goalLevers, goalName, goalPremiseLine, goalSeedNote, REACH_CAP_Y, assetsAtBy, type GoalInput, type GoalKey, type GoalRead, type GoalTables } from "../../model/goal";
+import { CHECKED_ANNUALS, F_BASE, goalInputAt, kindKey, type Analysis, type GoalBest, type GoalScope, type GoalView } from "../core";
 import { h, nobr } from "./dom";
 import { annualDepthNote, moveName, num, pathHash, pct, pct1, ym } from "./format";
 
@@ -116,14 +116,14 @@ function moveLabel(a: Analysis, node: number, nameOf: GoalNameOf | undefined): s
   return (!base && nameOf?.(node)?.trim()) || moveName(a.cm.map, kindKey(a.cm, node), base);
 }
 
-/** 範囲の行き先のうち、期限の資産が p50 に一番近い物（真ん中あたりの行き先。手立てと前提の幅はこの行き先で出す） */
-function middleOf(t: GoalTables, b: GoalBucket, p50: number): GoalInput | null {
+/** 範囲の行き先（[T3, Rsal, Rbiz, 見込み] を 4 つずつ）のうち、期限の資産が p50 に一番近い物（真ん中あたりの行き先。手立てと前提の幅はこの行き先で出す） */
+function middleOf(t: GoalTables, items: ArrayLike<number>, count: number, p50: number): GoalInput | null {
   let best: GoalInput | null = null;
   let gap = Infinity;
-  for (let k = 0; k < b.count; k++) {
-    const T3 = b.items[k * 4]!;
-    const Rsal = b.items[k * 4 + 1]!;
-    const Rbiz = b.items[k * 4 + 2]!;
+  for (let k = 0; k < count; k++) {
+    const T3 = items[k * 4]!;
+    const Rsal = items[k * 4 + 1]!;
+    const Rbiz = items[k * 4 + 2]!;
     const d = Math.abs(assetsAtBy(t, T3, Rsal, Rbiz) - p50);
     if (d < gap) {
       gap = d;
@@ -134,12 +134,12 @@ function middleOf(t: GoalTables, b: GoalBucket, p50: number): GoalInput | null {
 }
 
 /** 範囲の行き先の 3 年後の月の稼ぎの平均（見込みの重みで） */
-function meanEarn(b: GoalBucket): number {
+export function goalMeanEarn(items: ArrayLike<number>, count: number): number {
   let s = 0;
   let m = 0;
-  for (let k = 0; k < b.count; k++) {
-    const w = b.items[k * 4 + 3]!;
-    s += (b.items[k * 4 + 1]! + b.items[k * 4 + 2]!) * w;
+  for (let k = 0; k < count; k++) {
+    const w = items[k * 4 + 3]!;
+    s += (items[k * 4 + 1]! + items[k * 4 + 2]!) * w;
     m += w;
   }
   return m > 0 ? s / m : NaN;
@@ -155,19 +155,39 @@ function nearestOf(scopes: readonly (GoalScope | null)[]): GoalBest | null {
   return out;
 }
 
-// ---------------------------------------------------------------- 見取り図
+// ---------------------------------------------------------------- 帯
 
-/** 見取り図の帯・芽の札・注・今日の欄の 1 行 */
-export function goalOverviewVM(a: Analysis, view: GoalView, opts: { name?: GoalNameOf } = {}): GoalOverviewVM {
-  const { summary, base, read } = view;
-  const t = summary.tables;
+/** 帯を作る材料（見取り図は地図の計算から、版 6 の地図はアプリの計算の行き先から） */
+export interface GoalStripInput {
+  /** 数の鍵 */
+  key: string;
+  tables: GoalTables;
+  read: GoalRead;
+  /** 帯の数を出す範囲（おすすめの選び方。無ければずっと今のまま）と、その行き先 */
+  scope: GoalScope | null;
+  items: ArrayLike<number>;
+  count: number;
+  /** 一番近い行き先を探す範囲（今日の手ごと・おすすめ・ずっと今のまま） */
+  scopes: readonly (GoalScope | null)[];
+  /** 事業の稼ぎのある行き先がどこかにある */
+  anyBiz: boolean;
+  /** どの範囲・どの一番良い行き先も期限までに届かない */
+  noneReach: boolean;
+  /** 今日の手の数と、手ごとの 3 年後の月の稼ぎの平均の差（「10 の手の差は…」。出せなければ NaN） */
+  moves: number;
+  spread: number;
+  /** 年収が確かめた範囲の外のときの注（無ければ null） */
+  annualNote: string | null;
+}
+
+/** 見取り図の帯（たたむと 1 行と棒・開くと 3 つの数・手立て・地図が数える範囲・前提・注） */
+export function goalStripVM(x: GoalStripInput): GoalStripVM {
+  const { tables: t, read, scope } = x;
   const cfg = t.cfg;
   const oku = okuOf(t);
   const goal = goalName(t);
-  const scope = summary.pi ?? summary.keep;
-  const bucket = summary.pi ? base.pi : base.keep;
   const at = scope?.atBy ?? null;
-  const mid = bucket && at ? middleOf(t, bucket, at.p50) : null;
+  const mid = at ? middleOf(t, x.items, x.count, at.p50) : null;
   const leaf = mid ? goalLeaf(t, mid) : null;
   const band = mid ? goalBand(t, mid) : null;
   const head = `${goal}・${t.by} 年まで`;
@@ -181,13 +201,12 @@ export function goalOverviewVM(a: Analysis, view: GoalView, opts: { name?: GoalN
     "目安",
     frame.split("。")[0]!,
   ]
-    .filter((x): x is string => !!x)
+    .filter((v): v is string => !!v)
     .join("。");
   const bar = at ? { lo: Math.min(1, Math.max(0, at.p10 / t.T)), mid: Math.min(1, Math.max(0, at.p50 / t.T)), hi: Math.min(1, Math.max(0, at.p90 / t.T)) } : null;
   const done = cfg.assets >= t.T ? `もう届いています（今の資産 ${formatOku(cfg.assets)} ≥ ${formatOku(t.T)}）` : null;
   const tiles: GoalTileVM[] = [];
   let levers: string[] = [];
-  const allScopes = [...summary.moves, summary.pi, summary.keep];
   if (!done && scope && leaf && mid) {
     // 1: 届く年（届く見込みは 0 より大きいときだけ。「0%」は出さない）
     if (scope.pBy > 0)
@@ -204,29 +223,26 @@ export function goalOverviewVM(a: Analysis, view: GoalView, opts: { name?: GoalN
         sub: `3 年後から。3 年後の稼ぎ 月 ${formatManMonthly(mid.Rsal + mid.Rbiz)}の ${formatTimes(leaf.ratioEarn)}・目安`,
       });
     // 3: 要る事業の伸び（一番近い行き先で。給与は据え置き）
-    const near = nearestOf(allScopes);
-    const anyBiz = base.moves.some((b) => b.treeMaxBiz >= BIZ_MIN);
-    const reachedBest = allScopes.some((s) => !!s?.best && s.best.atBy >= t.T);
+    const near = nearestOf(x.scopes);
+    const reachedBest = x.scopes.some((s) => !!s?.best && s.best.atBy >= t.T);
     if (!(t.s > 0)) tiles.push({ label: "届くには事業が", value: "—", sub: "積み立てない前提なので、事業の伸びでは数えません" });
     else if (reachedBest) tiles.push({ label: "一番近い行き先は", value: "期限までに届く", sub: `事業の伸びは年 ${formatGrowth(cfg.bizGrow)} のままで・目安` });
     else if (near && Number.isFinite(near.gReq))
       tiles.push({ label: "届くには事業が", value: `毎年 ${formatGrowth(near.gReq)}`, sub: `一番近い行き先で（事業 月 ${formatManMonthly(near.Rbiz)}から・給与は据え置き）・目安` });
-    else if (!anyBiz) tiles.push({ label: "届くには事業が", value: "—", sub: "給与だけの道では届かない（事業の稼ぎのある行き先が無い）" });
+    else if (!x.anyBiz) tiles.push({ label: "届くには事業が", value: "—", sub: "給与だけの道では届かない（事業の稼ぎのある行き先が無い）" });
     else tiles.push({ label: "届くには事業が", value: `年 ${G_MAX}% でも足りない`, sub: "一番近い行き先でも（給与は据え置き）・目安" });
     levers = goalLeverLines(t, goalLevers(t, mid, leaf));
   }
   const notes: string[] = [];
   if (scope && scope.est >= 0.1) notes.push(`このうち ${pct(scope.est)} は、まとめた行き先の続きの見積もりから出ています。`);
-  if (a.annual < CHECKED_ANNUALS[0] || a.annual > CHECKED_ANNUALS[1]) notes.push(`${annualDepthNote(ym(a.cm.map, a.cm.H))}。`);
-  if (summary.noneReach && !done) {
-    const means = base.moves.map(meanEarn).filter(Number.isFinite);
-    const spread = means.length ? Math.max(...means) - Math.min(...means) : NaN;
+  if (x.annualNote) notes.push(x.annualNote);
+  if (x.noneReach && !done) {
     notes.push(
-      `この地図のどの行き先でも、今の前提では期限までに届きません。${Number.isFinite(spread) ? `${num(base.moves.length)} の手の差は、3 年後の月の稼ぎの平均で月 ${formatManMonthly(spread)}ほどで、` : ""}届くかどうかは 3 年より後の事業の伸びで決まります。`,
+      `この地図のどの行き先でも、今の前提では期限までに届きません。${Number.isFinite(x.spread) ? `${num(x.moves)} の手の差は、3 年後の月の稼ぎの平均で月 ${formatManMonthly(x.spread)}ほどで、` : ""}届くかどうかは 3 年より後の事業の伸びで決まります。`,
     );
   }
-  const strip: GoalStripVM = {
-    key: goalViewKey(view),
+  return {
+    key: x.key,
     head,
     bar,
     barText,
@@ -241,6 +257,32 @@ export function goalOverviewVM(a: Analysis, view: GoalView, opts: { name?: GoalN
     notes,
     nudge: read.assumed.has("assets") ? "今の資産を入れると、この数字があなたのものになります" : null,
   };
+}
+
+// ---------------------------------------------------------------- 見取り図
+
+/** 見取り図の帯・芽の札・注・今日の欄の 1 行 */
+export function goalOverviewVM(a: Analysis, view: GoalView, opts: { name?: GoalNameOf } = {}): GoalOverviewVM {
+  const { summary, base, read } = view;
+  const t = summary.tables;
+  const oku = okuOf(t);
+  const scope = summary.pi ?? summary.keep;
+  const bucket = summary.pi ? base.pi : base.keep;
+  const means = base.moves.map((b) => goalMeanEarn(b.items, b.count)).filter(Number.isFinite);
+  const strip = goalStripVM({
+    key: goalViewKey(view),
+    tables: t,
+    read,
+    scope,
+    items: bucket?.items ?? [],
+    count: bucket?.count ?? 0,
+    scopes: [...summary.moves, summary.pi, summary.keep],
+    anyBiz: base.moves.some((b) => b.treeMaxBiz >= BIZ_MIN),
+    noneReach: summary.noneReach,
+    moves: base.moves.length,
+    spread: means.length ? Math.max(...means) - Math.min(...means) : NaN,
+    annualNote: a.annual < CHECKED_ANNUALS[0] || a.annual > CHECKED_ANNUALS[1] ? `${annualDepthNote(ym(a.cm.map, a.cm.H))}。` : null,
+  });
   // 芽の札（手ごと）
   const seeds: GoalSeedVM[] = [];
   for (const s of summary.moves) {

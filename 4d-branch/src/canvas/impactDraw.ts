@@ -4,6 +4,8 @@
 //   今日: 「最善 +65万」と選択肢の幅
 // 縮小（low）では段の色で塗り、真ん中に「+65」「35%」。一番小さく（dot）では段の色の四角。
 // 3 か月ごとの地図の状態・行き先は、縮小すると 3 年の合計とずっと今のままの差の段で塗る（熱の地図: 作業メモ SPEC v1 §5.6・user-1 (3)）
+// 行き先の資産のゴール（作業メモ goal/design.md §4.3）: full は下の行の後ろに札「10 億: 事業が年 +28%」（入らなければ 3 年後の月の
+// 稼ぎを落とし、それでも入らなければ札を出さない）。芽の行き先は、compact で右の縁に金色の切り欠き、low・dot で金色の細い縁取り
 
 import { NODE_H, NODE_TYPES, NODE_W } from "../model/constants";
 import { IMPACT_FILL, IMPACT_INK, IMPACT_NEUTRAL_RING } from "../model/impactFormat";
@@ -26,6 +28,21 @@ const INK_LIGHT = "#EEF1F7";
 /** 印の色（◎ おすすめは ★ より控えめな金色） */
 const MARK_COLORS: Record<string, string> = { "★": "#F2C14E", "◎": "#C9A85A", "≒": "#C9D3E6", "✓": "#3DD9A4" };
 const BRANCH_TEXT_INSET = 16;
+/** 資産のゴールの金色（芽の印。見取り図の --goal-gold と同じ） */
+const GOAL_GOLD = "#FFB547";
+const GOAL_SEP = " · ";
+
+/** 芽の行き先の縮小したときの縁取り（画面で 1.5px・カードの少し外） */
+function seedOutline(ctx: CanvasRenderingContext2D, n: GNode, left: number, top: number, s: number, a: number, rect: boolean): void {
+  const d = 3 * s;
+  ctx.lineWidth = 1.5 * s;
+  ctx.strokeStyle = rgba(GOAL_GOLD, 0.95 * a);
+  if (rect) ctx.strokeRect(left - d, top - d, NODE_W + 2 * d, NODE_H + 2 * d);
+  else {
+    nodePath(ctx, n.type, left - d, top - d, NODE_W + 2 * d, NODE_H + 2 * d);
+    ctx.stroke();
+  }
+}
 
 /** 文字の幅（太さと文字ごとに 100px で測って覚え、大きさに比例させる。描くたびに測らない・文字列も作らない） */
 const widthCache = new Map<number, Map<string, number>>();
@@ -128,6 +145,7 @@ export function drawImpactNode(ctx: CanvasRenderingContext2D, n: GNode, x: numbe
   if (o.lod === "dot") {
     ctx.fillStyle = rgba(fill, 0.85 * a);
     ctx.fillRect(left, top, NODE_W, NODE_H);
+    if (c.goal?.seed) seedOutline(ctx, n, left, top, s, a, true);
     return;
   }
 
@@ -147,6 +165,7 @@ export function drawImpactNode(ctx: CanvasRenderingContext2D, n: GNode, x: numbe
     ctx.strokeStyle = o.selected ? rgba(INK_LIGHT, Math.max(a, 0.8)) : rgba(stroke, 0.9 * a);
     ctx.stroke();
     if (c.role === "alt" && !c.base) drawProjectStripe(ctx, n.type, left, top, o.projectColors, a, o.zoom);
+    if (c.goal?.seed) seedOutline(ctx, n, left, top, s, a, false);
     const low = c.heat !== null ? c.heatLow : c.low;
     if (o.zoom >= 0.19 && low) {
       let size = 12 * s;
@@ -268,6 +287,11 @@ function drawCompact(ctx: CanvasRenderingContext2D, n: GNode, left: number, top:
     const rx1 = rowRight - (mw ? mw + 4 * s : 0);
     if (rx1 - rx0 >= 16 * s) drawRisk(ctx, rx0, y0 + ph / 2 - 2 * s, rx1 - rx0, 4 * s, c.risk, a, 2 * s);
   }
+  // 芽の行き先: 右の縁の真ん中に金色の切り欠き（画面で 4px）
+  if (c.goal?.seed) {
+    ctx.fillStyle = rgba(GOAL_GOLD, a);
+    ctx.fillRect(left + NODE_W - 4 * s, top + NODE_H * 0.3, 4 * s, NODE_H * 0.4);
+  }
   if (o.editing) return;
   // 2 行目: 62% 以上はタイトル 2 行、それより小さければタイトルの 1 行（入らなければ「…」で切る。45% 未満は少し小さく）。
   // 前は短い名前（手の種類の名前「転職活動」）で、見取り図・本文・知らせが『給与の上がる転職先を探す』と呼ぶ同じカードを別の名前で
@@ -355,10 +379,23 @@ function drawFull(ctx: CanvasRenderingContext2D, n: GNode, left: number, top: nu
     const end = badge ? badgeCenter(left + HALF_W, top + HALF_H).x - (BADGE_W * badgeScale(o.zoom)) / 2 - 4 : left + NODE_W - inset;
     const maxW = end - tx;
     if (maxW > 16) {
+      // 資産のゴールの札は後ろに（下の行 → 短い形の順に、札まで入る物。どちらも入らなければ札は出さない）
+      const g = c.goal;
+      const gw = g ? textWidth(ctx, GOAL_SEP, 500, 11) + textWidth(ctx, g.text, 500, 11) : 0;
       let t = c.bottom;
-      if (ctx.measureText(t).width > maxW) t = c.bottomShort;
+      let withGoal = false;
+      if (g && textWidth(ctx, c.bottom, 500, 11) + gw <= maxW) withGoal = true;
+      else if (g && textWidth(ctx, c.bottomShort, 500, 11) + gw <= maxW) (t = c.bottomShort), (withGoal = true);
+      else if (ctx.measureText(t).width > maxW) t = c.bottomShort;
       ctx.fillStyle = `rgba(168,177,194,${a.toFixed(3)})`;
-      ctx.fillText(ellipsize(ctx, t, maxW), tx, fy);
+      if (!withGoal) ctx.fillText(ellipsize(ctx, t, maxW), tx, fy);
+      else {
+        ctx.fillText(t, tx, fy);
+        const gx = tx + textWidth(ctx, t, 500, 11);
+        ctx.fillText(GOAL_SEP, gx, fy);
+        ctx.fillStyle = g!.seed ? rgba(GOAL_GOLD, a) : `rgba(168,177,194,${a.toFixed(3)})`;
+        ctx.fillText(g!.text, gx + textWidth(ctx, GOAL_SEP, 500, 11), fy);
+      }
     }
   }
 }

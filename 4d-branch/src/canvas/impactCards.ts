@@ -6,6 +6,8 @@ import { ymText } from "../deepmap/core/time";
 import type { ImpactResult } from "../model/impact";
 import { IMPACT_FILL, IMPACT_NEUTRAL_RING, MINUS, formatMan, formatMonthly, formatMonthlyDelta, formatShare, impactBin } from "../model/impactFormat";
 import { formatPercent } from "../model/forecast";
+import { goalCardOf, goalCtxOf, type GoalCard } from "../model/goalImpact";
+import type { GoalTables } from "../model/goal";
 import type { DocData, ID } from "../model/types";
 
 export type ImpactRole = "root" | "alt" | "out" | "end";
@@ -54,6 +56,11 @@ export interface ImpactCard {
   heat: number | null;
   /** 縮小したときに真ん中に書く物（heat のとき「+120」。無ければ low） */
   heatLow: string;
+  /**
+   * 資産のゴール（行き先だけ: 札「10 億: 事業が年 +28%」・芽・ゴールの何割か。どれも前提から出した目安）。
+   * 前提（入口の meta.goal）を変えると文書が変わるので、計算の結果と同じく作り直す（作業メモ goal/design.md §4.3）
+   */
+  goal: GoalCard | null;
 }
 
 export interface ImpactEdge {
@@ -128,6 +135,16 @@ export class ImpactCards {
   private ranks: Map<ID, number> | null = null;
   /** 3 か月ごとの地図の年月（入口の meta.anchor。無ければ null: 版 6 の地図） */
   private anchor: string | null = null;
+  /** 資産のゴールの前提の係数（行き先のカードを作るときに 1 度だけ読む） */
+  private goalT: GoalTables | null | undefined = undefined;
+
+  /** now: 年月の無い地図（版 6）で、資産のゴールの期限を今月から数えるための時計 */
+  constructor(private readonly now: () => Date = () => new Date()) {}
+
+  private goalTables(): GoalTables | null {
+    if (this.goalT === undefined) this.goalT = this.imp && this.doc ? (goalCtxOf(this.doc, this.imp, this.now)?.t ?? null) : null;
+    return this.goalT;
+  }
 
   private sync(imp: ImpactResult, doc: DocData): void {
     if (imp === this.imp && doc === this.doc) return;
@@ -136,6 +153,7 @@ export class ImpactCards {
     this.cards.clear();
     this.edges.clear();
     this.ranks = null;
+    this.goalT = undefined;
     const a = imp.root ? doc.nodes[imp.root]?.meta?.anchor : null;
     this.anchor = typeof a === "string" && /^\d{4}-\d{2}$/.test(a) ? a : null;
   }
@@ -160,7 +178,7 @@ export class ImpactCards {
     this.sync(imp, doc);
     const src = doc.nodes[id];
     let c = this.cards.get(id);
-    if (c === undefined || c.src !== src) this.cards.set(id, (c = { src, card: buildCard(imp, doc, id, this.anchor) }));
+    if (c === undefined || c.src !== src) this.cards.set(id, (c = { src, card: buildCard(imp, doc, id, this.anchor, () => this.goalTables()) }));
     return c.card;
   }
 
@@ -242,12 +260,12 @@ function headOf(m: number | undefined, anchor: string | null): string {
   }
 }
 
-function buildCard(imp: ImpactResult, doc: DocData, id: ID, anchor: string | null): ImpactCard | null {
+function buildCard(imp: ImpactResult, doc: DocData, id: ID, anchor: string | null, goalT: () => GoalTables | null = () => null): ImpactCard | null {
   if (!imp.active || !imp.scope.has(id)) return null;
   const n = doc.nodes[id];
   if (!n) return null;
   const short = typeof n.meta?.short === "string" && n.meta.short.trim() ? (n.meta.short as string).trim() : n.title.trim() || "（無題）";
-  const card: ImpactCard = { role: "out", bin: 0, pill: null, chip: null, marks: "", head: "", headColor: null, bottom: "", bottomShort: "", risk: [], short, low: "", base: false, dropped: n.status === "dropped", label: "", labelTitle: "", dotLabel: "", heat: null, heatLow: "" };
+  const card: ImpactCard = { role: "out", bin: 0, pill: null, chip: null, marks: "", head: "", headColor: null, bottom: "", bottomShort: "", risk: [], short, low: "", base: false, dropped: n.status === "dropped", label: "", labelTitle: "", dotLabel: "", heat: null, heatLow: "", goal: null };
   const horizonLabel = `${Math.round((imp.horizon / 12) * 10) / 10}年後`;
 
   if (id === imp.root) {
@@ -331,6 +349,10 @@ function buildCard(imp: ImpactResult, doc: DocData, id: ID, anchor: string | nul
     const p = imp.pPi.get(id);
     card.label = g !== null ? `3年 ${formatMan(g)}${p !== undefined ? `（${formatPercent(p)}）` : ""}` : clip(n.title, 12);
     card.dotLabel = rate !== undefined ? `${horizonLabel} ${formatMonthly(rate)}${p !== undefined ? `（${formatPercent(p)}）` : ""}` : card.label;
+    // 資産のゴールの札（芽の行き先は、一番小さくしたときの目印にも「芽」）
+    const t = goalT();
+    card.goal = t ? goalCardOf(t, imp, doc, id) : null;
+    if (card.goal?.seed) card.dotLabel += " · 芽";
   } else {
     const d = imp.decision.get(id);
     if (d) {
