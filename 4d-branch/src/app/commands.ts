@@ -24,9 +24,10 @@ const CHILD_TYPE: Record<NodeType, NodeType> = { goal: "action", action: "result
 /**
  * 複製の写しに持たせない meta: 未来の道筋の入口・版・鍵・今のまま（base）・作ったときの文（t0・b0）・入口の手の種類の名前（fams）と、
  * 3 か月ごとの地図の入口だけの印（地図の年月 anchor・文の型の版 textVersion・「3 年やらない」の見積もり never。src/demo/quarterDoc.ts）、
- * 線の作ったときの見込み・条件（p0・c0）。写しが 2 つ目の入口になったり、版の差し替えで元のカードと取り違えられたりしないように
+ * 線の作ったときの見込み・条件（p0・c0）。写しが 2 つ目の入口になったり、版の差し替えで元のカードと取り違えられたりしないように。
+ * 入口の資産のゴールの前提（goal: 今の資産など）も写さない（入口だけが持つ。ふつうのカードに金額を散らさない）
  */
-const COPY_DROP_NODE = ["forecastRoot", "impact", "futureVersion", "futureRelease", "key", "base", "t0", "b0", "k0", "fams", "anchor", "textVersion", "never"];
+const COPY_DROP_NODE = ["forecastRoot", "impact", "futureVersion", "futureRelease", "key", "base", "t0", "b0", "k0", "fams", "anchor", "textVersion", "never", "goal"];
 const COPY_DROP_EDGE = ["p0", "c0"];
 
 function without(meta: Meta, keys: string[]): Meta {

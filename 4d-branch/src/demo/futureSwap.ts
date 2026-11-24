@@ -250,6 +250,21 @@ function withSalary(meta: GNode["meta"], salary: Salary | null): GNode["meta"] {
   return salary && ni && typeof ni === "object" ? { ...meta, impact: { ...(ni as Record<string, unknown>), ...salary } } : meta;
 }
 
+/**
+ * 資産のゴールの前提（入口の meta.goal。10 億円・今の資産・積立の割合 など、利用者が入れた物だけ）: 年収と同じ入口の物を引き継ぐ。
+ * 中身は読むときに確かめる（src/model/goal.ts の goalConfigOf）ので、ここでは物ならそのまま写す
+ */
+function goalOfDoc(doc: DocData): Record<string, unknown> | null {
+  const id = primaryImpactRoot(doc);
+  const g = id === null ? undefined : doc.nodes[id]?.meta.goal;
+  return g && typeof g === "object" && !Array.isArray(g) ? (g as Record<string, unknown>) : null;
+}
+
+/** 入口の meta に資産のゴールの前提を入れた物（前提が無ければそのまま） */
+function withGoal(meta: GNode["meta"], goal: Record<string, unknown> | null): GNode["meta"] {
+  return goal ? { ...meta, goal } : meta;
+}
+
 /** 古い地図（入口からたどれるノード）を消して、新しい版を同じ場所に入れる（v1 の地図など、鍵で合わせられないとき） */
 function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): FutureSwap {
   const gone = new Set(maps.flatMap((m) => [...m.nodes]));
@@ -259,7 +274,7 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
   for (const [id, e] of Object.entries(doc.edges)) if (!gone.has(e.source) && !gone.has(e.target)) edges[id] = e;
   const base: DocData = { ...doc, nodes, edges };
   // 版が変わっても同じカードは同じ鍵（meta.key）を持つ。利用者が決めたこと（選んだ手・見送り・完了、やることのチェック）は新しい版に引き継ぐ。
-  // 年収は、数字と概要を出す入口の物を引き継ぐ
+  // 年収と資産のゴールの前提は、数字と概要を出す入口の物を引き継ぐ
   let kept = 0;
   const carried: DocData = { ...incoming, nodes: { ...incoming.nodes } };
   const oldByKey = new Map<string, GNode>();
@@ -269,6 +284,7 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
     if (o && k !== null) oldByKey.set(k, o);
   }
   const salary = salaryOf(doc);
+  const goal = goalOfDoc(doc);
   for (const [id, n] of Object.entries(incoming.nodes)) {
     const k = keyOf(n);
     const o = k === null ? undefined : oldByKey.get(k);
@@ -277,7 +293,7 @@ function replaceFuture(doc: DocData, incoming: DocData, maps: FutureMap[]): Futu
     const met = new Set(o ? o.conditions.filter((c) => c.met).map((c) => c.text) : []);
     if (met.size && next.conditions.some((c) => met.has(c.text) && !c.met)) next = { ...next, conditions: next.conditions.map((c) => (met.has(c.text) ? { ...c, met: true } : c)) };
     if (isForecastRoot(n)) {
-      const meta = withSalary(next.meta, salary);
+      const meta = withGoal(withSalary(next.meta, salary), goal);
       if (meta !== next.meta) next = { ...next, meta };
     }
     if (next !== n) {
@@ -432,6 +448,7 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
     idOf.set(n.id, old ? old.id : doc.nodes[n.id] ? newId("n") : n.id);
   }
   const salary = salaryOf(doc);
+  const goal = goalOfDoc(doc);
   let kept = 0;
   let fresh = 0;
   const updated = new Set<ID>();
@@ -445,7 +462,7 @@ function upgradeFuture(doc: DocData, incoming: DocData, maps: FutureMap[], rootI
       fresh++;
       continue;
     }
-    const r = upgradeNode(next, old, id === rootId ? salary : null);
+    const r = upgradeNode(next, old, id === rootId ? salary : null, id === rootId ? goal : null);
     // 地図から外れていたカードは文書の位置で見えていた（動かしたかもしれない）: 位置はそのまま（つながり直せば並べ方で並ぶ）
     out.nodes[id] = depth.has(old.id) ? r.node : { ...r.node, x: old.x, y: old.y };
     if (r.kept) kept++;
@@ -529,10 +546,10 @@ const edited = (text: string, print: unknown): boolean => typeof print === "stri
  * 合ったカードを新しい版にする（next: 新しい版のカード。ID はもとの物）。利用者の物は old から残す:
  * 選んだ手・見送り・完了、やることのチェック・足した項目・書き換えた項目（upgradeTodo）、書き換えたタイトル・本文、
  * 付けたタグ（前の版で同梱データから付いたタグ＝カードの役割と月から決まる物でも、新しい版で付くタグでもない物。
- * 月が変わって付かなくなった役割のタグは外す）、カードのシナリオ・折りたたみ、入口なら年収（salary）。
+ * 月が変わって付かなくなった役割のタグは外す）、カードのシナリオ・折りたたみ、入口なら年収（salary）と資産のゴールの前提（goal）。
  * 指紋（t0・b0・k0）は新しい版の物のまま（書き換えた文は、次の版でも書き換えたと分かる）
  */
-function upgradeNode(next: GNode, old: GNode, salary: Salary | null): { node: GNode; kept: boolean; updated: boolean } {
+function upgradeNode(next: GNode, old: GNode, salary: Salary | null, goal: Record<string, unknown> | null): { node: GNode; kept: boolean; updated: boolean } {
   const title = edited(old.title, old.meta.t0) ? old.title : next.title;
   const body = edited(old.body, old.meta.b0) ? old.body : next.body;
   const status = old.status !== "open" ? old.status : next.status;
@@ -541,7 +558,7 @@ function upgradeNode(next: GNode, old: GNode, salary: Salary | null): { node: GN
   const given = new Set([...impactTagsOf(old.meta), ...next.tags]);
   const own = old.tags.filter((t) => !given.has(t));
   const tags = own.length ? [...next.tags, ...own] : next.tags;
-  const meta = withSalary(next.meta, salary);
+  const meta = withGoal(withSalary(next.meta, salary), goal);
   const node: GNode = { ...next, title, body, status, conditions, tags, meta, scenarioIds: old.scenarioIds, collapsed: old.collapsed, createdAt: old.createdAt };
   const kept = title !== next.title || body !== next.body || status !== next.status || todo.kept || own.length > 0 || meta !== next.meta;
   // 文章か数字が変わった（期限・位置・版の印・指紋は数えない）
