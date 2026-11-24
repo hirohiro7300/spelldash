@@ -23,6 +23,7 @@ import { assemble, compileDocTopo, compileMapDoc, edgeIndex, fillAllowed, fillNu
 import {
   backward,
   backwardSteps,
+  bizRateAt,
   BAD_EPS,
   CHANCE,
   compareCands,
@@ -91,8 +92,12 @@ const C_SPLICE = 32;
 
 /** 計算に使わない・どれにも当たらないノードの所（変わっても何もしない） */
 const NODE_SKIP: ReadonlySet<string> = new Set(["id", "title", "body", "tags", "conditions", "x", "y", "updatedAt", "collapsed", "createdAt", "status", "type", "meta", "time", "projectIds", "scenarioIds"]);
-/** 数の meta と impact のほか（変わったら見せ方だけ）。ノードごとに作らない（全部の入れ替えでは 7 万枚を比べる） */
-const META_SKIP: ReadonlySet<string> = new Set([...NODE_NUM_META, "impact"]);
+/**
+ * 数の meta と impact のほか（変わったら見せ方だけ）。ノードごとに作らない（全部の入れ替えでは 7 万枚を比べる）。
+ * goal（資産のゴールの前提）はどの数にも入らない: 変えても同じ結果を返す（おすすめの値などを数え直さない）。ゴールの画面は
+ * 入口の meta.goal を自分で見る（キャンバスの札は文書ごと、見出しの帯は前提の鍵ごと、詳細の欄の 1 文は Seen.goal で）
+ */
+const META_SKIP: ReadonlySet<string> = new Set([...NODE_NUM_META, "impact", "goal"]);
 const EDGE_SKIP: ReadonlySet<string> = new Set(["id", "label", "condition", "updatedAt", "collapsed", "createdAt", "source", "target", "relation", "scenarioIds", "meta"]);
 const EDGE_NUM_META: readonly string[] = ["prob", "r", "rv"];
 
@@ -422,6 +427,10 @@ class EngineResult implements ImpactResult {
   readonly value: ReadonlyMap<ID, number>;
   readonly valueV: ReadonlyMap<ID, Vec3>;
   readonly rate: ReadonlyMap<ID, number>;
+  rateBiz(id: ID): number | undefined {
+    const i = this.r.topo.idx.get(id);
+    return i === undefined ? undefined : bizRateAt(this.r.c, this.r.main, i);
+  }
   readonly acc: ReadonlyMap<ID, number>;
   readonly pPi: ReadonlyMap<ID, number>;
   readonly partial: ReadonlySet<ID>;

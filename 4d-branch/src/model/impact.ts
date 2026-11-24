@@ -172,6 +172,11 @@ export interface ImpactResult {
   valueV: ReadonlyMap<ID, Vec3>;
   /** horizon での月の稼ぎ（万円/月） */
   rate: ReadonlyMap<ID, number>;
+  /**
+   * horizon での月の稼ぎのうち事業の部分（rr の 2 つ目と 3 つ目: 広告運用・独立と SpellDash。万円/月）の、選び方どおりの平均。
+   * rate と同じ重みで平均する（rate − rateBiz が給与の部分）。数が出ないカードは undefined
+   */
+  rateBiz?(id: ID): number | undefined;
   /** 今日からそこまでの稼ぎ */
   acc: ReadonlyMap<ID, number>;
   /** おすすめ（または自分）の選び方でそこに来る見込み */
@@ -285,6 +290,49 @@ export interface Pass {
   partial: Uint8Array;
   pi: Int32Array;
   best: Int32Array;
+}
+
+/**
+ * horizon での月の稼ぎのうち事業の部分（RV の 2 つ目と 3 つ目）。main が RV を持っていればそれを読み、持っていなければ（エンジンは
+ * RV を持ち続けない）選び方どおりに先をたどる（rate と同じ重み・同じ選ぶ手。O(選び方の先の大きさ)。詳細の欄で 1 枚ずつ読む）
+ */
+export function bizRateAt(c: Compiled, main: Pass, i: number): number | undefined {
+  if (!main.def[i]) return undefined;
+  if (main.RV.length === main.R.length * 3) return main.RV[i * 3 + 1]! + main.RV[i * 3 + 2]!;
+  const memo = new Map<number, number>();
+  const walk = (i: number): number => {
+    const hit = memo.get(i);
+    if (hit !== undefined) return hit;
+    const k = c.kind[i]!;
+    const a = c.off[i]!;
+    const b = c.off[i + 1]!;
+    let r = 0;
+    if (k === LEAF || a === b) r = c.rr[i * 3 + 1]! + c.rr[i * 3 + 2]!;
+    else if (k === PASS || k === CHANCE) {
+      let sw = 0;
+      let cnt = 0;
+      for (let s = a; s < b; s++) {
+        const j = c.tgt[s]!;
+        if (j < 0 || !main.def[j]) continue;
+        sw += c.w[s]!;
+        cnt++;
+      }
+      const equal = sw <= 0;
+      const norm = equal ? cnt : sw;
+      for (let s = a; s < b; s++) {
+        const j = c.tgt[s]!;
+        if (j < 0 || !main.def[j]) continue;
+        r += ((equal ? 1 : c.w[s]!) / norm) * walk(j);
+      }
+    } else {
+      const s = main.pi[i]!;
+      const j = s >= 0 ? c.tgt[s]! : -1;
+      r = j >= 0 ? walk(j) : 0;
+    }
+    memo.set(i, r);
+    return r;
+  };
+  return walk(i);
 }
 
 /** 範囲が無いときの結果（active = false） */
@@ -918,6 +966,10 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
   res.value = valueM;
   res.valueV = valueVM;
   res.rate = rateM;
+  res.rateBiz = (id) => {
+    const i = c.idx.get(id);
+    return i === undefined ? undefined : bizRateAt(c, main, i);
+  };
   res.acc = accM;
   res.pPi = pPiM;
   res.partial = partialS;

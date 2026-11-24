@@ -30,7 +30,9 @@ import {
   goalPremiseLine,
   goalSeedNote,
   goalStored,
+  GOAL_KEYS,
   monthlyFromToday,
+  okuRange,
   REACH_CAP_Y,
   reachYearOf,
   savingNeeded,
@@ -39,6 +41,7 @@ import {
   targetToday,
   type GoalConfig,
   type GoalInput,
+  type GoalKey,
   type GoalTables,
 } from "../../src/model/goal";
 import { goalConfigOf as fromForks } from "../../src/model/forks";
@@ -186,7 +189,29 @@ describe("届く年・要る積立・要る伸び", () => {
       expect(y).toBeLessThanOrEqual(prev);
       prev = y;
     }
-    expect(goalLeaf(tablesFor(cfg({ assets: 120_000 }), ANCHOR), leafIn(1000, 30, 10)).reachYear).toBe(2029);
+    // 今の資産がもう目標以上なら 0 か月目の年
+    expect(goalLeaf(tablesFor(cfg({ assets: 120_000 }), ANCHOR), leafIn(1000, 30, 10)).reachYear).toBe(2026);
+  });
+
+  it("36 か月目より前に届く人には、その年を言う（3 年後の年まで遅らせない）", () => {
+    // 今の資産 9.8 億・利回り 3%・稼ぎ 0: 1 年後に 9.8 × 1.03 = 10.09 億で届く
+    const t = tablesFor(cfg({ assets: 98_000, target: 100_000, ret: 3 }), goalAnchor("2026-11"));
+    expect(reachYearOf(t, 0, 0, 0)).toBe(2027);
+    const leaf = goalLeaf(t, leafIn(0, 0, 0));
+    expect(goalBadge(t, leaf)).toBe("10 億: 2027 年・目安");
+    expect(goalLeafLine(t, leafIn(0, 0, 0), leaf, null)).toContain("2027 年に届く目安です。");
+    // 3 年の積立の分も数える（k 年後は 3 年の稼ぎの k/3 を真ん中の月に）: 今の資産 9.4 億・3 年で 9,000 万円の稼ぎの 20% を積立
+    const t2 = tablesFor(cfg({ assets: 94_000, target: 100_000, ret: 3, save: 20 }), goalAnchor("2026-11"));
+    const A1 = 94_000 * 1.03 + (0.2 * 9_000 * Math.pow(1.03, 0.5)) / 3;
+    const A2 = 94_000 * Math.pow(1.03, 2) + (0.2 * 9_000 * 2 * Math.pow(1.03, 1)) / 3;
+    expect(A1).toBeLessThan(100_000);
+    expect(A2).toBeGreaterThan(100_000);
+    expect(94_000 * Math.pow(1.03, 2)).toBeLessThan(100_000);
+    expect(reachYearOf(t2, 9_000, 0, 0)).toBe(2028);
+    expect(reachYearOf(t2, 0, 0, 0)).toBe(2029);
+    // 3 年後の年より後なら、表のまま（前の年は見ない）
+    const t3 = tablesFor(cfg({ assets: 50_000, target: 100_000, ret: 3 }), goalAnchor("2026-11"));
+    expect(reachYearOf(t3, 0, 0, 0)).toBe(2026 + 3 + Math.ceil(Math.log(2) / Math.log(1.03) - 3));
   });
 
   it("要る積立を 3 年後から続けると期限にちょうど届く。0 以下なら積立なしでも届く", () => {
@@ -328,10 +353,50 @@ describe("数と文の書き方", () => {
 
   it("札: 芽のある行き先は要る伸び、給与だけの道、届く年", () => {
     const t = tablesFor(cfg(), ANCHOR);
-    expect(goalBadge(t, goalLeaf(t, leafIn(1000, 30, 12)))).toMatch(/^10 億: 事業が年 \+\d+%$/);
+    // 36 か月目より先の数なので、数のある札には「・目安」
+    expect(goalBadge(t, goalLeaf(t, leafIn(1000, 30, 12)))).toMatch(/^10 億: 事業が年 \+\d+%・目安$/);
     expect(goalBadge(t, goalLeaf(t, leafIn(1000, 40, 0)))).toBe("10 億: 給与だけでは届かない");
     const rich = tablesFor(cfg({ assets: 80_000, ret: 5 }), ANCHOR);
-    expect(goalBadge(rich, goalLeaf(rich, leafIn(1000, 40, 0)))).toMatch(/^10 億: 20\d\d 年$/);
+    expect(goalBadge(rich, goalLeaf(rich, leafIn(1000, 40, 0)))).toMatch(/^10 億: 20\d\d 年・目安$/);
+    expect(goalBadge(t, goalLeaf(t, { T3: 1000, Rsal: 40, Rbiz: 0, split: false }))).toMatch(/^10 億: (\d+%|1% 未満)・目安$/);
+  });
+
+  it("前提の行と行き先の 1 文の利回りの幅: 両端の単位が違えば両方に付ける（「6,832〜1.3 億円」と読めないように）", () => {
+    // 目標 5,000 万円（1 億より下）: 1 億から億で書く
+    const t5 = tablesFor(cfg({ target: 5_000 }), ANCHOR);
+    const all = new Set<GoalKey>(GOAL_KEYS);
+    expect(goalPremiseLine(t5, all, [6832, 13000])).toContain("（仮、1〜5% なら 6,832 万円〜1.3 億円）");
+    const x5 = leafIn(2500, 37, 46);
+    expect(goalLeafLine(t5, x5, goalLeaf(t5, x5), [6832, 13000])).toContain("。利回り 1〜5% なら 6,832 万円〜1.3 億円）");
+    // 目標 10 億: 100 万円から億で書く
+    const t10 = tablesFor(cfg(), ANCHOR);
+    expect(goalPremiseLine(t10, all, [67, 216])).toContain("1〜5% なら 67 万円〜0.02 億円）");
+    // 同じ単位なら前の単位を落とす・同じ書き方なら 1 つ
+    expect(goalPremiseLine(t10, all, [3300, 6400])).toContain("1〜5% なら 0.33〜0.64 億円）");
+    expect(okuRange(5000, 5000, true)).toBe("0.5 億円");
+    expect(okuRange(6832, 13000, false)).toBe("6,832 万円〜1.3 億円");
+    for (const s of [goalPremiseLine(t5, all, [6832, 13000]), goalPremiseLine(t10, all, [67, 216])]) spaced(s);
+  });
+
+  it("積立 0%・今の資産 0: 「0%」も「年 60% でも足りません」も出さない（事業の伸びは数えない）", () => {
+    const t = tablesFor(cfg({ save: 0, assets: 0 }), ANCHOR);
+    const x = leafIn(2000, 40, 30);
+    const leaf = goalLeaf(t, x);
+    expect(leaf.atBy).toBe(0);
+    const lines = [goalBadge(t, leaf), goalLeafLine(t, x, leaf, goalBand(t, x)), goalLeafLine(t, x, leaf, null), ...goalLeverLines(t, goalLevers(t, x, leaf))];
+    for (const s of lines) {
+      expect(s).not.toMatch(/(^|[^\d.])0%/);
+      expect(s).not.toContain("60% でも足りません");
+      expect(s).not.toContain("60% 伸び続けても足りません");
+      spaced(s);
+    }
+    expect(goalBadge(t, leaf)).toBe("10 億: 積立なしの前提");
+    expect(goalLeafLine(t, x, leaf, goalBand(t, x))).toContain("積み立てない前提なので、資産は利回りだけで増えます。届くには、3 年後から毎月 ");
+    expect(goalLeafLine(t, x, leaf, goalBand(t, x))).not.toContain("0〜0");
+    // 伸びの行は出さない（積立の行は出す）
+    const lev = goalLeverLines(t, goalLevers(t, x, leaf));
+    expect(lev.some((s) => s.includes("事業の稼ぎが"))).toBe(false);
+    expect(lev.some((s) => s.startsWith("毎月 "))).toBe(true);
   });
 });
 

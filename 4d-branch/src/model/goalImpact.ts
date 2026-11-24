@@ -1,8 +1,10 @@
 // アプリの計算（ImpactResult）から出す「資産 10 億円」の数（設計: 作業メモ goal/design.md §4.3・§4.5・§4.6・§4.8）
-//   goalCtxOf(doc, imp)            入口の meta.goal と地図の年月から、前提と年ごとの係数（版 6 の地図は年月が無いので今月から数える）
-//   goalCardOf(t, imp, doc, id)    行き先のカードの札（「10 億: 事業が年 +28%」）・芽・ゴールの何割か（カードごとに O(log)）
+//   goalCtxOf(doc, imp)            入口の meta.goal と地図の 0 か月目から、前提と年ごとの係数（版 6 の地図は入口の期限 = 作った月から。
+//                                  それも無ければ今月から数える）
+//   goalCardOf(t, imp, doc, id)    行き先のカードの札（「10 億: 事業が年 +28%・目安」）・芽・ゴールの何割か（カードごとに O(log)）
 //   goalFactOf(t, imp, doc, id)    詳細の欄の 1 文（行き先は道の終わりと同じ文、途中のカードはこの後の平均で O(1)）
 //   goalImpactStripInput(…)        版 6 の地図の見出しの帯の材料（行き先を見込みの重みで束ねる。版 6 は小さいので行き先をなめてよい）
+//   goalImpactStrip(…)             その帯（計算の結果ごと・鍵ごとに覚える: 見出しを描き直すたびに行き先をなめない）
 // どの数も 36 か月目より先は前提から出した目安。3 か月ごとの地図（版 7）の帯は src/deepmap/core/goal.ts から出す（行き先をなめない）。
 
 import { goalScopeOf, type GoalBest } from "../deepmap/core/goal";
@@ -10,15 +12,15 @@ import type { GoalStripInput } from "../deepmap/views/goal";
 import {
   assetsAtBy,
   BIZ_MIN,
-  formatGoalShare,
   formatOku,
-  goalAnchor,
+  goalAnchorOfRoot,
   goalBadge,
   goalBand,
   goalConfigOf,
   goalInputOfImpact,
   goalLeaf,
   goalLeafLine,
+  goalShareClause,
   growthNeeded,
   SEED_BIZ,
   tablesFor,
@@ -34,18 +36,20 @@ export interface GoalCtx {
   t: GoalTables;
 }
 
-/** 入口のカードの meta.goal と年月（meta.anchor。無ければ now() の月から数える）から。入口が無ければ null */
+/**
+ * 入口のカードの meta.goal と 0 か月目（meta.anchor。無ければ入口の期限 time.due = 版 6 の地図を作った月で、見出しの「… → …」と同じ。
+ * それも無ければ now() の月から数える）から。入口が無ければ null
+ */
 export function goalCtxOf(doc: DocData, imp: ImpactResult, now: () => Date = () => new Date()): GoalCtx | null {
   const root = imp.root ? doc.nodes[imp.root] : undefined;
   if (!root) return null;
   const read = goalConfigOf(root);
-  const a = root.meta?.anchor;
-  return { read, t: tablesFor(read.cfg, goalAnchor(typeof a === "string" ? a : null, now)) };
+  return { read, t: tablesFor(read.cfg, goalAnchorOfRoot(root, now)) };
 }
 
 /** 行き先のカードに書く物 */
 export interface GoalCard {
-  /** 札（「10 億: 事業が年 +28%」「10 億: 給与だけでは届かない」「10 億: 2051 年」） */
+  /** 札（「10 億: 事業が年 +28%・目安」「10 億: 給与だけでは届かない」「10 億: 2051 年・目安」） */
   text: string;
   /** 芽（3 年後の事業の稼ぎが SEED_BIZ 以上） */
   seed: boolean;
@@ -66,7 +70,7 @@ export function goalCardOf(t: GoalTables, imp: ImpactResult, doc: DocData, id: I
 
 /**
  * 詳細の欄の 1 文。行き先は道の終わりと同じ文（3 年後の月の稼ぎがそのまま続くと…）。途中のカードは、この後一番良く選んで
- * 運は平均のときの 3 年の稼ぎと 3 年後の月の稼ぎから O(1)（内訳なし）。数が出せなければ null
+ * 運は平均のときの 3 年の稼ぎと 3 年後の月の稼ぎ（給与と事業に分けた平均: 事業の伸びの前提も効く）から。数が出せなければ null
  */
 export function goalFactOf(t: GoalTables, imp: ImpactResult, doc: DocData, id: ID): string | null {
   const x = goalInputOfImpact(imp, id, doc.nodes[id]?.meta?.rr);
@@ -77,7 +81,8 @@ export function goalFactOf(t: GoalTables, imp: ImpactResult, doc: DocData, id: I
   }
   const A = assetsAtBy(t, x.T3, x.Rsal, x.Rbiz);
   const frac = t.T > 0 ? Math.max(0, Math.min(1, A / t.T)) : 1;
-  return `この後一番良く選ぶと（運は平均）、${t.by} 年の資産は約 ${formatOku(A, t.T >= 10_000)}（ゴールの ${formatGoalShare(frac)}・目安）。`;
+  const share = goalShareClause(frac);
+  return `この後一番良く選ぶと（運は平均）、${t.by} 年の資産は約 ${formatOku(A, t.T >= 10_000)}（${share ? `${share}・` : ""}目安）。`;
 }
 
 /**
@@ -117,4 +122,19 @@ export function goalImpactStripInput(imp: ImpactResult, doc: DocData, g: GoalCtx
   const scope = goalScopeOf(t, -1, items, count, { mass, est: 0, seed, seedExists: maxBiz >= SEED_BIZ, best, bestGrow });
   const noneReach = !(scope.pBy > 0) && !(best && best.atBy >= t.T);
   return { key, tables: t, read, scope, items, count, scopes: [scope], anyBiz: maxBiz >= BIZ_MIN, noneReach, moves: 0, spread: NaN, annualNote: null };
+}
+
+const stripMemo = new WeakMap<ImpactResult, { key: string; vm: unknown }>();
+
+/**
+ * 版 6 の地図の見出しの帯（toVM で画面の形にした物）。計算の結果と鍵（結果の番号・前提の鍵・仮の印）が同じなら前の物を返す
+ * （見出しは概要を描き直すたびに呼ばれる。行き先をなめる・利回りを探すのは、結果か前提が変わったときだけ）
+ */
+export function goalImpactStrip<V>(imp: ImpactResult, doc: DocData, g: GoalCtx, key: string, toVM: (x: GoalStripInput) => V): V | null {
+  const hit = stripMemo.get(imp);
+  if (hit && hit.key === key) return hit.vm as V | null;
+  const x = goalImpactStripInput(imp, doc, g, key);
+  const vm = x ? toVM(x) : null;
+  stripMemo.set(imp, { key, vm });
+  return vm;
 }

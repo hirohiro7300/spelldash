@@ -2,15 +2,16 @@
 // 数はどれも丸めた仮の数
 
 import { afterEach, describe, expect, it } from "vitest";
-import { analyze, chanceOnly, compileMap, endsFrom, FRONTIER_CAP, goalBase, goalFrom, goalInputAt, goalLeafAt, goalOf, kindKey, type Analysis, type GoalBucket } from "../../src/deepmap/core";
+import { analyze, bizRateAt, chanceOnly, compileMap, endsFrom, FRONTIER_CAP, goalBase, goalFrom, goalInputAt, goalLeafAt, goalOf, goalScopeOf, kindKey, type Analysis, type GoalBucket } from "../../src/deepmap/core";
 import { fromDevTree } from "../../src/deepmap/dev/fromTree";
 import type { DevTree, DevTreeNode } from "../../src/deepmap/mapData";
 import { buildImpactDoc, impactNodeId } from "../../src/demo/impact";
 import { computeForecast } from "../../src/model/forecast";
-import { assetsAtBy, DEFAULT_GOAL, goalAnchor, goalInputOfImpact, goalLeaf, growthNeeded, SEED_BIZ, tablesFor, type GoalConfig } from "../../src/model/goal";
+import { assetsAtBy, DEFAULT_GOAL, goalAnchor, goalInputOfImpact, goalLeaf, growthNeeded, reachYearOf, SEED_BIZ, tablesFor, type GoalConfig } from "../../src/model/goal";
 import { buildIndex } from "../../src/model/graph";
 import { computeImpact } from "../../src/model/impact";
 import { handTree, header, randomTree, st, toBundle } from "./deepmapFixtures";
+import { engRun } from "./helpers/impactEquiv";
 
 const ANCHOR = goalAnchor("2026-11");
 const cfg = (over: Partial<GoalConfig> = {}): GoalConfig => ({ ...DEFAULT_GOAL, ...over });
@@ -266,7 +267,67 @@ describe("覚え方と重さ", () => {
     const x = goalInputAt(a, mid)!;
     expect(x.split).toBe(false);
     expect(x.T3).toBeCloseTo(a.money.acc[mid]! + a.pi.V[mid]!, 9);
+    expect(x.Rsal + x.Rbiz).toBeCloseTo(a.pi.R[mid]!, 9);
     expect(Number.isNaN(goalLeaf(t, x).gReq)).toBe(true);
+  });
+
+  it("途中のカードの期限の資産は、事業の伸びを置いても、その先の行き先の資産の平均と同じ（事業の部分を分けて持つ）", () => {
+    const map = fromDevTree(randomTree(9, 900));
+    const cm = compileMap(map);
+    const a = analyze(cm, 360);
+    for (const bizGrow of [0, 20, -5]) {
+      const t = tablesFor(cfg({ assets: 500, bizGrow }), ANCHOR);
+      let n = 0;
+      let withBiz = 0;
+      for (let i = 0; i < cm.n && n < 60; i++) {
+        if (!a.pi.def[i] || isLeaf(a, i) || cm.kidOff[i] === cm.kidOff[i + 1]) continue;
+        const x = goalInputAt(a, i)!;
+        const g = goalFrom(a, i, endsFrom(a, i), t);
+        expect(Math.abs(assetsAtBy(t, x.T3, x.Rsal, x.Rbiz) - g.atBy!.mean), `${i}`).toBeLessThan(1e-6 * Math.max(1, g.atBy!.mean));
+        // 事業の部分は、その先の行き先の事業の稼ぎの平均
+        const ends = endsFrom(a, i);
+        let m = 0;
+        let rb = 0;
+        for (let k = 0; k < ends.ends.length; k++) {
+          const j = ends.ends[k]!;
+          m += ends.mass[k]!;
+          rb += ends.mass[k]! * (cm.rr[j * 3 + 1]! + cm.rr[j * 3 + 2]!);
+        }
+        expect(bizRateAt(a, i)).toBeCloseTo(rb / m, 9);
+        if (x.Rbiz > 0.5) withBiz++;
+        n++;
+      }
+      expect(n).toBe(60);
+      expect(withBiz).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("届く年（範囲の数）", () => {
+  it("帯の「届く年」に使う真ん中は、届かない行き先も入れた真ん中（届く行き先だけの真ん中より早くしない）", () => {
+    const t = tablesFor(cfg({ target: 10_000, ret: 3 }), ANCHOR);
+    // 行き先 3 つ（3 年の稼ぎだけ・月の稼ぎは 0）: 今の資産が無くても届く年が違うように、3 年の稼ぎを変える
+    const year = (T3: number): number | null => reachYearOf(t, T3, 0, 0);
+    const big = 150_000;
+    const mid = 75_000;
+    const none = 0;
+    expect(year(none)).toBeNull();
+    const yBig = year(big)!;
+    const yMid = year(mid)!;
+    expect(yBig).toBeLessThan(yMid);
+    // 0.3 は早く届き、0.25 は遅く届き、0.45 は届かない
+    const items = [big, 0, 0, 0.3, mid, 0, 0, 0.25, none, 0, 0, 0.45];
+    const s = goalScopeOf(t, 0, items, 3, { mass: 1, est: 0, seed: 0, seedExists: false, best: null, bestGrow: null });
+    expect(s.reach.unreached).toBeCloseTo(0.45, 9);
+    // 届く行き先だけの真ん中は早い年、全部の真ん中（届かない行き先は一番遅い）は遅い年
+    expect(s.reach.p50).toBe(yBig);
+    expect(s.reach.p50all).toBe(yMid);
+    // 届かない行き先が半分以上なら、全部の真ん中は無い
+    const s2 = goalScopeOf(t, 0, [big, 0, 0, 0.4, none, 0, 0, 0.6], 2, { mass: 1, est: 0, seed: 0, seedExists: false, best: null, bestGrow: null });
+    expect(s2.reach.p50all).toBeNull();
+    // 全部届くなら、届く行き先の真ん中と同じ
+    const s3 = goalScopeOf(t, 0, [big, 0, 0, 0.5, mid, 0, 0, 0.5], 2, { mass: 1, est: 0, seed: 0, seedExists: false, best: null, bestGrow: null });
+    expect(s3.reach.p50all).toBe(s3.reach.p50);
   });
 });
 
@@ -293,11 +354,24 @@ describe("アプリの計算（ImpactResult）と同じ 3 つの数", () => {
         expect(got.split).toBe(want.split);
         expect(Math.abs(got.T3 - want.T3)).toBeLessThan(1e-9 * Math.max(1, Math.abs(want.T3)));
         expect(Math.abs(got.Rsal + got.Rbiz - (want.Rsal + want.Rbiz))).toBeLessThan(1e-9);
-        if (want.split) {
-          leaves++;
-          expect(Math.abs(got.Rbiz - want.Rbiz)).toBeLessThan(1e-9);
-        }
+        // 途中のカードも、事業の部分（選び方どおりの平均）まで同じ
+        expect(Math.abs(got.Rbiz - want.Rbiz)).toBeLessThan(1e-9);
+        if (want.split) leaves++;
       }
       expect(leaves).toBeGreaterThan(50);
+      // エンジン（RV を持ち続けない: 選び方どおりにたどる）の事業の部分も、基準の計算（RV を読む）と同じ
+      const { eng } = engRun(doc);
+      let mids = 0;
+      for (const [id, k] of res.kind) {
+        const want = res.rateBiz!(id);
+        const got = eng.rateBiz!(id);
+        if (want === undefined) {
+          expect(got).toBeUndefined();
+          continue;
+        }
+        expect(Math.abs(got! - want), id).toBeLessThan(1e-9);
+        if (k !== "leaf") mids++;
+      }
+      expect(mids).toBeGreaterThan(50);
     });
 });

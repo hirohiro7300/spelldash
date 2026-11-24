@@ -153,9 +153,19 @@ const edgeText = (e: GEdge | undefined): string => (e ? `${e.label}\u0000${e.con
  * 書いた題名・線の文の元。題名の入力など、数を計算し直さない文字だけの変更でも、書いた所が変わっていたら作り直す
  * （書いていないノードの題名の入力では作り直さない）
  */
-class Seen {
+export class Seen {
   private readonly nodes = new Map<ID, string>();
   private readonly edges = new Map<ID, string>();
+  /** 資産のゴールの前提を読んだ入口と、そのときの meta.goal（前提だけを変えても計算の結果は同じ物なので、ここで見る） */
+  private goalRoot: ID | null = null;
+  private goalRaw: unknown = undefined;
+
+  /** 入口の meta.goal を読んだ（書いた 1 文が前提で変わる）として覚える */
+  goal(doc: DocData, root: ID | null): void {
+    if (!root) return;
+    this.goalRoot = root;
+    this.goalRaw = doc.nodes[root]?.meta?.goal;
+  }
 
   /** ノードの題名（無ければ空）。書いた物として覚える */
   title(doc: DocData, id: ID): string {
@@ -182,8 +192,9 @@ class Seen {
     return out.length ? out : null;
   }
 
-  /** 書いた後に、題名・線の文が変わったか */
+  /** 書いた後に、題名・線の文・資産のゴールの前提が変わったか */
   changed(doc: DocData): boolean {
+    if (this.goalRoot !== null && doc.nodes[this.goalRoot]?.meta?.goal !== this.goalRaw) return true;
     for (const [id, t] of this.nodes) if ((doc.nodes[id]?.title ?? "") !== t) return true;
     for (const [id, t] of this.edges) if (edgeText(doc.edges[id]) !== t) return true;
     return false;
@@ -1470,6 +1481,7 @@ function outcomeBody(app: AppContext, imp: ImpactResult, id: ID, wrap: HTMLEleme
   }
   // 資産のゴール（36 か月目より先は前提から出した目安: 作業メモ goal/design.md §4.5・§4.6）
   const goal = goalFactEl(app, imp, id);
+  seen.goal(doc, imp.root);
   if (goal) facts.append(goal);
   wrap.append(facts);
   const line = stateLine(n.meta?.st, n.meta?.rr);

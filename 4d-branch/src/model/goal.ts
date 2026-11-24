@@ -153,7 +153,7 @@ export interface GoalAnchor {
   y: number;
   /** 0 か月目の月（1〜12） */
   mo: number;
-  /** 地図に年月が無く、今月から数えた（「今月から数えて」と書く） */
+  /** 地図に年月も入口の期限も無く、今月から数えた（「今月から数えて」と書く） */
   clock: boolean;
 }
 
@@ -167,6 +167,26 @@ export function goalAnchor(anchor: string | null | undefined, now: () => Date = 
   }
   const d = now();
   return { y: d.getFullYear(), mo: d.getMonth() + 1, clock: true };
+}
+
+/**
+ * 入口のカードから 0 か月目: meta.anchor（"YYYY-MM"）→ 期限（time.due。版 6 の地図は作った月で、見出しの「… → …」と同じ）→
+ * どちらも無ければ now() の月（今月から数える）
+ */
+export function goalAnchorOfRoot(root: { meta?: Record<string, unknown>; time?: { due?: string | null } | null } | null | undefined, now: () => Date = () => new Date()): GoalAnchor {
+  const a = root?.meta?.anchor;
+  if (typeof a === "string") {
+    const g = goalAnchor(a, now);
+    if (!g.clock) return g;
+  }
+  const due = root?.time?.due;
+  const m = typeof due === "string" ? /^(\d{4})-(\d{2})/.exec(due) : null;
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    if (mo >= 1 && mo <= 12) return { y, mo, clock: false };
+  }
+  return goalAnchor(null, now);
 }
 
 // ---- 年ごとの係数
@@ -309,6 +329,7 @@ export function assetsAtBy(t: GoalTables, T3: number, Rsal: number, Rbiz: number
 export function reachYearOf(t: GoalTables, T3: number, Rsal: number, Rbiz: number): number | null {
   const T = t.T;
   const last = GOAL_YEARS - 1;
+  let j = -1;
   if (T3 >= 0 && Rsal >= 0 && Rbiz >= 0) {
     if (assetsAt(t, last, T3, Rsal, Rbiz) < T) return null;
     let lo = 0;
@@ -318,10 +339,30 @@ export function reachYearOf(t: GoalTables, T3: number, Rsal: number, Rbiz: numbe
       if (assetsAt(t, mid, T3, Rsal, Rbiz) >= T) hi = mid;
       else lo = mid + 1;
     }
-    return t.y36 + lo;
+    j = lo;
+  } else {
+    for (let k = 0; k <= last; k++)
+      if (assetsAt(t, k, T3, Rsal, Rbiz) >= T) {
+        j = k;
+        break;
+      }
+    if (j < 0) return null;
   }
-  for (let j = 0; j <= last; j++) if (assetsAt(t, j, T3, Rsal, Rbiz) >= T) return t.y36 + j;
-  return null;
+  return j === 0 ? earlyReachYear(t, T3) : t.y36 + j;
+}
+
+/**
+ * 36 か月目の年に届くとき、それより前の年（0 か月目の年・1 年後・2 年後）に届いていないかを見る。k 年後の資産は
+ * 今の資産·q^(12k) + s·T3·(k/3)·q^(6k)（3 年の稼ぎの k/3 を、その間の真ん中の月にまとめて入れた目安。表の β と同じ置き方）。
+ * T3 が負なら積立の分は数えない（少なめに見て、早すぎる年は言わない）
+ */
+function earlyReachYear(t: GoalTables, T3: number): number {
+  const save = T3 > 0 ? t.s * T3 : 0;
+  for (let k = 0; k < MAP_MONTHS / 12; k++) {
+    const A = t.cfg.assets * Math.pow(t.q, 12 * k) + (save * k * Math.pow(t.q, 6 * k)) / 3;
+    if (A >= t.T) return t.y0 + k;
+  }
+  return t.y36;
 }
 
 /** 36 か月目の資産（3 年の積立を真ん中の月にまとめて入れた目安） */
@@ -430,7 +471,8 @@ export function goalLeaf(t: GoalTables, x: GoalInput): GoalLeaf {
 
 /**
  * アプリの計算（ImpactResult）のカード 1 枚の 3 つの数。行き先は 36 か月の後に足した月（tail）の分を引いて地図の 3 年に戻す
- * （T3 = acc + value − tail × rate）。行き先で月の稼ぎの内訳（meta.rr）があれば給与と事業に分ける。無ければ内訳なし
+ * （T3 = acc + value − tail × rate）。行き先で月の稼ぎの内訳（meta.rr）があれば給与と事業に分ける。途中のカード（と内訳の無い行き先）は
+ * split なし（芽・要る伸びは出さない）だが、月の稼ぎの平均を給与と事業に分けて持つ（imp.rateBiz。事業の伸びの前提が効くように）
  */
 export function goalInputOfImpact(imp: ImpactResult, id: ID, rr?: unknown): GoalInput | null {
   const acc = imp.acc.get(id);
@@ -440,7 +482,10 @@ export function goalInputOfImpact(imp: ImpactResult, id: ID, rr?: unknown): Goal
   const T3 = acc + v - imp.tail * r;
   const x = Array.isArray(rr) && rr.length === 3 && rr.every((c) => typeof c === "number" && Number.isFinite(c)) ? (rr as number[]) : null;
   if (x && imp.kind.get(id) === "leaf") return { T3, Rsal: imp.S * x[0]!, Rbiz: x[1]! + x[2]!, split: true };
-  return { T3, Rsal: r, Rbiz: 0, split: false };
+  // 途中のカード: 月の稼ぎのうち事業の部分の平均（選び方どおり）。事業の伸びが効くのはこの部分だけ（資産は 1 次式なので平均で同じ）
+  const rb = imp.rateBiz?.(id);
+  const b = rb !== undefined && Number.isFinite(rb) ? rb : 0;
+  return { T3, Rsal: r - b, Rbiz: b, split: false };
 }
 
 /** 期限の年の資産の幅（利回り RET_BAND の 2 つ） */
@@ -557,6 +602,15 @@ export function formatOku(man: number, oku = false): string {
   return `${commas(v)} 万円`;
 }
 
+/** 資産の幅（「0.40〜0.52 億円」。両端の単位が違えば両方に付け、同じ書き方なら 1 つ） */
+export function okuRange(lo: number, hi: number, oku: boolean): string {
+  const a = formatOku(lo, oku);
+  const b = formatOku(hi, oku);
+  if (a === b) return a;
+  const unit = (x: string): string => x.replace(/^[\d.,]+ /, "");
+  return unit(a) === unit(b) ? `${a.replace(/ (?:億|万)円$/, "")}〜${b}` : `${a}〜${b}`;
+}
+
 /** 月の額（万円/月）: 100 より下は小数 1 桁まで（「10.5 万円」）、それより上は整数（「1,590 万円」） */
 export function formatManMonthly(x: number): string {
   return Math.abs(x) >= 100 ? `${commas(x)} 万円` : `${dec(x, 1).replace("-", "−")} 万円`;
@@ -605,7 +659,7 @@ export function goalPremiseLine(t: GoalTables, assumed: ReadonlySet<GoalKey>, ba
   const c = t.cfg;
   const tmp = (k: GoalKey): string => (assumed.has(k) ? "（仮）" : "");
   const oku = t.T >= 10_000;
-  const retNote = band ? `（${assumed.has("ret") ? "仮、" : ""}${RET_BAND[0]}〜${RET_BAND[1]}% なら ${formatOku(band[0], oku).replace(/ (億|万)円$/, "")}〜${formatOku(band[1], oku)}）` : tmp("ret");
+  const retNote = band ? `（${assumed.has("ret") ? "仮、" : ""}${RET_BAND[0]}〜${RET_BAND[1]}% なら ${okuRange(band[0], band[1], oku)}）` : tmp("ret");
   const parts = [
     `今の資産 ${formatOku(c.assets, false)}${tmp("assets")}`,
     `額面の ${dec(c.save, 1)}% を積立${tmp("save")}`,
@@ -632,13 +686,26 @@ export function goalLeverLines(t: GoalTables, lev: GoalLevers): string[] {
     const cmp = Number.isFinite(now) ? `（今の前提の積立 月 ${formatManMonthly(now)}の ${formatTimes(lev.ratioSave)}）` : "";
     out.push(`毎月 ${formatManMonthly(lev.save)}を 3 年後から積み立てる${cmp}`);
   }
-  if (Number.isFinite(lev.grow)) out.push(`事業の稼ぎが毎年 ${formatGrowth(lev.grow)} 伸び続ける（その場合 ${t.by} 年の事業の稼ぎは月 ${formatManMonthly(lev.growBiz)}）`);
+  if (!(t.s > 0)) {
+    // 積み立てない前提では、事業の伸びは資産に入らない（伸びの行は出さない）
+  } else if (Number.isFinite(lev.grow)) out.push(`事業の稼ぎが毎年 ${formatGrowth(lev.grow)} 伸び続ける（その場合 ${t.by} 年の事業の稼ぎは月 ${formatManMonthly(lev.growBiz)}）`);
   else if (lev.salaryOnly) out.push("給与だけの道なので、事業の伸びでは届きません（給与は 3 年後のまま据え置きで計算）");
   else if (lev.grow === Infinity) out.push(`事業の稼ぎが年 ${G_MAX}% 伸び続けても足りません`);
   if (lev.ret !== null) out.push(`利回りが年 ${dec(lev.ret, 1)}%${lev.ret > RET_TYPICAL[1] ? `（ふつうは ${RET_TYPICAL[0]}〜${RET_TYPICAL[1]}%）` : ""}`);
   if (lev.lump > t.cfg.assets) out.push(`今すぐ ${formatOku(lev.lump)}の資産がある`);
   if (lev.sale > 0) out.push(`事業を売る: 値打ちを年の稼ぎの ${SALE_MULT} 倍（目安）とすると、事業の稼ぎ 月 ${formatManMonthly(lev.sale)}`);
   return out;
+}
+
+/** 積み立てない前提の 1 文（積立の割合が 0） */
+export const NO_SAVE = "積み立てない前提なので、資産は利回りだけで増えます";
+
+/**
+ * 「ゴールの 5%」（丸めて 0% になるときは null: 「0%」は出さない。1% より下は「ゴールの 1% 未満」）
+ */
+export function goalShareClause(frac: number): string | null {
+  const s = formatGoalShare(frac);
+  return s === "0%" ? null : `ゴールの ${s}`;
 }
 
 /**
@@ -648,11 +715,16 @@ export function goalLeafLine(t: GoalTables, x: GoalInput, leaf: GoalLeaf, band: 
   const oku = t.T >= 10_000;
   const R = x.Rsal + x.Rbiz;
   const parts = x.split ? `（給与 ${dec(x.Rsal, 1)}・事業 ${dec(x.Rbiz, 1)}）` : "";
-  const bandTxt = band ? `。利回り ${RET_BAND[0]}〜${RET_BAND[1]}% なら ${formatOku(band[0], oku).replace(/ (億|万)円$/, "")}〜${formatOku(band[1], oku)}` : "";
-  const head = `この行き先の 3 年後の月の稼ぎ ${formatManMonthly(R)}${parts}がそのまま続くと、${t.by} 年の資産は約 ${formatOku(leaf.atBy, oku)}（ゴールの ${formatGoalShare(leaf.frac)}・目安${bandTxt}）。`;
+  // 幅の両端が 0 なら幅は出さない（「0〜0 万円」にしない）
+  const bandTxt = band && (band[0] > 0 || band[1] > 0) ? `。利回り ${RET_BAND[0]}〜${RET_BAND[1]}% なら ${okuRange(band[0], band[1], oku)}` : "";
+  const share = goalShareClause(leaf.frac);
+  const head = `この行き先の 3 年後の月の稼ぎ ${formatManMonthly(R)}${parts}がそのまま続くと、${t.by} 年の資産は約 ${formatOku(leaf.atBy, oku)}（${share ? `${share}・` : ""}目安${bandTxt}）。`;
   let tail = "";
   if (leaf.reached) tail = leaf.reachYear !== null ? `${leaf.reachYear} 年に届く目安です。` : "";
-  else if (leaf.salaryOnly) tail = `給与だけの道なので、事業の伸びをいくら置いても届きません。届くには毎月 ${formatManMonthly(leaf.cReq)}の積立（稼ぎの ${formatTimes(leaf.ratioEarn)}）が要ります。`;
+  else if (!(t.s > 0)) {
+    // 積み立てない前提: 事業の伸びは数えない（「年 60% でも足りない」とは言わない）
+    tail = `${NO_SAVE}。${leaf.cReq > 0 ? `届くには、3 年後から毎月 ${formatManMonthly(leaf.cReq)}の積立（稼ぎの ${formatTimes(leaf.ratioEarn)}）が要ります。` : ""}`;
+  } else if (leaf.salaryOnly) tail = `給与だけの道なので、事業の伸びをいくら置いても届きません。届くには毎月 ${formatManMonthly(leaf.cReq)}の積立（稼ぎの ${formatTimes(leaf.ratioEarn)}）が要ります。`;
   else if (leaf.cReq > 0) {
     const save = `3 年後から毎月 ${formatManMonthly(leaf.cReq)}の積立（稼ぎの ${formatTimes(leaf.ratioEarn)}）`;
     if (Number.isFinite(leaf.gReq)) tail = `届くには、${save}か、事業の稼ぎが毎年 ${formatGrowth(leaf.gReq)} 伸び続けること。`;
@@ -663,11 +735,16 @@ export function goalLeafLine(t: GoalTables, x: GoalInput, leaf: GoalLeaf, band: 
   return head + tail + seed;
 }
 
-/** 行き先のカードの札（「10 億: 事業が年 +24%」など） */
+/**
+ * 行き先のカードの札（「10 億: 事業が年 +24%・目安」など）。36 か月目より先の数なので、数のある札には「・目安」を付ける
+ * （帯の「2056 年に約 0.45 億円（5%）・目安」と同じ書き方）。積み立てない前提では事業の伸びも割合も出さない（「0%」にしない）
+ */
 export function goalBadge(t: GoalTables, leaf: GoalLeaf): string {
   const name = formatOku(t.T).replace(/円$/, "");
-  if (leaf.reached && leaf.reachYear !== null) return `${name}: ${leaf.reachYear} 年`;
+  if (leaf.reached && leaf.reachYear !== null) return `${name}: ${leaf.reachYear} 年・目安`;
+  if (!(t.s > 0)) return `${name}: 積立なしの前提`;
   if (leaf.salaryOnly) return `${name}: 給与だけでは届かない`;
-  if (Number.isFinite(leaf.gReq)) return `${name}: 事業が年 ${formatGrowth(leaf.gReq)}`;
-  return `${name}: ${formatGoalShare(leaf.frac)}`;
+  if (Number.isFinite(leaf.gReq)) return `${name}: 事業が年 ${formatGrowth(leaf.gReq)}・目安`;
+  const share = formatGoalShare(leaf.frac);
+  return share === "0%" ? `${name}: 届かない・目安` : `${name}: ${share}・目安`;
 }

@@ -3,7 +3,7 @@
 //                          事業の稼ぎの一番大きい行き先・一番良い行き先の候補）。計算（Analysis）ごとに 1 回（WeakMap）
 //   goalOf(base, tables)   設定ごとの数（期限の資産の幅・期限までに届く見込み・届く年・要る積立と伸び・一番良い行き先）。
 //                          設定ごとに覚える（4 つまで）。年収を変えたときだけ goalBase から作り直す
-//   goalInputAt(a, i)      カード 1 枚の 3 つの数（行き先は給与と事業に分ける。途中のカードは平均で、内訳なし）
+//   goalInputAt(a, i)      カード 1 枚の 3 つの数（行き先は給与と事業に分ける。途中のカードは給与と事業それぞれの平均で、芽・伸びは出さない）
 //   goalFrom(a, x, ends, t) 途中のカードの先の行き先（endsFrom の答えを使い回す）
 //   setGoalSource / goalViewOf  計算ごとの数の出どころ（アプリが置き、画面の形 src/deepmap/views/goal.ts が読む）
 //
@@ -244,15 +244,18 @@ export interface GoalScope {
   atBy: { p10: number; p50: number; p90: number; mean: number } | null;
   /** 期限までに届く見込み（0 なら画面には出さない） */
   pBy: number;
-  /** 届く年の 10%・50%（届く行き先の中で。無ければ null）と、REACH_CAP_Y 年先までに届かない見込み */
-  reach: { p10: number | null; p50: number | null; unreached: number };
+  /**
+   * 届く年の 10%・50%（届く行き先の中で。無ければ null）・全部の行き先の真ん中（届かない行き先は一番遅いと数える。
+   * 届かない見込みが半分以上なら null）と、REACH_CAP_Y 年先までに届かない見込み
+   */
+  reach: { p10: number | null; p50: number | null; p50all: number | null; unreached: number };
   /** 36 か月目から要る毎月の積立の真ん中（万円/月）と、3 年後の稼ぎの何倍かの真ん中 */
   cReq: number;
   ratioEarn: number;
   /** 要る事業の伸びの真ん中（%/年。出せる行き先の中で。無ければ NaN）と、出せる行き先の見込み */
   gReq: number;
   gShare: number;
-  /** 芽の見込み・部分木に芽の行き先があるか・「芽は選び方しだい」（芽の見込みは 0 だが、部分木にはある） */
+  /** 芽の見込み・部分木に芽の行き先があるか・「芽は選び方しだい」（札は「芽: 選び方」。芽の見込みは 0 だが、部分木にはある） */
   seed: number;
   seedExists: boolean;
   choiceOnly: boolean;
@@ -339,13 +342,16 @@ export function goalScopeOf(t: GoalTables, node: number, items: ArrayLike<number
   const mass = total > 0 ? total : 1;
   const q3 = at.size ? at.quantiles([0.1, 0.5, 0.9]) : null;
   const r2 = ry.size ? ry.quantiles([0.1, 0.5]) : null;
+  // 全部の行き先の真ん中: 届く行き先の中で 0.5 / (1 − 届かない見込み) の所（届かない行き先は +∞ と数える）
+  const u = total > 0 ? unreached / total : 1;
+  const p50all = ry.size && u < 0.5 ? ry.quantiles([Math.min(1, 0.5 / (1 - u))])[0]! : null;
   const seed = extra.mass > 0 ? extra.seed / extra.mass : 0;
   return {
     node,
     n: count,
     atBy: q3 ? { p10: q3[0]!, p50: q3[1]!, p90: q3[2]!, mean: at.mean() } : null,
     pBy: reached / mass,
-    reach: { p10: r2 ? r2[0]! : null, p50: r2 ? r2[1]! : null, unreached: unreached / mass },
+    reach: { p10: r2 ? r2[0]! : null, p50: r2 ? r2[1]! : null, p50all, unreached: unreached / mass },
     cReq: cr.size ? cr.quantiles([0.5])[0]! : NaN,
     ratioEarn: re.size ? re.quantiles([0.5])[0]! : NaN,
     gReq: gr.size ? gr.quantiles([0.5])[0]! : NaN,
@@ -385,8 +391,9 @@ export function goalOf(base: GoalBase, t: GoalTables): GoalSummary {
 }
 
 /**
- * カード 1 枚の 3 つの数。行き先は給与と事業に分ける。途中のカード（O(1)）は今日からそこまで + その先の平均と、
- * 3 年後の月の稼ぎの平均を給与の側に入れる（内訳なし: 芽・事業の伸びは出さない）。数が出せなければ null
+ * カード 1 枚の 3 つの数。行き先は給与と事業に分ける。途中のカードは今日からそこまで + その先の平均と、3 年後の月の稼ぎの平均
+ * （給与と事業に分けた平均: 事業の伸びの前提が事業の部分にだけ効くように。資産は 3 つの 1 次式なので、平均で出しても行き先ごとの
+ * 平均と同じ）。途中のカードは split なし（芽・要る伸びは出さない）。数が出せなければ null
  */
 export function goalInputAt(a: Analysis, i: number): GoalInput | null {
   const cm = a.cm;
@@ -397,7 +404,38 @@ export function goalInputAt(a: Analysis, i: number): GoalInput | null {
     const i3 = i * 3;
     return { T3, Rsal: a.money.S * cm.rr[i3]!, Rbiz: cm.rr[i3 + 1]! + cm.rr[i3 + 2]!, split: true };
   }
-  return { T3, Rsal: R[i]!, Rbiz: 0, split: false };
+  const b = bizRateAt(a, i);
+  return { T3, Rsal: R[i]! - b, Rbiz: b, split: false };
+}
+
+/**
+ * 3 年後の月の稼ぎのうち事業の部分（広告運用・独立 + SpellDash）の、選び方どおりの平均（runPass の R と同じ重み・同じ選ぶ手）。
+ * 地図の大きさの配列は作らず、そのカードの先を選び方どおりにたどる（O(選び方の先の大きさ)。選んだカード 1 枚ずつ）
+ */
+export function bizRateAt(a: Analysis, i: number): number {
+  const { kidOff, kids, role, w, rr } = a.cm;
+  const { def, pi } = a.pi;
+  const walk = (i: number): number => {
+    const lo = kidOff[i]!;
+    const hi = kidOff[i + 1]!;
+    if (lo === hi) return rr[i * 3 + 1]! + rr[i * 3 + 2]!;
+    if (role[i] === ROLE_A) {
+      let sw = 0;
+      let cnt = 0;
+      for (let s = lo; s < hi; s++) if (def[kids[s]!]) (sw += w[kids[s]!]!), cnt++;
+      if (!cnt) return 0;
+      const equal = sw <= 0;
+      let r = 0;
+      for (let s = lo; s < hi; s++) {
+        const c = kids[s]!;
+        if (def[c]) r += ((equal ? 1 : w[c]!) / (equal ? cnt : sw)) * walk(c);
+      }
+      return r;
+    }
+    const c = pi[i]!;
+    return c >= 0 ? walk(c) : 0;
+  };
+  return def[i] ? walk(i) : 0;
 }
 
 /**

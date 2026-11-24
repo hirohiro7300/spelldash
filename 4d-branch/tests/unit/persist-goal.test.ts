@@ -127,7 +127,7 @@ describe("前提を変えても計算はやり直さない", () => {
     return doc;
   }
 
-  it("エンジン: 見せ方だけの変更（C_PRESENT）。形・数・選んだ手・方針の版は同じで、計算（passes）は走らない", () => {
+  it("エンジン: 前提だけの変更ではどの版も変わらず、同じ結果を返す（おすすめの値などを数え直さない）。計算（passes）も走らない", () => {
     const store = new Store(setup());
     const engine = new ImpactEngine();
     engine.useMap({ map: page, doc: store.doc });
@@ -139,10 +139,41 @@ describe("前提を変えても計算はやり直さない", () => {
     engine.timings.passes = -1;
     store.transact("10 億円の前提を変える", (tx) => tx.updateNode(root.id, { meta: { ...root.meta, goal: GOAL } }));
     const a1 = res();
-    expect(a1).not.toBe(a0);
-    expect(engine.version).toEqual({ ...v0, present: v0.present + 1 });
+    expect(a1).toBe(a0);
+    expect(engine.version).toEqual(v0);
     expect(engine.timings.passes).toBe(-1);
-    expect(a1.vRoot).toBe(a0.vRoot);
+    // 元に戻しても同じ
+    store.undo();
+    expect(res()).toBe(a0);
+    expect(engine.version).toEqual(v0);
+    // 題名など、ほかの見せ方の変更は今までどおり（版が進む）
+    const r = store.doc.nodes[a0.root!]!;
+    store.transact("印", (tx) => tx.updateNode(r.id, { meta: { ...r.meta, note: "x" } }));
+    res();
+    expect(engine.version.present).toBe(v0.present + 1);
+  });
+
+  it("前提だけを変えても、詳細の欄（Seen）は作り直す・キャンバスの札は文書ごとに作り直す（同じ計算の結果のまま）", async () => {
+    const { Seen } = await import("../../src/ui/impactPanel");
+    const store = new Store(setup());
+    const root = rootOf(store.doc);
+    const seen = new Seen();
+    seen.title(store.doc, root.id);
+    expect(seen.changed(store.doc)).toBe(false);
+    // 前提を読んでいなければ、前提の変更では作り直さない
+    store.transact("10 億円の前提を変える", (tx) => tx.updateNode(root.id, { meta: { ...root.meta, goal: GOAL } }));
+    expect(seen.changed(store.doc)).toBe(false);
+    // 前提を読んだ欄は、前提が変わったら作り直す
+    seen.goal(store.doc, root.id);
+    expect(seen.changed(store.doc)).toBe(false);
+    const r1 = rootOf(store.doc);
+    store.transact("10 億円の前提を変える", (tx) => tx.updateNode(r1.id, { meta: { ...r1.meta, goal: GOAL_FULL } }));
+    expect(seen.changed(store.doc)).toBe(true);
+    // 前提の外の変更（位置）では作り直さない
+    const fresh = new Seen();
+    fresh.goal(store.doc, root.id);
+    store.transact("動かす", (tx) => tx.updateNode(root.id, { x: rootOf(store.doc).x + 10 }));
+    expect(fresh.changed(store.doc)).toBe(false);
   });
 
   it("地図の画面に渡す物: 計算の鍵（calcKey）に前提は入らない（同じ画面に渡す物・同じ計算）", () => {

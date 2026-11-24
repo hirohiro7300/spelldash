@@ -14,8 +14,8 @@ import { buildImpactDoc, impactNodeId } from "../../src/demo/impact";
 import { spaceJa } from "../../src/demo/compose/text";
 import { NODE_H, NODE_W } from "../../src/model/constants";
 import { computeForecast } from "../../src/model/forecast";
-import { goalAnchor, goalBadge, goalBand, goalConfigOf, goalInputOfImpact, goalLeaf, goalLeafLine, SEED_BIZ, tablesFor, type GoalStored } from "../../src/model/goal";
-import { goalCardOf, goalCtxOf, goalFactOf, goalImpactStripInput } from "../../src/model/goalImpact";
+import { formatOku, goalAnchor, goalAnchorOfRoot, goalBadge, goalBand, goalConfigOf, goalInputOfImpact, goalLeaf, goalLeafLine, SEED_BIZ, tablesFor, type GoalStored } from "../../src/model/goal";
+import { goalCardOf, goalCtxOf, goalFactOf, goalImpactStrip, goalImpactStripInput } from "../../src/model/goalImpact";
 import { buildIndex } from "../../src/model/graph";
 import { computeImpact, type ImpactResult } from "../../src/model/impact";
 import { makeNode } from "../../src/model/schema";
@@ -96,12 +96,12 @@ describe("キャンバスの行き先のカードの札（card.goal）", () => {
     // 目標を 3 億円に
     const d3 = withGoal(doc, rootId, { v: 1, target: 30_000 });
     expect(cards.card(imp, d3, leaf)!.goal!.text).toMatch(/^3 億: /);
-    // 今の資産が目標より多い: 届く年（3 年後の年）
+    // 今の資産が目標より多い: 届く年（もう届いている: 0 か月目の年）。36 か月目より先の数なので「・目安」
     const rich = withGoal(doc, rootId, { v: 1, assets: 200_000 });
     const g = cards.card(imp, rich, leaf)!.goal!;
     expect(g.reached).toBe(true);
     expect(g.frac).toBe(1);
-    expect(g.text).toBe("10 億: 2029 年");
+    expect(g.text).toBe("10 億: 2026 年・目安");
     // 元の文書に戻すと元の札
     expect(cards.card(imp, doc, leaf)!.goal!.text).toBe(before.text);
   });
@@ -126,6 +126,48 @@ describe("詳細の欄の「10 億」の 1 文（goalFactOf）", () => {
     spaced(m);
     expect(goalCardOf(g.t, imp, doc, mid)).toBeNull();
   });
+
+  it("途中のカードにも事業の伸びの前提が効く: 子が行き先 1 つだけのカードは、その行き先と同じ期限の資産", () => {
+    // 給与 30・事業 10（月の稼ぎ）・事業が年 20% 伸びる前提
+    const { doc, rootId } = quarterly({ v: 1, bizGrow: 20 });
+    const imp = impactOf(doc);
+    const g = goalCtxOf(doc, imp, CLOCK)!;
+    expect(g.t.cfg.bizGrow).toBe(20);
+    // 行き先 1 つだけを子に持つ途中のカード（結果・手）を探す
+    const out = buildIndex(doc).out;
+    let checked = 0;
+    let biz = 0;
+    for (const [id, k] of imp.kind) {
+      if (k === "leaf" || id === rootId || !imp.rate.has(id)) continue;
+      const kids = out.get(id) ?? [];
+      if (kids.length !== 1) continue;
+      const e = doc.edges[kids[0]!];
+      const leaf = e?.target;
+      if (!leaf || imp.kind.get(leaf) !== "leaf") continue;
+      const xm = goalInputOfImpact(imp, id, doc.nodes[id]!.meta?.rr)!;
+      const xl = goalInputOfImpact(imp, leaf, doc.nodes[leaf]!.meta?.rr)!;
+      expect(xm.split).toBe(false);
+      expect(xm.Rbiz).toBeCloseTo(xl.Rbiz, 9);
+      expect(xm.Rsal).toBeCloseTo(xl.Rsal, 9);
+      // 行き先の 1 文と途中のカードの 1 文で、期限の資産が同じ（事業の伸びを途中のカードでも数える）
+      const atLeaf = formatOku(goalLeaf(g.t, xl).atBy, true);
+      const atMid = /資産は約 (.+?)（/.exec(goalFactOf(g.t, imp, doc, id)!)![1];
+      expect(atMid).toBe(atLeaf);
+      if (xl.Rbiz > 1) biz++;
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(biz).toBeGreaterThan(0);
+  });
+
+  it("途中のカードは、給与 30・事業 10 の行き先と同じ数（事業の伸び 20%: 事業を給与に入れると約 5 分の 1 になっていた）", () => {
+    const t = tablesFor(goalConfigOf({ meta: { goal: { v: 1, bizGrow: 20 } } }).cfg, goalAnchor("2026-01"));
+    const leafX = { T3: 1200, Rsal: 30, Rbiz: 10, split: true };
+    const midX = { T3: 1200, Rsal: 30, Rbiz: 10, split: false };
+    const lumped = { T3: 1200, Rsal: 40, Rbiz: 0, split: false };
+    expect(goalLeaf(t, midX).atBy).toBeCloseTo(goalLeaf(t, leafX).atBy, 9);
+    expect(goalLeaf(t, leafX).atBy / goalLeaf(t, lumped).atBy).toBeGreaterThan(4);
+  });
 });
 
 describe("版 6 の地図（年月が無い）", () => {
@@ -134,11 +176,45 @@ describe("版 6 の地図（年月が無い）", () => {
   const g = goalCtxOf(doc, imp, CLOCK)!;
   const strip = (): GoalStripVM => goalStripVM(goalImpactStripInput(imp, doc, g, "k")!);
 
-  it("期限は今月から数え（2026 年 11 月 → 2056 年）、地図が数える範囲の文に「今月から数えて」", () => {
+  it("0 か月目は入口の期限（地図を作った月: 見出しの「… → …」と同じ）。2026 年 11 月 → 2056 年", () => {
     expect(typeof doc.nodes[imp.root!]!.meta.anchor).not.toBe("string");
-    expect(g.t.anchor.clock).toBe(true);
+    expect(doc.nodes[imp.root!]!.time.due).toMatch(/^2026-11-/);
+    expect(g.t.anchor).toEqual({ y: 2026, mo: 11, clock: false });
     expect(g.t.by).toBe(2056);
-    expect(strip().frame).toContain("今月から数えて");
+    expect(strip().frame).toContain("地図が数えるのは 2029 年 11 月までの額面の稼ぎです");
+    expect(strip().frame).not.toContain("今月から数えて");
+  });
+
+  it("作った月より後に見ても、数えるのは作った月から（今月の時計では数えない）", () => {
+    const old = buildImpactDoc(r6Bundle(), new Date(2025, 5, 15), "test");
+    const oi = impactOf(old);
+    expect(old.nodes[oi.root!]!.time.due).toBe("2025-06-15");
+    const go = goalCtxOf(old, oi, CLOCK)!;
+    expect(go.t.anchor).toEqual({ y: 2025, mo: 6, clock: false });
+    expect(go.t.by).toBe(2055);
+    expect(go.read.cfg.by).toBeNull();
+    // 入口に期限も年月も無ければ、今月から数える
+    expect(goalAnchorOfRoot({ meta: {}, time: { due: null } }, CLOCK)).toEqual({ y: 2026, mo: 11, clock: true });
+    expect(goalAnchorOfRoot({ meta: { anchor: "2024-03" }, time: { due: "2025-06-15" } }, CLOCK)).toEqual({ y: 2024, mo: 3, clock: false });
+  });
+
+  it("見出しの帯は、同じ計算の結果・同じ前提なら作り直さない（見出しを描き直すたびに行き先をなめない）", () => {
+    let calls = 0;
+    const toVM = (x: Parameters<typeof goalStripVM>[0]): GoalStripVM => (calls++, goalStripVM(x));
+    const a1 = goalImpactStrip(imp, doc, g, "k-memo", toVM);
+    const a2 = goalImpactStrip(imp, doc, g, "k-memo", toVM);
+    expect(a1).not.toBeNull();
+    expect(a2).toBe(a1);
+    expect(calls).toBe(1);
+    // 鍵（前提）が変われば作り直す
+    const d2 = structuredClone(doc);
+    d2.nodes[imp.root!]!.meta = { ...d2.nodes[imp.root!]!.meta, goal: { v: 1, assets: 1_000 } };
+    const a3 = goalImpactStrip(imp, d2, goalCtxOf(d2, imp, CLOCK)!, "k-memo2", toVM);
+    expect(calls).toBe(2);
+    expect(a3).not.toBe(a1);
+    // 別の計算の結果なら作り直す
+    goalImpactStrip(impactOf(doc), doc, g, "k-memo", toVM);
+    expect(calls).toBe(3);
   });
 
   it("行き先のカードに札（芽は給与の外の稼ぎの内訳から）。途中のカードには無い", () => {
