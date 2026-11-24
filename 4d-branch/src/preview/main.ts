@@ -288,6 +288,13 @@ async function boot(): Promise<void> {
       const td = performance.now();
       info.timings.overviewVM = td - tv;
       el = renderOverview(vm);
+      // 狭い画面: 資産のゴールの帯は「10 の手をひと目で」の下へ（このページは見取り図の上に見出しと年収の欄があるので、帯が上にあると
+      // 10 行目が 390×844 の最初の画面に入らない: 作業メモ user-3。アプリの詳細の欄は見出しが無いので帯は上のまま）
+      if (matchMedia("(max-width: 719.98px)").matches) {
+        const strip = el.querySelector(":scope > .dm-goal");
+        const glance = el.querySelector(":scope > .dm-glance");
+        if (strip && glance) glance.after(strip);
+      }
       info.timings.overviewDom = performance.now() - td;
       if (lostPath)
         el.prepend(h("p", { class: "pv-notice", attrs: { role: "status" } }, "開いた道は今の地図には無い（地図を作り直したので、前のリンクの道は別の名前になった）。見取り図を出している"));

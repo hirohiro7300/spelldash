@@ -245,9 +245,12 @@
 }
 /* 「［前提を変える］」「［入れる］」「［その道を見る］」 */
 .dm-goal-link {
-  display: inline;
-  padding: 2px 2px;
-  margin: -2px 0;
+  /* 押す所は 44px（どの幅でも。行の高さは変えない: 上下に負の余白） */
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 2px;
+  margin: -12px 0;
   border: 0;
   background: none;
   color: var(--accent-2);
@@ -281,14 +284,6 @@
   }
   .dm-goal-link.dm-goal-premise-more {
     display: inline-block;
-  }
-  /* 押す所は 44px（行の高さは変えない: 上下に負の余白） */
-  .dm-goal-link {
-    display: inline-block;
-    min-height: 44px;
-    line-height: 44px;
-    margin-block: -12px;
-    padding-block: 0;
   }
   .dm-goal-tile {
     padding: 7px 6px 8px;
@@ -514,14 +509,6 @@
 
 /* 狭い所の帯（版 6 の見出しの欄の中: 幅 330px 以下）: 3 つの数を小さく、余白を詰める。もっと狭ければ 1 列に */
 @container goal (max-width: 330px) {
-  /* 版 6 の見出しの欄の中（スマホ）: 押す所は 44px（行の高さは変えない） */
-  .dm-goal-link {
-    display: inline-block;
-    min-height: 44px;
-    line-height: 44px;
-    margin-block: -12px;
-    padding-block: 0;
-  }
   .dm-goal-body {
     padding: 2px 8px 10px;
   }

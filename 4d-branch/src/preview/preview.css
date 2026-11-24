@@ -240,3 +240,9 @@ body {
     display: none;
   }
 }
+
+/* 資産のゴール: 試し版には前提を入れる所が無いので、「前提を変える」「入れる」と入れるように促す 1 行は出さない（押しても何も起きない） */
+.pv [data-goal-act="edit"],
+.pv .dm-goal-nudge {
+  display: none;
+}
