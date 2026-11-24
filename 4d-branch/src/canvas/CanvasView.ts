@@ -95,6 +95,13 @@ const RULER_H = 26;
 /** 折りたたみの印を押せる大きさ（3 年の分かれ道。画面の px。指でも押せる大きさ） */
 const BADGE_TOUCH_PX = 44;
 const ORIGIN = { x: 0, y: 0 };
+/**
+ * スマホ（狭い画面）でまとめて開いた後の拡大率の下限。3 か月ごとの地図のカードは 37% 以上で題名の 1 行を描く（それより小さいと札だけ）。
+ * 題名が読める大きさ（画面で約 11px）に保つ（作業メモ bulk 見直しの残り 1: 30% で引くと、今日から下へ伸びる線しか見えなかった）
+ */
+export const PHONE_BULK_ZOOM = 0.4;
+/** スマホのまとめて開くで寄せる上限（62% 以上は題名 2 行。それより寄せると、開いた先が画面の外へ出る） */
+const PHONE_BULK_ZOOM_MAX = 0.62;
 
 export class CanvasView {
   readonly root: HTMLDivElement;
@@ -114,6 +121,11 @@ export class CanvasView {
   frames = 0;
   /** 画面の右・下にかぶる部品の大きさ（全体表示の余白に使う） */
   insets = { left: 40, right: 48, top: 60, bottom: 60 };
+  /**
+   * キャンバスの上と下で、ほかの部品が今覆っている高さ（画面の px。上の帯・拡大縮小の部品とその上に出るお知らせ）。App が決める。
+   * 年月の目盛りはここに入れない（キャンバスが足す）
+   */
+  covered: () => { top: number; bottom: number } = () => ({ top: 0, bottom: 0 });
   /** 確かめ用（E2E）: [] にすると、描くたびに 3 年の分かれ道の選択肢の札の位置を集め直す。ふだんは null（集めない） */
   debugPills: PillDebug[] | null = null;
   /** 描いた縮小したときの目印（画面座標の左右と、使えた幅の上限）。E2E の確かめ用（[] にしたときだけ集める: 見直し user-9） */
@@ -352,6 +364,42 @@ export class CanvasView {
   }
 
   /**
+   * スマホでまとめて開いた: 開き始めたカードと、そのすぐ先に開いたカード（同じ行の右へ続く物から 2 枚）を、題名が読める大きさ
+   * （PHONE_BULK_ZOOM 以上）で、上の帯・目盛りの下、お知らせ・拡大縮小の部品の上に見せる。開いた所の全体がその大きさで入れば全体を
+   * 真ん中に。残りは開き始めたカードから右と下へ続くので、動かして見る（前は 30% まで引いて開いた所の左上を画面の角に合わせ、
+   * 今日から下へ伸びる線と、上の帯の下に隠れた今日だけが見えた: 作業メモ bulk 見直しの残り 1）
+   */
+  private revealBulkPhone(anchor: { x: number; y: number }, kidPos: ReadonlyArray<{ x: number; y: number }>, area: { minX: number; minY: number; maxX: number; maxY: number }): void {
+    const cov = this.covered();
+    const L = 8;
+    const R = this.width - 8;
+    const T = Math.max(this.rulerShown ? RULER_H : 0, cov.top) + 8;
+    const B = Math.max(T + 2 * HALF_H * PHONE_BULK_ZOOM, this.height - cov.bottom - 8);
+    const fitIn = (b: { minX: number; minY: number; maxX: number; maxY: number }) => Math.min((R - L) / (b.maxX - b.minX), (B - T) / (b.maxY - b.minY));
+    const zAll = fitIn(area);
+    if (zAll >= PHONE_BULK_ZOOM) {
+      const z = Math.min(1, zAll);
+      this.animateTo({ zoom: z, x: L + (R - L - (area.maxX - area.minX) * z) / 2 - area.minX * z, y: T + (B - T - (area.maxY - area.minY) * z) / 2 - area.minY * z }, 320);
+      return;
+    }
+    // 開き始めたカードに近い順（同じ行 → 近い列）。木は右へ伸びるので、行のずれを重く見る
+    const near = kidPos
+      .filter((p) => p.x > anchor.x)
+      .sort((a, b) => Math.abs(a.y - anchor.y) - Math.abs(b.y - anchor.y) || a.x - b.x)
+      .slice(0, 2);
+    const box = { minX: anchor.x - HALF_W, minY: anchor.y - HALF_H, maxX: anchor.x + HALF_W, maxY: anchor.y + HALF_H };
+    for (const p of near) {
+      box.minX = Math.min(box.minX, p.x - HALF_W);
+      box.maxX = Math.max(box.maxX, p.x + HALF_W);
+      box.minY = Math.min(box.minY, p.y - HALF_H);
+      box.maxY = Math.max(box.maxY, p.y + HALF_H);
+    }
+    const z = Math.min(PHONE_BULK_ZOOM_MAX, Math.max(PHONE_BULK_ZOOM, fitIn(box)));
+    // 開き始めたカードを左上に（その先は右と下へ続く）
+    this.animateTo({ zoom: z, x: L - box.minX * z, y: T - box.minY * z }, 320);
+  }
+
+  /**
    * 3 年の分かれ道でノードを開いた: 開いて出てきた子が画面の外なら、そのノードと子が見える所へ動かす
    * （拡大率はそのまま。30% より小さければ 30% に。収まらなければ、開いたノードを左上に）
    */
@@ -364,6 +412,8 @@ export class CanvasView {
     let maxY = -Infinity;
     let anchor: { x: number; y: number } | null = null;
     let kids = 0;
+    /** 開いて出てきたカードの位置（スマホで、開き始めたカードのすぐ先を選ぶ） */
+    const kidPos: Array<{ x: number; y: number }> = [];
     const add = (p: { x: number; y: number }) => {
       minX = Math.min(minX, p.x - HALF_W);
       maxX = Math.max(maxX, p.x + HALF_W);
@@ -378,12 +428,18 @@ export class CanvasView {
       for (const eid of this.vm.index.out.get(id) ?? []) {
         const e = this.store.doc.edges[eid];
         if (!e || this.vm.node(e.target).hidden || !this.vm.hasOverlay(e.target)) continue;
-        add(this.vm.posOf(e.target)!);
+        const q = this.vm.posOf(e.target)!;
+        add(q);
+        if (ids.length > 1) kidPos.push(q);
         kids++;
       }
     }
     if (!anchor || !kids) return;
     const cam = this.camera;
+    if (ids.length > 1 && this.width < 640) {
+      this.revealBulkPhone(anchor, kidPos, { minX, minY, maxX, maxY });
+      return;
+    }
     if (ids.length > 1) {
       // まとめて開いた（いくつものカードを一度に）: 開いた所の全体が見える大きさまで引く（下限まで）。収まれば真ん中に、
       // 収まらなければ開いた所の左上（開き始めたカードの所）から見せる（拡大率をそのままにすると、何百枚開いても画面がほとんど
@@ -394,9 +450,8 @@ export class CanvasView {
       const B = this.height - this.insets.bottom - 16;
       const bw = maxX - minX;
       const bh = maxY - minY;
-      // 引く下限: 広い画面は 12%（形が見える）。狭い画面は 30%（2,600 枚のうち画面に入る数が多すぎると、描くのが 1 回に数百 ms かかる。
-      // 収まらない分は左上から見せる）
-      const floor = this.width < 640 ? 0.3 : 0.12;
+      // 引く下限: 広い画面は 12%（形が見える。狭い画面は revealBulkPhone）
+      const floor = 0.12;
       const zf = Math.min((R - L) / bw, (B - T) / bh);
       const z = Math.min(1, Math.max(floor, zf));
       const fits = zf >= floor;

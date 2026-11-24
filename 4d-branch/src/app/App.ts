@@ -254,6 +254,22 @@ export class App implements AppContext {
     // カードを覆って押せなかった: 見直し reader-6）
     this.pickBarEl = this.pickBar();
     this.view.root.append(this.pickBarEl);
+    // キャンバスの上と下を覆う部品の高さ（スマホでまとめて開いた後に、開いた所を上の帯・お知らせ・拡大縮小の部品の下に置かない）。
+    // お知らせは開いた直後に出るので、まだ無くても拡大縮小の部品のすぐ上に 1 枚分（2 行と「元に戻す」: 約 100px）を見込む
+    this.view.covered = () => {
+      const c = this.view.root.getBoundingClientRect();
+      let top = 0;
+      for (const el of this.banner.children) {
+        const r = el.getBoundingClientRect();
+        if (r.height > 0) top = Math.max(top, r.bottom - c.top);
+      }
+      const z = zoomCtl.getBoundingClientRect();
+      let bottomEdge = z.height > 0 ? z.top : c.bottom;
+      const stack = document.getElementById("toast-stack");
+      const sb = stack ? stack.getBoundingClientRect() : null;
+      bottomEdge = Math.min(bottomEdge, sb && sb.height > 0 ? Math.min(sb.top, sb.bottom - 100) : bottomEdge - 8 - 100);
+      return { top, bottom: Math.max(0, c.bottom - bottomEdge) };
+    };
     // 狭い画面でパネルを重ねて出しているとき、外側を押すと閉じる
     const scrim = h("div", { class: "overlay-scrim", attrs: { "aria-hidden": "true" } });
     scrim.addEventListener("click", () => this.ui.setPrefs({ leftOpen: false, rightOpen: false }));

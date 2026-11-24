@@ -828,6 +828,63 @@ const cardsOf = (text) => {
   return m ? Number(m[1].replace(/,/g, "")) : NaN;
 };
 
+/** まとめて開く前に見えていたカードを覚える（開いた後の「新しく出たカード」を数えるため） */
+const markBefore = (page) => page.evaluate(() => (window.__fourD.app.vm.ensure(), (window.__bulkBefore = new Set(window.__fourD.app.vm.drawNodes))));
+
+/**
+ * まとめて開いた後に画面で読めるカード（スマホ: 作業メモ bulk 見直しの残り 1）。キャンバスのうち、上の帯・年月の目盛り・お知らせ・
+ * 拡大縮小の部品・選ぶ帯に覆われていない所に、まるごと入っているカードを数える。
+ * area: 開いた所（tops とその先）のカード・fresh: そのうち開く前に無かったカード・head: 開き始めたカードがまるごと見えるか
+ */
+const bulkInView = (page, tops, head) =>
+  page.evaluate(
+    ({ tops, head }) => {
+      const f = window.__fourD;
+      const v = f.app.view;
+      const vm = f.app.vm;
+      vm.ensure();
+      const deep = vm.deep.get();
+      const cr = v.canvas.getBoundingClientRect();
+      const covers = [...document.querySelectorAll(".banner-area > *, .toast:not(.closing), .zoom-ctl, .pick-bar")]
+        .filter((e) => e.checkVisibility())
+        .map((e) => e.getBoundingClientRect())
+        .filter((r) => r.width > 0 && r.height > 0);
+      if (v.rulerShown) covers.push({ left: cr.left, right: cr.right, top: cr.top, bottom: cr.top + 26 });
+      const z = v.camera.zoom;
+      const hw = 106 * z;
+      const hh = 48 * z;
+      const shows = (id) => {
+        const p = vm.posOf(id);
+        const s = v.camera.toScreen(p.x, p.y);
+        const b = { left: cr.left + s.x - hw, right: cr.left + s.x + hw, top: cr.top + s.y - hh, bottom: cr.top + s.y + hh };
+        if (b.left < cr.left || b.right > cr.right || b.top < cr.top || b.bottom > cr.bottom) return false;
+        return !covers.some((c) => b.left < c.right && b.right > c.left && b.top < c.bottom && b.bottom > c.top);
+      };
+      let area = 0;
+      let fresh = 0;
+      for (const id of vm.drawNodes) {
+        const j = deep.indexOf(id);
+        if (!tops.some((t) => j >= t && j < t + deep.cm.size[t])) continue;
+        if (!shows(id)) continue;
+        area++;
+        if (!window.__bulkBefore?.has(id)) fresh++;
+      }
+      return { zoom: z, area, fresh, head: shows(deep.idOf(head)) };
+    },
+    { tops, head },
+  );
+
+/**
+ * スマホでまとめて開いた後: 開き始めたカードと、新しく開いたカードが、題名の読める大きさ（40% 以上）で、何にも覆われずに 3 枚以上見える。
+ * fresh: false は、もう開いていた形に足したとき（半年後まで開いた後の 1 年後: 新しく出るカードは今日から 1 年右で、今日と同じ画面に
+ * 読める大きさでは入らない。今日とその先の行を見せ、残りは動かして見る）
+ */
+async function assertBulkView(page, profile, what, tops, head, opts = { fresh: true }) {
+  if (profile.viewport.width >= 700) return;
+  const r = await bulkInView(page, tops, head);
+  assert(r.zoom >= 0.4 - 1e-6 && r.head && r.area >= 3 && (!opts.fresh || r.fresh >= 1), `${what}: 開いた後の画面で読めるカードが足りない（拡大 ${Math.round(r.zoom * 100)}%・開き始めたカード ${r.head ? "見える" : "見えない"}・開いた所 ${r.area} 枚・新しく出た ${r.fresh} 枚）`);
+}
+
 /** 出ているお知らせの文 */
 const toasts = (page) => page.evaluate(() => [...document.querySelectorAll(".toast:not(.closing)")].map((t) => t.textContent).join(" / "));
 
@@ -888,9 +945,11 @@ async function bulkChecks(page, tag, profile) {
     assert(/開いた後のキャンバス [\d,]+ 枚/.test(title), `開いた後の全体の枚数が無い（${title}）`);
     const before = await drawn(page);
     const inside = await drawnInside(page, [f]);
+    await markBefore(page);
     await btn.click();
     await settle(page, 600);
     const after = await drawn(page);
+    await assertBulkView(page, profile, "A", [f], f);
     assert(after === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${after}）`);
     const t = await toasts(page);
     assert(/から\s1\u00a0年先までの判断と手を開いた（383\u00a0枚）|から\s1\u00a0年先までの判断と手を開いた（[\d,]+\u00a0枚）/.test(t) && /元に戻す/.test(t) && /見取り図で見る/.test(t), `お知らせが違う（${t}）`);
@@ -975,8 +1034,10 @@ async function bulkChecks(page, tag, profile) {
     await row.scrollIntoViewIfNeeded();
     await shotB("B-before");
     const want = Number(/([\d,]+)\s枚増える/.exec(texts[0])[1].replace(/,/g, ""));
+    await markBefore(page);
     await row.locator(`[data-fk="likely:5:${id}"]`).click();
     await settle(page, 600);
+    await assertBulkView(page, profile, "B", [f], f);
     assert((await drawnInside(page, [f])) === inside0 + want, `開いた後の枚数が合わない（${await drawnInside(page, [f])} / ${inside0} + ${want}）`);
     // 開いたのは押した手の先の道の上だけ（開いた印はどれも手の先。兄弟は閉じたまま +N の札）
     const out = await page.evaluate((k) => {
@@ -1057,10 +1118,12 @@ async function bulkChecks(page, tag, profile) {
     const inside = await drawnInside(page, moves);
     await noOverflow(page, "選んだカードの先をひらく");
     await shotB("C-panel");
+    await markBefore(page);
     await btn.click();
     const dlg = page.locator(".modal[role='dialog']");
     if (await dlg.isVisible().catch(() => false)) await dlg.getByRole("button", { name: "開く" }).click();
     await settle(page, 700);
+    await assertBulkView(page, profile, "C", moves, moves[0]);
     assert((await drawn(page)) === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${await drawn(page)}）`);
     assert(/選んだ 3 枚から\s1\u00a0年先まで/.test(await toasts(page)), `お知らせが違う（${await toasts(page)}）`);
     await shotB("C-after");
@@ -1111,8 +1174,10 @@ async function bulkChecks(page, tag, profile) {
     assert(await page.evaluate(() => document.activeElement?.dataset.fk === "quarter-open"), "Tab で「開く」へ行けない");
     const before = await drawn(page);
     const inside = await drawnInside(page, [0]);
+    await markBefore(page);
     await page.keyboard.press("Enter");
     await settle(page, 700);
+    await assertBulkView(page, profile, "D（半年後）", [0], 0);
     assert((await page.locator(".modal[role='dialog']").count()) === 0, "1,000 枚に満たないのに確かめが出た");
     assert((await drawn(page)) === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${await drawn(page)}）`);
     await shotB("D-after-6m");
@@ -1142,10 +1207,12 @@ async function bulkChecks(page, tag, profile) {
     await page.keyboard.press("Enter");
     await dlg.waitFor();
     await page.waitForFunction(() => document.activeElement?.textContent === "開く");
+    await markBefore(page);
     await page.keyboard.press("Enter");
     await settle(page, 900);
     const after = await drawn(page);
     assert(after > b2, "開いていない");
+    await assertBulkView(page, profile, "D（1 年後）", [0], 0, { fresh: false });
     const inside12 = await drawnInside(page, [0]);
     assert(inside12 === want12 && after <= 3000, `1 年後の枚数が合わない（${inside12} / ${want12}・全体 ${after}）`);
     await shotB("D-after-1y");
