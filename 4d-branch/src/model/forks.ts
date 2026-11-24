@@ -35,6 +35,9 @@ export function impactConfigOf(n: GNode | undefined): ImpactConfig | null {
   return out;
 }
 
+/** 入口の meta.goal（資産のゴールの前提。src/model/goal.ts） */
+export { goalConfigOf } from "./goal";
+
 export const isImpactRoot = (n: GNode | undefined): boolean => !!n && n.meta?.forecastRoot === true && impactConfigOf(n) !== null;
 
 /**
