@@ -3,7 +3,7 @@
 // 版 6 の地図と、作り物の地図（合流・循環・自分への線・入口が 2 つ・ほかの入口からたどれる入口・v1 の入口・シナリオ）で
 import { describe, expect, it } from "vitest";
 import { buildImpactDoc } from "../../src/demo/impact";
-import { ForecastPlan, computeForecast, computeForecastFast, type ForecastResult } from "../../src/model/forecast";
+import { ForecastPlan, computeForecast, computeForecastFast, reachP, type ForecastResult } from "../../src/model/forecast";
 import { impactScope, isFlowEdge } from "../../src/model/forks";
 import { buildIndex } from "../../src/model/graph";
 import { makeEdge, makeNode } from "../../src/model/schema";
@@ -92,3 +92,24 @@ describe("見込みの速い作り: computeForecast と同じ答え", () => {
     expect(a.reach.size).toBe(0);
   });
 });
+
+// P4 の見直し（ヒープ）: 見込みだけを読む reachP は get(id)?.p ?? 0 と同じ。速い作りの答えでは Reach の物を作らない（覚えの表を太らせない）
+describe("見込みだけを読む（reachP）", () => {
+  it("どのノード・無いノードでも get(id)?.p ?? 0 と同じ。速い作りでは読んでも Reach を作らず、get は同じ ID に同じ物", () => {
+    const doc = synthMap(11, { cards: 1200, users: 40, links: 80 }).doc;
+    const out = buildIndex(doc).out;
+    const ref = computeForecast(doc, out, null);
+    const fc = fast(doc, null);
+    const ids = [...Object.keys(doc.nodes), "無いノード"];
+    const made = (fc.reach as unknown as { made: Map<ID, unknown> }).made;
+    for (const id of ids) {
+      expect(reachP(fc.reach, id), id).toBe(ref.reach.get(id)?.p ?? 0);
+      expect(reachP(ref.reach, id), id).toBe(ref.reach.get(id)?.p ?? 0);
+    }
+    expect(made.size).toBe(0);
+    const some = ids.find((id) => fc.reach.has(id))!;
+    expect(fc.reach.get(some)).toBe(fc.reach.get(some));
+    expect(reachP(fc.reach, some)).toBe(fc.reach.get(some)!.p);
+  });
+});
+

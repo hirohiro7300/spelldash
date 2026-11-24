@@ -25,7 +25,7 @@
 //     絞り込みが無いとき、範囲のノードは必ず入口から数える線でつながる（入口にも、入口の無い循環にもならない）ので、
 //     自分のノードだけで入口を決めればよい（computeCollapse を自分のノードの部分にだけ使うのと同じ）
 
-import { ForecastPlan, type ForecastResult, type PlanSteps } from "../model/forecast";
+import { ForecastPlan, reachP, type ForecastResult, type PlanSteps } from "../model/forecast";
 import { flowOuts, forkKindOf, isFlowEdge, isImpactRoot } from "../model/forks";
 import { DocIndex, isIndexKey } from "../model/docIndex";
 import type { ImpactResult } from "../model/impact";
@@ -595,7 +595,7 @@ export class ViewModel {
         if (this.forecastTitles !== this.titleVersion) {
           this.forecastTitles = this.titleVersion;
           const doc = this.store.doc;
-          ends = ends.slice().sort((a, b) => fc.reach.get(b)!.p - fc.reach.get(a)!.p || (doc.nodes[a]?.title || "").localeCompare(doc.nodes[b]?.title || "", "ja"));
+          ends = ends.slice().sort((a, b) => reachP(fc.reach, b) - reachP(fc.reach, a) || (doc.nodes[a]?.title || "").localeCompare(doc.nodes[b]?.title || "", "ja"));
         }
         return ends;
       },
@@ -639,7 +639,7 @@ export class ViewModel {
       },
       reach: () => {
         const fc = this.forecast;
-        return { version: this.forecastStamp, of: (id) => fc.reach.get(id)?.p ?? 0 };
+        return { version: this.forecastStamp, of: (id) => reachP(fc.reach, id) };
       },
     };
   }

@@ -142,3 +142,35 @@ describe("検索の索引: 全部の点数を出して並べた物と同じ", ()
     expect(internal.searchBuild).toBeNull();
   });
 });
+
+// P4 の見直し（ヒープ）: 作り終えたら倍々に広げた配列をちょうどの長さにする。その後に足す・直す・消すノードでも、全部を並べた物と同じ答え
+describe("検索の索引: 作り終えて配列を詰めた後も同じ答え", () => {
+  it("少しずつ作って詰めた後に、たくさん足す・題名を直す・消す（詰めた長さを超えて広げ直す）", () => {
+    const doc = bigDoc(5, 3000);
+    const idx = buildIndex(doc);
+    const si = new SearchIndex();
+    const ids = Object.keys(doc.nodes);
+    for (let a = 0; a < ids.length; a += 700) si.putRange(doc, idx, ids, a, Math.min(ids.length, a + 700));
+    si.finish();
+    const arr = si as unknown as { title: Int32Array; pool: Int32Array; poolN: number; ids: unknown[] };
+    // 詰めた（場所の配列はノードの数ちょうど・文字の番号の並びは使った数ちょうど）
+    expect(arr.title.length).toBe(ids.length);
+    expect(arr.pool.length).toBe(arr.poolN);
+    check(si, doc, "か");
+    check(si, doc, "#仕事");
+    // 詰めた長さを超えて足す（題名と本文を持つ 500 枚）
+    const added: ID[] = [];
+    for (let i = 0; i < 500; i++) {
+      const id = `m${i}`;
+      doc.nodes[id] = makeNode({ id, title: `かさね${i}`, body: i % 3 ? "足した本文" : "", tags: i % 5 ? [] : ["副業"] });
+      added.push(id);
+    }
+    // 題名を直す・消す
+    doc.nodes.n3 = { ...doc.nodes.n3!, title: "かかかか" };
+    delete doc.nodes.n11;
+    for (const [id, x] of Object.entries(doc.edges)) if (x.source === "n11" || x.target === "n11") delete doc.edges[id];
+    si.update(doc, buildIndex(doc), [...added, "n3", "n11"]);
+    for (const raw of ["か", "かさね", "足した本文", "#副業", "かかかか", "あ"]) check(si, doc, raw);
+  });
+});
+

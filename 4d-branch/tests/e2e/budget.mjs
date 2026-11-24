@@ -67,6 +67,7 @@ const BUDGET = {
   bootLongTask: [50, 200],
   selectLayout: [null, 5],
   heapBoot: [150, null],
+  heapBootEarly: [null, null],
   heapUse: [200, null],
   heapBrowse: [200, null],
 };
@@ -95,7 +96,9 @@ const LABEL = {
   longTask: "変更（シナリオ・年収・これにする）を描いた後 3 秒の、一番長い仕事（ms。空いた時間の仕事。変更そのものは数えない）",
   bootLongTask: "起動して触れるようになった後の、一番長い仕事（ms。机 10 秒・スマホ 20 秒。自動保存の覚えを先に作る・年収の境目・検索の索引など空いた時間の仕事。起動そのものは数えない。予算は自動保存の書き出しと同じ: P4）",
   selectLayout: "引き出しを閉じたスマホでカードを選ぶときのレイアウト（ms）",
-  heapBoot: "起動後のヒープ（MB。JS・ArrayBuffer・DOM の合計）",
+  heapBoot:
+    "起動後のヒープ（MB。JS・ArrayBuffer・DOM の合計）。起動の後の空いた時間の仕事（自動保存の覚え・検索の索引・見込みの計画・年収の境目）が済んだ後: 触れるようになってから机 10 秒・スマホ 20 秒、何もせずに待った後（最後の回のほかの回。作業メモ SPEC §7.2: P4 の見直しで測る時を決めた）",
+  heapBootEarly: "（参考・予算なし）触れるようになった直後のヒープ（前の測り方。空いた時間の仕事の途中で測るので、どこまで済んだかで同じビルドが 142〜154 MB と振れた）",
   heapUse: "起動 + 10 回これにする + 1 年先まで開いたまま + 検索の後のヒープ（MB。合計）",
   heapBrowse: "その後、手のカードを 50 枚（違う判断の物）見た後のヒープ（MB。合計）",
 };
@@ -409,13 +412,21 @@ async function measureProfile(browser, profile) {
     push("boot", s.t.boot);
     push("firstPaint", s.t.firstPaint);
     // 最後の回のほかは、触れるようになった後しばらく何もせずに待ち、その間の一番長い仕事を見る（起動の後の空いた時間の仕事:
-    // 自動保存の覚え・年収の境目・検索の索引など。最後の回はすぐに起動後のヒープを測る: 今までの測り方のまま）
-    if (k < ROUNDS - 1) {
+    // 自動保存の覚え・年収の境目・検索の索引など）。待った後に起動後のヒープ（heapBoot）を測る: 空いた時間の仕事が済んで落ち着いた物。
+    // 触れるようになった直後に測ると、空いた時間の仕事がどこまで済んだかで同じビルドが 142〜154 MB と振れた（P4 の見直し
+    // speed-heapboot-over: 直後 134 MB → 3 秒後に 149.6 MB で止まり、10 秒・15 秒後も同じ）。落ち着いた物は、何もしない利用者が
+    // 持ち続けるヒープで、直後の物より大きい（予算 150 MB はそのまま）。最後の回はすぐに測る（前の測り方: heapBootEarly。予算なし）。
+    // 回が 1 つだけなら、その回で待ってから測る
+    const quietRound = k < ROUNDS - 1 || ROUNDS === 1;
+    if (quietRound) {
       const quiet = profile.cpu > 1 ? 20_000 : 10_000;
       await page_wait(s.page, quiet);
       const lt = await s.page.evaluate(() => window.__bootLong.filter(([st]) => st >= window.__interactive).map(([st, d]) => [Math.round(st - window.__interactive), Math.round(d)]));
       push("bootLongTask", lt.length ? Math.max(...lt.map((x) => x[1])) : 0);
       (r.bootLongTasks ??= []).push(lt);
+      (r.heapPartsBoot ??= []);
+      push("heapBoot", await heapMB(s.cdp, r.heapPartsBoot));
+      await s.cdp.send("HeapProfiler.disable");
     }
   }
   r.bootPath = BOOT;
@@ -423,7 +434,7 @@ async function measureProfile(browser, profile) {
   r.lastCompile = await s.page.evaluate(() => window.__fourD.app.vm.engine?.lastCompile ?? null);
   const { page, cdp } = s;
   r.heapParts = [];
-  push("heapBoot", await heapMB(cdp, r.heapParts));
+  push("heapBootEarly", await heapMB(cdp, r.heapParts));
   const narrow = profile.viewport.width < 700;
   const closePanels = () => page.evaluate(() => window.__fourD.ui.setPrefs({ leftOpen: false, rightOpen: false }));
   const openRight = () => page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: true }));
@@ -875,6 +886,7 @@ async function main() {
   console.log(table(results, fails));
   for (const [p, r] of Object.entries(results)) {
     if (r.yearCards) console.log(`${p}: 1 年先まで開いたときに見えるカード ${r.yearCards} 枚（ヒープを測ったときは ${r.heapOpenCards ?? "—"} 枚）`);
+    if (r.heapPartsBoot?.length) console.log(`${p}: 起動後（落ち着いた後）のヒープの内訳（MB: JS / ArrayBuffer など / DOM）${r.heapPartsBoot.map((x) => `${x.used.toFixed(1)} / ${x.backing.toFixed(1)} / ${x.embedder.toFixed(1)}`).join("・")}`);
     if (r.heapParts?.length) console.log(`${p}: ヒープの内訳（MB: JS / ArrayBuffer など / DOM）${r.heapParts.map((x) => `${x.used.toFixed(1)} / ${x.backing.toFixed(1)} / ${x.embedder.toFixed(1)}`).join(" → ")}`);
     if (r.longTaskCounts) console.log(`${p}: 変更の後 3 秒の長い仕事の数 ${r.longTaskCounts.join(" / ")}（シナリオ・年収・これにする）`);
     if (r.bootLongTasks) console.log(`${p}: 起動して触れた後の長い仕事（触れてからの ms・長さ）${r.bootLongTasks.map((l) => (l.length ? l.map(([a, d]) => `${a}:${d}`).join(" ") : "無し")).join(" / ")}`);

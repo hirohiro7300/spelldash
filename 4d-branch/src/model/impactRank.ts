@@ -4,7 +4,7 @@
 //   「この先の大事な判断」: 今日より後の判断を、おすすめの選び方で来る見込み × 一番良い手と今のままの差の順に
 // 手の種類の名前は、同梱の地図の入口の meta.fams（{ 種類: 名前 }。scripts/impact/world.json の familyLabels）
 
-import type { ForecastResult } from "./forecast";
+import { reachP, type ForecastResult } from "./forecast";
 import type { ImpactResult } from "./impact";
 import type { DocData, GNode, ID } from "./types";
 
@@ -74,7 +74,7 @@ function instancesByFam(doc: DocData, imp: ImpactResult, fc: ForecastResult | nu
     const f = famOf(doc.nodes[id]);
     if (!f) continue;
     const list = by.get(f) ?? [];
-    list.push({ id, p: fc?.reach.get(id)?.p ?? 0, delta: imp.deltaOf(id) });
+    list.push({ id, p: fc ? reachP(fc.reach, id) : 0, delta: imp.deltaOf(id) });
     by.set(f, list);
   }
   for (const list of by.values()) list.sort((x, y) => y.p - x.p || (y.delta ?? -Infinity) - (x.delta ?? -Infinity) || (x.id < y.id ? -1 : 1));

@@ -76,6 +76,7 @@ export class SearchIndex {
 
   /** 少しずつ作り終えた（当たりの覚えを捨てる） */
   finish(): void {
+    this.compact();
     this.version++;
   }
 
@@ -91,6 +92,7 @@ export class SearchIndex {
     this.poolN = 0;
     this.alive = 0;
     for (const id in doc.nodes) this.putEntry(doc, graph, id);
+    this.compact();
     this.version++;
   }
 
@@ -136,6 +138,25 @@ export class SearchIndex {
     let v = this.norms[i];
     if (v === undefined) this.norms[i] = v = normalizeText(this.strs[i]!);
     return v;
+  }
+
+  /**
+   * 作り終えたら、倍々に広げた配列をちょうどの長さにする（7.7 万枚で、場所の配列 5 つは 13 万、文字の番号の並びは 52 万の入れ物になり、
+   * 1.5 MB ほどが空いたまま残る: P4 のヒープ）。後から足すノードは grow・poolPush がまた広げる
+   */
+  private compact(): void {
+    const n = Math.max(64, this.ids.length);
+    if (this.title.length > n) {
+      this.title = this.title.slice(0, n);
+      this.restOff = this.restOff.slice(0, n);
+      this.restLen = this.restLen.slice(0, n);
+      this.tagsK = this.tagsK.slice(0, n);
+      this.projK = this.projK.slice(0, n);
+      this.goal = this.goal.slice(0, n);
+    }
+    const m = Math.max(1024, this.poolN);
+    if (this.pool.length > m) this.pool = this.pool.slice(0, m);
+    this.ids = this.ids.slice();
   }
 
   private grow(n: number): void {

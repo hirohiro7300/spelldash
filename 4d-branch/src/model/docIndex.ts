@@ -553,6 +553,10 @@ export class DocIndex implements GraphIndex {
       for (const s of e.scenarioIds) this.addScen(s, 1);
     }
     this.edgeCount = edgeAt.length;
+    // 1 つずつ足した番号ごとの配列は 1.5 倍ほどの入れ物になる: ちょうどの長さの写しにする（7.7 万枚の 3 つで 0.4 MB ほど: P4 のヒープ）
+    this.nodeAt = nodeAt.slice();
+    this.edgeAt = edgeAt.slice();
+    this.edgeLinked = linked.slice();
     const v = this.version;
     v.topo++;
     v.flow++;

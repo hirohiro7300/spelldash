@@ -170,6 +170,14 @@ export interface ForecastInputs {
 
 let endCollator: Intl.Collator | null = null;
 
+/**
+ * 見込みだけを読む（reach.get(id)?.p ?? 0 と同じ）。速い作りの答え（ReachMap）なら Reach の物を作らずに読む: 描くたび・計算のたびに
+ * 手を全部読む所（目印の順位・合流の重み・まとまりの並び）が get を使うと、届いた 4 万枚ほどの物と覚えの表（3 MB ほど）が残る（P4 のヒープ）
+ */
+export function reachP(reach: ReadonlyMap<ID, Reach>, id: ID): number {
+  return reach instanceof ReachMap ? reach.pOf(id) : (reach.get(id)?.p ?? 0);
+}
+
 /** 届いたノードの見込み（型付きの配列から、読まれたときに作る。同じ ID には同じ物） */
 class ReachMap implements ReadonlyMap<ID, Reach> {
   private readonly made = new Map<ID, Reach>();
@@ -187,6 +195,11 @@ class ReachMap implements ReadonlyMap<ID, Reach> {
   has(id: ID): boolean {
     const i = this.idx.get(id);
     return i !== undefined && this.done[i] === 1;
+  }
+  /** 見込み（届いていなければ 0。get(id)?.p ?? 0 と同じ。物を作らず、覚えもしない） */
+  pOf(id: ID): number {
+    const i = this.idx.get(id);
+    return i === undefined || this.done[i] !== 1 ? 0 : this.p[i]!;
   }
   get(id: ID): Reach | undefined {
     let r = this.made.get(id);
@@ -294,7 +307,8 @@ function* planParts(doc: DocData, out: Map<ID, ID[]>, inp: ForecastInputs): Gene
     for (const w of x.split) splitL.push(w);
   }
   offL.push(edges.length);
-  return { ids, idx, off: Int32Array.from(offL), tgt: Int32Array.from(tgtL), edges, kinds, split: Float64Array.from(splitL), rootIdx };
+  // 1 つずつ足した並びは 1.5 倍ほどの入れ物になる: ちょうどの長さの写しにする（7.7 万枚の 3 つで 0.4 MB ほど: P4 のヒープ）
+  return { ids: ids.slice(), idx, off: Int32Array.from(offL), tgt: Int32Array.from(tgtL), edges: edges.slice(), kinds: kinds.slice(), split: Float64Array.from(splitL), rootIdx };
 }
 
 /** 少しずつ作る計画（step を true が返るまで呼ぶ。でき上がった計画は plan） */

@@ -4,7 +4,7 @@
 import type { ViewModel } from "../app/viewModel";
 import type { UiState } from "../app/uiState";
 import { NODE_TYPES } from "../model/constants";
-import { edgeProb, formatPercent, type ForecastResult } from "../model/forecast";
+import { edgeProb, formatPercent, reachP, type ForecastResult } from "../model/forecast";
 import { quarterSpanText, ymText } from "../deepmap/core/time";
 import { IMPACT_FIRST_ZOOM, IMPACT_ROW, impactColX } from "../model/impactLayout";
 import { todayStr } from "../model/dates";
@@ -740,7 +740,7 @@ export class CanvasView {
     const ranks =
       imp.active && (lod === "low" || lod === "dot")
         ? fcNow
-          ? cards.labelRank(imp, doc, (id) => fcNow.reach.get(id)?.p ?? 0)
+          ? cards.labelRank(imp, doc, (id) => reachP(fcNow.reach, id))
           : (fcOf(), cards.labelRankBase(imp))
         : null;
     const pillBox = this.pillTmp;

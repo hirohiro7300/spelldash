@@ -20,7 +20,7 @@
 //   ≒（ほぼ同じ）は、★ が無いとき、一番の手との差が 10 万円未満の手（一番の手そのものには付けない。見直し user-7・equiv-3）。
 //   どの判断でも一番の手に控えめな「おすすめ」の印（AltInfo.rec）。q の無い地図（版 6）は前のまま（2 位より 10 万円以上で ★・おすすめの印なし）
 
-import type { ForecastResult } from "./forecast";
+import { reachP, type ForecastResult } from "./forecast";
 import { chanceWeights, flowOuts, forkKindOf, impactConfigOf, impactScope, isImpactRoot, primaryImpactRoot, type ForkKind } from "./forks";
 import { impactBin } from "./impactFormat";
 import { dayNumber, isDateStr } from "./dates";
@@ -977,7 +977,7 @@ export function computeImpact(doc: DocData, out: Map<ID, ID[]>, fc: ForecastResu
       const s = c.incSlot[k]!;
       const u = c.src[s]!;
       if (!Adef[u]) continue;
-      const pu = fc?.reach.get(c.ids[u]!)?.p ?? 0;
+      const pu = fc ? reachP(fc.reach, c.ids[u]!) : 0;
       const sw1 = (c.kind[u] === CHANCE ? c.w[s]! : 1) * pu;
       const val = A[u]! + Wsum(s);
       sw += sw1;
