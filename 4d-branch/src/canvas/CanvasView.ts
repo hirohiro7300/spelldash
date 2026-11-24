@@ -8,6 +8,7 @@ import { edgeProb, formatPercent, reachP, type ForecastResult } from "../model/f
 import { quarterSpanText, ymText } from "../deepmap/core/time";
 import { IMPACT_FIRST_ZOOM, IMPACT_ROW, impactColX } from "../model/impactLayout";
 import { todayStr } from "../model/dates";
+import { goalName, type GoalTables } from "../model/goal";
 import type { DocData, GNode, ID, Relation } from "../model/types";
 import type { Store } from "../store/store";
 import { h } from "../ui/dom";
@@ -16,6 +17,7 @@ import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, grid
 import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, labelMaxW, rectsIntersect, type EdgeGeom } from "./geometry";
 import { ImpactCards, binStroke } from "./impactCards";
 import { drawImpactNode, type PillRect } from "./impactDraw";
+import { GOAL_RAIL_DX, GoalRail } from "./goalRail";
 import { onPixelRatioChange } from "./pixelRatio";
 import { CANVAS_FONT, wrapText } from "./text";
 
@@ -161,6 +163,13 @@ export class CanvasView {
   /** 3 年の分かれ道のカード・線に書く物（計算の結果ごとに作る） */
   private readonly cards = new ImpactCards();
   private readonly pillTmp: PillRect = { x: 0, y: 0, w: 0, h: 0, font: 0 };
+  /** 資産のゴールの列・行き先からゴールへの線・ゴールのカード（3 か月ごとの地図だけ: src/canvas/goalRail.ts） */
+  readonly goal = new GoalRail(
+    () => this.panToGoal(),
+    () => this.requestRender(),
+  );
+  /** 見えている行き先のカード（見えているカードの並びか計算の結果が変わったときだけ選び直す） */
+  private goalEnds: { src: readonly ID[]; imp: unknown; ends: ID[] } = { src: [], imp: null, ends: [] };
 
   constructor(
     private readonly store: Store,
@@ -890,6 +899,7 @@ export class CanvasView {
 
     // 画面の大きさで描く文字（縮小したときのタイトル・目印）
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.drawGoal(quarter ? imp.root : null, lod);
     if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80, cardBoxes);
     if (screenLabels.length) this.drawScreenLabels(screenLabels, 80, cardBoxes);
     // 年月の目盛り（3 か月ごとの地図。どの拡大率でも画面の上に固定: 作業メモ SPEC v1 §5.6・user-7・user-15）
@@ -931,6 +941,55 @@ export class CanvasView {
     }
   }
 
+  /**
+   * 資産のゴールの列と、見えている行き先からゴールへの線（画面の座標で。目印の文より下・目盛りより下に描く）とゴールのカードの位置。
+   * root が null（3 か月ごとの地図でない）・入口が見えていなければ、どれも出さない
+   */
+  private drawGoal(root: ID | null, lod: Lod): void {
+    const vm = this.vm;
+    const imp = vm.impact;
+    if (!root || !imp.active || !vm.hasOverlay(root)) return this.goal.off();
+    const doc = this.store.doc;
+    const c = this.goalEnds;
+    if (c.src !== vm.drawNodes || c.imp !== imp) {
+      c.src = vm.drawNodes;
+      c.imp = imp;
+      c.ends = vm.drawNodes.filter((id) => imp.kind.get(id) === "leaf");
+    }
+    const cam = this.camera;
+    const sel = this.ui.selection.nodes;
+    this.goal.draw({
+      ctx: this.ctx,
+      width: this.width,
+      height: this.height,
+      top: RULER_H,
+      z: cam.zoom,
+      cx: cam.x,
+      cy: cam.y,
+      lod,
+      railX: vm.posOf(root)!.x + GOAL_RAIL_DX,
+      ends: c.ends,
+      pos: (id) => this.pos(id),
+      card: (id) => this.cards.card(imp, doc, id),
+      pathActive: vm.pathActive,
+      onPath: (id) => vm.node(id).path,
+      selected: sel.size === 1 ? (sel.values().next().value ?? null) : null,
+      t: this.cards.goal(imp, doc),
+    });
+  }
+
+  /** ゴールの列が見える所へ動かす（拡大率と縦はそのまま。列を画面の右寄りに置き、左に行き先からの線が見えるように） */
+  panToGoal(): void {
+    const imp = this.vm.impact;
+    const root = imp.active ? imp.root : null;
+    if (!root || !this.vm.hasOverlay(root) || !this.measurable) return;
+    const rx = this.vm.posOf(root)!.x + GOAL_RAIL_DX;
+    const z = this.camera.zoom;
+    const cw = this.width < 640 ? 128 : 176;
+    const sx = Math.max(this.width * 0.4, this.width - cw - 40);
+    this.animateTo({ zoom: z, x: sx - rx * z, y: this.camera.y }, 380);
+  }
+
   /** 見込みを空いた時間に数えるよう頼んだ（数え終えるまで重ねて頼まない） */
   private forecastAsked = false;
 
@@ -967,8 +1026,10 @@ export class CanvasView {
     const free = (a: number, b: number) => !placed.some(([x0, x1]) => a < x1 + 10 && b > x0 - 10);
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
-    // 判断・結果の列（年月）を先に、間が空いていれば手の列（その 3 か月）
+    // 判断・結果の列（年月）を先に、次に右の端のゴール（「→ ゴール 資産 10 億円（目安）」）、間が空いていれば手の列（その 3 か月）
+    const gt = this.vm.impact.active ? this.cards.goal(this.vm.impact, doc) : null;
     for (const pass of [0, 1]) {
+      if (pass === 1 && gt) this.rulerGoal(rp.x, gt, free, placed, texts);
       ctx.font = pass === 0 ? `650 11px ${CANVAS_FONT}` : `500 10.5px ${CANVAS_FONT}`;
       for (let d = pass; d <= 24; d += 2) {
         const sx = (rp.x + impactColX(d)) * z + cam.x;
@@ -997,6 +1058,32 @@ export class CanvasView {
     ctx.textBaseline = "alphabetic";
     this.rulerTexts = texts;
     return true;
+  }
+
+  /**
+   * 目盛りのゴールの札: ゴールの列が見えていれば列の右に、右の外なら目盛りの右の端に「→ ゴール 資産 10 億円（目安）」
+   * （入らなければ「→ ゴール」）。左の外（ゴールより右を見ている）なら出さない
+   */
+  private rulerGoal(rootX: number, t: GoalTables, free: (a: number, b: number) => boolean, placed: Array<[number, number]>, texts: string[]): void {
+    const ctx = this.ctx;
+    const W = this.width;
+    const sx = (rootX + GOAL_RAIL_DX) * this.camera.zoom + this.camera.x;
+    if (sx < 0) return;
+    ctx.font = `650 11px ${CANVAS_FONT}`;
+    for (const text of [`→ ゴール ${goalName(t)}（目安）`, "→ ゴール"]) {
+      const w = ctx.measureText(text).width;
+      const x0 = Math.max(6, Math.min(W - w - 6, sx + 6));
+      if (!free(x0, x0 + w)) continue;
+      placed.push([x0, x0 + w]);
+      texts.push(text);
+      ctx.fillStyle = "rgba(255,200,120,0.98)";
+      ctx.fillText(text, x0, RULER_H / 2 + 0.5);
+      if (sx <= W) {
+        ctx.fillStyle = "rgba(255,181,71,0.9)";
+        ctx.fillRect(Math.round(sx) - 0.5, RULER_H - 6, 1, 5);
+      }
+      return;
+    }
   }
 
   /** ふつうの地図の目印の文（題名。未来の道筋の行き先などは見込みを添える）。ctx.font は呼ぶ側で 12px にしておく */

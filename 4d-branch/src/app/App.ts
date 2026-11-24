@@ -21,6 +21,7 @@ import { chooseReleaseSource, chooseSyncSource, openBackupDialog, openCopyDialog
 import { openFutureDialog } from "../ui/futureDialog";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
+import { goalRailHost } from "../ui/goalPanel";
 import { offerImpactSalary } from "../ui/impactPanel";
 import { buildInspector, hasUnsavedInput } from "../ui/inspector";
 import { buildLeftSidebar } from "../ui/leftSidebar";
@@ -250,6 +251,7 @@ export class App implements AppContext {
     this.view.root.append(minimap.el, zoomCtl, this.emptyHint);
     this.listEl = buildListView(this);
     this.banner = h("div", { class: "banner-area", attrs: { "aria-live": "polite" } });
+    this.view.goal.attach(this.view.root, goalRailHost(this), this.banner);
     // 「ほかのカードも選ぶ」の間の帯は、キャンバスの下（拡大の部品の上）に出す（上の帯の下に出すと、スマホでは一番上の手の
     // カードを覆って押せなかった: 見直し reader-6）
     this.pickBarEl = this.pickBar();

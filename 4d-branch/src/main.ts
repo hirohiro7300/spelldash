@@ -126,7 +126,17 @@ async function boot(opts: { reopen?: boolean } = {}): Promise<void> {
     void app.startCloud().catch(() => undefined);
   }
   // 確かめ用（E2E・開発者ツール）
-  (window as unknown as { __fourD: unknown }).__fourD = { app, store, ui, persistence, codec: { toStored, decodeStored: (raw: unknown) => decodeStored(raw).doc } };
+  (window as unknown as { __fourD: unknown }).__fourD = {
+    app,
+    store,
+    ui,
+    persistence,
+    codec: { toStored, decodeStored: (raw: unknown) => decodeStored(raw).doc },
+    /** 直近のフレームで描いた、行き先から資産のゴールへの線の数（数だけ: どの行き先か・値は出さない） */
+    get goalStubs() {
+      return app.view.goal.stubs;
+    },
+  };
 }
 
 /**

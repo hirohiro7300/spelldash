@@ -19,6 +19,7 @@ export { distBar, scaleLegend, pill, pillValue, splitBar, miniStrip } from "./pa
 export {
   fillGoalSlots,
   goalEndText,
+  goalFromLine,
   goalMoveVM,
   goalOverviewVM,
   goalSeedEl,

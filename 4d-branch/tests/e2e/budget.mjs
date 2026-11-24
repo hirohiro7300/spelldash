@@ -60,6 +60,8 @@ const BUDGET = {
   scenario: [150, 600],
   scenarioOff: [150, 600],
   salary: [150, 600],
+  goal: [150, 600],
+  goalOpen: [100, 400],
   keystroke: [30, 120],
   search: [30, 120],
   undo: [150, 600],
@@ -94,6 +96,8 @@ const LABEL = {
   scenario: "シナリオを変える",
   scenarioOff: "シナリオを外す",
   salary: "年収を変える",
+  goal: "10 億円の前提を変える（概要の「ゴール … ［変える］」→ 今の資産を入れて「決める」。帯・行き先の札・地図のゴールまで描き直す）",
+  goalOpen: "くわしく を開く（見取り図の資産のゴールの帯を開く: 3 つの数・手立て・前提）",
   keystroke: "題名の 1 文字（変換中を含む）",
   search: "検索の 1 文字（変換中を含む）",
   undo: "元に戻す（これにするの取り消し）",
@@ -722,6 +726,51 @@ async function measureProfile(browser, profile) {
   }
 
   await traceHeap(cdp, "年収の後");
+  // 資産のゴールの前提を変える（概要の「変える」→ 今の資産を入れて「決める」。試験用の丸めた数）・帯の「くわしく」を開く
+  for (let k = 0; k < ROUNDS; k++) {
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    if (narrow) await openRight();
+    const change = page.locator('.sidebar-right [data-fk="goal"]');
+    try {
+      await change.waitFor({ timeout: 10_000 });
+    } catch {
+      break;
+    }
+    await change.click();
+    await page.locator('.sidebar-right [data-fk="goal-assets"]').fill(String(500 + k * 500));
+    await page.evaluate(() => window.__budget.frames());
+    await page.evaluate(() => window.__budget.arm("pointerdown", "click"));
+    await page.locator('.sidebar-right [data-fk="goal-ok"]').click();
+    push("goal", await page.evaluate(() => window.__budget.wait()));
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    await page.waitForTimeout(300);
+    // くわしく（帯はたたんでから開く）
+    const sum = page.locator(".sidebar-right .deep-ov .dm-goal[data-goal-key]:not(.is-wait) summary").first();
+    try {
+      await sum.waitFor({ timeout: 10_000 });
+    } catch {
+      if (narrow) await closePanels();
+      continue;
+    }
+    await page.evaluate(() => {
+      const d = document.querySelector(".sidebar-right .deep-ov .dm-goal details");
+      if (d) d.open = false;
+      document.querySelector(".sidebar-right .insp-body-scroll")?.scrollTo(0, 0);
+    });
+    await page.evaluate(() => window.__budget.frames());
+    await page.evaluate(() => window.__budget.arm("pointerdown", "click"));
+    await sum.click();
+    push("goalOpen", await page.evaluate(() => window.__budget.wait()));
+    if (narrow) await closePanels();
+  }
+  await page.evaluate(() => {
+    try {
+      localStorage.removeItem("4d-branch:goalStripOpen");
+    } catch {
+      /* 無くても動く */
+    }
+  });
+  await traceHeap(cdp, "資産のゴールの後");
   // （参考・予算なし）取り込みの写しが structuredClone（どのカードも別の物）。どの取り込みの道（アカウント・ほかのタブ・インポート・復元）も
   // 薄い形を読み直すので、この形は作らない（作業メモ SPEC §7.2・P4）。届いた写しは測る前に作る（手を 1 つ選んだ写し）。測った後は元に戻す
   for (let k = 0; k < ROUNDS; k++) {

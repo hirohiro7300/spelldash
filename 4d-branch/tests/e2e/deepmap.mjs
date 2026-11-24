@@ -794,6 +794,7 @@ async function runProfile(browser, profile) {
       }
     });
 
+    await goalChecks(page, tag, profile);
     await bulkChecks(page, tag, profile);
 
     await check(`${tag}: コンソールのエラーが無い`, async () => {
@@ -802,6 +803,266 @@ async function runProfile(browser, profile) {
   } finally {
     await ctx.close();
   }
+}
+
+
+/**
+ * 資産のゴール（作業メモ goal/design.md §4.1・§4.3・§5）: 見取り図のいちばん上の帯・地図のいちばん右のゴールの列とカード（札）・
+ * 行き先からゴールへの線・前提の欄。前提に入れる数は試験用の丸めた数（今の資産 500 万円・積立 30%）
+ */
+const GOAL_ASSETS = "500";
+const GOAL_SAVE = "30";
+
+/** 地図の 1 つ目の手の先の行き先 n 個への道を開き、芽の行き先（無ければ最初の物）を返す */
+const openGoalEnds = (page, n = 40) =>
+  page.evaluate((n) => {
+    const f = window.__fourD;
+    const vm = f.app.vm;
+    const deep = vm.deep.get();
+    const cm = deep.cm;
+    const a = deep.analysis();
+    const m0 = cm.firstMoves[3];
+    const leaves = [];
+    for (let i = m0; i < m0 + cm.size[m0]; i++) if (cm.kidOff[i] === cm.kidOff[i + 1] && a.pi.def[i]) leaves.push(i);
+    const pick = leaves.filter((_, k) => k % Math.ceil(leaves.length / n) === 0).slice(0, n);
+    const open = new Set();
+    for (const i of pick) for (const id of vm.impactChain(deep.idOf(i))) open.add(id);
+    vm.setImpactOpen([...open]);
+    vm.ensure();
+    const ends = vm.drawNodes.filter((id) => vm.impact.kind.get(id) === "leaf");
+    const doc = f.store.doc;
+    const seed = ends.find((id) => {
+      const rr = doc.nodes[id]?.meta?.rr;
+      return Array.isArray(rr) && rr[1] + rr[2] >= 10;
+    });
+    return { ends: ends.length, end: seed ?? ends[0] };
+  }, n);
+
+/** ゴールのカード（札）と線の数 */
+const goalRail = (page) =>
+  page.evaluate(() => {
+    const f = window.__fourD;
+    const g = f.app.view.goal;
+    const el = document.querySelector(".goal-rail");
+    const r = el && !el.hidden ? el.getBoundingClientRect() : null;
+    const cr = f.app.view.canvas.getBoundingClientRect();
+    return {
+      stubs: f.goalStubs,
+      emph: g.emph,
+      strokes: g.strokes,
+      labeled: g.labeled,
+      connector: g.connector,
+      state: g.state,
+      railSx: g.railSx,
+      width: f.app.view.width,
+      text: r ? el.innerText.replace(/\s+/g, " ").trim() : "",
+      aria: r ? el.getAttribute("aria-label") : null,
+      box: r && { top: r.top - cr.top, bottom: r.bottom - cr.top, left: r.left - cr.left, right: r.right - cr.left },
+      ruler: f.app.view.rulerTexts.filter((t) => t.includes("ゴール")),
+    };
+  });
+
+async function goalChecks(page, tag, profile) {
+  const narrow = profile.viewport.width < 700;
+  const panelTop = async () => {
+    await closeSheet(page);
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.ui.closeDeep?.();
+      f.ui.clearSelection();
+      f.ui.setPrefs({ rightOpen: true });
+    });
+    await settle(page, 300);
+    await page.locator(".sidebar-right .deep-ov .dm-goal[data-goal-key]:not(.is-wait)").first().waitFor({ timeout: 15_000 });
+    await page.evaluate(() => {
+      const sc = document.querySelector(".sidebar-right .insp-body-scroll");
+      if (sc) sc.scrollTop = 0;
+    });
+    await settle(page, 100);
+  };
+  const stripText = () => page.evaluate(() => document.querySelector(".sidebar-right .deep-ov .dm-goal .dm-goal-bartext")?.textContent ?? "");
+
+  await check(`${tag}: ゴール: 見取り図のいちばん上の帯（ゴール 資産 10 億円・期限・棒・目安）${narrow ? "。たたんだ帯と 10 の手の 10 行目が画面に収まる" : ""}・横にはみ出さない`, async () => {
+    await panelTop();
+    const strip = page.locator(".sidebar-right .deep-ov .dm-goal").first();
+    const sum = (await strip.locator("summary").innerText()).replace(/\s+/g, " ");
+    assert(/ゴール ?資産 10 億円・\d{4} 年まで/.test(sum), `帯の見出し: ${sum}`);
+    assert(/\d{4} 年に約 [\d.]+ 億円.*目安/.test(sum), `帯の棒の横に期限の年の資産と目安が無い: ${sum}`);
+    assert((await strip.locator(".dm-goal-bar .dm-goal-fill").count()) === 1, "帯の棒が無い");
+    const first = await page.evaluate(() => {
+      const ov = document.querySelector(".sidebar-right .deep-ov");
+      const g = ov.querySelector(".dm-goal");
+      const rows = ov.querySelectorAll(".dm-glance-row");
+      return { before: g && rows[0] ? !!(g.compareDocumentPosition(rows[0]) & Node.DOCUMENT_POSITION_FOLLOWING) : false };
+    });
+    assert(first.before, "帯が 10 の手の行より前にない");
+    if (narrow) {
+      // スマホ: たたんだ帯（既定）と 10 行目まで、何も動かさずに見える
+      const r = await page.evaluate(() => {
+        const d = document.querySelector(".sidebar-right .deep-ov .dm-goal details");
+        const rows = [...document.querySelectorAll(".sidebar-right .deep-ov .dm-glance-row")];
+        return { open: d?.open, h: innerHeight, bottom: Math.round(rows[9]?.getBoundingClientRect().bottom ?? 1e9), strip: Math.round(d?.getBoundingClientRect().height ?? 0) };
+      });
+      assert(r.open === false, "スマホで帯が開いている（既定はたたむ）");
+      assert(r.strip <= 64, `たたんだ帯が高い（${r.strip}px）`);
+      assert(r.bottom <= r.h, `たたんだ帯の下で 10 の手の 10 行目が画面に収まらない（下の端 ${r.bottom} / ${r.h}）`);
+    }
+    await noOverflow(page, "ゴールの帯");
+    await shot(page, `${tag}-goal-01-strip`);
+  });
+
+  await check(`${tag}: ゴール: 帯を開くと 3 つの数（届く年・要る積立・要る事業の伸び）と手立て・前提が並び、はみ出さない。「届く見込み 0%」は出さない`, async () => {
+    await panelTop();
+    // 机（高さ 900 以上）は最初から開いている。たたんでいれば「くわしく」で開く
+    const wasOpen = await page.evaluate(() => document.querySelector(".sidebar-right .deep-ov .dm-goal details")?.open ?? false);
+    if (!wasOpen) await page.locator(".sidebar-right .deep-ov .dm-goal summary").first().click();
+    await settle(page, 200);
+    const r = await page.evaluate(() => {
+      const g = document.querySelector(".sidebar-right .deep-ov .dm-goal");
+      const tiles = [...g.querySelectorAll(".dm-goal-tile")];
+      return {
+        open: g.querySelector("details").open,
+        n: tiles.length,
+        over: tiles.filter((t) => t.scrollWidth > t.clientWidth + 1).length,
+        tops: [...new Set(tiles.map((t) => Math.round(t.getBoundingClientRect().top)))].length,
+        text: g.innerText,
+      };
+    });
+    assert(r.open && r.n === 3, `開いた帯の 3 つの数（${r.n}）`);
+    assert(r.over === 0, `3 つの数がはみ出す（${r.over} 個）`);
+    assert(r.tops === 1, "3 つの数が 1 行に並ばない");
+    for (const w of ["届くには", "目安", "前提:", "地図が数えるのは"]) assert(r.text.includes(w), `開いた帯に「${w}」が無い`);
+    assert(!/見込み 0%/.test(r.text), "「届く見込み 0%」が出ている");
+    await noOverflow(page, "開いたゴールの帯");
+    await page.locator(".sidebar-right .deep-ov .dm-goal .dm-goal-premise-more").first().click();
+    await settle(page, 100);
+    await shot(page, `${tag}-goal-02-strip-open`);
+    // 開け閉めはこのブラウザに残る: 元のたたんだ形に戻す（スマホの既定）
+    if (!wasOpen) await page.locator(".sidebar-right .deep-ov .dm-goal summary").first().click();
+    await settle(page, 100);
+  });
+
+  await check(`${tag}: ゴール: 今の資産 ${GOAL_ASSETS} 万円・積立 ${GOAL_SAVE}% を入れると帯と行き先の札が変わり、元に戻すで戻る`, async () => {
+    await page.evaluate(() => window.__fourD.app.vm.resetImpactOpen());
+    const { end } = await openGoalEnds(page, 10);
+    await panelTop();
+    const card = () => page.evaluate((id) => {
+      const f = window.__fourD;
+      return f.app.view.cards.card(f.app.vm.impact, f.store.doc, id)?.goal ?? null;
+    }, end);
+    const before = { strip: await stripText(), card: await card() };
+    assert(before.card && before.card.text.includes("目安"), `行き先の札が無い・目安が無い（${JSON.stringify(before.card)}）`);
+    await page.locator('.sidebar-right [data-fk="goal"]').first().click();
+    await page.locator('.sidebar-right [data-fk="goal-assets"]').fill(GOAL_ASSETS);
+    await page.locator('.sidebar-right [data-fk="goal-save"]').fill(GOAL_SAVE);
+    await shot(page, `${tag}-goal-03-editor`);
+    await page.locator('.sidebar-right [data-fk="goal-ok"]').click();
+    await page.waitForFunction((b) => (document.querySelector(".sidebar-right .deep-ov .dm-goal .dm-goal-bartext")?.textContent ?? "") !== b, before.strip, { timeout: 10_000 });
+    await settle(page, 200);
+    const after = { strip: await stripText(), card: await card(), meta: await page.evaluate(() => { const f = window.__fourD; return f.store.doc.nodes[f.app.vm.impact.root].meta.goal; }), toast: await toasts(page) };
+    assert(after.meta && after.meta.assets === Number(GOAL_ASSETS) && after.meta.save === Number(GOAL_SAVE) && after.meta.v === 1 && Object.keys(after.meta).length === 3, `入口の前提: ${JSON.stringify(after.meta)}`);
+    assert(after.card && after.card.atBy > before.card.atBy, `行き先の期限の資産が増えていない（${before.card.atBy} → ${after.card?.atBy}）`);
+    assert(after.toast.includes("10 億円の前提を変えました"), `お知らせ: ${after.toast}`);
+    const row = await page.evaluate(() => document.querySelector(".sidebar-right .goal-view")?.textContent ?? "");
+    assert(/前提 3 つは仮/.test(row), `見出しの行の仮の数が減っていない: ${row}`);
+    await page.evaluate(() => window.__fourD.app.cmd.undo());
+    await page.waitForFunction((b) => (document.querySelector(".sidebar-right .deep-ov .dm-goal .dm-goal-bartext")?.textContent ?? "") === b, before.strip, { timeout: 10_000 });
+    const undone = { card: await card(), meta: await page.evaluate(() => { const f = window.__fourD; return f.store.doc.nodes[f.app.vm.impact.root].meta.goal; }) };
+    assert(undone.meta === undefined && Math.abs(undone.card.atBy - before.card.atBy) < 1e-6, `元に戻らない（${JSON.stringify(undone)}）`);
+    await dropToasts(page);
+  });
+
+  await check(`${tag}: ゴール: 地図のいちばん右のゴール。見えていなければ右の端の札（${narrow ? "10億 5% ›" : "→ ゴール 10 億円 5%"}）・行き先からゴールへ線（goalStubs）・選んだ行き先の線は濃く札つき・札を押すとゴールの列へ・カードを押すと前提の欄`, async () => {
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.app.vm.resetImpactOpen();
+      f.ui.clearSelection();
+      const imp = f.app.vm.impact;
+      f.app.view.fit([imp.root, ...imp.decision.get(imp.root).alts], { animate: false });
+    });
+    if (narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
+    await settle(page, 900);
+    let g = await goalRail(page);
+    assert(g.state === "right", `今日に寄った画面でゴールが右の端の札でない（${JSON.stringify(g)}）`);
+    assert(narrow ? /^10億 \d+% ›$/.test(g.text) : /^→ ゴール 10 億円 \d+%$/.test(g.text), `札の文字: ${g.text}`);
+    assert(g.aria && g.aria.includes("押すとゴールの所へ動きます"), `読み上げのボタンが無い（${g.aria}）`);
+    const covers = await page.evaluate(() => {
+      const c = document.querySelector(".goal-rail").getBoundingClientRect();
+      return [...document.querySelectorAll(".zoom-ctl, .toast:not(.closing), .bottom-bar, .banner")]
+        .filter((e) => e.checkVisibility())
+        .map((e) => e.getBoundingClientRect())
+        .filter((r) => c.left < r.right && c.right > r.left && c.top < r.bottom && c.bottom > r.top).length;
+    });
+    assert(covers === 0, "ゴールの札が下の操作・お知らせ・帯に重なる");
+    assert(g.stubs === 0, `行き先が見えていないのに線がある（${g.stubs}）`);
+    await shot(page, `${tag}-goal-04-chip`);
+    // 行き先を開いて寄る: 線が引かれる
+    const { end } = await openGoalEnds(page, 40);
+    await page.evaluate(([id, z]) => window.__fourD.app.view.centerOn(id, { zoom: z, animate: false }), [end, narrow ? 0.42 : 0.55]);
+    await settle(page, 400);
+    g = await goalRail(page);
+    const ends = await page.evaluate(() => {
+      const f = window.__fourD;
+      const v = f.app.view;
+      const vm = f.app.vm;
+      vm.ensure();
+      return vm.drawNodes.filter((id) => {
+        if (vm.impact.kind.get(id) !== "leaf") return false;
+        const s = v.camera.toScreen(0, vm.posOf(id).y);
+        return s.y >= 0 && s.y <= v.height;
+      }).length;
+    });
+    assert(g.stubs > 0 && g.stubs <= ends, `線の数（${g.stubs}・見えている高さの行き先 ${ends}）`);
+    assert(g.strokes <= 5, `線をまとめて描いていない（${g.strokes} 回）`);
+    assert(g.ruler.length === 1, `目盛りにゴールが無い（${g.ruler.join("・")}）`);
+    await shot(page, `${tag}-goal-05-stubs`);
+    // 選ぶ: その行き先の線は濃く、線の右に「2056 年 0.45 億円（5%）目安」
+    await page.evaluate((id) => window.__fourD.ui.select([id]), end);
+    if (narrow) await page.evaluate(() => window.__fourD.ui.setPrefs({ rightOpen: false }));
+    await settle(page, 500);
+    g = await goalRail(page);
+    assert(g.emph >= 1 && g.labeled, `選んだ行き先の線が濃くない・札が無い（${JSON.stringify(g)}）`);
+    if (narrow && g.state === "right") assert(g.connector, "スマホで選んだ行き先から右の札への破線が無い");
+    const fact = await page.evaluate(() => document.querySelector(".sidebar-right .goal-fact")?.textContent ?? "");
+    if (!narrow) assert(/\d{4} 年の資産は約 [\d.]+ 億円.*目安/.test(fact) && fact.includes("前提を変える"), `詳細の欄の「10 億」の 1 文: ${fact}`);
+    await shot(page, `${tag}-goal-06-end-selected`);
+    // 札を押すとゴールの列へ（カードになる）
+    if (g.state === "right") {
+      await page.locator(".goal-rail").click();
+      await settle(page, 700);
+      g = await goalRail(page);
+    }
+    assert(g.state === "card" && g.railSx > 0 && g.railSx < g.width, `札を押してもゴールの列へ動かない（${JSON.stringify(g)}）`);
+    assert(/^ゴール 資産 10 億円 \d{4} 年まで(（仮）)? 今の道 [\d.]+ 億（\d+%） ?目安$/.test(g.text), `ゴールのカードの文字: ${g.text}`);
+    assert(g.aria && g.aria.includes("押すと前提と内訳を開きます"), `読み上げ: ${g.aria}`);
+    assert(g.box.top >= 26, `ゴールのカードが目盛りに重なる（${JSON.stringify(g.box)}）`);
+    await shot(page, `${tag}-goal-07-rail-card`);
+    // カードを押すと前提の欄が開く
+    await page.locator(".goal-rail").click();
+    await page.waitForFunction(() => document.activeElement?.classList.contains("goal-input"), null, { timeout: 5000 });
+    await settle(page, 200);
+    await shot(page, `${tag}-goal-08-editor-from-rail`);
+    await page.keyboard.press("Escape");
+    await settle(page, 200);
+    assert((await page.locator(".goal-edit:not([hidden])").count()) === 0, "Esc で前提の欄が閉じない");
+    await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection()));
+    await settle(page, 200);
+  });
+
+  await check(`${tag}: ゴール: 途中のカードの詳細に「この先の行き先: 期限の年の資産（10〜90%・目安）」`, async () => {
+    const id = await selectCard(page, await page.evaluate(() => window.__fourD.app.vm.deep.get().cm.firstMoves[2]));
+    const line = page.locator(".sidebar-right .deep-goal");
+    await line.waitFor({ timeout: 10_000 });
+    await page.waitForFunction(() => /この先の行き先: \d{4} 年の資産/.test(document.querySelector(".sidebar-right .deep-goal")?.textContent ?? ""), null, { timeout: 10_000 });
+    // 詳細の下の欄は画面の外では描かない（content-visibility）: 文は textContent で読む
+    await line.scrollIntoViewIfNeeded();
+    const t = (await line.textContent()) ?? "";
+    assert(/この先の行き先: \d{4} 年の資産 [\d.〜]+ ?億円（10〜90%・目安）/.test(t), `途中のカードの 1 文: ${t}`);
+    assert(t.includes("前提を変える"), `手のカードの 1 文に「前提を変える」が無い: ${t}`);
+    await noOverflow(page, "途中のカードの詳細");
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    void id;
+  });
 }
 
 /** 見えているカードの数（キャンバス） */
@@ -1540,6 +1801,47 @@ async function storedProfile(browser, profile) {
       assert((await page.locator(".sidebar-right .deep-ov .dm-glance-row").count()) === 10, "開き直した後に見取り図が無い");
       console.log(`      開き直した後の 3 年の影響の形: ${after.compile}・保存した本体 ${b.chars} 文字`);
       await shot(page, `${tag}-07-reopened`);
+    });
+
+    await check(`${tag}: ゴール: 前提（今の資産 ${GOAL_ASSETS} 万円・積立 ${GOAL_SAVE}%）を入れると保存され、開き直しても帯と見出しの行に残る。元に戻すと消える`, async () => {
+      await page.evaluate(() => (window.__fourD.app.vm.resetImpactOpen(), window.__fourD.ui.clearSelection(), window.__fourD.ui.setPrefs({ rightOpen: true })));
+      await settle(page, 300);
+      await page.locator(".sidebar-right .deep-ov .dm-goal[data-goal-key]:not(.is-wait)").first().waitFor({ timeout: 15_000 });
+      const before = await page.evaluate(() => document.querySelector(".sidebar-right .deep-ov .dm-goal .dm-goal-bartext")?.textContent ?? "");
+      await page.locator('.sidebar-right [data-fk="goal"]').first().click();
+      await page.locator('.sidebar-right [data-fk="goal-assets"]').fill(GOAL_ASSETS);
+      await page.locator('.sidebar-right [data-fk="goal-save"]').fill(GOAL_SAVE);
+      await page.locator('.sidebar-right [data-fk="goal-ok"]').click();
+      await page.waitForFunction((b) => (document.querySelector(".sidebar-right .deep-ov .dm-goal .dm-goal-bartext")?.textContent ?? "") !== b, before, { timeout: 10_000 });
+      const changed = await page.evaluate(() => document.querySelector(".sidebar-right .deep-ov .dm-goal .dm-goal-bartext")?.textContent ?? "");
+      await page.evaluate(() => window.__fourD.persistence.flush());
+      const b = await storedBody(page);
+      assert(b.raw.includes(`"goal":{"v":1,"assets":${GOAL_ASSETS},"save":${GOAL_SAVE}}`), "保存した本体に前提が無い");
+      await page.reload();
+      await ready();
+      await settle(page, 1200);
+      await page.evaluate(() => (window.__fourD.ui.clearSelection(), window.__fourD.ui.setPrefs({ rightOpen: true })));
+      await page.locator(".sidebar-right .deep-ov .dm-goal[data-goal-key]:not(.is-wait)").first().waitFor({ timeout: 15_000 });
+      const r = await page.evaluate(() => {
+        const f = window.__fourD;
+        return { meta: f.store.doc.nodes[f.app.vm.impact.root].meta.goal, bar: document.querySelector(".sidebar-right .deep-ov .dm-goal .dm-goal-bartext")?.textContent ?? "", row: document.querySelector(".sidebar-right .goal-view")?.textContent ?? "" };
+      });
+      assert(r.meta?.assets === Number(GOAL_ASSETS) && r.meta?.save === Number(GOAL_SAVE), `開き直したら前提が無い（${JSON.stringify(r.meta)}）`);
+      assert(r.bar === changed, `開き直した帯の数が違う（${changed} → ${r.bar}）`);
+      assert(/前提 3 つは仮/.test(r.row), `見出しの行: ${r.row}`);
+      await shot(page, `${tag}-goal-reopened`);
+      // 後の確かめに残さない（入れる前に戻す: 仮の前提だけの文書）
+      await page.evaluate(() => {
+        const f = window.__fourD;
+        const root = f.store.doc.nodes[f.app.vm.impact.root];
+        const meta = { ...root.meta };
+        delete meta.goal;
+        f.store.transact("前提を戻す", (tx) => tx.updateNode(root.id, { meta }));
+      });
+      await dropToasts(page);
+      await page.evaluate(() => window.__fourD.persistence.flush());
+      const b2 = await storedBody(page);
+      assert(!b2.raw.includes('"goal":'), "前提を消しても保存した本体に残る");
     });
 
     await check(`${tag}: まとめて開いた形（同じ時期まで）は開き直しても同じ。文書の保存（薄い形）は書き直さない（開く・閉じるは見え方の設定だけ）`, async () => {

@@ -330,6 +330,16 @@ export function goalMoveVM(a: Analysis, view: GoalView, f: number): GoalMoveVM |
   return { name, text: parts.join(""), href, linkText };
 }
 
+/**
+ * 途中のカードの「この先の行き先」の 1 文（そのカードからおすすめの選び方で着く行き先の、期限の年の資産の 10〜90% と芽の割合。
+ * goalFrom の答えから）。数が出せなければ null
+ */
+export function goalFromLine(t: GoalTables, s: GoalScope): string | null {
+  if (!s.atBy) return null;
+  const seed = s.seed > 0 ? `・芽のある行き先 ${formatGoalShare(s.seed)}` : "";
+  return `この先の行き先: ${t.by} 年の資産 ${okuRange(s.atBy.p10, s.atBy.p90, okuOf(t))}（10〜90%・目安）${seed}`;
+}
+
 /** 道の終わり（地図の番号 i の行き先）の 1 文。数が出せなければ null */
 export function goalEndText(a: Analysis, view: GoalView, i: number): string | null {
   const x = goalInputAt(a, i);

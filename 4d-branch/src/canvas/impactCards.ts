@@ -137,6 +137,8 @@ export class ImpactCards {
   private anchor: string | null = null;
   /** 資産のゴールの前提の係数（行き先のカードを作るときに 1 度だけ読む） */
   private goalT: GoalTables | null | undefined = undefined;
+  /** 札を作ったときの入口の meta.goal（変わったら行き先の札を作り直す） */
+  private goalRaw: unknown = undefined;
 
   /** now: 年月の無い地図（版 6）で、資産のゴールの期限を今月から数えるための時計 */
   constructor(private readonly now: () => Date = () => new Date()) {}
@@ -146,14 +148,30 @@ export class ImpactCards {
     return this.goalT;
   }
 
+  /** 資産のゴールの前提の係数（行き先の札と同じ物。ゴールへの線の札・目盛りの「→ ゴール」に使う。入口が無ければ null） */
+  goal(imp: ImpactResult, doc: DocData): GoalTables | null {
+    this.sync(imp, doc);
+    return this.goalTables();
+  }
+
   private sync(imp: ImpactResult, doc: DocData): void {
-    if (imp === this.imp && doc === this.doc) return;
+    if (imp === this.imp && doc === this.doc) {
+      // 文書はその場で書き換わる（同じ物）。前提（入口の meta.goal）だけを変えても計算の結果は同じなので、行き先の札だけ作り直す
+      const raw = imp.root ? doc.nodes[imp.root]?.meta?.goal : undefined;
+      if (raw !== this.goalRaw) {
+        this.goalRaw = raw;
+        this.goalT = undefined;
+        for (const [id, c] of this.cards) if (c.card?.role === "end") this.cards.delete(id);
+      }
+      return;
+    }
     this.imp = imp;
     this.doc = doc;
     this.cards.clear();
     this.edges.clear();
     this.ranks = null;
     this.goalT = undefined;
+    this.goalRaw = imp.root ? doc.nodes[imp.root]?.meta?.goal : undefined;
     const a = imp.root ? doc.nodes[imp.root]?.meta?.anchor : null;
     this.anchor = typeof a === "string" && /^\d{4}-\d{2}$/.test(a) ? a : null;
   }

@@ -260,6 +260,43 @@ async function main() {
     assert(!(await page.locator(".imp-overview .imp-kari").evaluate((x) => x.hidden)), "（仮）に戻らない");
   });
 
+  await check("ゴール（版 6）: 見出しの帯（ゴール 資産 10 億円・期限・棒・目安）・くわしくで前提を変える・行き先の詳細に「10 億」の 1 文・地図にゴールの列と線は無い・内訳の無い行き先に芽を出さない", async () => {
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+    await page.waitForTimeout(200);
+    const strip = page.locator(".imp-overview .goal-imp-strip .dm-goal");
+    await strip.waitFor({ timeout: 5000 });
+    const sum = (await strip.locator("summary").innerText()).replace(/\s+/g, " ");
+    assert(/ゴール ?資産 10 億円・\d{4} 年まで/.test(sum) && /約 [\d.]+ 億円.*目安/.test(sum), `版 6 の帯: ${sum}`);
+    assert(!(await page.locator(".imp-overview .goal-view").isVisible()), "帯と同じ事を言う見出しの行が出ている");
+    await strip.locator("summary").click();
+    const text = await strip.innerText();
+    for (const w of ["届くには", "前提:", "目安", "地図が数えるのは"]) assert(text.includes(w), `開いた帯に「${w}」が無い`);
+    assert(!/見込み 0%/.test(text), "「届く見込み 0%」が出ている");
+    await shot("impact-desktop-goal-strip", page);
+    await strip.locator("[data-goal-act='edit']").first().click();
+    await page.waitForFunction(() => document.activeElement?.classList.contains("goal-input"), null, { timeout: 5000 });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    assert((await page.locator(".imp-overview .goal-edit:not([hidden])").count()) === 0, "Esc で前提の欄が閉じない");
+    await strip.locator("summary").click();
+    const r = await page.evaluate(() => {
+      const f = window.__fourD;
+      const imp = f.app.vm.impact;
+      const doc = f.store.doc;
+      const ends = imp.ends.map((e) => e.id);
+      const split = ends.filter((id) => Array.isArray(doc.nodes[id]?.meta?.rr) && doc.nodes[id].meta.rr.length === 3).length;
+      const seeds = ends.filter((id) => f.app.view.cards.card(imp, doc, id)?.goal?.seed).length;
+      return { rail: !!document.querySelector(".goal-rail:not([hidden])"), stubs: f.goalStubs, ruler: f.app.view.rulerShown, split, seeds, end: ends[0] };
+    });
+    assert(!r.rail && r.stubs === 0 && !r.ruler, `版 6 の地図にゴールの列・線がある（${JSON.stringify(r)}）`);
+    if (r.split === 0) assert(r.seeds === 0 && !text.includes("芽 "), `内訳の無い版 6 の行き先に芽がある（${r.seeds}）`);
+    await page.evaluate((id) => window.__fourD.ui.select([id]), r.end);
+    await page.waitForTimeout(300);
+    const fact = (await page.locator(".sidebar-right .goal-fact").first().textContent()) ?? "";
+    assert(/\d{4} 年の資産は約 [\d.]+ (億|万)円.*目安/.test(fact) && fact.includes("前提を変える"), `行き先の「10 億」の 1 文: ${fact}`);
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
   await check("概要: 欄の順（見出し → 今決めること → 3 年でやる価値が大きい手 → 避けたい手 → この先の大事な判断 → 分布 → 行き先 → 前提 → 見方 → ボタン）", async () => {
     await page.evaluate(() => window.__fourD.ui.clearSelection());
     await page.waitForTimeout(150);

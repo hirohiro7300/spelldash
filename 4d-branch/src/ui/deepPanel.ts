@@ -11,11 +11,12 @@
 import "../deepmap/views/views.css";
 import "../styles/deep.css";
 import type { AppContext } from "../app/context";
-import { whenIdle } from "../app/idle";
+import { whenIdle, type IdleDeadlineLike } from "../app/idle";
 import { cardWithDocOdds, type DeepCtx } from "../app/deepState";
 import type { DeepPage } from "../app/uiState";
-import type { Analysis, Overview } from "../deepmap/core";
-import { findFirstMove, findPathToken, kindSlug, moveDetailVM, notesSection, notesVM, overviewVM, parseRoute, pathVM, renderMoveDetail, renderOverview, renderPathPage, ym, type MoveDetailVM, type OverviewMemo, type OverviewVM, type PathVM } from "../deepmap/views";
+import { endsFrom, goalFrom, type Analysis, type Overview } from "../deepmap/core";
+import { goalAnchor, goalConfigOf, tablesFor } from "../model/goal";
+import { goalFromLine, findFirstMove, findPathToken, kindSlug, moveDetailVM, notesSection, notesVM, overviewVM, parseRoute, pathVM, renderMoveDetail, renderOverview, renderPathPage, ym, type MoveDetailVM, type OverviewMemo, type OverviewVM, type PathVM } from "../deepmap/views";
 import { DEEP_OPEN_CAP, deepHorizons, likelyPaths, likelyReady, quarterOpens, quarterOpensReady, type DeepHorizon } from "../model/deepOpen";
 import { buildMultiOpen, depthRows, drawnSplit, foldBtn, hiddenRows, isDrawn, keepFocus, likelyRows, moveFit, moveRun, pickToggle, quarterRows, runBulk, type MoveFit } from "./bulkOpen";
 import type { ID } from "../model/types";
@@ -565,7 +566,8 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
       const i = ctx ? ctx.indexOf(id) : -1;
       el.hidden = !ctx || i < 0;
       if (!ctx || i < 0) return;
-      const k = `${openKey(app, ctx)}|${i}`;
+      // 資産のゴールの前提（入口の meta.goal）が変わったら「この先の行き先」の 1 文も作り直す
+      const k = `${openKey(app, ctx)}|${i}|${JSON.stringify(app.store.doc.nodes[ctx.root]?.meta?.goal ?? null)}`;
       if (k === key) return;
       key = k;
       keepFocus(el, () => fillNodeBlock(ctx, i));
@@ -602,11 +604,55 @@ export function buildDeepNodeBlock(app: AppContext, id: ID): { el: HTMLElement; 
       if (f >= 0) btns.append(h("button", { class: "btn btn-sm", type: "button", dataset: { fk: `deep-move:${id}` }, onClick: () => app.ui.openDeep({ kind: "move", f }) }, icon("layers", 14), "この手の見取り図"));
     }
     el.append(btns);
+    if (i > 0 && ctx.cm.kidOff[i] !== ctx.cm.kidOff[i + 1]) el.append(goalFromEl(app, ctx, i, () => key));
     const opens = openActions(app, ctx, i, id);
     if (opens) el.append(opens);
     app.vm.deep.timings.nodeBlock = performance.now() - t0;
   }
 }
+
+/**
+ * 途中のカードの「この先の行き先: 2056 年の資産 0.40〜0.52 億円（10〜90%・目安）・芽のある行き先 9%」（作業メモ goal/design.md §4.6）。
+ * そのカードの先の行き先をなめる（O(部分木)）ので、選んだフレームでは場所だけ置き、空いた時間に埋める。手のカードは詳細の欄に
+ * 「10 億」の 1 行が無いので、前提を変える入口も並べる（結果・状態のカードは詳細の欄の 1 行にある）
+ */
+function goalFromEl(app: AppContext, ctx: DeepCtx, i: number, key: () => string): HTMLElement {
+  const text = h("span", { class: "deep-goal-t" }, "この先の行き先の資産を数えています…");
+  const el = h("p", { class: "deep-goal", dataset: { fk: `deep-goal:${i}` } }, h("b", { class: "deep-goal-k" }, "ゴール"), " ", text);
+  const k0 = key();
+  const run = (dl: IdleDeadlineLike | null): void => {
+    if (!el.isConnected || key() !== k0 || app.vm.deep.get() !== ctx) return;
+    // 空いた時間が短ければ次の空いた時間へ（8 万枚の地図の今日の手の先は数千枚: スマホで数十 ms。選んだ直後の描画・次の操作を待たせない）
+    if (dl && !dl.didTimeout && dl.timeRemaining() < 12) {
+      whenIdle(run, 2000);
+      return;
+    }
+    const root = app.store.doc.nodes[ctx.root];
+    const t = tablesFor(goalConfigOf(root).cfg, goalAnchor(ctx.map.header.anchor));
+    const a = ctx.analysis();
+    let memo = goalFromMemo.get(a);
+    if (!memo) goalFromMemo.set(a, (memo = new Map()));
+    const mk = `${i}|${t.key}`;
+    let line = memo.get(mk);
+    if (line === undefined) {
+      line = goalFromLine(t, goalFrom(a, i, endsFrom(a, i), t));
+      if (memo.size > 64) memo.clear();
+      memo.set(mk, line);
+    }
+    if (!line) {
+      el.remove();
+      return;
+    }
+    text.textContent = line;
+    if (app.vm.impact.alt.has(ctx.idOf(i))) el.append(" ", h("button", { class: "imp-link goal-change", type: "button", dataset: { goalAct: "edit" }, title: "資産のゴールの前提を変える" }, "前提を変える"));
+  };
+  // 選んだフレームと、その直後の操作（続けて選ぶ・開く）の後に回す
+  setTimeout(() => whenIdle(run, 2000), 400);
+  return el;
+}
+
+/** 途中のカードの「この先の行き先」の 1 文（計算ごと・カードと前提ごとに覚える） */
+const goalFromMemo = new WeakMap<Analysis, Map<string, string | null>>();
 
 // ------------------------------------------------------------ 組み立てた本文（読むだけ）と自分のメモ（作業メモ SPEC §4.4・safety-10）
 

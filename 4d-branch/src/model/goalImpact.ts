@@ -57,6 +57,8 @@ export interface GoalCard {
   frac: number;
   /** 期限までに届く（今の前提で） */
   reached: boolean;
+  /** 期限の年の資産（万円・目安。地図のゴールへの線の札「2056 年 0.45 億円（5%）目安」） */
+  atBy: number;
 }
 
 /** 行き先のカード（3 年の分かれ道の行き先だけ）の札。行き先でない・数が出せなければ null */
@@ -65,7 +67,7 @@ export function goalCardOf(t: GoalTables, imp: ImpactResult, doc: DocData, id: I
   const x = goalInputOfImpact(imp, id, doc.nodes[id]?.meta?.rr);
   if (!x) return null;
   const leaf = goalLeaf(t, x);
-  return { text: goalBadge(t, leaf), seed: leaf.seed, frac: leaf.frac, reached: leaf.reached };
+  return { text: goalBadge(t, leaf), seed: leaf.seed, frac: leaf.frac, reached: leaf.reached, atBy: leaf.atBy };
 }
 
 /**

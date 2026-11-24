@@ -15,6 +15,7 @@ import { fillGoalSlots, goalOverviewVM, goalSkeletonEl, goalStripEl, goalStripVM
 import { formatOku, goalAnchor, goalAnchorOfRoot, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
 import { goalCtxOf, goalFactOf, goalImpactStrip } from "../model/goalImpact";
 import { goalEditorStale, goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, sameGoal, type GoalField } from "../model/goalForm";
+import type { GoalRailHost, GoalRailInfo } from "../canvas/goalRail";
 import type { ImpactResult } from "../model/impact";
 import type { GNode } from "../model/types";
 import { h, isImeKey } from "./dom";
@@ -62,7 +63,7 @@ export function applyGoal(app: AppContext, next: GoalStored | null): boolean {
 export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: ImpactResult): void } {
   const name = h("b", { class: "goal-name" });
   const by = h("span", { class: "goal-by" });
-  const kari = h("span", { class: "imp-kari" });
+  const kari = h("span", { class: "goal-kari" });
   const change = h("button", { class: "imp-link goal-change", type: "button", title: "資産のゴールの前提を入れる・変える", dataset: { fk: "goal" } }, "変える");
   const view = h("div", { class: "goal-view" }, h("span", null, "ゴール"), name, by, kari, change);
   const fieldsBox = h("div", { class: "goal-fields" });
@@ -147,7 +148,8 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
     edit.hidden = true;
     view.hidden = false;
     err.textContent = "";
-    if (had) change.focus();
+    // 版 6 の帯があるときは見出しの行を出さない（goal.css）: 帯の「くわしく」へ戻す
+    if (had) ((el.classList.contains("has-strip") && el.querySelector<HTMLElement>(".goal-imp-strip summary")) || change).focus();
   };
   const submit = (): void => {
     if (app.store.readOnly) return;
@@ -198,6 +200,8 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
       refreshGoalViews(app);
       const vm = impactStripOf(app, imp);
       strip.hidden = !vm;
+      // 帯があれば、見出しの行は帯の 1 行目が言う（同じ事を 2 度言わず、スマホの引き出しで今決めることの 10 行を押し下げない: goal.css）
+      el.classList.toggle("has-strip", !!vm);
       if (!vm) stripKey = "";
       else if (vm.key !== stripKey) {
         stripKey = vm.key;
@@ -206,6 +210,9 @@ export function goalWidget(app: AppContext): { el: HTMLElement; update(imp: Impa
         // 見取り図の帯と同じ形だが、見取り図の数では埋めない（data-goal-key を外す）
         delete fresh.dataset.goalKey;
         fresh.dataset.goalImp = vm.key;
+        // 見出しの行に期限の年がある（帯の 1 行目）: 棒の横は「約 0.44 億円（4%）・目安」だけ
+        const bt = fresh.querySelector<HTMLElement>(".dm-goal-bartext");
+        if (bt) bt.textContent = vm.barText.replace(/^\d+ 年に/, "");
         if (was) (fresh.querySelector("details") as HTMLDetailsElement).open = (was as HTMLDetailsElement).open;
         strip.replaceChildren(fresh);
       }
@@ -326,4 +333,43 @@ export function goalRootStripEl(app: AppContext, imp: ImpactResult): HTMLElement
   if (view) return goalStripEl(goalOverviewVM(a, view).strip);
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => refreshGoalViews(app));
   return goalSkeletonEl();
+}
+
+// ---------------------------------------------------------------- 地図のゴールのカード（src/canvas/goalRail.ts）
+
+/**
+ * 地図のいちばん右のゴールのカード・札の数（3 か月ごとの地図の見取り図と同じ数: おすすめの選び方の期限の年の資産の真ん中）。
+ * 描くフレームの中では作らない（compute が false: 作ってある物だけ。計算か前提が変わった後は前の数に別の鍵を付けて返し、
+ * 空いた時間に compute を true で呼び直してもらう）。押すと前提の欄を開く
+ */
+export function goalRailHost(app: AppContext): GoalRailHost {
+  let memo: { ctx: unknown; raw: unknown; info: GoalRailInfo; imp: unknown; root: unknown } | null = null;
+  return {
+    info(compute) {
+      // 描くたびに呼ばれる: 計算の結果と入口のカードが前と同じなら、地図の画面に渡す物（deep.get）を引かずに前の数
+      const imp = app.vm.impact;
+      const rootNode = imp.active && imp.root ? app.store.doc.nodes[imp.root] : undefined;
+      if (memo && memo.imp === imp && memo.root === rootNode) return memo.info;
+      const ctx = app.vm.deep.get();
+      if (!ctx) return null;
+      const raw = app.store.doc.nodes[ctx.root]?.meta?.goal;
+      if (memo && memo.ctx === ctx && memo.raw === raw) {
+        memo.imp = imp;
+        memo.root = rootNode;
+        return memo.info;
+      }
+      if (!compute) return memo ? { ...memo.info, key: `${memo.info.key}|old` } : null;
+      const view = goalViewOf(ctx.analysis(), true);
+      if (!view) return null;
+      const s = view.summary;
+      const scope = s.pi ?? s.keep;
+      const mid = scope?.atBy?.p50 ?? null;
+      const byKari = view.read.assumed.has("by");
+      // 鍵は数そのもの（選び方の計算の入れ物が作り直されても、同じ数なら同じ鍵: カードの文字を書き直さない）
+      const info: GoalRailInfo = { key: `${s.tables.T}|${s.tables.by}|${byKari ? 1 : 0}|${mid === null ? "-" : mid.toFixed(1)}`, T: s.tables.T, by: s.tables.by, byKari, mid };
+      memo = { ctx, raw, info, imp, root: rootNode };
+      return info;
+    },
+    open: () => openGoalEditor(app),
+  };
 }

@@ -63,7 +63,8 @@
   align-items: center;
   gap: 4px 10px;
   min-height: 44px;
-  padding: 8px 12px;
+  /* 上下は詰める（スマホで、たたんだ帯と 10 の手の 10 行目が 844px の画面に収まる: 作業メモ goal/design.md §5） */
+  padding: 6px 12px;
   border-radius: var(--r-lg);
   cursor: pointer;
 }
@@ -381,6 +382,11 @@
   color: var(--text-1);
   font-weight: 650;
 }
+/* 仮の前提の数（年収の欄の（仮）と同じ色。年収の欄の .imp-kari とは別の名前: 概要の（仮）を探す所が年収だけを見る） */
+.goal-kari {
+  color: var(--warn);
+}
+.goal-kari[hidden],
 .goal-view[hidden],
 .goal-edit[hidden],
 .goal-ro[hidden] {
@@ -472,6 +478,36 @@
 .goal-imp-strip[hidden] {
   display: none;
 }
+/*
+ * 版 6 の見出しの帯: 見出しの行（「ゴール 資産 10 億円・2056 年まで（前提 5 つは仮）［変える］」）と帯の見出しは同じ事を言うので、
+ * 帯があるときは見出しの行を出さず、帯を 2 行にする（1 行目「ゴール 資産 10 億円・2056 年まで」、2 行目に棒・期限の年の資産・くわしく）。
+ * 前提を変えるは帯の中（くわしく）に。スマホの引き出しで、今決めることの 10 行を押し下げない（作業メモ goal/design.md §4.8）
+ */
+.goal-wrap.has-strip {
+  gap: 4px;
+}
+.goal-wrap.has-strip > .goal-view {
+  display: none;
+}
+.goal-imp-strip .dm-goal-sum {
+  grid-template-columns: minmax(36px, 1fr) auto auto;
+  grid-template-areas:
+    "head head head"
+    "bar text more";
+  gap: 3px 8px;
+  padding: 6px 12px;
+}
+.goal-imp-strip .dm-goal-head {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.goal-imp-strip .dm-goal-more {
+  align-self: center;
+}
+.goal-imp-strip .dm-goal-bar {
+  min-width: 36px;
+}
 .imp-node-body > .dm-goal {
   margin-bottom: 10px;
 }
@@ -509,4 +545,135 @@
   .dm-goal-tile-value.is-long {
     font-size: 14px;
   }
+}
+
+/* ------------------------------------------------------------ 地図のゴールのカード（src/canvas/goalRail.ts） */
+/*
+ * キャンバスの上の目盛り（26px）のすぐ下、ゴールの列の右に置く（位置は JS が transform だけを書く）。列が画面の外なら端の札。
+ * 上に置くので、下の操作（拡大縮小・未来の道筋）とお知らせには重ならない。お知らせの帯（z-index 8）より下
+ */
+.goal-rail {
+  position: absolute;
+  /* 目盛り（26px）+ 8px。お知らせの帯が出ていればその下（--goal-banner: JS が帯の高さが変わったときだけ書く） */
+  top: calc(34px + var(--goal-banner, 0px));
+  left: 0;
+  z-index: 4;
+  box-sizing: border-box;
+  /* 机は「今の道 0.46 億（5%）目安」が 1 行に入る幅（src/canvas/goalRail.ts の CARD_W と同じ） */
+  width: 176px;
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 8px 10px 9px;
+  border-radius: 12px;
+  border: 1px solid var(--goal-gold-line);
+  background: var(--goal-rail-bg);
+  box-shadow: var(--shadow-card);
+  color: var(--text-1);
+  font: inherit;
+  text-align: left;
+  line-height: 1.35;
+  cursor: pointer;
+  will-change: transform;
+}
+:root {
+  --goal-rail-bg: rgba(24, 19, 10, 0.94);
+}
+:root[data-theme="light"] {
+  --goal-rail-bg: rgba(255, 250, 240, 0.97);
+}
+.goal-rail[hidden] {
+  display: none;
+}
+.goal-rail:focus-visible {
+  outline: 2px solid var(--goal-gold);
+  outline-offset: 2px;
+}
+.goal-rail-k {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--goal-gold);
+}
+.goal-rail-name {
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--goal-gold-ink);
+  white-space: nowrap;
+}
+.goal-rail-by {
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.goal-rail-now {
+  margin-top: 3px;
+  padding-top: 4px;
+  border-top: 1px solid var(--goal-gold-line);
+  font-size: 12px;
+  color: var(--text-1);
+}
+.goal-rail-now > span {
+  white-space: nowrap;
+}
+.goal-rail-now[hidden],
+.goal-rail-chip {
+  display: none;
+}
+.goal-rail.is-narrow {
+  width: 128px;
+  padding: 7px 9px 8px;
+}
+.goal-rail.is-narrow .goal-rail-name {
+  font-size: 14px;
+}
+.goal-rail.is-narrow .goal-rail-now {
+  font-size: 11.5px;
+}
+/* 端に寄せた札（ゴールの列が画面の外）。押す所は周りへ広げて 44px */
+.goal-rail.is-chip {
+  left: auto;
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  width: auto;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 13px;
+  border-radius: 18px;
+  transform: none;
+}
+.goal-rail.is-chip.is-left {
+  right: auto;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+}
+.goal-rail.is-chip::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+.goal-rail.is-chip > :not(.goal-rail-chip) {
+  display: none;
+}
+.goal-rail.is-chip .goal-rail-chip {
+  display: inline;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--goal-gold-ink);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ 途中のカードの詳細の「この先の行き先」の 1 文（src/ui/deepPanel.ts） */
+.deep-goal {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--goal-gold-line);
+  border-radius: 0 8px 8px 0;
+  background: var(--goal-gold-soft);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+.deep-goal-k {
+  color: var(--goal-gold);
 }

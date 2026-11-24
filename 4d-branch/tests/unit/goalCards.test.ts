@@ -105,6 +105,24 @@ describe("キャンバスの行き先のカードの札（card.goal）", () => {
     // 元の文書に戻すと元の札
     expect(cards.card(imp, doc, leaf)!.goal!.text).toBe(before.text);
   });
+
+  it("文書をその場で書き換えても（ストアは同じ文書の入口のカードを差し替える）、前提が変われば行き先の札を作り直す。ほかのカードはそのまま", () => {
+    const { doc, rootId, imp } = quarterly();
+    const cards = new ImpactCards(CLOCK);
+    const leaf = imp.ends[0]!.id;
+    const mid = [...imp.kind].find(([id, k]) => k !== "leaf" && id !== imp.root)![0];
+    const before = cards.card(imp, doc, leaf)!.goal!;
+    const midCard = cards.card(imp, doc, mid);
+    const root = doc.nodes[rootId]!;
+    doc.nodes[rootId] = { ...root, meta: { ...root.meta, goal: { v: 1, assets: 500, save: 30 } } };
+    const after = cards.card(imp, doc, leaf)!.goal!;
+    expect(after.atBy).toBeGreaterThan(before.atBy);
+    expect(cards.card(imp, doc, mid)).toBe(midCard);
+    // 元に戻す（前の入口のカード）: 元の数
+    doc.nodes[rootId] = root;
+    expect(cards.card(imp, doc, leaf)!.goal!.atBy).toBeCloseTo(before.atBy, 9);
+    expect(cards.goal(imp, doc)!.cfg.assets).toBe(0);
+  });
 });
 
 describe("詳細の欄の「10 億」の 1 文（goalFactOf）", () => {
@@ -317,7 +335,7 @@ function endCard(seed: boolean, text = "10 億: 事業が年 +28%"): ImpactCard 
     dotLabel: "3年後 月 42万",
     heat: null,
     heatLow: "",
-    goal: { text, seed, frac: 0.05, reached: false },
+    goal: { text, seed, frac: 0.05, reached: false, atBy: 5000 },
   };
 }
 
