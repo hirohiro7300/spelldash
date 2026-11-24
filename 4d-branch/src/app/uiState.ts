@@ -263,6 +263,12 @@ export class UiState {
    */
   multiPick = false;
 
+  /**
+   * 次の「visual」での右のパネルの合わせ直しを、キャンバスを描いた後に回す（まとめて開くの 1 回: 2,600 枚を開いた仕事を、
+   * キャンバスを描く仕事とパネルを作り直す仕事に分ける。スマホで 1 つの長い仕事にしない: 見直し speed-phone-open-one-long-task）
+   */
+  panelAfterPaint = false;
+
   setMultiPick(on: boolean): void {
     if (this.multiPick === on) return;
     this.multiPick = on;

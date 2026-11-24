@@ -428,16 +428,21 @@
   color: var(--text-1);
 }
 .deep-multi {
+  margin-top: 10px;
   margin-bottom: 14px;
 }
-/* 「ほかのカードも選ぶ」の間の帯（キャンバスの上の帯の並び .banner-area の最後。目盛りがあればその下） */
+/* 「ほかのカードも選ぶ」の間の帯（キャンバスの下の真ん中、拡大の部品の上。上の手のカードを覆わない: 見直し reader-6） */
 .pick-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 8;
   pointer-events: auto;
-  justify-self: center;
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 100%;
+  max-width: calc(100% - 24px);
   padding: 5px 6px 5px 12px;
   border-radius: 12px;
   border: 1px solid var(--accent-line);
@@ -455,4 +460,12 @@
 }
 .pick-bar-count {
   font-variant-numeric: tabular-nums;
+}
+.pick-bar-text {
+  display: grid;
+  line-height: 1.25;
+}
+.pick-bar-hint {
+  font-size: 11px;
+  color: var(--text-3);
 }

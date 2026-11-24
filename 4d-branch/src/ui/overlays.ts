@@ -300,10 +300,17 @@ export function confirmDialog(opts: { title: string; body: string; ok: string; c
 
 // ------------------------------------------------------------ お知らせ
 
+/** お知らせのボタン（keep: 押してもお知らせを閉じず、ほかのボタンも押せるまま。「見取り図で見る」の横の「元に戻す」を残す） */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+  keep?: boolean;
+}
+
 export interface ToastOpts {
-  action?: { label: string; run: () => void };
+  action?: ToastAction;
   /** 2 つ目のボタン（まとめて開いた後の「元に戻す」と「見取り図で見る」など。狭い画面では文の下に折り返す） */
-  action2?: { label: string; run: () => void };
+  action2?: ToastAction;
   tone?: "info" | "warn" | "error" | "ok";
   ms?: number;
   /** 閉じたとき（時間切れ・閉じるボタン・ボタンを押した・新しいお知らせに押し出された・返した関数で閉じた）に 1 回だけ呼ぶ */
@@ -336,7 +343,7 @@ export function toast(text: string, opts: ToastOpts = {}): () => void {
   toastClosers.set(el, close);
   // 1 回だけ効かせる（閉じかけのお知らせはまだ押せるので、ダブルクリックの 2 回目で同じことを繰り返さない。2 つあってもどちらか 1 回）
   let fired = false;
-  const actions = [opts.action, opts.action2].filter((a): a is { label: string; run: () => void } => !!a);
+  const actions = [opts.action, opts.action2].filter((a): a is ToastAction => !!a);
   const actBtns = actions.map((a) =>
     h(
       "button",
@@ -345,6 +352,10 @@ export function toast(text: string, opts: ToastOpts = {}): () => void {
         type: "button",
         onClick: () => {
           if (fired) return;
+          if (a.keep) {
+            a.run();
+            return;
+          }
           fired = true;
           close();
           a.run();

@@ -7,7 +7,12 @@ import { ViewModel } from "../../src/app/viewModel";
 import { analyze, compileMap, endsFrom, type CompiledMap } from "../../src/deepmap/core";
 import type { MapData } from "../../src/deepmap/mapData";
 import { buildQuarterDoc } from "../../src/demo/quarterDoc";
-import { DEEP_OPEN_CAP, DEPTH_STEPS, OPEN_LIST_BOUND, deepDepths, foldPlan, likelyPaths, openUntil, quarterOpens, shapePlan, topsOf, visibleUnder, visibleUnderEach } from "../../src/model/deepOpen";
+import { Commands } from "../../src/app/commands";
+import type { AppContext } from "../../src/app/context";
+import type { DeepCtx } from "../../src/app/deepState";
+import { DEEP_OPEN_CAP, DEPTH_STEPS, OPEN_LIST_BOUND, deepDepths, deepHorizons, foldPlan, likelyPaths, openUntil, quarterOpens, shapeDepths, shapePlan, shapeRule, topsOf, visibleUnder, visibleUnderEach } from "../../src/model/deepOpen";
+import { makeEdge, makeNode } from "../../src/model/schema";
+import { drawnSplit, isDrawn, liveCount, moveFit, moveRun, shapeCount, showOnCanvas, userOpensInside } from "../../src/ui/bulkOpen";
 import type { DocData } from "../../src/model/types";
 import { setThinBaseline, thinBaselineDoc, toStored } from "../../src/persist/codec";
 import { Store } from "../../src/store/store";
@@ -464,5 +469,235 @@ describe("まとめて開く: アプリの見え方（1 回の変更・元に戻
     }
     expect(shown.size).toBeGreaterThan(0);
     expect(DEEP_OPEN_CAP).toBe(3000);
+  });
+});
+
+// ------------------------------------------------------------ 見直しの直し（data-*・speed-*）
+
+/** パネルの数え方（src/ui/bulkOpen.ts）を、画面なしで呼ぶためのアプリ（使う物だけ） */
+function appOf(store: Store, ui: UiState, vm: ViewModel): AppContext {
+  return { store, ui, vm, view: { centerOn() {} } } as unknown as AppContext;
+}
+
+/** 開く・閉じる（地図の番号）を 1 回の bulkOpen で */
+function applyRun(vm: ViewModel, ctx: DeepCtx, open: readonly number[], close: readonly number[]) {
+  return vm.bulkOpen(
+    open.map((j) => ctx.idOf(j)),
+    close.map((j) => ctx.idOf(j)),
+    { reveal: true },
+  );
+}
+
+const nowOf = (vm: ViewModel, ctx: DeepCtx) => [...vm.impactOpenSet(ctx.root)].map((id) => ctx.indexOf(id)).filter((j) => j >= 0);
+
+describe("まとめて開く: 見直しの直し", () => {
+  it("手ごとに開く: 前に深く開いて C で閉じた手でも、ボタンの数 = 開いた後の数・全体は 3,000 枚まで（data-permove-count-cap-bypass）", () => {
+    const doc = build(map);
+    const { store, ui, vm } = setup(doc);
+    const app = appOf(store, ui, vm);
+    const ctx = vm.deep.get()!;
+    const fs = Array.from(cm.firstMoves).slice(0, 3);
+    // どの手も A で開ける一番深い段数まで開いてから、C（その手の印だけを消す）で閉じる: 深い所の開いた印は隠れたまま残る
+    for (const f of fs) {
+      vm.ensure();
+      const outside = vm.drawNodes.length;
+      const ds = deepDepths(cm, f).filter((x) => outside + x.count <= DEEP_OPEN_CAP);
+      const x = ds[ds.length - 1]!;
+      const plan = shapePlan(cm, [{ i: f, lim: x.toEnd ? Infinity : x.limit }], nowOf(vm, ctx));
+      applyRun(vm, ctx, plan.open, plan.close);
+      vm.setImpactOpen([], [ctx.idOf(f)]);
+    }
+    let pressed = 0;
+    for (const f of fs) {
+      const fit = moveFit(app, ctx, f);
+      if (!fit) continue;
+      const run = moveRun(app, ctx, f, fit, "1 年先まで", null);
+      // 押す前に出した数のまま（形はちょうど 1 年先まで: 隠れていた深い所は閉じる）
+      expect(run.count, `${f}`).toBe(fit.count);
+      expect(run.count).toBe(deepHorizons(cm, f)[0]!.count);
+      applyRun(vm, ctx, run.open, run.close);
+      vm.ensure();
+      expect(vm.drawNodes.length, `${f}`).toBe(run.total);
+      expect(vm.drawNodes.length).toBeLessThanOrEqual(DEEP_OPEN_CAP);
+      pressed++;
+    }
+    expect(pressed).toBeGreaterThan(0);
+  });
+
+  it("開いた印を捨てるとき、合流のカード（入る線が 2 本）はほかの親から見えていれば残す（data-prune-dag-hides-visible）", () => {
+    const doc = build(map);
+    const { store, ui, vm } = setup(doc);
+    const ctx = vm.deep.get()!;
+    const A = ctx.idOf(cm.firstMoves[0]!);
+    const B = ctx.idOf(cm.firstMoves[1]!);
+    const M = makeNode({ type: "result", title: "合流" });
+    const K = makeNode({ type: "action", title: "その先" });
+    store.transact("合流", (tx) => {
+      tx.addNode(M);
+      tx.addNode(K);
+      tx.addEdge(makeEdge({ source: A, target: M.id }));
+      tx.addEdge(makeEdge({ source: B, target: M.id }));
+      tx.addEdge(makeEdge({ source: M.id, target: K.id }));
+    });
+    const all = openUntil(cm, 0, Infinity).open.map((j) => ctx.idOf(j));
+    vm.setImpactOpen([...all.slice(0, OPEN_LIST_BOUND - 100), M.id, A, B]);
+    // A を閉じても、M は B から見えている
+    vm.setImpactOpen([], [A]);
+    vm.ensure();
+    expect(vm.drawNodes.includes(M.id)).toBe(true);
+    expect(vm.drawNodes.includes(K.id)).toBe(true);
+    // 関係の無い開くで印が 4,000 を超える（隠れた印を捨てる）: M と K は見えたまま
+    vm.setImpactOpen(all.slice(OPEN_LIST_BOUND - 100, OPEN_LIST_BOUND + 200));
+    expect(ui.prefs.impactOpen[ctx.root]!.length).toBeLessThan(OPEN_LIST_BOUND + 300);
+    vm.ensure();
+    expect(ui.prefs.impactOpen[ctx.root]!.includes(M.id)).toBe(true);
+    expect(vm.drawNodes.includes(M.id)).toBe(true);
+    expect(vm.drawNodes.includes(K.id)).toBe(true);
+  });
+
+  it("書き換えた地図（自分のカードを足した・地図のカードを消した）: 押す前の数 = 開いた後の数（data-counts-ignore-user-edits）", () => {
+    for (const kind of ["add", "delete"] as const) {
+      const doc = build(map);
+      const { store, ui, vm } = setup(doc);
+      const app = appOf(store, ui, vm);
+      const ctx0 = vm.deep.get()!;
+      const f = cm.firstMoves[0]!;
+      const g = cm.kids[cm.kidOff[f]!]!;
+      if (kind === "add") {
+        for (let k = 0; k < 5; k++) {
+          const c = makeNode({ type: "action", title: `自分のカード ${k}` });
+          store.transact("足す", (tx) => {
+            tx.addNode(c);
+            tx.addEdge(makeEdge({ source: ctx0.idOf(g), target: c.id }));
+          });
+        }
+      } else {
+        const ids: string[] = [];
+        for (let j = g; j < g + cm.size[g]!; j++) ids.push(ctx0.idOf(j));
+        store.transact("消す", (tx) => {
+          for (const id of ids) if (store.doc.nodes[id]) tx.deleteNode(id);
+        });
+      }
+      const ctx = vm.deep.get()!;
+      expect(ctx.edited).toBe(true);
+      for (const x of deepDepths(cm, f).slice(0, 3)) {
+        const pk = [{ i: f, lim: x.toEnd ? Infinity : x.limit }];
+        const split = drawnSplit(app, ctx, [f]);
+        const c = shapeCount(app, ctx, pk, x);
+        const plan = shapePlan(cm, pk, nowOf(vm, ctx));
+        applyRun(vm, ctx, plan.open, plan.close);
+        vm.ensure();
+        expect(vm.drawNodes.length, `${kind} ${x.months}`).toBe(split.drawn - split.inside + c.count);
+        // 開いた後の内側の数も、たどって数えた物と同じ
+        expect(drawnSplit(app, ctx, [f]).inside).toBe(c.count);
+      }
+      // 自分のカードの開いた印も、まとめてたたむで閉じる
+      if (kind === "add") {
+        const mine = Object.values(store.doc.nodes).find((n) => n.title === "自分のカード 0")!;
+        const kid = makeNode({ type: "result", title: "その先" });
+        store.transact("足す", (tx) => {
+          tx.addNode(kid);
+          tx.addEdge(makeEdge({ source: mine.id, target: kid.id }));
+        });
+        vm.setImpactOpen([mine.id]);
+        const c2 = vm.deep.get()!;
+        expect(userOpensInside(app, c2, [f])).toContain(mine.id);
+      }
+    }
+  });
+
+  it("⌘Z: 直前のまとめて開くを戻す（文書の取り消しは使わない）。その後に文書を書き換えていれば文書の取り消し（data-undo-toast-only・reader-3）", () => {
+    const doc = build(map);
+    const { store, ui, vm } = setup(doc);
+    let undone = 0;
+    const cmd = new Commands(store, ui, vm, { toast() {}, viewCenter: () => ({ x: 0, y: 0 }), startEdit() {}, reveal() {}, confirm: async () => true, bulkUndone: () => undone++ });
+    const ctx = vm.deep.get()!;
+    const f = cm.firstMoves[0]!;
+    // 文書の編集（題名）→ まとめて開く → ⌘Z: 開いた形だけ戻り、題名はそのまま
+    cmd.updateNode(ctx.idOf(f), { title: "書き換えた題名" });
+    const undo0 = store.history.undoStack.length;
+    const prefs0 = ui.prefs.impactOpen;
+    const plan = shapePlan(cm, [{ i: f, lim: cm.month[f]! + 12 }], nowOf(vm, ctx));
+    applyRun(vm, ctx, plan.open, plan.close);
+    expect(vm.canUndoBulkOpen).toBe(true);
+    cmd.undo();
+    expect(undone).toBe(1);
+    expect(ui.prefs.impactOpen).toBe(prefs0);
+    expect(store.doc.nodes[ctx.idOf(f)]!.title).toBe("書き換えた題名");
+    expect(store.history.undoStack.length).toBe(undo0);
+    // もう 1 度: 文書の取り消し
+    cmd.undo();
+    expect(store.doc.nodes[ctx.idOf(f)]!.title).not.toBe("書き換えた題名");
+    // まとめて開いた後に文書を書き換えた: ⌘Z は文書の取り消し（開いた形はそのまま）
+    applyRun(vm, ctx, plan.open, plan.close);
+    const opened = ui.prefs.impactOpen;
+    cmd.updateNode(ctx.idOf(f), { title: "もう一度" });
+    expect(vm.canUndoBulkOpen).toBe(false);
+    cmd.undo();
+    expect(ui.prefs.impactOpen).toBe(opened);
+    expect(store.doc.nodes[ctx.idOf(f)]!.title).not.toBe("もう一度");
+    // 最初の形に戻すも ⌘Z で戻せる
+    const snap = vm.bulkReset()!;
+    expect(snap.before).toBe(opened);
+    cmd.undo();
+    expect(ui.prefs.impactOpen).toBe(opened);
+  });
+
+  it("隠れているカード（上のカードが閉じている）からは開かない。「キャンバスに出す」で出すと開ける（data-hidden-head-false-toast）", () => {
+    const doc = build(map);
+    const { store, ui, vm } = setup(doc);
+    const app = appOf(store, ui, vm);
+    const ctx = vm.deep.get()!;
+    const f = cm.firstMoves[0]!;
+    const p0 = shapePlan(cm, [{ i: f, lim: cm.month[f]! + 6 }], nowOf(vm, ctx));
+    applyRun(vm, ctx, p0.open, p0.close);
+    let g = -1;
+    for (let j = f + 1; j < f + cm.size[f]!; j++) if (cm.parent[j] !== f && hasKids(j)) {
+      g = j;
+      break;
+    }
+    expect(isDrawn(app, ctx, g)).toBe(true);
+    vm.setImpactOpen([], [ctx.idOf(f)]);
+    expect(isDrawn(app, ctx, g)).toBe(false);
+    // 隠れた頭の先は見えていない（数えない）
+    expect(drawnSplit(app, ctx, [g]).inside).toBe(0);
+    showOnCanvas(app, ctx, [g]);
+    expect(isDrawn(app, ctx, g)).toBe(true);
+  });
+
+  it("C の段数ごとの数は 1 回なめて数える（shapeDepths = 段数ごとの shapePlan。入れ子・離れたカード）（speed-multiselect-regression）", () => {
+    const r = rng(23);
+    for (let t = 0; t < 30; t++) {
+      const picks = new Set<number>();
+      const k = 1 + (t % 5);
+      for (let s = 0; s < k; s++) {
+        const f = cm.firstMoves[Math.floor(r() * cm.firstMoves.length)]!;
+        // 手か、その先の深いカード
+        picks.add(r() < 0.5 ? f : f + Math.floor(r() * cm.size[f]!));
+      }
+      if (t === 0) picks.add(0);
+      const ps = [...picks];
+      const ds = shapeDepths(cm, ps);
+      expect(ds.map((x) => x.months)).toEqual([...DEPTH_STEPS]);
+      for (const x of ds) {
+        const pk = ps.map((i) => ({ i, lim: cm.month[i]! + x.months >= cm.H ? Infinity : cm.month[i]! + x.months }));
+        const plan = shapePlan(cm, pk, []);
+        expect(x.count, `${ps.join(",")} ${x.months}`).toBe(plan.count);
+        expect(x.rows, `${ps.join(",")} ${x.months}`).toBe(plan.rows);
+      }
+    }
+  });
+
+  it("見え方の範囲でたどって数える（countImpactUnder）は、書き換えていない地図では番号で数えた物と同じ", () => {
+    const doc = build(map);
+    const { store, ui, vm } = setup(doc);
+    const app = appOf(store, ui, vm);
+    const ctx = vm.deep.get()!;
+    for (const f of Array.from(cm.firstMoves).slice(0, 4)) {
+      const x = deepDepths(cm, f)[2]!;
+      const pk = [{ i: f, lim: x.limit }];
+      const rule = shapeRule(cm, pk);
+      expect(liveCount(app, ctx, rule.tops, rule.want)).toEqual({ count: x.count, rows: x.rows });
+    }
   });
 });

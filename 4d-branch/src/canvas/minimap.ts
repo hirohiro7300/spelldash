@@ -20,6 +20,9 @@ export class Minimap {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private map = { scale: 1, ox: 0, oy: 0 };
   private dragging = false;
+  /** カードの層（見えるカード・縮尺が同じなら描き直さない） */
+  private layer: HTMLCanvasElement | null = null;
+  private layerKey = "";
 
   constructor(
     private readonly view: CanvasView,
@@ -116,14 +119,36 @@ export class Minimap {
     this.map = { scale, ox, oy };
     const nw = Math.max(1.5, HALF_W * 2 * scale);
     const nh = Math.max(1.5, HALF_H * 2 * scale);
-    for (const id of this.vm.drawNodes) {
-      const n = doc.nodes[id]!;
-      // 位置は描くときと同じ（3 年の分かれ道は重ねる位置）
-      const p = this.vm.posOf(id) ?? n;
-      const v = this.vm.nodes.get(id)!;
-      ctx.globalAlpha = Math.max(0.25, v.alpha);
-      ctx.fillStyle = NODE_TYPES[n.type].color;
-      ctx.fillRect(ox + (p.x - HALF_W) * scale, oy + (p.y - HALF_H) * scale, nw, nh);
+    // カードの層は、見えるカード・縮尺・位置が変わったときだけ描き直す（選ぶたび・動かすたびに 2,600 枚を描かない:
+    // 見直し speed-selectbig-confirmed）。濃さは選んだ物の経路で変わらない物（隠れかけ・シナリオの外だけ薄く）
+    const dpr = this.canvas.width / W;
+    const key = `${this.vm.visibleGen}|${this.store.revision}|${scale}|${ox}|${oy}|${dpr}`;
+    if (key !== this.layerKey) {
+      this.layerKey = key;
+      const layer = (this.layer ??= document.createElement("canvas"));
+      if (layer.width !== this.canvas.width || layer.height !== this.canvas.height) {
+        layer.width = this.canvas.width;
+        layer.height = this.canvas.height;
+      }
+      const lc = layer.getContext("2d")!;
+      lc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      lc.clearRect(0, 0, W, H);
+      for (const id of this.vm.drawNodes) {
+        const n = doc.nodes[id]!;
+        // 位置は描くときと同じ（3 年の分かれ道は重ねる位置）
+        const p = this.vm.posOf(id) ?? n;
+        const v = this.vm.nodes.get(id)!;
+        lc.globalAlpha = v.ghost || v.offScenario ? 0.3 : 0.9;
+        lc.fillStyle = NODE_TYPES[n.type].color;
+        lc.fillRect(ox + (p.x - HALF_W) * scale, oy + (p.y - HALF_H) * scale, nw, nh);
+      }
+      lc.globalAlpha = 1;
+    }
+    if (this.layer) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(this.layer, 0, 0);
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
     // 見ている範囲

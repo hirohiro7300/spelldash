@@ -1636,21 +1636,52 @@ export class ViewModel {
 
   /**
    * 開いたカードの印が多すぎる（OPEN_LIST_BOUND を超えた）とき、閉じたカードの中に隠れている物を捨てる（見えている形は変わらない。
-   * 設定を膨らませない: 作業メモ bulk §6）。O(印の数 × 深さ)
+   * 設定を膨らませない: 作業メモ bulk §6）。O(印の数 × 深さ)。
+   * 捨てるのは、閉じた先祖までの道のどのカードも入る線が 1 本（木: TreeInfo.regular）のときだけ。合流のカード（「合流ノードを作る」で
+   * 入る線が 2 本以上）は、ほかの親から見えていることがあるので、その先も含めて残す（見直し data-prune-dag-hides-visible）
    */
   private pruneHiddenOpens(s: Set<ID>, info: ImpactScopeInfo): void {
+    const regular = this.treeInfo(info).regular;
     const drop: ID[] = [];
     for (const id of s) {
-      let p = info.pos.get(id);
-      if (p === undefined) continue;
-      for (p = info.parent[p]!; p >= 0; p = info.parent[p]!) {
-        if (!s.has(info.order[p]!)) {
+      const p0 = info.pos.get(id);
+      if (p0 === undefined) continue;
+      for (let p = p0; ; ) {
+        if (!regular[p]) break;
+        const q: number = info.parent[p]!;
+        if (q < 0) break;
+        if (!s.has(info.order[q]!)) {
           drop.push(id);
           break;
         }
+        p = q;
       }
     }
     for (const id of drop) s.delete(id);
+  }
+
+  /**
+   * 3 年の分かれ道で、heads の先に見えるカードの数と行の数（heads は数えない。行 = 見えて、先を開いていない物）。isOpen を開いている
+   * 物とみなして、見え方を変えずに範囲の線でたどる（まとめて開くの、文書を書き換えた後の数え方: 足したカード・消したカードも数に入る。
+   * 見直し data-counts-ignore-user-edits）。数が stop を超えたらそこでやめる。O(見える数)
+   */
+  countImpactUnder(heads: readonly ID[], isOpen: (id: ID) => boolean, stop = Infinity): { count: number; rows: number } {
+    const info = this.scopeInfo();
+    const seen = new Set<ID>(heads);
+    const queue: ID[] = [];
+    for (const h of heads) if (info.pos.has(h) && isOpen(h)) queue.push(h);
+    let count = 0;
+    let rows = 0;
+    for (let q = 0; q < queue.length && count <= stop; q++) {
+      for (const k of this.impactKids(queue[q]!, info)) {
+        if (seen.has(k)) continue;
+        seen.add(k);
+        count++;
+        if (isOpen(k) && this.impactKids(k, info).length > 0) queue.push(k);
+        else rows++;
+      }
+    }
+    return { count, rows };
   }
 
   /** そのカードの入口で、今開いているカード（見え方。書き換えない） */
@@ -1668,14 +1699,51 @@ export class ViewModel {
   bulkOpen(open: Iterable<ID>, close: Iterable<ID>, opts: { reveal?: boolean } = {}): OpenSnapshot | null {
     const before = this.ui.prefs.impactOpen;
     if (!this.setImpactOpen(open, close, opts)) return null;
-    return { before, after: this.ui.prefs.impactOpen };
+    const snap: OpenSnapshot = { before, after: this.ui.prefs.impactOpen };
+    this.lastBulk = { snap, rev: this.store.revision };
+    return snap;
   }
+
+  /**
+   * 最後のまとめて開く・たたむ（⌘Z で戻す物）と、そのときの文書の版。その後に文書を書き換えた（版が進んだ）・ほかに開く・たたむをした
+   * ときは戻さない（⌘Z は文書の取り消しへ: 見直し data-undo-toast-only・reader-3）
+   */
+  private lastBulk: { snap: OpenSnapshot; rev: number } | null = null;
 
   /** まとめて開く前の形に戻す。その後にほかの開く・たたむがあれば戻さず false */
   restoreOpen(snap: OpenSnapshot): boolean {
     if (this.ui.prefs.impactOpen !== snap.after) return false;
     this.ui.replaceImpactOpen(snap.before);
+    if (this.lastBulk?.snap === snap) this.lastBulk = null;
     return true;
+  }
+
+  /**
+   * ⌘Z・上部の「元に戻す」の先に見る物: 直前の操作がまとめて開く・たたむ（その後に文書を書き換えていない・ほかに開く・たたむを
+   * していない）なら、それを戻して戻した形を返す。当たらなければ null（文書の取り消しへ）
+   */
+  undoBulkOpen(): OpenSnapshot | null {
+    const b = this.lastBulk;
+    if (!b) return null;
+    this.lastBulk = null;
+    if (b.rev !== this.store.revision) return null;
+    return this.restoreOpen(b.snap) ? b.snap : null;
+  }
+
+  /** ⌘Z でまとめて開く・たたむを戻せるか（上部の「元に戻す」を押せるように） */
+  get canUndoBulkOpen(): boolean {
+    const b = this.lastBulk;
+    return !!b && b.rev === this.store.revision && this.ui.prefs.impactOpen === b.snap.after;
+  }
+
+  /** 最初の形に戻す（まとめて開くの今日の欄から）。⌘Z・お知らせの「元に戻す」で戻せるよう、前と後の形を返す。変わらなければ null */
+  bulkReset(): OpenSnapshot | null {
+    const before = this.ui.prefs.impactOpen;
+    if (!this.scopeInfo().roots.some((r) => before[r] !== undefined)) return null;
+    this.resetImpactOpen();
+    const snap: OpenSnapshot = { before, after: this.ui.prefs.impactOpen };
+    this.lastBulk = { snap, rev: this.store.revision };
+    return snap;
   }
 
   /** 3 年の分かれ道の開いている所を最初の形（今の画面の幅の形）に戻す（見え方だけ） */

@@ -411,3 +411,126 @@ export function foldPlan(cm: CompiledMap, roots: readonly number[], openNow: Ite
   for (const j of openNow) if (j >= 0 && insideTops(cm, tops, j)) out.add(j);
   return [...out];
 }
+
+/** 覆う先を段数ごとに「ちょうどその段数まで」開いたときの数（C の段数のボタン） */
+export interface ShapeDepth {
+  /** 何か月先まで（DEPTH_STEPS の 1 つ） */
+  months: number;
+  /** 段数が地図の長さ以上（「〜年 11 月まで」と書く） */
+  toEnd: boolean;
+  count: number;
+  rows: number;
+}
+
+/**
+ * 覆う先（picks）を、段数 steps のそれぞれで shapePlan したときの数と行（開いている物に依らない: 形はちょうどその段数）。
+ * 選ぶたびに作るので、段数ごとに shapePlan を回さず先を 1 回なめて数える（見直し speed-multiselect-regression）。
+ * 頭 i の区切りは month[i] + d（地図の終わり以上なら終わりまで）。入れ子は深い方 = 月の大きい頭の区切り（d が同じなので）。
+ * カード j が開く一番小さい段数 openAt と、見え始める段数 visAt = max(親の visAt, 親の openAt) を数え、段数ごとに足し上げる。
+ * 選んだ物と版ごとに覚える
+ */
+export function shapeDepths(cm: CompiledMap, picks: readonly number[], steps: readonly number[] = DEPTH_STEPS): ShapeDepth[] {
+  const sorted = [...new Set(picks)].sort((a, b) => a - b);
+  const key = `${cm.version.topology}|${cm.version.numbers}|${steps.join(",")}|${sorted.join(",")}`;
+  const hit = shapeDepthMemo.get(cm);
+  if (hit && hit.key === key) return hit.out;
+  const out = countShapeDepths(cm, sorted, steps);
+  shapeDepthMemo.set(cm, { key, out });
+  return out;
+}
+
+const shapeDepthMemo = new WeakMap<CompiledMap, { key: string; out: ShapeDepth[] }>();
+
+function countShapeDepths(cm: CompiledMap, sorted: readonly number[], steps: readonly number[]): ShapeDepth[] {
+  const { size, parent, month, kidOff, H } = cm;
+  const S = steps.length;
+  const NEVER = S;
+  const tops = topsOf(cm, sorted);
+  const forced = new Set<number>();
+  for (const p of sorted) {
+    if (tops.includes(p)) continue;
+    for (let q = parent[p]!; q >= 0 && !forced.has(q); q = parent[q]!) {
+      forced.add(q);
+      if (tops.includes(q)) break;
+    }
+  }
+  const cnt = new Float64Array(S + 1);
+  const rowsD = new Float64Array(S + 1);
+  // 区切りの月 = 頭の月 + d。地図の終わり以上なら終わりまで（Infinity）
+  const limOf = (m0: number, s: number): number => (m0 + steps[s]! >= H ? Infinity : m0 + steps[s]!);
+  let k = 0;
+  for (const t of tops) {
+    const end = t + size[t]!;
+    const openAt = new Uint8Array(end - t);
+    const visAt = new Uint8Array(end - t);
+    const stack: Array<{ end: number; m0: number }> = [];
+    let m0 = -Infinity;
+    while (k < sorted.length && sorted[k]! < t) k++;
+    for (let j = t; j < end; j++) {
+      while (stack.length && j >= stack[stack.length - 1]!.end) {
+        stack.pop();
+        m0 = stack.length ? stack[stack.length - 1]!.m0 : -Infinity;
+      }
+      while (k < sorted.length && sorted[k]! === j) {
+        m0 = Math.max(m0, month[j]!);
+        stack.push({ end: j + size[j]!, m0 });
+        k++;
+      }
+      let oa = NEVER;
+      if (kidOff[j + 1]! > kidOff[j]!) {
+        if (forced.has(j)) oa = 0;
+        else for (let s = 0; s < S; s++) if (month[j]! < limOf(m0, s)) {
+          oa = s;
+          break;
+        }
+      }
+      openAt[j - t] = oa;
+      if (j === t) continue;
+      const pj = parent[j]! - t;
+      const va = Math.max(visAt[pj]!, openAt[pj]!);
+      visAt[j - t] = va;
+      if (va >= NEVER) continue;
+      cnt[va]!++;
+      rowsD[va]!++;
+      if (oa < NEVER) rowsD[Math.max(va, oa)]!--;
+    }
+  }
+  const out: ShapeDepth[] = [];
+  let count = 0;
+  let rows = 0;
+  for (let s = 0; s < S; s++) {
+    count += cnt[s]!;
+    rows += rowsD[s]!;
+    out.push({ months: steps[s]!, toEnd: steps[s]! >= H, count, rows });
+  }
+  return out;
+}
+
+/**
+ * shapePlan と同じ決まりを、番号ごとに答える形で（書き換えた地図で、開いた後の形を見え方の範囲の線でたどって数えるとき: 地図の外の
+ * 自分のカードは番号が無いので、番号の順になめる shapePlan では数えられない）。want(j): 覆う先の中のカード j を開くか
+ */
+export function shapeRule(cm: CompiledMap, picks: readonly ShapePick[]): { tops: number[]; want(j: number): boolean } {
+  const { size, parent, month, kidOff } = cm;
+  const sorted = [...picks].sort((a, b) => a.i - b.i);
+  const tops = topsOf(cm, sorted.map((p) => p.i));
+  const forced = new Set<number>();
+  for (const p of sorted) {
+    if (tops.includes(p.i)) continue;
+    for (let q = parent[p.i]!; q >= 0 && !forced.has(q); q = parent[q]!) {
+      forced.add(q);
+      if (tops.includes(q)) break;
+    }
+  }
+  return {
+    tops,
+    want(j: number): boolean {
+      if (!(kidOff[j + 1]! > kidOff[j]!)) return false;
+      if (forced.has(j)) return true;
+      // j を覆う頭のうち、深い方（区切りの大きい方）の区切り
+      let lim = -Infinity;
+      for (const p of sorted) if (p.i <= j && j < p.i + size[p.i]!) lim = Math.max(lim, p.lim);
+      return month[j]! < lim;
+    },
+  };
+}

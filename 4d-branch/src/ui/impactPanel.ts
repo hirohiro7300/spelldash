@@ -1154,7 +1154,7 @@ function fillEnds(app: AppContext, imp: ImpactResult, sec: HTMLElement, seen: Se
  * 前の版の欄（今決めること・やる価値・避けたい手・大事な判断・分布・行き先・見方・前提）は「くわしい数」にたたみ、
  * 開いたときに作る（見取り図と同じ数・同じ言葉で。起動と選び直しで作らない: 見直し user-5・perf-6・perf-7）
  */
-export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(): boolean; updateOpen(): void } {
+export function buildImpactOverview(app: AppContext): { el: HTMLElement; openEl: HTMLElement; update(): boolean; updateOpen(): void } {
   const head = impactHeader(app);
   const flips = h("section", { class: "imp-sec imp-flips" });
   const decide = h("section", { class: "imp-sec imp-decide" });
@@ -1192,8 +1192,8 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
     clear(moreBody);
     if (q) {
       moreBody.append(...sections, legend.el, premise);
-      el.append(head.el, flips, more, deepOpen, actions);
-    } else el.append(head.el, ...sections, premise, legend.el, deepOpen, actions);
+      el.append(head.el, flips, more, actions);
+    } else el.append(head.el, ...sections, premise, legend.el, actions);
     moreDirty = true;
   };
   /** 欄を今の結果で作る（3 か月ごとの地図のくわしい数は、開いているときだけ） */
@@ -1245,8 +1245,11 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
       if (row) deepOpen.append(row);
     });
   };
+  // 今日の「この先をひらく」（まとめて開く）は、概要の先頭（見取り図の前）に置く: openEl（長い見取り図の下に埋めない: 見直し reader-2）
+  deepOpen.hidden = true;
   return {
     el,
+    openEl: deepOpen,
     updateOpen() {
       if (!el.hidden) refreshOpen();
     },
@@ -1255,6 +1258,7 @@ export function buildImpactOverview(app: AppContext): { el: HTMLElement; update(
       el.hidden = !imp.active;
       if (!imp.active) {
         last = null;
+        deepOpen.hidden = true;
         return false;
       }
       const deep = app.vm.deep.get();

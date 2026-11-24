@@ -966,13 +966,15 @@ async function bulkChecks(page, tag, profile) {
     const row = page.locator(".sidebar-right .deep-open-likely:visible");
     await row.waitFor();
     const texts = await row.locator("button").allTextContents();
-    assert(texts.length === 2 && /^5\s本（見込み \d+%・[\d,]+\s枚）$/.test(texts[0].trim()) && /^10\s本（\d+%・[\d,]+\s枚）$/.test(texts[1].trim()), `見込みの高い道のボタンが違う（${texts.join(" / ")}）`);
+    // 数は増える枚数（今開いている物に道を足す: 見直し reader-5）
+    assert(texts.length === 2 && /^5\s本（見込み \d+%・[\d,]+\s枚増える）$/.test(texts[0].trim()) && /^10\s本（\d+%・[\d,]+\s枚増える）$/.test(texts[1].trim()), `見込みの高い道のボタンが違う（${texts.join(" / ")}）`);
+    const inside0 = await drawnInside(page, [f]);
     await row.scrollIntoViewIfNeeded();
     await shotB("B-before");
-    const want = cardsOf(texts[0]);
+    const want = Number(/([\d,]+)\s枚増える/.exec(texts[0])[1].replace(/,/g, ""));
     await row.locator(`[data-fk="likely:5:${id}"]`).click();
     await settle(page, 600);
-    assert((await drawnInside(page, [f])) === want, `開いた後の枚数が合わない（${await drawnInside(page, [f])} / ${want}）`);
+    assert((await drawnInside(page, [f])) === inside0 + want, `開いた後の枚数が合わない（${await drawnInside(page, [f])} / ${inside0} + ${want}）`);
     // 開いたのは押した手の先の道の上だけ（開いた印はどれも手の先。兄弟は閉じたまま +N の札）
     const out = await page.evaluate((k) => {
       const f = window.__fourD;
@@ -981,7 +983,8 @@ async function bulkChecks(page, tag, profile) {
     }, f);
     assert(out > 0 && out < want, `道の上だけを開いていない（開いた ${out}・見える ${want}）`);
     const t = await toasts(page);
-    assert(/見込みの高い道\s5\s本の道を開いた/.test(t) || /見込みの高い道 5\u00a0本の道を開いた/.test(t), `お知らせが違う（${t}）`);
+    // 「道」を 2 度言わない（見直し reader-8）。数は増えた枚数
+    assert(/見込みの高い\s5\s本の道を開いた（[\d,]+\s枚増えた）/.test(t) && !/道\s5\s本の道/.test(t), `お知らせが違う（${t}）`);
     await shotB("B-after");
     await reset();
   });
@@ -1035,7 +1038,9 @@ async function bulkChecks(page, tag, profile) {
     assert(/3\s枚を選んでいます/.test(barText), `帯の数が違う（${barText}）`);
     await noOverflow(page, "選んでいる間の帯");
     await shotB("C-before");
-    await bar.getByRole("button", { name: "まとめて開く" }).click();
+    // 帯に押し方の 1 行（タッチでは title が出ない）。ボタンは「開き方を選ぶ」（帯のボタンでは開かない: 見直し reader-6）
+    assert(/カードを押すと足す・外す/.test(barText), `帯に押し方が無い（${barText}）`);
+    await bar.getByRole("button", { name: "開き方を選ぶ" }).click();
     await settle(page, 500);
     const sec = page.locator(".sidebar-right .deep-multi:visible");
     await sec.waitFor();
@@ -1056,12 +1061,16 @@ async function bulkChecks(page, tag, profile) {
     assert((await drawn(page)) === before - inside + want, `開いた後の枚数が合わない（${before} − ${inside} + ${want} ≠ ${await drawn(page)}）`);
     assert(/選んだ 3 枚から\s1\u00a0年先まで/.test(await toasts(page)), `お知らせが違う（${await toasts(page)}）`);
     await shotB("C-after");
+    // 開いたら「ほかのカードも選ぶ」は終わる（次に押したカードを選びに足さない。選んだ物はそのまま: 見直し reader-6）
+    const st = await page.evaluate(() => ({ pick: window.__fourD.ui.multiPick, n: window.__fourD.ui.selection.nodes.size }));
+    assert(!st.pick && st.n === 3 && !(await bar.isVisible()), `開いた後も選ぶのが続く・選びが外れた（${JSON.stringify(st)}）`);
     // Esc で選ぶのを終える（選んだ物はそのまま）
+    await page.evaluate(() => window.__fourD.ui.setMultiPick(true));
     await page.evaluate(() => window.__fourD.app.view.canvas.focus());
     await page.keyboard.press("Escape");
     await settle(page, 200);
-    const st = await page.evaluate(() => ({ pick: window.__fourD.ui.multiPick, n: window.__fourD.ui.selection.nodes.size }));
-    assert(!st.pick && st.n === 3 && !(await bar.isVisible()), `Esc で選ぶのが終わらない・選びが外れた（${JSON.stringify(st)}）`);
+    const st2 = await page.evaluate(() => ({ pick: window.__fourD.ui.multiPick, n: window.__fourD.ui.selection.nodes.size }));
+    assert(!st2.pick && st2.n === 3 && !(await bar.isVisible()), `Esc で選ぶのが終わらない・選びが外れた（${JSON.stringify(st2)}）`);
     await reset();
   });
 
@@ -1473,7 +1482,15 @@ async function storedProfile(browser, profile) {
       const want = cardsOf(await go.textContent());
       await go.click();
       await settle(page, 800);
-      assert((await drawnInside(page, [0])) === want, `半年後までの枚数が合わない（${await drawnInside(page, [0])} / ${want}）`);
+      // 引き上げた文書には自分のカード（地図の番号が無い）もある: 今日の先に見えている物は、範囲の見えているカード全部（見直し data-counts-ignore-user-edits）
+      const insideAll = () => page.evaluate(() => {
+        const f = window.__fourD;
+        const vm = f.app.vm;
+        vm.ensure();
+        const root = vm.deep.get().root;
+        return vm.drawNodes.filter((id) => id !== root && vm.inImpact(id)).length;
+      });
+      assert((await insideAll()) === want, `半年後までの枚数が合わない（${await insideAll()} / ${want}）`);
       // 設定は 200 ms 後に 1 回書く。文書の保存は無い（書き直していない）
       await page.waitForTimeout(500);
       const dirty = await page.evaluate(() => window.__fourD.persistence.hasUnsaved);
