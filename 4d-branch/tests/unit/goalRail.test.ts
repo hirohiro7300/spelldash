@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { spacingIssues } from "../../scripts/impact/textChecks";
-import { GOAL_RAIL_DX, GOAL_STUB_LABEL_CAP, GOAL_STUB_LOW_CAP, GoalRail, goalRailText, goalStubLabel, type GoalRailHost, type GoalScene } from "../../src/canvas/goalRail";
+import { GOAL_RAIL_DEPTH, GOAL_RAIL_DX, GOAL_STUB_LABEL_CAP, GOAL_STUB_LOW_CAP, GoalRail, goalRailText, goalStubLabel, type GoalRailHost, type GoalScene } from "../../src/canvas/goalRail";
 import type { ImpactCard } from "../../src/canvas/impactCards";
 import { spaceJa } from "../../src/demo/compose/text";
 import { NODE_W } from "../../src/model/constants";
@@ -290,5 +290,106 @@ describe("行き先からゴールへの線", () => {
     expect(g.moveTags).toBe(1);
     g.draw(scene(5, { z: 0.2, cx: 100, cy: 100, pos, shown: (id: string) => ["m0", "m1"].includes(id) }));
     expect(g.moveTags).toBe(0);
+  });
+
+  describe("縮めたとき（机のふだんの 20%）の今日の手からゴールへの道しるべ", () => {
+    const moves = new Map([
+      ["m0", "芽 14%"],
+      ["m1", "芽: 選び方"],
+      ["m2", "芽 2%"],
+    ]);
+    const withHost = (g: GoalRail) => {
+      (g as unknown as { host: GoalRailHost }).host = { info: () => ({ key: "k", T: 100_000, by: 2056, byKari: false, mid: 4600, path: "pi", moves }), open() {} };
+      return g;
+    };
+    const newRail = () =>
+      withHost(
+        new GoalRail(
+          () => {},
+          () => {},
+        ),
+      );
+    // 今日の手は入口の 1 つ右の列（行ごとに 400 下）。ゴールの列は画面の右の外（ふだんの 20% と同じ）
+    const z = 0.2;
+    const pos = (id: string) => ({ x: impactColX(1), y: Number(id.slice(1)) * 400 });
+    const base = (o: Partial<GoalScene> = {}): GoalScene =>
+      scene(0, { z, cx: 40, cy: 120, pos, shown: (id: string) => moves.has(id) || id === "m9", frontier: (impactColX(2) + NODE_W / 2) * z + 40, ...o });
+
+    it("行き先の線が無いときは、芽の札のある手ごとに点線 1 本と札 1 つ（金と灰の 2 本・点は 1 回の塗り）。カードごとの文字は出さない", () => {
+      const { ctx, calls } = recorder();
+      const g = newRail();
+      g.draw(base({ ctx, width: 390, height: 844 }));
+      expect(GOAL_RAIL_DX * z + 40).toBeGreaterThan(390);
+      expect(g.stubs).toBe(0);
+      expect(g.leads).toBe(3);
+      expect(g.leadLabels).toBe(3);
+      // 点の塗りと縁 1 回ずつ + 金の点線 1 本 + 灰の点線 1 本
+      expect(g.strokes).toBe(4);
+      expect(calls.filter((c) => c.op === "fill").length).toBe(1);
+      expect(calls.filter((c) => c.op === "arc").length).toBe(2);
+      const texts = calls.filter((c) => c.op === "fillText").map((c) => String(c.args[0]));
+      // 手ごとの札 3 つと、札の列の下に何へ向かう線か（スマホ: 端の札は目盛りの帯の中）
+      expect(texts).toEqual(["芽 14%", "芽: 選び方", "芽 2%", "→ ゴール 10 億円"]);
+      // 線は出ているカードの右の先（frontier）から 12px 右・画面の右の端まで、手の高さで
+      const lines = calls.filter((c) => c.op === "lineTo");
+      expect(lines.length).toBe(3);
+      for (const l of lines) expect(l.args[0]).toBe(390);
+      const starts = calls.filter((c) => c.op === "moveTo" && calls.indexOf(c) > calls.findIndex((x) => x.op === "setLineDash" || x.dash > 0));
+      expect(starts.some((c) => Math.abs((c.args[0] as number) - ((impactColX(2) + NODE_W / 2) * z + 40 + 12)) < 1e-6)).toBe(true);
+      // 札の右の端は端の札と同じ（画面の右から 12px）
+      const lab = calls.find((c) => c.op === "fillText" && c.args[0] === "芽 14%")!;
+      expect((lab.args[1] as number) + Array.from("芽 14%").length * 7).toBeCloseTo(390 - 12, 6);
+      expect(lab.args[2]).toBeCloseTo(120, 6);
+      for (const t of texts) spaced(t.replace(/^→ /, ""));
+    });
+
+    it("ゴールの列が画面の中なら列まで。行き先の線があるとき・近いとき・列が左の外のときは出さない", () => {
+      const { ctx, calls } = recorder();
+      const g = newRail();
+      // 列が画面の中（入口から列まで 26 列 × 0.06）
+      const zz = 0.06;
+      const posz = (id: string) => ({ x: impactColX(1), y: Number(id.slice(1)) * 400 });
+      g.draw(base({ ctx, z: zz, pos: posz, frontier: (impactColX(2) + NODE_W / 2) * zz + 40 }));
+      const rx = GOAL_RAIL_DX * zz + 40;
+      expect(rx).toBeLessThan(1000);
+      expect(impactColX(GOAL_RAIL_DEPTH)).toBe(GOAL_RAIL_DX);
+      expect(g.leads).toBe(3);
+      for (const l of calls.filter((c) => c.op === "lineTo").slice(1)) expect(l.args[0]).toBeCloseTo(rx, 6);
+      // 行き先の線がある（3 年後まで開いている）: 道しるべは出さない
+      const withEnds = newRail();
+      withEnds.draw({ ...scene(40, { z: 0.15, seedEvery: 1 }), shown: () => true, frontier: 0 });
+      expect(withEnds.stubs).toBeGreaterThan(0);
+      expect(withEnds.leads).toBe(0);
+      // 近いとき（compact）は手の札（芽 14%）で足りる
+      const near = newRail();
+      near.draw(base({ z: 0.4 }));
+      expect(near.leads).toBe(0);
+      expect(near.moveTags).toBeGreaterThan(0);
+      // 列が左の外
+      const left = newRail();
+      left.draw(base({ cx: -GOAL_RAIL_DX * z - 50 }));
+      expect(left.leads).toBe(0);
+    });
+
+    it("出ているカードが右の端まで来ていれば線と札は出さない（点だけ）。行が詰まれば札は 15px おき・キャンバスに出ていない手は出さない", () => {
+      const g = newRail();
+      g.draw(base({ frontier: 1000 - 30 }));
+      expect(g.leads).toBe(0);
+      expect(g.leadLabels).toBe(0);
+      expect(g.strokes).toBe(2);
+      const dense = newRail();
+      const r = recorder();
+      // 行ごとに 50 × 0.2 = 10px
+      dense.draw(base({ ctx: r.ctx, pos: (id: string) => ({ x: impactColX(1), y: Number(id.slice(1)) * 50 }) }));
+      expect(dense.leads).toBe(3);
+      expect(dense.leadLabels).toBe(2);
+      const ys = r.calls.filter((c) => c.op === "fillText" && String(c.args[0]).startsWith("芽")).map((c) => c.args[2] as number);
+      for (let k = 1; k < ys.length; k++) expect(ys[k]! - ys[k - 1]!).toBeGreaterThanOrEqual(15);
+      const hidden = newRail();
+      hidden.draw(base({ shown: (id: string) => id === "m2" }));
+      expect(hidden.leads).toBe(1);
+      hidden.off();
+      expect(hidden.leads).toBe(0);
+    });
   });
 });

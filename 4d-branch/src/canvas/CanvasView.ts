@@ -833,10 +833,13 @@ export class CanvasView {
     const pillBox = this.pillTmp;
     // 「ほかのカードも選ぶ」の間は、選んだカードに太い枠と印（どれを選んだかが縮小しても分かるように: 見直し reader-6）
     const picking = this.ui.multiPick;
+    // 描いたカードのいちばん右（世界の x。縮めたときのゴールへの道しるべを、カードに重ねずその右から引く）
+    let rightmost = -Infinity;
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
       const p = this.pos(id);
       if (p.x + HALF_W < view.minX || p.x - HALF_W > view.maxX || p.y + HALF_H < view.minY || p.y - HALF_H > view.maxY) continue;
+      if (p.x > rightmost) rightmost = p.x;
       const nv = vm.nodes.get(id)!;
       const colors: string[] = [];
       for (const pid of n.projectIds) {
@@ -900,7 +903,7 @@ export class CanvasView {
 
     // 画面の大きさで描く文字（縮小したときのタイトル・目印）
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.drawGoal(quarter ? imp.root : null, lod);
+    this.drawGoal(quarter ? imp.root : null, lod, (rightmost + HALF_W) * z + cam.x);
     if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80, cardBoxes);
     if (screenLabels.length) this.drawScreenLabels(screenLabels, 80, cardBoxes);
     // 年月の目盛り（3 か月ごとの地図。どの拡大率でも画面の上に固定: 作業メモ SPEC v1 §5.6・user-7・user-15）
@@ -946,7 +949,7 @@ export class CanvasView {
    * 資産のゴールの列と、見えている行き先からゴールへの線（画面の座標で。目印の文より下・目盛りより下に描く）とゴールのカードの位置。
    * root が null（3 か月ごとの地図でない）・入口が見えていなければ、どれも出さない
    */
-  private drawGoal(root: ID | null, lod: Lod): void {
+  private drawGoal(root: ID | null, lod: Lod, frontier: number): void {
     const vm = this.vm;
     const imp = vm.impact;
     if (!root || !imp.active || !vm.hasOverlay(root)) return this.goal.off();
@@ -977,6 +980,7 @@ export class CanvasView {
       selected: sel.size === 1 ? (sel.values().next().value ?? null) : null,
       t: this.cards.goal(imp, doc),
       shown: (id) => vm.nodes.get(id)?.hidden === false,
+      frontier,
     });
   }
 

@@ -855,6 +855,8 @@ const goalRail = (page) =>
       labelRight: g.labelRight,
       stubLabels: g.stubLabels,
       moveTags: g.moveTags,
+      leads: g.leads,
+      leadLabels: g.leadLabels,
       connector: g.connector,
       state: g.state,
       railSx: g.railSx,
@@ -1005,7 +1007,16 @@ async function goalChecks(page, tag, profile) {
     // 行き先が見えていなくても、今日の手のカードに芽の札（札のほかにもゴールの印がある: 見直し reader-4）
     const zNow = await page.evaluate(() => window.__fourD.app.view.camera.zoom);
     if (zNow >= 0.3) assert(g.moveTags >= 1, `今日の手のカードに芽の札が無い（拡大 ${Math.round(zNow * 100)}%）`);
+    else assert(g.leads >= 1 && g.leadLabels >= 1, `縮めた画面で今日の手からゴールへの道しるべが無い（拡大 ${Math.round(zNow * 100)}%・${JSON.stringify(g)}）`);
     await shot(page, `${tag}-goal-04-chip`);
+    // 机のふだんの 20%（スマホも同じ倍率に縮める）: 線の札・芽の札は出ないが、芽の札のある手ごとにゴールへの点線と札「芽 14%」
+    // （手ごとに 1 つ・まとめて描く: ゴールの列 1 本・点の塗りと縁・点線 2 本まで）
+    await page.evaluate(() => window.__fourD.app.view.centerOn(window.__fourD.app.vm.impact.root, { zoom: 0.2, animate: false }));
+    await settle(page, 400);
+    const low = await goalRail(page);
+    assert(low.stubs === 0 && low.moveTags === 0 && low.stubLabels === 0, `20% で行き先の線・札が出ている（${JSON.stringify(low)}）`);
+    assert(low.leads >= 3 && low.leadLabels >= 1 && low.leadLabels <= low.leads && low.strokes <= 5, `20% で今日の手からゴールへの道しるべが足りない（${JSON.stringify(low)}）`);
+    await shot(page, `${tag}-goal-04b-low`);
     // 行き先を開いて寄る: 線が引かれる
     const { end } = await openGoalEnds(page, 40);
     await page.evaluate(([id, z]) => window.__fourD.app.view.centerOn(id, { zoom: z, animate: false }), [end, narrow ? 0.42 : 0.55]);
