@@ -1,0 +1,1456 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-bpgqoGLbrfCO0BPbuxd+J0P+M/vre7AI9/Wv/7TxQsU='; style-src 'unsafe-inline'; connect-src https: http://localhost:* http://127.0.0.1:*; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>AI作業場</title>
+<meta name="description" content="ChatGPT・Claude・Muse を1つの会話でつなぐ作業場">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='12' r='7' fill='%230b7a5e'/%3E%3Ccircle cx='22' cy='12' r='7' fill='%23b4532a'/%3E%3Ccircle cx='16' cy='22' r='7' fill='%231f5fe0'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f5f4f0;--surface:#ffffff;--surface-2:#efede7;--surface-3:#e6e3db;
+  --text:#1c1b19;--muted:#5f5b53;--faint:#8a857b;--border:#e2ded5;--border-strong:#cdc8bd;
+  --accent:#2f56c9;--accent-ink:#ffffff;--accent-soft:#e7edfb;
+  --danger:#b42318;--danger-soft:#fdecea;--ok:#17703f;--ok-soft:#e5f4ea;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(20,18,14,.05),0 6px 20px rgba(20,18,14,.05);
+  --font:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Noto Sans Mono CJK JP",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#141413;--surface:#1d1d1b;--surface-2:#262624;--surface-3:#302f2c;
+    --text:#ecebe7;--muted:#b0aba1;--faint:#858077;--border:#34332f;--border-strong:#4a4843;
+    --accent:#93a9ff;--accent-ink:#0e1330;--accent-soft:#1f2747;
+    --danger:#ff8a80;--danger-soft:#3a1d1b;--ok:#6fd8a2;--ok-soft:#173225;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:var(--bg);color:var(--text);font:15px/1.75 var(--font)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button[disabled]{cursor:not-allowed;opacity:.5}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.spacer{flex:1}
+.muted{color:var(--muted)}
+
+/* 上の帯 */
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--bg);background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:saturate(1.4) blur(10px);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.dots{display:inline-flex;flex:none}
+.dots i{width:14px;height:14px;border-radius:50%;background:var(--c);border:2px solid var(--bg);margin-left:-5px}
+.dots i:first-child{margin-left:0}
+.brand .title{font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.brand .sub{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cost{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tools{display:flex;gap:2px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;background:transparent;border-radius:10px;padding:7px 10px;line-height:1.2;white-space:nowrap}
+.btn:hover:not([disabled]){background:var(--surface-2)}
+.btn.icon{padding:7px}
+.btn.ghost{border-color:var(--border-strong);background:var(--surface)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover:not([disabled]){background:var(--accent);filter:brightness(1.07)}
+.btn.danger{color:var(--danger);border-color:var(--border-strong);background:var(--surface)}
+.btn.small{padding:5px 9px;font-size:13px}
+@media (max-width:720px){.tools .btn span{display:none}.tools .btn{padding:7px}.brand .sub{display:none}}
+@media (max-width:560px){.cost-label{display:none}}
+
+/* 会話 */
+main{flex:1;width:100%;max-width:1060px;margin:0 auto;padding:20px 16px 8px}
+.timeline{display:flex;flex-direction:column;gap:14px}
+.msg{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px 10px;box-shadow:var(--shadow);min-width:0}
+.msg.user{background:var(--surface-2);box-shadow:none;margin-left:clamp(0px,10vw,120px)}
+.msg.ai{border-left:4px solid var(--c)}
+.msg.ai.summary{background:color-mix(in srgb,var(--c) 6%,var(--surface))}
+.head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;min-width:0}
+.user .head{font-size:13px;color:var(--muted)}
+.user .head b{color:var(--text)}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--c);color:var(--ink);display:inline-grid;place-items:center;font-weight:700;font-size:12px;letter-spacing:-.02em;flex:none;line-height:1}
+.avatar.sm{width:24px;height:24px;font-size:10px}
+.name{font-weight:700}
+.model{font-size:12px;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:1px 8px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{font-size:11.5px;font-weight:700;color:var(--c);border:1px solid var(--c);border-radius:999px;padding:0 7px}
+.status{margin-left:auto;font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.status .err{color:var(--danger);font-weight:600}
+.group{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start}
+.note{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;margin:4px 0}
+.note::before,.note::after{content:"";flex:1;height:1px;background:var(--border)}
+.foot{display:flex;align-items:center;gap:2px;margin-top:6px;font-size:12px;color:var(--faint);min-height:30px}
+.foot .meta{font-variant-numeric:tabular-nums}
+.foot .btn{color:var(--muted);padding:5px}
+.foot svg{width:16px;height:16px}
+.dots-anim{display:inline-flex;gap:3px}
+.dots-anim i{width:5px;height:5px;border-radius:50%;background:currentColor;animation:blink 1.2s infinite ease-in-out}
+.dots-anim i:nth-child(2){animation-delay:.15s}.dots-anim i:nth-child(3){animation-delay:.3s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.dots-anim i{animation:none;opacity:.6}}
+.error-box{background:var(--danger-soft);border-radius:10px;padding:10px 12px;margin-top:6px}
+.error-box p{margin:0;color:var(--danger);font-weight:600}
+.error-box code{display:block;margin-top:4px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;color:var(--muted)}
+.notice{font-size:12.5px;color:var(--muted);background:var(--surface-2);border-radius:8px;padding:6px 10px;margin:8px 0 0}
+
+/* 本文（Markdown） */
+.md{overflow-wrap:anywhere}
+.md>:first-child{margin-top:0}
+.md>:last-child{margin-bottom:0}
+.md p{margin:.5em 0}
+.md h3,.md h4,.md h5,.md h6{margin:1em 0 .35em;line-height:1.45}
+.md h3{font-size:1.14em}.md h4{font-size:1.05em}.md h5,.md h6{font-size:1em}
+.md ul,.md ol{margin:.4em 0;padding-left:1.5em}
+.md li{margin:.15em 0}
+.md code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);border-radius:6px;padding:.1em .35em}
+.md pre{position:relative;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow:auto;margin:.6em 0;font-size:13px;line-height:1.55}
+.md pre code{background:none;padding:0;font-size:inherit;overflow-wrap:normal}
+.md pre .lang{position:absolute;top:3px;right:9px;font-size:11px;color:var(--faint);font-family:var(--mono)}
+.md blockquote{margin:.6em 0;padding:.1em 0 .1em 12px;border-left:3px solid var(--border-strong);color:var(--muted)}
+.md hr{border:none;border-top:1px solid var(--border);margin:1em 0}
+.md a{color:var(--accent)}
+.table-wrap{overflow-x:auto;margin:.6em 0}
+.md table{border-collapse:collapse;font-size:.93em}
+.md th,.md td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
+.md th{background:var(--surface-2)}
+
+/* はじめの画面 */
+.welcome{max-width:720px;margin:3vh auto 8px}
+.hero{display:flex}
+.hero i{width:36px;height:36px;border-radius:50%;background:var(--c);border:3px solid var(--bg);margin-left:-11px}
+.hero i:first-child{margin-left:0}
+.welcome h1{font-size:clamp(22px,4.2vw,30px);margin:12px 0 4px;line-height:1.35}
+.welcome .lead{color:var(--muted);margin:0 0 10px}
+.callout{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;background:var(--accent-soft);border-radius:14px;padding:12px 16px;margin:16px 0}
+.callout p{margin:0;flex:1 1 260px}
+.steps{padding-left:1.4em;margin:12px 0;color:var(--muted)}
+.steps b{color:var(--text)}
+.examples{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.examples .label{flex-basis:100%;font-size:13px;color:var(--muted)}
+.example{border:1px dashed var(--border-strong);background:var(--surface);border-radius:12px;padding:8px 12px;text-align:left;font-size:13.5px;line-height:1.5}
+.example:hover{border-style:solid}
+.example small{display:block;color:var(--faint);font-size:11.5px}
+
+/* 入力欄 */
+.composer-wrap{position:sticky;bottom:0;z-index:15;padding:14px 16px 12px;padding-bottom:max(12px,env(safe-area-inset-bottom));background:linear-gradient(to bottom,transparent,var(--bg) 16px)}
+.composer{max-width:1060px;margin:0 auto}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.actions:empty{display:none}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px}
+.pill:hover:not([disabled]){background:var(--surface-2)}
+.pill-group{display:inline-flex;align-items:stretch;border:1px solid var(--border-strong);border-radius:999px;background:var(--surface);overflow:hidden}
+.pill-group .pill{border:none;border-radius:0}
+.pill-group select{border:none;border-left:1px solid var(--border);background:transparent;font-size:13px;padding:0 8px}
+.box{background:var(--surface);border:1px solid var(--border-strong);border-radius:18px;box-shadow:var(--shadow);padding:8px 10px 10px}
+.box:focus-within{border-color:var(--accent)}
+.box textarea{display:block;width:100%;border:none;outline:none;background:transparent;resize:none;min-height:52px;max-height:40vh;line-height:1.6;padding:6px 4px}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px}
+.who{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);border-radius:999px;padding:3px 10px 3px 7px;font-size:13px}
+.chip .dot{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.chip[aria-pressed="true"]{border-color:var(--c);background:color-mix(in srgb,var(--c) 11%,var(--surface))}
+.chip[aria-pressed="false"]{color:var(--faint);border-style:dashed}
+.chip[aria-pressed="false"] .dot{background:transparent;border:1.5px solid var(--faint)}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:10px;padding:3px}
+.seg button{border:none;background:transparent;border-radius:8px;padding:4px 10px;font-size:13px;color:var(--muted)}
+.seg button[aria-checked="true"]{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.rounds{border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:4px 6px;font-size:13px}
+#send{padding:8px 16px;border-radius:12px}
+#send.stop{background:var(--danger);color:#fff}
+.hint{font-size:12px;color:var(--faint);margin:6px 2px 0}
+@media (max-width:560px){.controls .spacer{display:none}#send{margin-left:auto}}
+
+/* ダイアログ */
+dialog{border:none;padding:0;background:var(--surface);color:var(--text);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:min(780px,calc(100vw - 24px));max-width:none;max-height:calc(100dvh - 24px)}
+dialog[open]{display:flex;flex-direction:column}
+dialog::backdrop{background:rgba(10,10,10,.45)}
+.sheet-head{display:flex;align-items:center;gap:8px;padding:12px 16px 12px 20px;border-bottom:1px solid var(--border)}
+.sheet-head h2{margin:0;font-size:17px}
+.sheet-body{overflow:auto;padding:4px 20px 16px;flex:1}
+.sheet-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--border)}
+@media (max-width:640px){dialog{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;margin:0}}
+.sset{padding:14px 0 16px;border-bottom:1px solid var(--border)}
+.sset:last-child{border-bottom:none}
+.sset h3{font-size:15px;margin:0 0 6px}
+.sset .lead{margin:0 0 6px;color:var(--muted);font-size:14px}
+.sset ol{margin:6px 0 10px;padding-left:1.4em;font-size:14px;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:3px;margin:10px 0;min-width:0}
+.field>label{font-size:13px;font-weight:600}
+.inp,.field select,.field textarea{width:100%;min-width:0;border:1px solid var(--border-strong);background:var(--bg);border-radius:10px;padding:7px 10px}
+.field textarea{resize:vertical;line-height:1.6}
+.help{font-size:12px;color:var(--muted)}
+.help.warn{color:var(--danger)}
+.keyrow{display:flex;gap:6px}
+.keyrow .inp{flex:1}
+details{margin:8px 0;border:1px solid var(--border);border-radius:12px;padding:4px 12px}
+details>summary{cursor:pointer;font-size:14px;padding:6px 0;color:var(--muted)}
+details[open]>summary{color:var(--text)}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;margin:10px 0 4px}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.radios{display:flex;flex-wrap:wrap;gap:6px}
+.radios label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:10px;padding:5px 10px;font-size:14px;cursor:pointer}
+.radios label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.radios input{accent-color:var(--accent)}
+.presets{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:8px 0}
+.preset{border:1px solid var(--border-strong);background:var(--surface);border-radius:12px;padding:8px 12px;text-align:left;line-height:1.45}
+.preset:hover{background:var(--surface-2)}
+.preset b{display:block;font-size:14px}
+.preset small{color:var(--muted);font-size:12px}
+.mcard{border:1px solid var(--border);border-left:4px solid var(--c);border-radius:12px;padding:8px 12px 4px;margin:10px 0}
+.mhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mname{font-weight:700;border:1px solid transparent;background:transparent;border-radius:8px;padding:3px 6px;width:9em;min-width:0}
+.mname:hover,.mname:focus{border-color:var(--border-strong);background:var(--bg)}
+input[type=color]{width:30px;height:28px;border:1px solid var(--border);border-radius:8px;padding:1px;background:var(--surface)}
+.switch{display:inline-flex;align-items:center;gap:5px;font-size:13px}
+.switch input{width:17px;height:17px;accent-color:var(--c)}
+.mgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:0 10px}
+@media (max-width:640px){.mgrid{grid-template-columns:1fr}}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.trow{display:flex;align-items:flex-start;gap:8px;font-size:13.5px;padding:6px 0;border-top:1px dashed var(--border)}
+.trow .tname{font-weight:600;flex:none}
+.trow .tres{flex:1;min-width:0}
+.trow .tres.ok{color:var(--ok)}
+.trow .tres.ng{color:var(--danger)}
+.trow code{display:block;font-family:var(--mono);font-size:11.5px;color:var(--muted);word-break:break-all;white-space:pre-wrap}
+.hitem{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border)}
+.hitem.current .htitle::before{content:"● ";color:var(--accent)}
+.hopen{flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:10px 4px;border-radius:8px}
+.hopen:hover{background:var(--surface-2)}
+.htitle{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hmeta{display:block;font-size:12px;color:var(--muted)}
+.empty{color:var(--muted);text-align:center;padding:24px 0}
+
+/* 知らせ */
+.toast{position:fixed;left:50%;top:68px;transform:translate(-50%,-8px);opacity:0;pointer-events:none;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;transition:opacity .2s,transform .2s;z-index:100;max-width:calc(100vw - 32px);box-shadow:var(--shadow)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.error{background:var(--danger);color:#fff}
+@media (prefers-color-scheme:dark){.toast.error{color:#1a0a08}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="dots" id="dots" aria-hidden="true"></span><span class="title">AI作業場</span><span class="sub" id="brandSub">ChatGPT × Claude × Muse</span></div>
+  <span class="spacer"></span>
+  <span class="cost" id="cost" hidden title="この会議でかかった料金（OpenRouter が知らせた分だけを合計）"></span>
+  <nav class="tools" aria-label="操作">
+    <button type="button" class="btn" id="btnNew" title="新しい会議"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>新しい会議</span></button>
+    <button type="button" class="btn" id="btnHistory" title="履歴"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg><span>履歴</span></button>
+    <button type="button" class="btn" id="btnExport" title="この会議を Markdown で書き出す"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg><span>書き出し</span></button>
+    <button type="button" class="btn" id="btnSettings" title="設定"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span>設定</span></button>
+  </nav>
+</header>
+
+<main>
+  <noscript><p>この作業場は JavaScript で動きます。ブラウザの設定で JavaScript を有効にしてください。</p></noscript>
+  <div class="timeline" id="timeline" aria-live="polite"></div>
+</main>
+
+<footer class="composer-wrap">
+  <div class="composer">
+    <div class="actions" id="actions"></div>
+    <div class="box">
+      <label for="input" class="sr" hidden>AIたちへのメッセージ</label>
+      <textarea id="input" rows="2" placeholder="AIたちへの相談や作業の依頼を書く（Ctrl+Enter で送信）"></textarea>
+      <div class="controls">
+        <div class="who" id="who" role="group" aria-label="参加するAI"></div>
+        <div class="seg" id="mode" role="radiogroup" aria-label="進め方"></div>
+        <select class="rounds" id="rounds" aria-label="話し合う回数">
+          <option value="1">1周</option><option value="2">2周</option><option value="3">3周</option>
+        </select>
+        <span class="spacer"></span>
+        <button type="button" class="btn primary" id="send"></button>
+      </div>
+    </div>
+    <p class="hint" id="hint"></p>
+  </div>
+</footer>
+
+<dialog id="settingsDlg" aria-labelledby="settingsTitle">
+  <div class="sheet-head"><h2 id="settingsTitle">設定</h2><span class="spacer"></span><button type="button" class="btn icon" id="settingsClose" aria-label="閉じる"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sheet-body" id="settingsBody"></div>
+  <div class="sheet-foot"><button type="button" class="btn ghost" id="settingsCancel">キャンセル</button><button type="button" class="btn primary" id="settingsSave">保存して閉じる</button></div>
+</dialog>
+
+<dialog id="historyDlg" aria-labelledby="historyTitle">
+  <div class="sheet-head"><h2 id="historyTitle">会議の履歴</h2><span class="spacer"></span><button type="button" class="btn icon" id="historyClose" aria-label="閉じる"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sheet-body" id="historyList"></div>
+</dialog>
+
+<datalist id="dl-openrouter"></datalist>
+<datalist id="dl-openai"><option value="gpt-6.2-sol"></option><option value="gpt-6.2-astra"></option><option value="gpt-6.1-terra"></option></datalist>
+<datalist id="dl-anthropic"><option value="claude-opus-5-5"></option><option value="claude-fable-5-2"></option><option value="claude-sonnet-5-5"></option><option value="claude-haiku-5-5"></option></datalist>
+<datalist id="dl-meta"><option value="muse-spark-1.3"></option><option value="muse-wonder"></option><option value="muse-ember"></option></datalist>
+<datalist id="dl-custom"></datalist>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ============================================================
+   AI作業場 — ChatGPT・Claude・Muse を1つの会話でつなぐ
+   ・すべてこのブラウザの中で動きます（サーバーはありません）。
+   ・APIキーと会話はこのブラウザの保存領域（localStorage）にだけ置かれ、
+     各AIの会社（または OpenRouter）にだけ送られます。
+   ============================================================ */
+
+/* ---------- 小さな道具 ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const HEX = /^#[0-9a-f]{6}$/i;
+const pad = (n) => String(n).padStart(2, "0");
+
+function h(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  let value, checked;
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k === "html") n.innerHTML = v; // 決まった字（アイコン）か、エスケープ済みの HTML だけ
+    else if (k === "vars") for (const [vk, vv] of Object.entries(v)) n.style.setProperty(vk, vv);
+    else if (k === "value") value = v;
+    else if (k === "checked") checked = v;
+    else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : String(v));
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) n.append(c instanceof Node ? c : String(c));
+  if (value !== undefined) n.value = value;
+  if (checked !== undefined) n.checked = !!checked;
+  return n;
+}
+
+const ICON = {
+  send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>',
+  retry: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>',
+  up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+};
+function iconBtn(icon, label, onclick, disabled) {
+  return h("button", { type: "button", class: "btn icon", title: label, "aria-label": label, disabled: !!disabled, onclick, html: ICON[icon] });
+}
+
+function fmtDate(ts) { const d = new Date(ts); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtTime(ts) { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtNum(n) { return Number(n).toLocaleString("ja-JP"); }
+function fmtCost(c) { return c < 0.01 ? c.toFixed(4) : c.toFixed(3); }
+function shortModel(id) { return String(id || "").replace(/^[\w.-]+\//, ""); }
+function initial(name) { return (Array.from(String(name || "?").trim())[0] || "?").toUpperCase(); }
+function markFor(name, list) { // 丸に出す字。ほかのメンバーと頭文字がかぶるときは2文字（Ch・Cl など）
+  const chars = Array.from(String(name || "?").trim());
+  const first = (chars[0] || "?").toUpperCase();
+  const clash = (list || settings.members).some((m) => m.name !== name && initial(m.name) === first);
+  return clash && chars.length > 1 ? first + chars[1] : first;
+}
+function safeColor(c) { return HEX.test(c || "") ? c : "#6b7280"; }
+function inkFor(c) {
+  c = safeColor(c);
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const [r, g, b] = [1, 3, 5].map((i) => lin(parseInt(c.slice(i, i + 2), 16)));
+  const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return 1.05 / (L + 0.05) >= (L + 0.05) / 0.05 ? "#ffffff" : "#111111";
+}
+const colorVars = (c) => ({ "--c": safeColor(c), "--ink": inkFor(c) });
+
+/* ---------- 保存 ---------- */
+const store = (area) => ({
+  get(k, d) { try { const v = area().getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { area().setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+  del(k) { try { area().removeItem(k); } catch { /* 無視 */ } },
+});
+const LS = store(() => window.localStorage);
+const SS = store(() => window.sessionStorage);
+const KEY = { settings: "aiws.settings.v1", keys: "aiws.keys.v1", convs: "aiws.convs.v1", current: "aiws.current.v1", models: "aiws.models.v1", draft: "aiws.draft.v1" };
+
+/* ---------- 接続先・モデル ---------- */
+const PROVIDERS = {
+  openrouter: { label: "OpenRouter", base: "https://openrouter.ai/api/v1", protocol: "openai" },
+  openai: { label: "OpenAI", base: "https://api.openai.com/v1", protocol: "openai" },
+  anthropic: { label: "Anthropic", base: "https://api.anthropic.com/v1", protocol: "anthropic" },
+  meta: { label: "Meta", base: "https://api.meta.ai/v1", protocol: "openai" },
+  custom: { label: "カスタム（OpenAI互換）", base: "", protocol: "openai" },
+};
+// 拒否されたときに、Anthropic 側で別のモデルへ自動で引き継ぐ機能（server-side fallback）が使えるモデル
+const FALLBACK_MODELS = /^claude-(fable-5(-[12])?|opus-5(-5)?|sonnet-5-5)$/;
+
+const PRESETS = [
+  { id: "standard", label: "標準（おすすめ）", note: "各社の主力モデル。賢さと料金のバランス", models: {
+    chatgpt: { openrouter: "openai/gpt-6.2-sol", openai: "gpt-6.2-sol" },
+    claude: { openrouter: "anthropic/claude-opus-5.5", anthropic: "claude-opus-5-5" },
+    muse: { openrouter: "meta/muse-spark-1.3", meta: "muse-spark-1.3" } } },
+  { id: "max", label: "最高性能", note: "いちばん賢い。料金は高め・返事は遅め", models: {
+    chatgpt: { openrouter: "openai/gpt-6.2-astra", openai: "gpt-6.2-astra" },
+    claude: { openrouter: "anthropic/claude-fable-5.2", anthropic: "claude-fable-5-2" },
+    muse: { openrouter: "meta/muse-wonder", meta: "muse-wonder" } } },
+  { id: "economy", label: "節約", note: "安くて速い。軽い相談向け", models: {
+    chatgpt: { openrouter: "openai/gpt-6.1-terra", openai: "gpt-6.1-terra" },
+    claude: { openrouter: "anthropic/claude-haiku-5.5", anthropic: "claude-haiku-5-5" },
+    muse: { openrouter: "meta/muse-ember", meta: "muse-ember" } } },
+];
+const DIRECT_DEFAULT = { openai: "gpt-6.2-sol", anthropic: "claude-opus-5-5", meta: "muse-spark-1.3" };
+
+const DEFAULT_MEMBERS = [
+  { id: "chatgpt", name: "ChatGPT", color: "#0b7a5e", enabled: true, provider: "openrouter", model: "openai/gpt-6.2-sol",
+    role: "発想担当。アイデアや選択肢を幅広く、具体例つきで出す。" },
+  { id: "claude", name: "Claude", color: "#b4532a", enabled: true, provider: "openrouter", model: "anthropic/claude-opus-5.5",
+    role: "設計・検証担当。案を整理し、抜けや危うい点を指摘して、実行できる形に組み立てる。" },
+  { id: "muse", name: "Muse", color: "#1f5fe0", enabled: true, provider: "openrouter", model: "meta/muse-spark-1.3",
+    role: "別視点担当。使う人の気持ちや意外な角度から考え、ほかのメンバーが見落としている点を挙げる。" },
+];
+const DEFAULT_RULES = "・日本語で答える。\n・わからないことはわからないと言い、推測は推測だと書く。\n・ほかのメンバーと同じことを繰り返さず、自分ならではの視点を足す。";
+const LENGTH_HINTS = {
+  short: "1回の発言は短く、要点だけにしてください（目安 300字以内）。",
+  normal: "1回の発言は要点を絞り、長くても 800字程度にしてください。表や箇条書きは必要なときだけ使ってください。",
+  long: "必要なら詳しく書いて構いません。見出しや箇条書きで読みやすくしてください。",
+};
+const MODES = [
+  { id: "parallel", label: "みんなに聞く", hint: "同じ質問に全員が同時に、別々に答えます。答えを見比べたいときに。" },
+  { id: "discuss", label: "話し合う", hint: "順番に、前の人の発言を読んでから意見を言います。考えを深めたいときに。" },
+  { id: "relay", label: "リレー", hint: "前の人の成果物を引き継いで、順番に改善します。文章や企画を仕上げたいときに。" },
+];
+const EXAMPLES = [
+  { text: "英単語アプリを毎日続けたくなる仕掛けを出し合って、最後に優先順位をつけて", mode: "discuss" },
+  { text: "「雨の日の楽しみ方」をテーマに、400字くらいのエッセイを仕上げて", mode: "relay" },
+  { text: "プログラミングを独学で始めるなら、最初の1か月で何をすべき？", mode: "parallel" },
+];
+
+function defaultSettings() {
+  return { v: 1, members: clone(DEFAULT_MEMBERS), rules: DEFAULT_RULES, length: "normal", effort: "auto",
+    mode: "discuss", rounds: 1, summarizer: "claude", customBase: "", rememberKeys: true };
+}
+function normalizeSettings(s) {
+  const d = defaultSettings();
+  if (!s || typeof s !== "object") return d;
+  const out = { ...d, ...s };
+  out.members = Array.isArray(s.members) && s.members.length
+    ? s.members.filter((m) => m && typeof m === "object").map((m) => ({
+      id: typeof m.id === "string" && m.id ? m.id : uid(),
+      name: String(m.name || "AI").trim().slice(0, 30) || "AI",
+      color: safeColor(m.color),
+      enabled: m.enabled !== false,
+      provider: PROVIDERS[m.provider] ? m.provider : "openrouter",
+      model: String(m.model || "").trim(),
+      role: String(m.role || ""),
+    }))
+    : d.members;
+  if (!out.members.length) out.members = d.members;
+  if (!LENGTH_HINTS[out.length]) out.length = "normal";
+  if (!["auto", "low", "high"].includes(out.effort)) out.effort = "auto";
+  if (!MODES.some((m) => m.id === out.mode)) out.mode = "discuss";
+  out.rounds = [1, 2, 3].includes(Number(out.rounds)) ? Number(out.rounds) : 1;
+  out.rules = typeof out.rules === "string" ? out.rules : d.rules;
+  out.customBase = typeof out.customBase === "string" ? out.customBase.trim() : "";
+  out.rememberKeys = out.rememberKeys !== false;
+  return out;
+}
+function loadConvs() {
+  const list = LS.get(KEY.convs, []);
+  if (!Array.isArray(list)) return [];
+  return list.filter((c) => c && typeof c.id === "string" && Array.isArray(c.messages)).map((c) => {
+    for (const m of c.messages) if (m.status === "streaming" || m.status === "pending") m.status = "stopped";
+    return c;
+  });
+}
+const newConv = () => ({ id: uid(), title: "", createdAt: Date.now(), updatedAt: Date.now(), messages: [] });
+
+/* ---------- 状態 ---------- */
+let settings = normalizeSettings(LS.get(KEY.settings, null));
+let keys = { ...(SS.get(KEY.keys, {}) || {}), ...(LS.get(KEY.keys, {}) || {}) };
+let convs = loadConvs();
+let current = convs.find((c) => c.id === LS.get(KEY.current, "")) || newConv();
+let running = null; // { ctrl: AbortController }
+let draft = null;   // 設定画面で編集中の写し
+let modelIndex = null; // OpenRouter のモデル一覧（id → 名前・料金）
+
+function saveSettings() { LS.set(KEY.settings, settings); }
+function saveKeys() {
+  const clean = {};
+  for (const [k, v] of Object.entries(keys)) if (typeof v === "string" && v.trim()) clean[k] = v.trim();
+  keys = clean;
+  if (settings.rememberKeys) { LS.set(KEY.keys, clean); SS.del(KEY.keys); }
+  else { SS.set(KEY.keys, clean); LS.del(KEY.keys); }
+}
+let saveTimer = 0;
+const deletedIds = new Set(); // このタブで消した会議（ほかのタブの保存から生き返らせない）
+function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(saveConvs, 700); }
+// ほかのタブが保存した会議を取りこむ（同じ会議は新しい方。いま開いている会議はこのタブの物）
+function mergeStored() {
+  const mine = new Map(convs.map((c) => [c.id, c]));
+  for (const s of loadConvs()) {
+    if (deletedIds.has(s.id)) continue;
+    const m = mine.get(s.id);
+    if (!m) convs.push(s);
+    else if (m !== current && (s.updatedAt || 0) > (m.updatedAt || 0)) Object.assign(m, s);
+  }
+}
+function saveConvs() {
+  clearTimeout(saveTimer);
+  if (current.messages.length) {
+    current.updatedAt = Date.now();
+    if (!convs.includes(current)) convs.unshift(current);
+  }
+  mergeStored();
+  convs.sort((a, b) => b.updatedAt - a.updatedAt);
+  if (convs.length > 60) convs.length = 60;
+  if (!LS.set(KEY.convs, convs)) toast("会話を保存できませんでした（保存領域がいっぱいかもしれません）。履歴から古い会議を消してください。", "error");
+  LS.set(KEY.current, current.id);
+}
+
+/* ---------- Markdown（安全な最小限の表示） ---------- */
+function fmtInline(t) {
+  t = esc(t);
+  t = t.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(^|[^*\w])\*(?=[^\s*])([^*\n]*?[^\s*])\*(?![*\w])/g, "$1<em>$2</em>");
+  t = t.replace(/~~(?=\S)([^~\n]*?\S)~~/g, "<del>$1</del>");
+  t = t.replace(/\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  t = t.replace(/(^|[\s(（])(https:\/\/[^\s<>()（）「」、。]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+  return t;
+}
+function mdInline(s) {
+  const out = [];
+  const re = /`([^`\n]+)`/g;
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    out.push(fmtInline(s.slice(last, m.index)), "<code>" + esc(m[1]) + "</code>");
+    last = re.lastIndex;
+  }
+  out.push(fmtInline(s.slice(last)));
+  return out.join("");
+}
+const splitRow = (r) => { let s = r.trim(); if (s.startsWith("|")) s = s.slice(1); if (s.endsWith("|")) s = s.slice(0, -1); return s.split("|").map((c) => c.trim()); };
+const isTableStart = (lines, i) => /^\s*\|.*\|\s*$/.test(lines[i]) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(lines[i + 1]);
+function renderList(items) {
+  let html = "";
+  const stack = [];
+  for (const it of items) {
+    while (stack.length && it.indent < stack[stack.length - 1].indent) html += stack.pop().ordered ? "</li></ol>" : "</li></ul>";
+    let top = stack[stack.length - 1];
+    if (top && it.indent === top.indent && it.ordered !== top.ordered) { // 「- 」と「1. 」が切り替わったら別のリストにする
+      html += stack.pop().ordered ? "</li></ol>" : "</li></ul>";
+      top = stack[stack.length - 1];
+    }
+    if (!top || it.indent > top.indent) {
+      html += it.ordered ? `<ol${it.num > 1 ? ` start="${it.num}"` : ""}>` : "<ul>";
+      stack.push({ indent: it.indent, ordered: it.ordered });
+    } else html += "</li>";
+    html += "<li>" + it.text.split("\n").map(mdInline).join("<br>");
+  }
+  while (stack.length) html += stack.pop().ordered ? "</li></ol>" : "</li></ul>";
+  return html;
+}
+function renderMarkdown(src) {
+  const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  let para = [];
+  const flush = () => { if (para.length) { out.push("<p>" + para.map(mdInline).join("<br>") + "</p>"); para = []; } };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    let m;
+    if ((m = line.match(/^\s*(`{3,}|~{3,})\s*([^`\s]*)\s*$/))) {
+      flush();
+      const fence = m[1], lang = m[2], buf = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith(fence)) buf.push(lines[i++]);
+      i++;
+      out.push(`<pre>${lang ? `<span class="lang">${esc(lang)}</span>` : ""}<code>${esc(buf.join("\n"))}</code></pre>`);
+      continue;
+    }
+    if ((m = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/))) {
+      flush();
+      const lv = Math.min(6, m[1].length + 2);
+      out.push(`<h${lv}>${mdInline(m[2])}</h${lv}>`);
+      i++; continue;
+    }
+    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); out.push("<hr>"); i++; continue; }
+    if (/^\s*>/.test(line)) {
+      flush();
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ""));
+      out.push(`<blockquote>${renderMarkdown(buf.join("\n"))}</blockquote>`);
+      continue;
+    }
+    if (isTableStart(lines, i)) {
+      flush();
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      const head = splitRow(rows[0]);
+      const body = rows.slice(2).map(splitRow);
+      out.push(`<div class="table-wrap"><table><thead><tr>${head.map((c) => `<th>${mdInline(c)}</th>`).join("")}</tr></thead><tbody>${
+        body.map((r) => `<tr>${r.map((c) => `<td>${mdInline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+    if (/^\s*([-*+]|\d{1,3}[.)])\s+/.test(line)) {
+      flush();
+      const items = [];
+      while (i < lines.length) {
+        const l = lines[i];
+        const lm = l.match(/^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/);
+        if (lm) { items.push({ indent: lm[1].replace(/\t/g, "  ").length, ordered: /\d/.test(lm[2]), num: parseInt(lm[2], 10), text: lm[3] }); i++; continue; }
+        if (items.length && /^\s{2,}\S/.test(l)) { items[items.length - 1].text += "\n" + l.trim(); i++; continue; }
+        break;
+      }
+      out.push(renderList(items));
+      continue;
+    }
+    if (!line.trim()) { flush(); i++; continue; }
+    para.push(line);
+    i++;
+  }
+  flush();
+  return out.join("");
+}
+
+/* ---------- 会話の組み立て（だれが何を言ったかをAIに渡す） ---------- */
+function rosterFor(member) {
+  const list = settings.members.filter((m) => m.enabled || m.id === member.id);
+  if (!list.some((m) => m.id === member.id)) list.push(member);
+  return list;
+}
+function buildSystem(member) {
+  const L = [];
+  L.push(`あなたは「${member.name}」です。`);
+  L.push("ここは「AI作業場」です。ユーザー（人間）と複数のAIが、同じ会話を見ながら一緒に考えたり、作業を分担したりしています。");
+  L.push("", "参加メンバー:");
+  for (const m of rosterFor(member)) L.push(`- ${m.name}${m.id === member.id ? "（あなた）" : ""}: ${m.role.trim() || "役割の指定なし"}`);
+  if (member.role.trim()) L.push("", `あなたの役割: ${member.role.trim()}`);
+  L.push("", "会話のルール:",
+    "- 会話の記録では、ユーザーとほかのAIの発言に【名前】の見出しが付いています。あなた自身の過去の発言は、見出しなしで、あなたの発言として渡されます。",
+    "- 【進行役】は、この作業場からの進め方の指示です。",
+    `- 返答には、あなた自身の発言の本文だけを書いてください。先頭に【${member.name}】のような見出しを付けたり、ほかのメンバーの発言を代わりに書いたりしないでください。`,
+    "- ほかのメンバーの意見に触れるときは名前を出し、同意・反対・補足のどれなのかをはっきりさせてください。");
+  if (settings.rules.trim()) L.push("", "共通のルール:", settings.rules.trim());
+  L.push("", "長さ: " + LENGTH_HINTS[settings.length]);
+  return L.join("\n");
+}
+function instructionText(member, instr) {
+  switch (instr.type) {
+    case "discuss":
+      return `いまは「話し合い」の第${instr.round}ラウンドで、次は${member.name}（あなた）の番です。ユーザーの依頼と、ここまでのほかのメンバーの発言を踏まえて、あなたの役割から意見を述べてください。だれのどの意見に同意・反対・補足するのかをはっきりさせ、すでに出た内容の繰り返しは避けてください。`;
+    case "relay": {
+      const last = instr.isLast ? "あなたが最後の担当なので、完成版として仕上げてください。" : "このあと、ほかのメンバーが順に改善します。";
+      return instr.prevName
+        ? `いまは「リレー」形式で作業しています。直前の${instr.prevName}の成果物を引き継ぎ、あなたの役割に沿って改善した版を出してください。最初に「変えた点」を短く箇条書きにし、そのあとに成果物の全文を書いてください（成果物の長さは依頼に合わせて構いません）。${last}`
+        : `いまは「リレー」形式で作業しています。あなたが最初の担当です。ユーザーの依頼に沿って、あなたの役割から成果物の第1版を作ってください（成果物の長さは依頼に合わせて構いません）。${last}`;
+    }
+    case "summary":
+      return "ここまでの会話全体を、まとめ役として整理してください。次の見出しで、簡潔に書いてください。\n## 結論\n## 合意した点\n## 意見が分かれた点（だれがどう考えたか）\n## 次にやること";
+    default:
+      return `ユーザーの最新の発言に、${member.name}として答えてください。ほかのメンバーも同時に、それぞれ別々に答えています（今回のお互いの答えはまだ見えていません）。`;
+  }
+}
+function buildTurns(member, history, instr) {
+  const turns = [];
+  const push = (role, content) => {
+    const last = turns[turns.length - 1];
+    if (last && last.role === role) last.content += "\n\n" + content;
+    else turns.push({ role, content });
+  };
+  for (const m of history) {
+    if (m.kind === "user") push("user", `【ユーザー】\n${m.text}`);
+    else if (m.kind === "ai" && m.text && (m.status === "done" || m.status === "stopped")) {
+      const tail = m.status === "stopped" ? "\n（※途中で止められた発言）" : "";
+      if (m.memberId === member.id) push("assistant", m.text + tail);
+      else push("user", `【${m.name}】\n${m.text}${tail}`);
+    }
+  }
+  push("user", `【進行役】\n${instructionText(member, instr)}`);
+  if (turns[0].role !== "user") turns.unshift({ role: "user", content: "【進行役】\n会話を始めます。" });
+  return turns;
+}
+
+/* ---------- 通信（ストリーミング） ---------- */
+class UserError extends Error { constructor(msg, detail) { super(msg); this.name = "UserError"; this.detail = detail || ""; } }
+const joinUrl = (base, path) => base.replace(/\/+$/, "") + "/" + path;
+
+async function readSSE(res, onData) {
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", data = [];
+  const dispatch = () => { if (data.length) { const d = data.join("\n"); data = []; onData(d); } };
+  const line = (l) => {
+    if (l.endsWith("\r")) l = l.slice(0, -1);
+    if (l === "") { dispatch(); return; }
+    if (l[0] === ":") return; // コメント行（OpenRouter の「処理中」など）
+    const c = l.indexOf(":");
+    const field = c < 0 ? l : l.slice(0, c);
+    let val = c < 0 ? "" : l.slice(c + 1);
+    if (val[0] === " ") val = val.slice(1);
+    if (field === "data") data.push(val);
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) { line(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
+    }
+    buf += dec.decode();
+    if (buf) line(buf);
+    dispatch();
+  } catch (e) {
+    try { reader.cancel(); } catch { /* 無視 */ }
+    throw e;
+  }
+}
+
+async function httpError(res, member) {
+  let raw = "";
+  try { raw = await res.text(); } catch { /* 無視 */ }
+  let apiMsg = "";
+  try { const j = JSON.parse(raw); const e = j.error ?? j; apiMsg = typeof e === "string" ? e : (e.message || j.message || ""); }
+  catch { apiMsg = raw.replace(/\s+/g, " ").slice(0, 240); }
+  const p = PROVIDERS[member.provider] || PROVIDERS.openrouter;
+  const st = res.status;
+  const msg =
+    st === 401 ? `${p.label} のAPIキーが正しくないようです。「設定」でキーを確かめてください。` :
+    st === 402 ? `${p.label} の残高（クレジット）が足りません。管理画面でクレジットを追加してください。` :
+    st === 403 ? `このキーでは「${member.model}」を使えないようです（地域や権限の制限、安全チェックの可能性があります）。` :
+    st === 404 ? `モデル「${member.model}」が見つかりません。「設定」でモデル名を確かめてください。` :
+    st === 408 || st === 504 ? "時間切れになりました。もう一度試してください。" :
+    st === 413 ? "会話が長すぎて送れません。「新しい会議」を始めてください。" :
+    st === 429 ? "混み合っているか、利用の上限に達しました。少し待ってからやり直してください。" :
+    st >= 500 ? `${p.label} 側のサーバーで問題が起きています。少し待ってからやり直してください。` :
+    st === 400 ? "リクエストが受け付けられませんでした。モデル名や設定を確かめてください。" :
+    "エラーが起きました。";
+  return new UserError(msg, `HTTP ${st}${apiMsg ? " — " + apiMsg : ""}`);
+}
+function streamError(e) {
+  const m = (e && (e.message || e.type)) || "不明なエラー";
+  const code = e && (e.code || e.type) ? ` (${e.code || e.type})` : "";
+  return new UserError("生成の途中でエラーが起きました。やり直してください。", String(m) + code);
+}
+function friendly(e) {
+  if (e instanceof UserError) return { msg: e.message, detail: e.detail };
+  if (e && e.name === "TypeError") return { msg: "通信できませんでした。インターネット接続、広告ブロックなどの拡張機能、接続先のURLを確かめてください。", detail: String(e.message || e) };
+  return { msg: "予期しないエラーが起きました。", detail: String((e && e.message) || e) };
+}
+
+async function callModel(member, system, turns, opt) {
+  const ctx = opt.ctx || { keys, settings };
+  const p = PROVIDERS[member.provider] || PROVIDERS.openrouter;
+  const base = member.provider === "custom" ? ctx.settings.customBase : p.base;
+  const key = ctx.keys[member.provider] || "";
+  if (!base) throw new UserError("カスタム接続先のURLが未設定です。「設定」で入れてください。");
+  if (!key && member.provider !== "custom") throw new UserError(`${p.label} のAPIキーが未設定です。「設定」から入れてください。`);
+  const effort = opt.effort || ctx.settings.effort;
+  return p.protocol === "anthropic"
+    ? callAnthropic(base, key, member, system, turns, effort, opt)
+    : callOpenAICompat(base, key, member, system, turns, effort, opt);
+}
+
+async function callOpenAICompat(base, key, member, system, turns, effort, { signal, onText }) {
+  const prov = member.provider;
+  const body = { model: member.model, stream: true, messages: [{ role: "system", content: system }, ...turns] };
+  if (prov === "openrouter" && effort !== "auto") body.reasoning = { effort }; // 料金（usage.cost）は OpenRouter が毎回返す
+  if (prov === "openai") { body.stream_options = { include_usage: true }; if (effort !== "auto") body.reasoning_effort = effort; }
+  const headers = { "Content-Type": "application/json" };
+  if (key) headers.Authorization = "Bearer " + key;
+  if (prov === "openrouter") headers["X-Title"] = "AI Workspace";
+  const res = await fetch(joinUrl(base, "chat/completions"), { method: "POST", headers, body: JSON.stringify(body), signal });
+  if (!res.ok) throw await httpError(res, member);
+  let text = "", usage = null, finish = "";
+  const take = (j) => {
+    if (j.error) throw streamError(j.error);
+    const ch = Array.isArray(j.choices) ? j.choices[0] : null;
+    if (ch) {
+      const d = ch.delta || ch.message || {};
+      if (typeof d.content === "string" && d.content) { text += d.content; onText(text); }
+      if (ch.finish_reason) finish = ch.finish_reason;
+    }
+    if (j.usage) usage = { input: j.usage.prompt_tokens ?? null, output: j.usage.completion_tokens ?? null, cost: typeof j.usage.cost === "number" ? j.usage.cost : null };
+  };
+  if ((res.headers.get("content-type") || "").includes("application/json")) take(await res.json()); // ストリーミングに対応していない接続先
+  else if (res.body) await readSSE(res, (data) => { if (data === "[DONE]") return; let j; try { j = JSON.parse(data); } catch { return; } take(j); });
+  if (finish === "error") throw new UserError("生成の途中でエラーが起きました。やり直してください。", "finish_reason: error");
+  const notice = finish === "content_filter" || finish === "refusal" ? "安全上の理由で、回答が止められました。"
+    : finish === "length" ? "長さの上限に達したため、途中で終わっています。" : "";
+  return { text, usage, notice };
+}
+
+async function callAnthropic(base, key, member, system, turns, effort, { signal, onText }) {
+  const body = { model: member.model, max_tokens: 64000, stream: true, system, messages: turns };
+  const headers = { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" };
+  if (FALLBACK_MODELS.test(member.model)) { headers["anthropic-beta"] = "server-side-fallback-2026-07-01"; body.fallbacks = "default"; }
+  if (effort !== "auto") body.output_config = { effort };
+  const res = await fetch(joinUrl(base, "messages"), { method: "POST", headers, body: JSON.stringify(body), signal });
+  if (!res.ok) throw await httpError(res, member);
+  let text = "", stop = "", input = null, output = null, fellBackTo = "";
+  await readSSE(res, (data) => {
+    let j; try { j = JSON.parse(data); } catch { return; }
+    if (j.type === "message_start") {
+      const u = j.message && j.message.usage;
+      if (u) input = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+    } else if (j.type === "content_block_start") {
+      const b = j.content_block || {};
+      if (b.type === "fallback") fellBackTo = (b.to && b.to.model) || "別のモデル";
+      else if (b.type === "text" && b.text) { text += b.text; onText(text); }
+    } else if (j.type === "content_block_delta") {
+      const d = j.delta || {};
+      if (d.type === "text_delta" && d.text) { text += d.text; onText(text); }
+    } else if (j.type === "message_delta") {
+      if (j.delta && j.delta.stop_reason) stop = j.delta.stop_reason;
+      if (j.usage && j.usage.output_tokens != null) output = j.usage.output_tokens;
+    } else if (j.type === "error") throw streamError(j.error || {});
+  });
+  const notice = stop === "refusal" ? "安全上の理由で、この内容への回答は控えられました。"
+    : stop === "max_tokens" ? "長さの上限に達したため、途中で終わっています。"
+    : fellBackTo ? `安全上の判断で、途中から ${fellBackTo} が引き継いで答えました。` : "";
+  return { text, usage: { input, output, cost: null }, notice };
+}
+
+/* ---------- 表示 ---------- */
+function convCost(c) { return c.messages.reduce((s, m) => s + (m.usage && typeof m.usage.cost === "number" ? m.usage.cost : 0), 0); }
+function nearBottom() { const se = document.scrollingElement || document.documentElement; return se.scrollHeight - se.scrollTop - se.clientHeight < 220; }
+function scrollToBottom() { const se = document.scrollingElement || document.documentElement; window.scrollTo(0, se.scrollHeight); }
+
+function renderHeader() {
+  $("#dots").replaceChildren(...settings.members.filter((m) => m.enabled).slice(0, 6).map((m) => h("i", { vars: colorVars(m.color) })));
+  const names = settings.members.filter((m) => m.enabled).map((m) => m.name);
+  $("#brandSub").textContent = names.length ? names.join(" × ") : "メンバーがいません";
+  const cost = convCost(current);
+  const el = $("#cost");
+  el.hidden = !(cost > 0);
+  el.replaceChildren(...(cost > 0 ? [h("span", { class: "cost-label", text: "この会議 約 " }), `$${fmtCost(cost)}`] : []));
+}
+
+function renderTimeline() {
+  const tl = $("#timeline");
+  tl.replaceChildren();
+  const msgs = current.messages;
+  if (!msgs.length) { tl.append(renderWelcome()); return; }
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.kind === "ai" && m.group) {
+      const grp = h("div", { class: "group" }, renderAI(m));
+      while (i + 1 < msgs.length && msgs[i + 1].kind === "ai" && msgs[i + 1].group === m.group) grp.append(renderAI(msgs[++i]));
+      tl.append(grp);
+    } else if (m.kind === "ai") tl.append(renderAI(m));
+    else if (m.kind === "user") tl.append(h("article", { class: "msg user", "data-mid": m.id },
+      h("div", { class: "head" }, h("b", { text: "あなた" }), h("time", { text: fmtTime(m.ts) })),
+      h("div", { class: "body md", html: renderMarkdown(m.text) })));
+    else tl.append(h("div", { class: "note", role: "separator" }, h("span", { text: m.text })));
+  }
+}
+function renderAI(m) {
+  const card = h("article", { "data-mid": m.id, vars: colorVars(m.color) },
+    h("header", { class: "head" },
+      h("span", { class: "avatar", "aria-hidden": "true", text: markFor(m.name) }),
+      h("span", { class: "name", text: m.name }),
+      h("span", { class: "model", text: shortModel(m.model), title: m.model }),
+      m.mode === "summary" ? h("span", { class: "tag", text: "まとめ" }) : null,
+      h("span", { class: "status" })),
+    h("div", { class: "body md" }),
+    h("footer", { class: "foot" }));
+  fillAI(card, m);
+  return card;
+}
+function fillAI(card, m) {
+  card.className = `msg ai ${m.mode || ""} st-${m.status}`;
+  const st = card.querySelector(".status");
+  st.replaceChildren();
+  if (m.status === "pending") st.append("順番待ち");
+  else if (m.status === "streaming") st.append(h("span", { class: "dots-anim", "aria-hidden": "true" }, h("i"), h("i"), h("i")), m.text ? "書いています" : "考え中");
+  else if (m.status === "stopped") st.append("途中で止めました");
+  else if (m.status === "error") st.append(h("span", { class: "err", text: "エラー" }));
+  const body = card.querySelector(".body");
+  body.innerHTML = m.text ? renderMarkdown(m.text) : "";
+  if (m.status === "error" && m.error) body.append(h("div", { class: "error-box" }, h("p", { text: m.error.msg }), m.error.detail ? h("code", { text: m.error.detail }) : null));
+  if (m.notice) body.append(h("p", { class: "notice", text: m.notice }));
+  const foot = card.querySelector(".foot");
+  foot.replaceChildren();
+  if (m.status === "done" || m.status === "stopped" || m.status === "error") {
+    const u = m.usage, parts = [];
+    if (u && u.input != null) parts.push(`入力 ${fmtNum(u.input)}`);
+    if (u && u.output != null) parts.push(`出力 ${fmtNum(u.output)} トークン`);
+    if (u && typeof u.cost === "number") parts.push(`$${fmtCost(u.cost)}`);
+    if (parts.length) foot.append(h("span", { class: "meta", text: parts.join(" · ") }));
+    foot.append(h("span", { class: "spacer" }));
+    if (m.text) foot.append(iconBtn("copy", "コピー", () => copyText(m.text)));
+    foot.append(iconBtn("retry", "やり直す", () => retry(m), !!running));
+  }
+}
+function updateCard(m) {
+  const card = document.querySelector(`[data-mid="${m.id}"]`);
+  if (card) fillAI(card, m);
+}
+const dirty = new Set();
+let rafId = 0;
+function scheduleUpdate(m) {
+  dirty.add(m);
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    rafId = 0;
+    const stick = nearBottom();
+    dirty.forEach(updateCard);
+    dirty.clear();
+    if (stick) scrollToBottom();
+  });
+}
+
+function renderWelcome() {
+  const hasKey = Object.values(keys).some(Boolean) || !!settings.customBase;
+  return h("section", { class: "welcome" },
+    h("div", { class: "hero", "aria-hidden": "true" }, settings.members.slice(0, 4).map((m) => h("i", { vars: colorVars(m.color) }))),
+    h("h1", { text: "3つのAIで、いっしょに考える。" }),
+    h("p", { class: "lead", text: "ChatGPT・Claude・Muse が同じ会話を読みながら、答えを見比べたり、話し合ったり、作業をリレーで仕上げたりします。" }),
+    hasKey ? null : h("div", { class: "callout" },
+      h("p", null, h("b", { text: "はじめに：" }), "APIキーを設定してください。OpenRouter のキーが1つあれば、3社のAIをまとめて呼べます。"),
+      h("button", { type: "button", class: "btn primary", onclick: openSettings }, "キーを設定する")),
+    h("ol", { class: "steps" },
+      h("li", null, h("b", { text: "設定" }), "でAPIキーと、参加するAI（メンバー）を決める"),
+      h("li", null, "下の入力欄に、相談や作業の依頼を書く"),
+      h("li", null, h("b", { text: "進め方" }), "を選んで送信 —「みんなに聞く」「話し合う」「リレー」")),
+    h("div", { class: "examples" }, h("span", { class: "label", text: "例（押すと入力欄に入ります）" }),
+      EXAMPLES.map((ex) => h("button", { type: "button", class: "example", onclick: () => useExample(ex) },
+        ex.text, h("small", { text: "進め方: " + MODES.find((md) => md.id === ex.mode).label })))));
+}
+function useExample(ex) {
+  const ta = $("#input");
+  ta.value = ex.text;
+  settings.mode = ex.mode; saveSettings();
+  renderMode(); autosize(ta); ta.focus();
+}
+
+function renderWho() {
+  $("#who").replaceChildren(...settings.members.map((m) => h("button", {
+    type: "button", class: "chip", "aria-pressed": String(m.enabled), vars: colorVars(m.color),
+    title: `${m.name}（${m.model || "モデル未設定"}）— 押すと参加／休みを切り替え`,
+    onclick: () => { m.enabled = !m.enabled; saveSettings(); renderWho(); renderHeader(); renderActions(); },
+  }, h("span", { class: "dot", "aria-hidden": "true" }), m.name)));
+}
+function renderMode() {
+  $("#mode").replaceChildren(...MODES.map((md) => h("button", {
+    type: "button", role: "radio", "aria-checked": String(settings.mode === md.id), title: md.hint,
+    onclick: () => { settings.mode = md.id; saveSettings(); renderMode(); },
+  }, md.label)));
+  const r = $("#rounds");
+  r.hidden = settings.mode !== "discuss";
+  r.value = String(settings.rounds);
+  $("#hint").textContent = MODES.find((md) => md.id === settings.mode).hint + "　@Claude のように名前を書くと、その人だけが答えます。";
+}
+function summarizerId() {
+  const ids = settings.members.map((m) => m.id);
+  return ids.includes(settings.summarizer) ? settings.summarizer : (ids.includes("claude") ? "claude" : ids[0]);
+}
+function renderActions() {
+  const box = $("#actions");
+  box.replaceChildren();
+  if (!current.messages.some((m) => m.kind === "ai" && m.text)) return;
+  const sel = h("select", { "aria-label": "まとめ役", disabled: !!running, onchange: (e) => { settings.summarizer = e.target.value; saveSettings(); } },
+    settings.members.map((m) => h("option", { value: m.id, text: `${m.name}が` })));
+  sel.value = summarizerId();
+  box.append(
+    h("button", { type: "button", class: "pill", disabled: !!running, onclick: continueDiscuss }, "もう1周話し合う"),
+    h("span", { class: "pill-group" }, h("button", { type: "button", class: "pill", disabled: !!running, onclick: summarize }, "まとめる"), sel));
+}
+function setBusy(b) {
+  const btn = $("#send");
+  btn.classList.toggle("stop", b);
+  btn.innerHTML = (b ? ICON.stop : ICON.send) + `<span>${b ? "停止" : "送信"}</span>`;
+  btn.setAttribute("aria-label", b ? "生成を止める" : "送信");
+  renderActions();
+}
+function renderAll() {
+  const ready = Object.values(keys).some(Boolean) || !!settings.customBase;
+  $("#input").placeholder = ready ? "AIたちへの相談や作業の依頼を書く（Ctrl+Enter で送信）" : "まず右上の「設定」で APIキーを入れてください";
+  renderHeader(); renderWho(); renderMode(); renderTimeline(); renderActions(); setBusy(!!running);
+}
+
+/* ---------- 送信と進め方 ---------- */
+function recipientsFor(text) {
+  const mentioned = settings.members.filter((m) => new RegExp(`[@＠]${escRe(m.name)}(?![\\w])`, "i").test(text));
+  return mentioned.length ? mentioned : settings.members.filter((m) => m.enabled);
+}
+function missingSetup(members, k = keys, s = settings) {
+  for (const m of members) {
+    if (!m.model.trim()) return `${m.name} のモデル名が空です。「設定」で入れてください。`;
+    if (m.provider === "custom") { if (!/^https?:\/\//.test(s.customBase || "")) return `カスタム接続先のURLが未設定です（${m.name} が使います）。`; continue; }
+    if (!k[m.provider]) return `${PROVIDERS[m.provider].label} のAPIキーが未設定です（${m.name} が使います）。`;
+  }
+  return "";
+}
+function addAI(mb, extra) {
+  const m = { id: uid(), kind: "ai", memberId: mb.id, name: mb.name, color: mb.color, provider: mb.provider, model: mb.model, text: "", status: "pending", ts: Date.now(), ...extra };
+  current.messages.push(m);
+  return m;
+}
+function addNote(text, extra) { current.messages.push({ id: uid(), kind: "note", text, ts: Date.now(), ...extra }); }
+function nextRound() {
+  let n = 0;
+  for (let i = current.messages.length - 1; i >= 0; i--) {
+    const m = current.messages[i];
+    if (m.kind === "user") break;
+    if (m.kind === "note" && m.round) n = Math.max(n, m.round);
+  }
+  return n + 1;
+}
+function stripOwnHeading(text, name) { return text.replace(new RegExp(`^\\s*(【${escRe(name)}】|\\*\\*${escRe(name)}\\*\\*[:：]?)\\s*`), ""); }
+
+async function generate(m, member, history, signal) {
+  Object.assign(m, { status: "streaming", text: "", error: null, notice: "", usage: null, ts: Date.now(),
+    name: member.name, color: member.color, model: member.model, provider: member.provider });
+  const card = document.querySelector(`[data-mid="${m.id}"]`);
+  if (card) { card.style.setProperty("--c", safeColor(m.color)); card.style.setProperty("--ink", inkFor(m.color)); fillAI(card, m); }
+  try {
+    const r = await callModel(member, buildSystem(member), buildTurns(member, history, m.instr || { type: "answer" }), {
+      signal, onText: (t) => { m.text = stripOwnHeading(t, member.name); scheduleUpdate(m); },
+    });
+    m.text = stripOwnHeading(r.text || m.text, member.name);
+    m.usage = r.usage; m.notice = r.notice;
+    if (!m.text.trim() && !m.notice) m.notice = "（空の返事でした）";
+    m.status = "done";
+  } catch (e) {
+    if (e && e.name === "AbortError") m.status = "stopped";
+    else { m.status = "error"; m.error = friendly(e); }
+  }
+  updateCard(m);
+  renderHeader();
+  saveSoon();
+}
+
+async function withRun(fn) {
+  const ctrl = new AbortController();
+  running = { ctrl };
+  setBusy(true);
+  try { await fn(ctrl.signal); }
+  finally {
+    running = null;
+    const stick = nearBottom(), y = window.scrollY;
+    saveConvs(); renderAll();
+    if (stick) scrollToBottom(); else window.scrollTo(0, y);
+  }
+}
+const showAndFollow = () => { renderTimeline(); renderActions(); scrollToBottom(); };
+
+async function runTurn(mode, members, rounds) {
+  await withRun(async (signal) => {
+    if (mode === "parallel") {
+      const group = uid(), history = current.messages.slice();
+      const msgs = members.map((mb) => addAI(mb, { mode: "parallel", group, instr: { type: "answer" } }));
+      showAndFollow();
+      await Promise.all(msgs.map((m, i) => generate(m, members[i], history, signal)));
+    } else if (mode === "discuss") {
+      const first = nextRound();
+      for (let r = 0; r < rounds && !signal.aborted; r++) {
+        addNote(`話し合い 第${first + r}ラウンド`, { round: first + r });
+        for (const mb of members) {
+          if (signal.aborted) break;
+          const m = addAI(mb, { mode: "discuss", instr: { type: "discuss", round: first + r } });
+          showAndFollow();
+          await generate(m, mb, current.messages.slice(0, -1), signal);
+        }
+      }
+    } else if (mode === "relay") {
+      addNote("リレー");
+      let prev = null;
+      for (let i = 0; i < members.length && !signal.aborted; i++) {
+        const mb = members[i];
+        const m = addAI(mb, { mode: "relay", instr: { type: "relay", prevName: prev ? prev.name : "", isLast: i === members.length - 1 } });
+        showAndFollow();
+        await generate(m, mb, current.messages.slice(0, -1), signal);
+        if (m.status === "done") prev = mb;
+      }
+    } else if (mode === "summary") {
+      const m = addAI(members[0], { mode: "summary", instr: { type: "summary" } });
+      showAndFollow();
+      await generate(m, members[0], current.messages.slice(0, -1), signal);
+    }
+  });
+}
+
+async function send() {
+  if (running) return;
+  const ta = $("#input");
+  const text = ta.value.trim();
+  if (!text) { ta.focus(); return; }
+  const members = recipientsFor(text);
+  if (!members.length) { toast("答えるメンバーを1人以上オンにしてください（入力欄の下の名前を押す）。", "error"); return; }
+  const miss = missingSetup(members);
+  if (miss) { toast(miss, "error"); openSettings(); return; }
+  ta.value = ""; autosize(ta); LS.del(KEY.draft);
+  current.messages.push({ id: uid(), kind: "user", text, ts: Date.now() });
+  if (!current.title) current.title = text.replace(/\s+/g, " ").slice(0, 40);
+  saveConvs();
+  await runTurn(settings.mode, members, settings.rounds);
+}
+async function continueDiscuss() {
+  if (running) return;
+  const members = settings.members.filter((m) => m.enabled);
+  if (!members.length) { toast("参加中のメンバーがいません。", "error"); return; }
+  const miss = missingSetup(members);
+  if (miss) { toast(miss, "error"); openSettings(); return; }
+  await runTurn("discuss", members, 1);
+}
+async function summarize() {
+  if (running) return;
+  const mb = settings.members.find((m) => m.id === summarizerId());
+  if (!mb) return;
+  const miss = missingSetup([mb]);
+  if (miss) { toast(miss, "error"); openSettings(); return; }
+  await runTurn("summary", [mb], 1);
+}
+async function retry(m) {
+  if (running) return;
+  const member = settings.members.find((x) => x.id === m.memberId)
+    || { id: m.memberId, name: m.name, color: m.color, provider: m.provider || "openrouter", model: m.model, role: "" };
+  const miss = missingSetup([member]);
+  if (miss) { toast(miss, "error"); openSettings(); return; }
+  const idx = current.messages.indexOf(m);
+  const history = current.messages.slice(0, idx).filter((x) => !(m.group && x.group === m.group));
+  await withRun((signal) => generate(m, member, history, signal));
+}
+
+/* ---------- 書き出し・コピー・知らせ ---------- */
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type: type + ";charset=utf-8" }));
+  const a = h("a", { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function exportMarkdown() {
+  if (!current.messages.length) { toast("書き出す会話がまだありません。"); return; }
+  const names = [...new Set(current.messages.filter((m) => m.kind === "ai").map((m) => m.name))];
+  const L = [`# ${current.title || "AI作業場の会議"}`, "", `- 日時: ${fmtDate(current.createdAt)}`, `- 参加: ${names.join("、") || "なし"}`, ""];
+  for (const m of current.messages) {
+    if (m.kind === "note") L.push("---", "", `*${m.text}*`, "");
+    else if (m.kind === "user") L.push("## あなた", "", m.text, "");
+    else L.push(`## ${m.name}（${m.model}）${m.mode === "summary" ? " — まとめ" : ""}`, "", m.text || (m.error ? `（エラー: ${m.error.msg}）` : "（発言なし）"), "");
+  }
+  const d = new Date(); // ファイル名は英数字だけにする（日本語の名前は環境によって「download」に置き換わるため）
+  download(`ai-workspace_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.md`, L.join("\n"), "text/markdown");
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("コピーしました。"); return; } catch { /* 下の方法を試す */ }
+  const ta = h("textarea", { value: text, style: "position:fixed;opacity:0;top:0;left:0" });
+  document.body.append(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { /* 無視 */ }
+  ta.remove();
+  toast(ok ? "コピーしました。" : "コピーできませんでした。", ok ? "" : "error");
+}
+let toastTimer = 0;
+function toast(msg, kind) {
+  const t = $("#toast");
+  (document.querySelector("dialog[open]") || document.body).append(t); // 開いているダイアログの上にも出す
+  t.textContent = msg;
+  t.className = "toast show " + (kind || "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = "toast " + (kind || ""); }, kind === "error" ? 6000 : 3000);
+}
+function autosize(ta) { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, window.innerHeight * 0.4) + "px"; }
+
+/* ---------- 会議の切り替え ---------- */
+function newConversation() {
+  if (running) { toast("生成中は切り替えられません。先に止めてください。", "error"); return; }
+  saveConvs();
+  current = newConv();
+  LS.set(KEY.current, current.id);
+  renderAll();
+  $("#input").focus();
+}
+function switchConv(c) {
+  if (running) { toast("生成中は切り替えられません。先に止めてください。", "error"); return; }
+  saveConvs();
+  current = c;
+  LS.set(KEY.current, c.id);
+  renderAll();
+  scrollToBottom();
+}
+function deleteConv(c) {
+  deletedIds.add(c.id);
+  convs = convs.filter((x) => x !== c);
+  if (c === current) current = newConv();
+  saveConvs(); renderAll();
+}
+function openHistory() { mergeStored(); renderHistory(); $("#historyDlg").showModal(); }
+function renderHistory() {
+  const list = $("#historyList");
+  list.replaceChildren();
+  const all = convs.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+  if (!all.length) { list.append(h("p", { class: "empty", text: "まだ保存された会議はありません。" })); return; }
+  for (const c of all) {
+    const n = c.messages.filter((m) => m.kind !== "note").length;
+    const cost = convCost(c);
+    list.append(h("div", { class: "hitem" + (c === current ? " current" : "") },
+      h("button", { type: "button", class: "hopen", onclick: () => { $("#historyDlg").close(); switchConv(c); } },
+        h("span", { class: "htitle", text: c.title || "（無題）" }),
+        h("span", { class: "hmeta", text: `${fmtDate(c.updatedAt)} · ${n}件${cost > 0 ? ` · $${fmtCost(cost)}` : ""}` })),
+      iconBtn("trash", "この会議を削除", () => {
+        if (running && c === current) { toast("生成中は消せません。", "error"); return; }
+        if (confirm(`「${c.title || "無題"}」を削除しますか？`)) { deleteConv(c); renderHistory(); }
+      })));
+  }
+}
+
+/* ---------- 設定 ---------- */
+let fid = 0;
+function field(label, control, help) {
+  const id = control.id || (control.id = "f" + (++fid));
+  return h("div", { class: "field" }, h("label", { for: id, text: label }), control, help || null);
+}
+function keyField(label, prov, placeholder, helpHtml) {
+  const input = h("input", { class: "inp", type: "password", autocomplete: "off", spellcheck: "false", placeholder, value: draft.k[prov] || "",
+    oninput: (e) => { draft.k[prov] = e.target.value.trim(); } });
+  input.id = "f" + (++fid);
+  const toggle = h("button", { type: "button", class: "btn ghost small", onclick: () => {
+    input.type = input.type === "password" ? "text" : "password";
+    toggle.textContent = input.type === "password" ? "表示" : "隠す";
+  } }, "表示");
+  return h("div", { class: "field" }, h("label", { for: input.id, text: label }), h("div", { class: "keyrow" }, input, toggle),
+    helpHtml ? h("small", { class: "help", html: helpHtml }) : null);
+}
+const link = (href, text) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+
+async function loadModelList() {
+  if (modelIndex) return modelIndex;
+  const cached = LS.get(KEY.models, null);
+  if (cached && Array.isArray(cached.list) && Date.now() - cached.at < 864e5) { modelIndex = new Map(cached.list.map((m) => [m.id, m])); return modelIndex; }
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/models");
+    const j = await res.json();
+    const list = (j.data || []).filter((m) => m && typeof m.id === "string" && !m.id.endsWith(":batch"))
+      .map((m) => ({ id: m.id, name: String(m.name || m.id), i: Number(m.pricing && m.pricing.prompt) * 1e6, o: Number(m.pricing && m.pricing.completion) * 1e6 }));
+    LS.set(KEY.models, { at: Date.now(), list });
+    modelIndex = new Map(list.map((m) => [m.id, m]));
+  } catch { modelIndex = null; }
+  return modelIndex;
+}
+function fillOpenRouterList() {
+  if (!modelIndex) return;
+  const dl = $("#dl-openrouter");
+  if (dl.childElementCount) return;
+  dl.replaceChildren(...[...modelIndex.values()].sort((a, b) => a.id.localeCompare(b.id)).map((m) => h("option", { value: m.id, label: m.name })));
+}
+function priceText(m) {
+  if (m.provider !== "openrouter" || !m.model) return { text: "", warn: false };
+  if (!modelIndex) return { text: "", warn: false };
+  const info = modelIndex.get(m.model);
+  if (!info) return { text: "このモデル名は OpenRouter の一覧に見つかりません。つづりを確かめてください。", warn: true };
+  if (!Number.isFinite(info.i) || !Number.isFinite(info.o)) return { text: info.name, warn: false };
+  return { text: `${info.name} — 料金の目安: 入力 $${info.i.toFixed(2)} ／ 出力 $${info.o.toFixed(2)}（100万トークンあたり）`, warn: false };
+}
+function refreshPrice(card, m) {
+  const el = card.querySelector(".mprice");
+  if (!el) return;
+  const p = priceText(m);
+  el.textContent = p.text;
+  el.className = "help mprice" + (p.warn ? " warn" : "");
+}
+function defaultModelFor(m, prov) {
+  const std = PRESETS[0].models[m.id];
+  if (std && std[prov]) return std[prov];
+  if (prov === "openrouter") return m.model.includes("/") ? m.model : "";
+  return DIRECT_DEFAULT[prov] || "";
+}
+
+function openSettings() {
+  if (!draft) draft = { s: clone(settings), k: { ...keys } };
+  renderSettings();
+  const d = $("#settingsDlg");
+  if (!d.open) d.showModal();
+  loadModelList().then(() => {
+    fillOpenRouterList();
+    if (draft) document.querySelectorAll("#settingsBody .mcard").forEach((card, i) => { const m = draft.s.members[i]; if (m) refreshPrice(card, m); });
+  });
+}
+function closeSettings() { draft = null; const d = $("#settingsDlg"); if (d.open) d.close(); }
+
+function renderSettings() {
+  const body = $("#settingsBody");
+  const keepScroll = body.scrollTop;
+  const s = draft.s;
+  const sec = (title, ...kids) => h("section", { class: "sset" }, h("h3", { text: title }), ...kids);
+
+  const connect = sec("1. つなぐ（APIキー）",
+    h("p", { class: "lead", html: "おすすめは <b>OpenRouter</b>。キー1つで ChatGPT・Claude・Muse の全員を呼べます。" }),
+    h("ol", { html: `<li>${link("https://openrouter.ai/", "openrouter.ai")} でアカウントを作る</li><li>${link("https://openrouter.ai/settings/credits", "Credits")} でクレジットを買う（前払い制。使った分だけ減ります）</li><li>${link("https://openrouter.ai/settings/keys", "Keys")} でキーを作り、下に貼る</li>` }),
+    keyField("OpenRouter のキー", "openrouter", "sk-or-…"),
+    h("details", null, h("summary", { text: "各社のキーを直接使う（上級者向け）" }),
+      h("p", { class: "help", text: "直接使うときは、下の「メンバー」で各AIの「接続先」を切り替えてください。Meta の API は、地域によってはまだ使えないことがあります。" }),
+      keyField("OpenAI のキー（ChatGPT 用）", "openai", "sk-…", link("https://platform.openai.com/api-keys", "OpenAI のキー管理")),
+      keyField("Anthropic のキー（Claude 用）", "anthropic", "sk-ant-…", link("https://platform.claude.com/", "Claude Console")),
+      keyField("Meta のキー（Muse 用）", "meta", "", link("https://dev.meta.ai/api-keys/", "Meta Model API")),
+      field("カスタム接続先のURL（OpenAI 互換の API）", h("input", { class: "inp", type: "url", spellcheck: "false", placeholder: "https://example.com/v1", value: s.customBase,
+        oninput: (e) => { s.customBase = e.target.value.trim(); } }), h("small", { class: "help", text: "「…/v1」まで。末尾の /chat/completions はこちらで付けます。" })),
+      keyField("カスタム接続先のキー（不要なら空のまま）", "custom", "")),
+    h("label", { class: "check" }, h("input", { type: "checkbox", checked: s.rememberKeys, onchange: (e) => { s.rememberKeys = e.target.checked; } }),
+      "このブラウザにキーを記憶する（オフにすると、タブを閉じたら消えます）"),
+    h("p", { class: "help", text: "キーはこのブラウザの中だけに保存され、各AIの会社（と OpenRouter）にだけ送られます。共用のパソコンでは記憶をオフにしてください。" }),
+    h("div", { class: "row-btns" }, h("button", { type: "button", class: "btn ghost", id: "testBtn", onclick: runTests }, "接続テスト（参加中のメンバー）")),
+    h("div", { id: "testOut" }));
+
+  const presets = h("div", { class: "presets" }, PRESETS.map((p) => h("button", { type: "button", class: "preset", onclick: () => applyPreset(p) },
+    h("b", { text: p.label }), h("small", { text: p.note }))));
+  const members = sec("2. メンバー",
+    h("p", { class: "lead", text: "モデルの組み合わせを一度に選ぶ（ChatGPT・Claude・Muse の3人に当てはめます）:" }),
+    presets,
+    ...s.members.map((m, i) => memberCard(m, i, s.members)),
+    h("div", { class: "row-btns" },
+      h("button", { type: "button", class: "btn ghost", onclick: addMember }, "＋ メンバーを追加"),
+      h("button", { type: "button", class: "btn ghost", onclick: () => { s.members = clone(DEFAULT_MEMBERS); renderSettings(); } }, "メンバーを初期設定に戻す")));
+
+  const radios = (name, opts, cur, onpick) => h("div", { class: "radios", role: "radiogroup" },
+    opts.map(([val, label]) => h("label", null, h("input", { type: "radio", name, value: val, checked: cur === val, onchange: () => onpick(val) }), label)));
+  const style = sec("3. 話し方",
+    field("全員に共通のルール", h("textarea", { rows: "4", value: s.rules, oninput: (e) => { s.rules = e.target.value; } })),
+    h("div", { class: "field" }, h("span", { class: "help", text: "1回の発言の長さ" }),
+      radios("len", [["short", "短め"], ["normal", "ふつう"], ["long", "長め"]], s.length, (v) => { s.length = v; })),
+    h("div", { class: "field" }, h("span", { class: "help", text: "考える深さ（OpenRouter・OpenAI・Anthropic で有効。深いほど賢く、遅く、高くなります）" }),
+      radios("effort", [["auto", "おまかせ"], ["low", "速め"], ["high", "じっくり"]], s.effort, (v) => { s.effort = v; })));
+
+  const data = sec("4. データ",
+    h("p", { class: "help", text: "会議の記録はこのブラウザにだけ保存されています（最大60件）。大事な会議は「書き出し」で保存してください。" }),
+    h("div", { class: "row-btns" },
+      h("button", { type: "button", class: "btn danger", onclick: () => {
+        if (running) { toast("生成中は消せません。", "error"); return; }
+        if (!confirm("保存されている会議をすべて消します。元に戻せません。よろしいですか？")) return;
+        for (const c of [...convs, ...loadConvs()]) deletedIds.add(c.id);
+        convs = []; current = newConv(); saveConvs(); renderAll(); toast("会議をすべて消しました。");
+      } }, "保存した会議をすべて消す"),
+      h("button", { type: "button", class: "btn danger", onclick: () => { draft.k = {}; renderSettings(); toast("キーを空にしました（「保存して閉じる」で確定）。"); } }, "キーをすべて空にする")));
+
+  body.replaceChildren(connect, members, style, data);
+  body.scrollTop = keepScroll;
+}
+
+function memberCard(m, i, list) {
+  const card = h("div", { class: "mcard", vars: colorVars(m.color) });
+  const avatar = h("span", { class: "avatar", "aria-hidden": "true", text: markFor(m.name, list) });
+  const provSel = h("select", { value: m.provider, onchange: (e) => { m.provider = e.target.value; m.model = defaultModelFor(m, m.provider); renderSettings(); } },
+    Object.entries(PROVIDERS).map(([id, p]) => h("option", { value: id, text: p.label })));
+  const modelInp = h("input", { class: "inp", value: m.model, list: "dl-" + m.provider, spellcheck: "false", autocomplete: "off",
+    placeholder: m.provider === "openrouter" ? "例: anthropic/claude-opus-5.5" : "モデル名",
+    oninput: (e) => { m.model = e.target.value.trim(); refreshPrice(card, m); } });
+  card.append(
+    h("div", { class: "mhead" },
+      avatar,
+      h("input", { class: "mname", value: m.name, maxlength: "30", "aria-label": "名前", oninput: (e) => { m.name = e.target.value; avatar.textContent = markFor(m.name, list); } }),
+      h("input", { type: "color", value: safeColor(m.color), "aria-label": `${m.name} の色`, oninput: (e) => {
+        m.color = e.target.value; card.style.setProperty("--c", safeColor(m.color)); card.style.setProperty("--ink", inkFor(m.color));
+      } }),
+      h("label", { class: "switch" }, h("input", { type: "checkbox", checked: m.enabled, onchange: (e) => { m.enabled = e.target.checked; } }), "参加"),
+      h("span", { class: "spacer" }),
+      iconBtn("up", "上へ（話す順番を早く）", () => moveMember(i, -1), i === 0),
+      iconBtn("down", "下へ（話す順番を遅く）", () => moveMember(i, 1), i === list.length - 1),
+      iconBtn("trash", "このメンバーを外す", () => { list.splice(i, 1); renderSettings(); }, list.length <= 1)),
+    h("div", { class: "mgrid" }, field("接続先", provSel), field("モデル", modelInp, h("small", { class: "help mprice" }))),
+    field("役割（このAIへの指示）", h("textarea", { rows: "2", value: m.role, oninput: (e) => { m.role = e.target.value; } })));
+  refreshPrice(card, m);
+  return card;
+}
+function moveMember(i, d) {
+  const list = draft.s.members, j = i + d;
+  if (j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  renderSettings();
+}
+function addMember() {
+  const palette = ["#7c3aed", "#c2410c", "#0f766e", "#be185d", "#4d7c0f", "#1d4ed8"];
+  draft.s.members.push({ id: uid(), name: "新メンバー", color: palette[draft.s.members.length % palette.length], enabled: true, provider: "openrouter", model: "", role: "" });
+  renderSettings();
+  const names = document.querySelectorAll("#settingsBody .mname");
+  const last = names[names.length - 1];
+  if (last) { last.focus(); last.select(); }
+}
+function applyPreset(p) {
+  let n = 0;
+  for (const m of draft.s.members) {
+    const pick = p.models[m.id] && p.models[m.id][m.provider];
+    if (pick) { m.model = pick; n++; }
+  }
+  renderSettings();
+  toast(n ? `「${p.label}」を当てはめました（「保存して閉じる」で確定）。` : "当てはめられるメンバーがいませんでした（初期の3人の接続先が対象です）。", n ? "" : "error");
+}
+async function runTests() {
+  const out = $("#testOut"), btn = $("#testBtn");
+  out.replaceChildren();
+  const ctx = { keys: draft.k, settings: draft.s };
+  const members = draft.s.members.filter((m) => m.enabled);
+  if (!members.length) { out.append(h("p", { class: "help", text: "参加中のメンバーがいません。" })); return; }
+  btn.disabled = true;
+  const setRes = (row, ok, msg, detail) => {
+    const r = row.querySelector(".tres");
+    r.className = "tres " + (ok ? "ok" : "ng");
+    r.replaceChildren(...[(ok ? "✓ " : "✗ ") + msg, detail ? h("code", { text: detail }) : null].filter(Boolean));
+  };
+  await Promise.all(members.map(async (m) => {
+    const row = h("div", { class: "trow" }, h("span", { class: "avatar sm", vars: colorVars(m.color), text: markFor(m.name, draft.s.members), "aria-hidden": "true" }),
+      h("span", { class: "tname", text: m.name }), h("span", { class: "tres", text: "確認中…" }));
+    out.append(row);
+    const miss = missingSetup([m], ctx.keys, ctx.settings);
+    if (miss) { setRes(row, false, miss); return; }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90000);
+    try {
+      const r = await callModel(m, "これは接続テストです。", [{ role: "user", content: "「OK」とだけ返してください。" }], { ctx, effort: "low", signal: ctrl.signal, onText() {} });
+      setRes(row, true, `つながりました（${m.model}）。返事: ${(r.text || "").trim().slice(0, 24) || "（空）"}`);
+    } catch (e) {
+      const f = e && e.name === "AbortError" ? { msg: "時間切れになりました（90秒）。", detail: "" } : friendly(e);
+      setRes(row, false, f.msg, f.detail);
+    } finally { clearTimeout(timer); }
+  }));
+  btn.disabled = false;
+}
+function saveFromDraft() {
+  const s = draft.s;
+  for (const m of s.members) { m.name = String(m.name || "").trim() || "AI"; m.model = String(m.model || "").trim(); }
+  const bad = s.members.find((m) => m.enabled && !m.model);
+  if (bad) { toast(`${bad.name} のモデル名が空です。入れるか、「参加」を外してください。`, "error"); return; }
+  if (s.customBase && !/^https?:\/\//.test(s.customBase)) { toast("カスタム接続先のURLは https:// から書いてください。", "error"); return; }
+  settings = normalizeSettings(s);
+  keys = { ...draft.k };
+  saveSettings(); saveKeys();
+  closeSettings();
+  renderAll();
+  toast("設定を保存しました。");
+}
+
+/* ---------- はじまり ---------- */
+function init() {
+  const ta = $("#input");
+  $("#send").addEventListener("click", () => { if (running) running.ctrl.abort(); else send(); });
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); if (!running) send(); }
+  });
+  let draftTimer = 0;
+  ta.addEventListener("input", () => { autosize(ta); clearTimeout(draftTimer); draftTimer = setTimeout(() => LS.set(KEY.draft, ta.value), 400); });
+  $("#rounds").addEventListener("change", (e) => { settings.rounds = Number(e.target.value) || 1; saveSettings(); });
+  $("#btnNew").addEventListener("click", newConversation);
+  $("#btnHistory").addEventListener("click", openHistory);
+  $("#btnExport").addEventListener("click", exportMarkdown);
+  $("#btnSettings").addEventListener("click", openSettings);
+  $("#settingsSave").addEventListener("click", saveFromDraft);
+  $("#settingsCancel").addEventListener("click", closeSettings);
+  $("#settingsClose").addEventListener("click", closeSettings);
+  $("#settingsDlg").addEventListener("close", () => { draft = null; });
+  $("#historyClose").addEventListener("click", () => $("#historyDlg").close());
+  window.addEventListener("beforeunload", (e) => { if (running) { e.preventDefault(); e.returnValue = ""; } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveConvs(); });
+  window.addEventListener("storage", (e) => { // ほかのタブで会議が保存・削除されたら、一覧をそろえる
+    if (e.key !== KEY.convs) return;
+    convs = loadConvs().filter((c) => !deletedIds.has(c.id) && c.id !== current.id);
+    if (current.messages.length) convs.unshift(current);
+    if ($("#historyDlg").open) renderHistory();
+  });
+
+  ta.value = LS.get(KEY.draft, "") || "";
+  renderAll();
+  autosize(ta);
+  if (current.messages.length) scrollToBottom();
+}
+init();
+})();
+</script>
+</body>
+</html>
