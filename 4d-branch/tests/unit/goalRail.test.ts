@@ -280,15 +280,15 @@ describe("行き先からゴールへの線", () => {
     ]);
     (g as unknown as { host: GoalRailHost }).host = { info: () => ({ key: "k", T: 100_000, by: 2056, byKari: false, mid: 4600, path: "pi", moves }), open() {} };
     const pos = (id: string) => (id.startsWith("m") ? { x: 300, y: Number(id.slice(1)) * 128 } : { x: impactColX(24), y: Number(id.slice(1)) * 128 });
-    g.draw(scene(5, { ctx, z: 0.62, cx: 100, cy: 100, pos, drawn: ["m0", "m1", "m2"] }));
+    g.draw(scene(5, { ctx, z: 0.62, cx: 100, cy: 100, pos, shown: (id: string) => ["m0", "m1", "m2"].includes(id) }));
     expect(g.moveTags).toBe(2);
     const texts = calls.filter((c) => c.op === "fillText").map((c) => String(c.args[0]));
     expect(texts).toContain("芽 14%");
     expect(texts).toContain("芽: 選び方");
     // キャンバスに出ていない手には出さない・縮めたとき（low）は出さない
-    g.draw(scene(5, { z: 0.62, cx: 100, cy: 100, pos, drawn: ["m1"] }));
+    g.draw(scene(5, { z: 0.62, cx: 100, cy: 100, pos, shown: (id: string) => ["m1"].includes(id) }));
     expect(g.moveTags).toBe(1);
-    g.draw(scene(5, { z: 0.2, cx: 100, cy: 100, pos, drawn: ["m0", "m1"] }));
+    g.draw(scene(5, { z: 0.2, cx: 100, cy: 100, pos, shown: (id: string) => ["m0", "m1"].includes(id) }));
     expect(g.moveTags).toBe(0);
   });
 });

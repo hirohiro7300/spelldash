@@ -100,8 +100,11 @@ export interface GoalScene {
   selected: ID | null;
   /** 前提の係数（札の年と単位） */
   t: GoalTables | null;
-  /** キャンバスに出ているカード（今日の手の芽の札を出すか。無ければ出さない） */
-  drawn?: readonly ID[];
+  /**
+   * カードがキャンバスに出ているか（今日の手の芽の札を出すか。無ければ出さない）。芽の札のある手（10 枚ほど）だけを引く: 出ている
+   * カードの並び（数千枚）は「これにする」「見送る」のたびに作り直されるので、それをなめない
+   */
+  shown?: (id: ID) => boolean;
 }
 
 /** 線の 8 つの組（金の実線・金の点線・灰の実線・灰の点線、それぞれ濃い / 薄い）の色（近い: full・compact） */
@@ -225,8 +228,6 @@ export class GoalRail {
   private readonly segs: number[][] = Array.from({ length: 8 }, () => []);
   /** 線の札の候補（y・x0・割合の文字・芽。フレームごとに使い回す） */
   private readonly cands: Array<{ y: number; x0: number; share: string; seed: boolean }> = [];
-  /** キャンバスに出ている今日の手（出ているカードの並びと芽の札が変わったときだけ作り直す） */
-  private moveCache: { drawn: readonly ID[] | null; moves: ReadonlyMap<ID, string> | null; ids: ID[] } = { drawn: null, moves: null, ids: [] };
 
   /** pan: 札を押したとき、ゴールの列が見える所へ動かす。redraw: 文字を入れた後に描き直す */
   constructor(
@@ -486,20 +487,14 @@ export class GoalRail {
   /** 今日の手のカードの上の縁（真ん中）にかけて金色の札「芽 14%」（近いときだけ。カードの幅の半分に入らなければ出さない）。描いた数を返す */
   private drawMoveTags(ctx: CanvasRenderingContext2D, s: GoalScene): number {
     const moves = this.host?.info(false)?.moves ?? null;
-    if (!moves || !moves.size || !s.drawn) return 0;
-    const c = this.moveCache;
-    if (c.drawn !== s.drawn || c.moves !== moves) {
-      c.drawn = s.drawn;
-      c.moves = moves;
-      c.ids = s.drawn.filter((id) => moves.has(id));
-    }
-    if (!c.ids.length) return 0;
+    const shown = s.shown;
+    if (!moves || !moves.size || !shown) return 0;
     const { z, cx, cy } = s;
     ctx.font = `700 10px ${CANVAS_FONT}`;
     ctx.textBaseline = "middle";
     let n = 0;
-    for (const id of c.ids) {
-      const text = moves.get(id)!;
+    for (const [id, text] of moves) {
+      if (!shown(id)) continue;
       const p = s.pos(id);
       const mx = p.x * z + cx;
       const top = (p.y - HALF_H) * z + cy;

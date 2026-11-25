@@ -119,11 +119,31 @@ export function liveCount(app: AppContext, ctx: DeepCtx, tops: readonly number[]
   );
 }
 
+/**
+ * 書き換えた地図での shapeCount の答え（地図の番号の表 ctx.ids ごと）。数は見え方の範囲の線（文書の索引の形と道の線の版）・開いている物
+ * （impactOpenSet の入れ物）・地図と番号の表だけで決まり、選んだ手・見送った手・年収・方針には依らない。「これにする」「見送る」で
+ * 画面に渡す物が作り直され、詳細の「この先をひらく」を詰め直すたびに、そのカードの先の数千枚をなめ直さない（スマホで +80 ms だった）
+ */
+const shapeMemo = new WeakMap<readonly ID[], { vm: object; topo: number; flow: number; cur: ReadonlySet<ID>; cm: DeepCtx["cm"]; root: ID; byKey: Map<string, { count: number; rows: number }> }>();
+
 /** 覆う先を「ちょうどその段数まで」にしたときの数（書き換えた地図ではたどって数える。そうでなければ地図の番号で数えた物 base） */
 export function shapeCount(app: AppContext, ctx: DeepCtx, picks: readonly ShapePick[], base: { count: number; rows: number }, stop = Infinity): { count: number; rows: number } {
   if (!ctx.edited) return base;
+  const vm = app.vm;
+  const v = vm.index.version;
+  const cur = vm.impactOpenSet(ctx.root);
+  let m = shapeMemo.get(ctx.ids);
+  if (!m || m.vm !== vm || m.topo !== v.topo || m.flow !== v.flow || m.cur !== cur || m.cm !== ctx.cm || m.root !== ctx.root) {
+    shapeMemo.set(ctx.ids, (m = { vm, topo: v.topo, flow: v.flow, cur, cm: ctx.cm, root: ctx.root, byKey: new Map() }));
+  }
+  const key = `${picks.map((p) => `${p.i}:${p.lim}`).join(",")}|${stop}`;
+  const hit = m.byKey.get(key);
+  if (hit) return hit;
   const rule = shapeRule(ctx.cm, picks);
-  return liveCount(app, ctx, rule.tops, rule.want, stop);
+  const out = liveCount(app, ctx, rule.tops, rule.want, stop);
+  if (m.byKey.size >= 256) m.byKey.clear();
+  m.byKey.set(key, out);
+  return out;
 }
 
 /** まとめて開く・たたむの最後のお知らせを閉じる関数（新しく開く・たたむ・⌘Z で戻したら、古い「元に戻す」を残さない: 見直し reader-7） */

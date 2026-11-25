@@ -606,6 +606,55 @@ describe("まとめて開く: 見直しの直し", () => {
     }
   });
 
+  it("書き換えた地図の段数の数は、選んだ手が変わって画面に渡す物が作り直されてもなめ直さない。開いた・形を変えたら数え直す（v36: スマホのこれにする +80 ms）", () => {
+    const doc = build(map);
+    const { store, ui, vm } = setup(doc);
+    const app = appOf(store, ui, vm);
+    const ctx0 = vm.deep.get()!;
+    const f = cm.firstMoves[0]!;
+    const g = cm.kids[cm.kidOff[f]!]!;
+    const addMine = (k: number) => {
+      const c = makeNode({ type: "action", title: `自分のカード ${k}` });
+      store.transact("足す", (tx) => {
+        tx.addNode(c);
+        tx.addEdge(makeEdge({ source: ctx0.idOf(g), target: c.id }));
+      });
+    };
+    addMine(0);
+    const ctx1 = vm.deep.get()!;
+    expect(ctx1.edited).toBe(true);
+    const x = deepDepths(cm, f).find((d) => d.toEnd)!;
+    const pk = [{ i: f, lim: Infinity }];
+    const fresh = (ctx: DeepCtx) => {
+      const rule = shapeRule(cm, pk);
+      return liveCount(app, ctx, rule.tops, rule.want);
+    };
+    const c1 = shapeCount(app, ctx1, pk, x);
+    expect(c1).toEqual(fresh(ctx1));
+    const spy = vi.spyOn(vm, "countImpactUnder");
+    // 選ぶ（これにする）: 計算と画面に渡す物は作り直されるが、数は同じ物（なめ直さない）
+    store.transact("これにする", (tx) => tx.updateNode(ctx1.idOf(f), { status: "active" }));
+    const ctx2 = vm.deep.get()!;
+    expect(ctx2).not.toBe(ctx1);
+    expect(ctx2.analysis()).not.toBe(ctx1.analysis());
+    expect(shapeCount(app, ctx2, pk, x)).toEqual(c1);
+    expect(spy).not.toHaveBeenCalled();
+    expect(fresh(ctx2)).toEqual(c1);
+    // 開いている物が変わった: 数え直す（このカードの先はちょうどその段数の形なので、数は同じ）
+    spy.mockClear();
+    vm.setImpactOpen([ctx2.idOf(cm.kids[cm.kidOff[g]!]!)]);
+    expect(shapeCount(app, vm.deep.get()!, pk, x)).toEqual(c1);
+    expect(spy).toHaveBeenCalled();
+    // 自分のカードをもう 1 枚足した（形が変わった）: 数え直して 1 枚増える
+    spy.mockClear();
+    addMine(1);
+    const ctx3 = vm.deep.get()!;
+    const c3 = shapeCount(app, ctx3, pk, x);
+    expect(spy).toHaveBeenCalled();
+    expect(c3.count).toBe(c1.count + 1);
+    expect(c3).toEqual(fresh(ctx3));
+  });
+
   it("⌘Z: 直前のまとめて開くを戻す（文書の取り消しは使わない）。その後に文書を書き換えていれば文書の取り消し（data-undo-toast-only・reader-3）", () => {
     const doc = build(map);
     const { store, ui, vm } = setup(doc);

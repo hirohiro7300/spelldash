@@ -976,7 +976,7 @@ export class CanvasView {
       onPath: (id) => vm.node(id).path,
       selected: sel.size === 1 ? (sel.values().next().value ?? null) : null,
       t: this.cards.goal(imp, doc),
-      drawn: vm.drawNodes,
+      shown: (id) => vm.nodes.get(id)?.hidden === false,
     });
   }
 

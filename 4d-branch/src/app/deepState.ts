@@ -176,6 +176,11 @@ export interface DeepCtx {
   /** 地図の番号のカードの ID */
   idOf(i: number): ID;
   /**
+   * 地図の番号 → ID の表（idOf の元。同じ表の間は同じ配列: 選んだ手・年収・方針だけが変わって画面に渡す物を作り直しても同じ。
+   * 番号と ID の対応から数えた物を覚える鍵に使う）
+   */
+  readonly ids: readonly ID[];
+  /**
    * 自分で選んだ手の中に、選び方の道の上のまとめた手（この先は標準の続きの見積もり）がある（3 年の稼ぎと分布は、その先が
    * 標準の続きの平均になる: 作業メモ SPEC v1 §5.12・user-20）
    */
@@ -640,6 +645,7 @@ export class DeepState {
         return i !== undefined && map.key(i) === k ? i : -1;
       },
       idOf: (i) => ids[i] ?? impactNodeId64(map.key(i)),
+      ids,
       pickedSummary: () => {
         if (picked !== null) return picked;
         const reach = ctx.analysis().pi.reach;
