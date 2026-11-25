@@ -475,12 +475,25 @@ describe("行き先からゴールへの線", () => {
       const up = r2.calls.findIndex((c) => c.op === "lineTo" && c.args[0] === 385 && c.args[1] === 26);
       expect(up).toBeGreaterThan(0);
       expect(r2.calls[up - 1]!.args).toEqual([385, 800 * zz + 120]);
-      // 3 か月後のカードが開いていて右の端まで来ていれば、札は点のすぐ右の空きに（線はカードの手前まで）
+      // 3 か月後のカードが開いていて右の端まで来ていれば、点だけ（カードの間には線の確からしさの札と矢印があるので、線も札も置かない）
+      const r3 = recorder();
       const open = newRail();
-      open.draw(base({ z: zz, cx, width: 390, height: 844 }));
+      open.draw(base({ ctx: r3.ctx, z: zz, cx, width: 390, height: 844 }));
       expect(open.leadRows).toBe(3);
       expect(open.leads).toBe(0);
-      expect(open.leadLabels).toBeGreaterThanOrEqual(1);
+      expect(open.leadLabels).toBe(0);
+      expect(r3.calls.filter((c) => c.op === "lineTo" && c.dash > 0).length).toBe(0);
+      expect(r3.calls.filter((c) => c.op === "arc").length).toBe(2);
+      // 縮めたとき（low）は、同じ空きに札を置く（芽の札がカードの上に無い）
+      const lowGap = newRail();
+      // 3 か月後のカードの右の端が画面の右の端から 10px: 「芽 2%」（4 文字）は点と次のカードの間に入る
+      const zl = 0.2;
+      const lr = recorder();
+      lowGap.draw(base({ ctx: lr.ctx, width: 390, height: 844, cx: 390 - (impactColX(2) + NODE_W / 2) * zl - 10 }));
+      expect(lowGap.leads).toBe(0);
+      expect(lowGap.leadLabels).toBe(1);
+      const gl = lr.calls.find((c) => c.op === "fillText" && c.args[0] === "芽 2%")!;
+      expect(gl.args[1]).toBeCloseTo((impactColX(1) + NODE_W / 2) * zl + 390 - (impactColX(2) + NODE_W / 2) * zl - 10 + 5, 6);
       // 机の compact
       const desk = newRail();
       desk.draw(base({ z: 0.4 }));

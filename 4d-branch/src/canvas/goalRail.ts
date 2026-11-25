@@ -667,6 +667,9 @@ export class GoalRail {
     // お知らせの帯（キャンバスの上に重ねる）が出ていれば、その下から（帯の後ろに札を置かない）
     const minY = Math.max(s.top + 16, chipB + 14, this.bannerH ? RULER_H + GAP_TOP + this.bannerH : 0);
     const boxes = s.boxes ?? null;
+    // 近いとき（スマホの compact）は、カードの間に線も札も置かない（間には線の確からしさの札「10%」と矢印がある。手の芽は
+    // カードの上の札にある）。その行のいちばん右のカードより右だけ
+    const near = s.lod === "full" || s.lod === "compact";
     const cands = this.leadCands;
     cands.length = 0;
     const segs = this.leadSegs;
@@ -711,7 +714,7 @@ export class GoalRail {
       for (let i = 0; i < iv.length && cur < xe; i += 2) {
         const a = Math.min(iv[i]! - LEAD_PAD, xe);
         const sx = Math.max(cur, -2);
-        if (a - sx >= LEAD_SEG_MIN) {
+        if (!near && a - sx >= LEAD_SEG_MIN) {
           segs.push(sx, a);
           if (i === 0) {
             gap0 = sx;
