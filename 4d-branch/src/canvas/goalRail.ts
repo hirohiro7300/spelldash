@@ -9,10 +9,12 @@
 //   選んだ行き先 線の右に「2056 年 0.45 億円（5%）目安」（画面の右で切れない: 入らなければカードの上へ）。スマホでゴールの列が
 //                画面の右の外なら、札の上の端からその上の目盛りの札まで破線を 1 本
 //   今日の手     近いとき（full・compact）、今日の手のカードの上の縁に金色の札「芽 14%」（見取り図の芽の札と同じ。見直し reader-4）
-//   手からの道しるべ 縮めたとき（low・dot: 机のふだんの 20%）で行き先の線が 1 本も無い（3 年後まで開いていない）ときは、芽の札の
-//                ある今日の手ごとに、カードの右のつまみに金の点・出ているカードのいちばん右の先からゴールの列（画面の外なら右の端）
-//                まで、その手の高さに点線を 1 本と、端に札「芽 14%」（手ごとに 1 つ。行き先のカードごとの文字は出さない）。いちばん
-//                下の札の下に「→ ゴール 10 億円」（机で端の札が右の上にあれば出さない）。点線は金（芽）と灰（芽: 選び方）の 2 本・点は 1 回の塗りにまとめる
+//   手からの道しるべ 行き先の線が 1 本も無い（3 年後まで開いていない）とき、縮めたとき（low・dot: 机のふだんの 20%）とスマホの
+//                ふだんの倍率（compact）で、芽の札のある今日の手ごとに、カードの右のつまみに金の点・そこからゴールの列（画面の外
+//                なら右の端）まで、その手の高さに点線を 1 本（同じ高さのカードの所は空ける: 線は点から出てカードの後ろを通る）。
+//                その行のいちばん右のカードより右に札「芽 14%」（行ごとに決める: ほかの行の開いた枝で消えない・縦に動かしても
+//                左の端が動かない）。札はゴールに近い手から置き、詰まれば 6px までずらす。札の付かない線は薄い色。札の列の下に
+//                「→ ゴール 10 億円」（机で端の札が右の上にあれば出さない）。点線は金・灰（芽: 選び方）・薄い線の 3 本・点は 1 回の塗り
 //   ゴールのカード DOM のボタン 1 つ（.goal-rail。キャンバスの入れ物の中）。目盛りのすぐ下、ゴールの列の右。フレームごとに位置を
 //                1 度だけ書く（変わったときだけ）。列が画面の外なら端に札で寄せる（机「→ ゴール 10 億円（おすすめの道 5%・目安）」は
 //                目盛りの下の右・スマホ「10億 · おすすめ 5%目安 ›」は目盛りの帯の中の右: カードを並べる所に重ねない。見直し reader-1）。
@@ -69,7 +71,37 @@ export interface GoalRailInfo {
   /** mid の出どころ: pi = おすすめの選び方（「おすすめの道」）・keep = ずっと今のまま（おすすめが無い地図。「今のまま」） */
   path: "pi" | "keep" | null;
   /** 今日の手のカードの芽の札（「芽 14%」「芽: 選び方」。芽の無い手は入れない） */
-  moves?: ReadonlyMap<ID, string>;
+  moves?: ReadonlyMap<ID, GoalMoveTag>;
+}
+
+/** 今日の手の芽の札 */
+export interface GoalMoveTag {
+  /** 札の文字（「芽 14%」「芽 1% 未満」「芽: 選び方」） */
+  text: string;
+  /** 芽の割合（0〜1。「芽: 選び方」は 0）。札を出す手を選ぶ順（大きい手から） */
+  share: number;
+}
+
+/** 描いたカードの箱（画面の px。x0, y0, x1, y1 の順に 4 つずつ n 枚） */
+export interface CardBoxes {
+  buf: Float64Array;
+  n: number;
+}
+
+/** 箱を 1 つ足す（足りなければ倍に広げる） */
+export function pushCardBox(b: CardBoxes, x0: number, y0: number, x1: number, y1: number): void {
+  let buf = b.buf;
+  const k = b.n * 4;
+  if (k + 4 > buf.length) {
+    const next = new Float64Array(buf.length * 2);
+    next.set(buf);
+    b.buf = buf = next;
+  }
+  buf[k] = x0;
+  buf[k + 1] = y0;
+  buf[k + 2] = x1;
+  buf[k + 3] = y1;
+  b.n++;
 }
 
 /** アプリが渡す物（数の出どころと、カードを押したときに開く物） */
@@ -110,10 +142,10 @@ export interface GoalScene {
    */
   shown?: (id: ID) => boolean;
   /**
-   * このフレームで描いたカードのうち、いちばん右のカードの右の端（画面の px。カードを描いていなければ -Infinity）。縮めたときの
-   * 手からの道しるべは、ここより右から引く（カードに重ねない）
+   * このフレームで描いたカードの箱（画面の px）。手からの道しるべは行ごとに、その高さにあるカードを避けて引き、札はその行の
+   * いちばん右のカードより右に置く（ほかの行の開いた枝では消えない・縦に動かしても線の左の端が動かない: 見直し reader-1）
    */
-  frontier?: number;
+  boxes?: CardBoxes;
 }
 
 /** 手からの道しるべの線（金: 芽・灰: 芽: 選び方）と点の色 */
@@ -121,9 +153,19 @@ const LEAD_STYLE: ReadonlyArray<{ color: string; label: string }> = [
   { color: "rgba(255,181,71,0.75)", label: "rgba(255,200,120,0.98)" },
   { color: "rgba(150,160,178,0.6)", label: "rgba(200,208,222,0.92)" },
 ];
-/** 道しるべの線の、出ているカードの右の端からの間と、札を入れるのに要る長さ（px） */
+/** 札の付かない道しるべの線（行が詰まって札を置けない・先にカードがあって札を置けない: 札の付いた濃い線と見分ける） */
+const LEAD_DIM = "rgba(150,160,178,0.3)";
+/** 道しるべの線の、その行のいちばん右のカードの右の端からの間と、札を入れるのに要る長さ（px） */
 const LEAD_GAP = 12;
 const LEAD_MIN = 64;
+/** 線がカードの手前・後ろで空ける間と、カードの間に引く線の短さの下限（px） */
+const LEAD_PAD = 4;
+const LEAD_SEG_MIN = 6;
+/** 行の高さにカードがあるとみなす上下の余り（px）と、札を上下にずらしてよい幅（px） */
+const LEAD_BAND = 3;
+const LEAD_NUDGE = [0, -2, 2, -4, 4, -6, 6];
+/** 画面の下の拡大縮小の部品（.zoom-ctl: 下から 14px・高さ約 36px。スマホでは幅いっぱい）の分、札を置かない下の端からの高さ（px） */
+const LEAD_BOTTOM = 58;
 
 /** 線の 8 つの組（金の実線・金の点線・灰の実線・灰の点線、それぞれ濃い / 薄い）の色（近い: full・compact） */
 const NEAR_STYLE: ReadonlyArray<{ color: string; width: number; dot: boolean }> = [
@@ -210,6 +252,43 @@ function measureCtx(): CanvasRenderingContext2D | null {
   return measure;
 }
 
+/** 道しるべの候補（今日の手 1 つ） */
+interface LeadCand {
+  y: number;
+  port: number;
+  text: string;
+  share: number;
+  choice: boolean;
+  /** 線の切れ目（leadSegs の segAt から segN 組） */
+  segAt: number;
+  segN: number;
+  /** その行のいちばん右のカードより右の、線の左の端（札を置く所の左の端） */
+  tail: number;
+  /** ゴールの列（画面の右の端）まで札を入れる長さがある */
+  open: boolean;
+  /** 点のすぐ右の空き（次のカードの手前まで。無ければ NaN） */
+  gap0: number;
+  gap1: number;
+  /** 置いた札の左の端・幅・高さ */
+  lx: number;
+  lw: number;
+  ly: number;
+  lab: boolean;
+}
+
+/** 札を置く順（ゴールに近い手から。芽: 選び方 は 1% の手の次・1% 未満の手より前） */
+function leadRank(c: LeadCand): number {
+  return c.choice ? 0.0095 : c.share;
+}
+
+/** 箱のどれかに重なる */
+function hitsBox(b: CardBoxes | null, x0: number, y0: number, x1: number, y1: number): boolean {
+  if (!b) return false;
+  const a = b.buf;
+  for (let k = 0, e = b.n * 4; k < e; k += 4) if (a[k]! < x1 && x0 < a[k + 2]! && a[k + 1]! < y1 && y0 < a[k + 3]!) return true;
+  return false;
+}
+
 export class GoalRail {
   /** 直近のフレームで描いた線の数（確かめ用: 数だけ。どの行き先かも値も持たない） */
   stubs = 0;
@@ -221,9 +300,15 @@ export class GoalRail {
   stubLabels = 0;
   /** 今日の手のカードに芽の札を描いた数（確かめ用: 数だけ） */
   moveTags = 0;
-  /** 縮めたときの、今日の手からゴールへの道しるべの線と札の数（確かめ用: 数だけ） */
+  /**
+   * 今日の手からゴールへの道しるべ（確かめ用: 数だけ）。leadRows: 画面に出ている芽の札のある手・leads: そのうち線がゴールの列
+   * （画面の右の端）まで届き札を入れる長さのある手・leadLabels: 置いた札
+   */
+  leadRows = 0;
   leads = 0;
   leadLabels = 0;
+  /** スマホで道しるべの線の右の端を、目盛りの帯の札（「10億 · おすすめ 5%目安 ›」）まで縦の点線でつないだ（確かめ用） */
+  leadBus = false;
   /** 選んだ行き先の線の札を描いた（確かめ用） */
   labeled = false;
   /** 選んだ行き先の札の右の端（画面の px。描いていなければ null: 画面の右で切れていないかの確かめ用） */
@@ -247,10 +332,14 @@ export class GoalRail {
   private placedNarrow = false;
   private dirty = false;
   private readonly segs: number[][] = Array.from({ length: 8 }, () => []);
-  /** 線の札の候補（y・x0・割合の文字・芽。フレームごとに使い回す） */
-  private readonly cands: Array<{ y: number; x0: number; share: string; seed: boolean }> = [];
-  /** 道しるべの候補（y・手の札の文字・芽: 選び方か。フレームごとに使い回す） */
-  private readonly leadCands: Array<{ y: number; port: number; text: string; choice: boolean }> = [];
+  /** 線の札の候補（y・x0・割合と文字・芽。フレームごとに使い回す） */
+  private readonly cands: Array<{ y: number; x0: number; frac: number; share: string; seed: boolean }> = [];
+  /** 道しるべの候補（フレームごとに使い回す） */
+  private readonly leadCands: LeadCand[] = [];
+  /** 道しるべの線の切れ目（x0, x1 の組。候補ごとに segAt から segN 組） */
+  private leadSegs: number[] = [];
+  /** 行の高さにあるカードの横の範囲（候補ごとに使い回す） */
+  private readonly rowIv: number[] = [];
 
   /** pan: 札を押したとき、ゴールの列が見える所へ動かす。redraw: 文字を入れた後に描き直す */
   constructor(
@@ -383,7 +472,7 @@ export class GoalRail {
         n++;
         if (on) emph++;
         // 線の札の候補（丸めて 0% は出さない。選んだ行き先は線の右に札があるので出さない）
-        if (near && id !== s.selected && Math.round(g.frac * 100) >= 1) cands.push({ y, x0, share: formatGoalShare(g.frac), seed: g.seed });
+        if (near && id !== s.selected && Math.round(g.frac * 100) >= 1) cands.push({ y, x0, frac: g.frac, share: formatGoalShare(g.frac), seed: g.seed });
       }
     }
     for (let k = 0; k < 8; k++) {
@@ -412,9 +501,14 @@ export class GoalRail {
     // スマホで行き先を選んでいるときは、選んだ札と右の上への破線だけ（ほかの線の札は破線と重なる）
     this.stubLabels = cands.length && t && !(this.narrow && sel) ? this.drawStubLabels(ctx, s, Math.min(rx, W), t) : 0;
     this.moveTags = near ? this.drawMoveTags(ctx, s) : 0;
-    // 縮めたときで行き先の線が無い（3 年後まで開いていない）: 今日の手からゴールへの道しるべ
-    if (!near && n === 0 && rx > 0) strokes += this.drawLeads(ctx, s, rx);
-    else this.leads = this.leadLabels = 0;
+    // 行き先の線が無い（3 年後まで開いていない）: 今日の手からゴールへの道しるべ。縮めたとき（机のふだんの 20%）と、スマホの
+    // ふだんの倍率（44%: compact。芽の札だけではゴールとのつながりが見えない: 見直し reader-4）
+    if ((!near || (this.narrow && lod === "compact")) && n === 0 && rx > 0) strokes += this.drawLeads(ctx, s, rx);
+    else {
+      this.leadRows = this.leads = this.leadLabels = 0;
+      this.leadBus = false;
+      this.leadCands.length = 0;
+    }
     // 選んだ行き先: 線の右に期限の年の資産（画面の右で切れない。「目安」が最初に切れないよう、入らなければカードの上へ）
     if (sel && t) {
       const text = goalStubLabel(t, sel.atBy);
@@ -465,25 +559,31 @@ export class GoalRail {
    */
   private drawStubLabels(ctx: CanvasRenderingContext2D, s: GoalScene, right: number, t: GoalTables): number {
     const cands = this.cands;
-    cands.sort((a, b) => a.y - b.y);
+    // 札を出す線は、ゴールに近い（割合の大きい）線から選ぶ（上から順に選ぶと、詰まった行で大きい線の札が消えていた: 見直し reader-2）
+    cands.sort((a, b) => b.frac - a.frac || a.y - b.y);
     const goal = shortGoal(t.T);
     const minY = Math.max(s.top + 24, this.state === "right" ? this.chipBottom() + 14 : 0);
     ctx.font = `650 10.5px ${CANVAS_FONT}`;
     ctx.textBaseline = "alphabetic";
     ctx.lineJoin = "round";
-    let drawn = 0;
-    let lastY = -Infinity;
-    let firstY: number | null = null;
-    let firstX = 0;
+    const picked: Array<{ y: number; x: number; text: string; seed: boolean }> = [];
     for (const c of cands) {
-      if (drawn >= GOAL_STUB_LABEL_CAP) break;
+      if (picked.length >= GOAL_STUB_LABEL_CAP) break;
       const y = c.y - 4;
-      if (y < minY || y > s.height - 4 || y - lastY < LABEL_GAP) continue;
+      if (y < minY || y > s.height - 4 || picked.some((q) => Math.abs(q.y - y) < LABEL_GAP)) continue;
       const text = `${goal}の ${c.share}`;
       const tw = ctx.measureText(text).width;
       const x = right - tw - 6;
       // 線が短すぎる（カードのすぐ右がゴールの列）なら出さない
       if (x < c.x0 + 6) continue;
+      picked.push({ y, x, text, seed: c.seed });
+    }
+    picked.sort((a, b) => a.y - b.y);
+    let drawn = 0;
+    let firstY: number | null = null;
+    let firstX = 0;
+    for (const { y, x, text, seed } of picked) {
+      const c = { seed };
       ctx.strokeStyle = "rgba(7,9,13,0.9)";
       ctx.lineWidth = 3.5;
       ctx.strokeText(text, x, y);
@@ -493,7 +593,6 @@ export class GoalRail {
         firstY = y;
         firstX = right - 6;
       }
-      lastY = y;
       drawn++;
     }
     // いちばん上に、どの年の・目安の数か
@@ -519,7 +618,7 @@ export class GoalRail {
     ctx.font = `700 10px ${CANVAS_FONT}`;
     ctx.textBaseline = "middle";
     let n = 0;
-    for (const [id, text] of moves) {
+    for (const [id, { text }] of moves) {
       if (!shown(id)) continue;
       const p = s.pos(id);
       const mx = p.x * z + cx;
@@ -546,32 +645,87 @@ export class GoalRail {
   }
 
   /**
-   * 縮めたとき（low・dot）の、芽の札のある今日の手からゴールへの道しるべ（ゴールの列が画面の左の外なら呼ばない）。手の右のつまみに
-   * 金の点、出ているカードの右の先からゴールの列（画面の外なら右の端）までその手の高さに点線、端に「芽 14%」。描いた回数を返す
-   * （点線 2 本まで + 点の塗り 1 回 + 点の縁 1 回）
+   * 芽の札のある今日の手からゴールへの道しるべ（縮めたとき low・dot と、スマホのふだんの倍率 compact。ゴールの列が画面の左の外なら
+   * 呼ばない）。手の右のつまみに金の点、そこからゴールの列（画面の外なら右の端）までその手の高さに点線（その高さのカードの所は
+   * 空ける: 線は点から出て、カードの後ろを通る。見直し reader-3）、その行のいちばん右のカードより右に札「芽 14%」（行ごとに決める:
+   * ほかの行の開いた枝で全部の線が消えない。見直し reader-1）。札はゴールに近い手から置き、詰まれば少し上下にずらす。札を置けない
+   * 線は薄い色（濃い線にはいつも札がある: 見直し reader-2）。描いた回数を返す（点線 3 本まで + 点の塗り 1 回 + 点の縁 1 回）
    */
   private drawLeads(ctx: CanvasRenderingContext2D, s: GoalScene, rx: number): number {
+    this.leadRows = 0;
     this.leads = 0;
     this.leadLabels = 0;
+    this.leadBus = false;
+    this.leadCands.length = 0;
     const moves = this.host?.info(false)?.moves ?? null;
     const shown = s.shown;
     if (!moves || !moves.size || !shown) return 0;
     const { z, cx, cy, width: W, height: H } = s;
     const xe = Math.min(rx, W);
-    const x0 = Math.max(0, (s.frontier ?? -Infinity) + LEAD_GAP);
     // 机で札が右の上にあれば、札の下から（札の文字に重ねない）
     const chipB = this.state === "right" ? this.chipBottom() : 0;
-    const minY = Math.max(s.top + 16, chipB + 14);
+    // お知らせの帯（キャンバスの上に重ねる）が出ていれば、その下から（帯の後ろに札を置かない）
+    const minY = Math.max(s.top + 16, chipB + 14, this.bannerH ? RULER_H + GAP_TOP + this.bannerH : 0);
+    const boxes = s.boxes ?? null;
     const cands = this.leadCands;
     cands.length = 0;
-    for (const [id, text] of moves) {
+    const segs = this.leadSegs;
+    segs.length = 0;
+    const iv = this.rowIv;
+    for (const [id, m] of moves) {
       if (!shown(id)) continue;
       const p = s.pos(id);
       const y = p.y * z + cy;
       const port = (p.x + HALF_W) * z + cx;
-      if (y < s.top || y > H || port > xe) continue;
-      cands.push({ y, port, text, choice: text.startsWith("芽:") });
+      if (y < s.top || y > H || port > xe - LEAD_SEG_MIN) continue;
+      const choice = m.text.startsWith("芽:");
+      // この手の高さにあるカード（つまみより右）の横の範囲
+      iv.length = 0;
+      let rowRight = -Infinity;
+      if (boxes) {
+        const b = boxes.buf;
+        for (let k = 0, e = boxes.n * 4; k < e; k += 4) {
+          const x1 = b[k + 2]!;
+          if (x1 <= port + 1 || b[k + 1]! - LEAD_BAND > y || b[k + 3]! + LEAD_BAND < y) continue;
+          iv.push(b[k]!, x1);
+          if (x1 > rowRight) rowRight = x1;
+        }
+      }
+      // 左の端の順に（1 行に数枚: 差し込みで並べる）
+      for (let i = 2; i < iv.length; i += 2) {
+        const a = iv[i]!;
+        const bb = iv[i + 1]!;
+        let j = i - 2;
+        for (; j >= 0 && iv[j]! > a; j -= 2) {
+          iv[j + 2] = iv[j]!;
+          iv[j + 3] = iv[j + 1]!;
+        }
+        iv[j + 2] = a;
+        iv[j + 3] = bb;
+      }
+      // 点から右へ、カードの間だけ線を引く
+      const segAt = segs.length;
+      let cur = port + (choice ? 2 : 5);
+      let gap0 = NaN;
+      let gap1 = NaN;
+      for (let i = 0; i < iv.length && cur < xe; i += 2) {
+        const a = Math.min(iv[i]! - LEAD_PAD, xe);
+        const sx = Math.max(cur, -2);
+        if (a - sx >= LEAD_SEG_MIN) {
+          segs.push(sx, a);
+          if (i === 0) {
+            gap0 = sx;
+            gap1 = a;
+          }
+        }
+        cur = Math.max(cur, iv[i + 1]! + LEAD_PAD);
+      }
+      // その行のいちばん右のカードより右（札を置く所）
+      const tail = Math.max(-2, rowRight > port ? Math.max(cur, rowRight + LEAD_GAP) : cur);
+      if (xe - tail >= LEAD_SEG_MIN) segs.push(tail, xe);
+      cands.push({ y, port, text: m.text, share: m.share, choice, segAt, segN: (segs.length - segAt) >> 1, tail, open: xe - tail >= LEAD_MIN, gap0, gap1, lx: 0, lw: 0, ly: 0, lab: false });
     }
+    this.leadRows = cands.length;
     if (!cands.length) return 0;
     let strokes = 0;
     // つまみの金の点（芽の手だけ。画面の中のつまみだけ）: 1 つの道でまとめて塗る
@@ -591,68 +745,113 @@ export class GoalRail {
       ctx.stroke();
       strokes += 2;
     }
-    // 札を入れる長さが無い（出ているカードがゴールの列・画面の右の端まで来ている）なら線と札は出さない（点だけ）
-    if (xe - x0 < LEAD_MIN) return strokes;
-    cands.sort((a, b) => a.y - b.y);
+    // 札: ゴールに近い手から（芽: 選び方 は 1% の手の次）。その行のいちばん右のカードより右・ゴールの列（画面の外なら端の札と
+    // 同じ右の端）の手前に、線の右の端に重ねて置く。そこに入らない手（自分の枝が右の端まで開いている）は、点のすぐ右の空きに
+    ctx.font = `650 10.5px ${CANVAS_FONT}`;
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    const right = rx > W ? W - GAP_SIDE : xe - 6;
+    const order = cands.slice().sort((a, b) => leadRank(b) - leadRank(a) || a.y - b.y);
+    const placed: LeadCand[] = [];
+    for (const c of order) {
+      const tw = ctx.measureText(c.text).width;
+      let x: number | null = null;
+      if (c.open && right - tw >= c.tail) x = right - tw;
+      else if (!Number.isNaN(c.gap0) && c.gap1 + LEAD_PAD - 1 - c.gap0 >= tw) x = c.gap0;
+      if (x === null) continue;
+      for (const d of LEAD_NUDGE) {
+        const ly = c.y + d;
+        if (ly < minY || ly > H - LEAD_BOTTOM) continue;
+        if (placed.some((q) => q.lx < x + tw && x < q.lx + q.lw && Math.abs(q.ly - ly) < LABEL_GAP)) continue;
+        if (d !== 0 && hitsBox(boxes, x, ly - 6, x + tw, ly + 6)) continue;
+        c.lx = x;
+        c.lw = tw;
+        c.ly = ly;
+        c.lab = true;
+        placed.push(c);
+        break;
+      }
+    }
+    // スマホでゴールの列が右の外・札が目盛りの帯の右にあれば、線の右の端から札まで縦に 1 本（どの線もゴールの札へ向かうと分かる:
+    // ふだんの倍率では札の横にカードがあり「→ ゴール 10 億円」を置けない。見直し reader-4）。金の線と同じ 1 本で描く
+    let busY = -Infinity;
+    if (this.narrow && rx > W && this.state === "right") for (const c of cands) if (c.open && c.lab && !c.choice && c.y > busY) busY = c.y;
+    const busX = W - 5;
+    // 点線: 札の付いた金・札の付いた灰（芽: 選び方）・札の付かない薄い線の 3 本にまとめる
     ctx.lineWidth = 1.2;
     ctx.lineCap = "round";
     ctx.setLineDash([0.5, 3.4]);
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < 3; k++) {
       ctx.beginPath();
       let any = false;
       for (const c of cands) {
-        if (c.choice !== (k === 1)) continue;
-        ctx.moveTo(x0, c.y);
-        ctx.lineTo(xe, c.y);
-        any = true;
+        if ((k === 2) === c.lab || (k < 2 && c.choice !== (k === 1))) continue;
+        for (let i = c.segAt, e = c.segAt + c.segN * 2; i < e; i += 2) {
+          ctx.moveTo(segs[i]!, c.y);
+          ctx.lineTo(segs[i + 1]!, c.y);
+          any = true;
+        }
+      }
+      if (k === 0 && any && busY > s.top) {
+        ctx.moveTo(busX, busY);
+        ctx.lineTo(busX, s.top);
+        this.leadBus = true;
       }
       if (!any) continue;
-      ctx.strokeStyle = LEAD_STYLE[k]!.color;
+      ctx.strokeStyle = k === 2 ? LEAD_DIM : LEAD_STYLE[k]!.color;
       ctx.stroke();
       strokes++;
     }
     ctx.setLineDash([]);
     ctx.lineCap = "butt";
-    this.leads = cands.length;
-    // 札（手ごとに 1 つ。行の間が詰まれば飛ばす）。線の右の端の上に重ねる（縁取りで線を消す: 行が詰まっても、どの線の札か迷わない）
-    ctx.font = `650 10.5px ${CANVAS_FONT}`;
-    ctx.textBaseline = "middle";
-    ctx.lineJoin = "round";
-    // 札の右の端: ゴールの列の手前・画面の外なら端の札（目盛りの札）と同じ右の端
-    const right = rx > W ? W - GAP_SIDE : xe - 6;
-    let lastY = -Infinity;
-    let labeled = false;
-    for (const c of cands) {
-      const y = c.y;
-      if (y < minY || y > H - 8 || y - lastY < LABEL_GAP) continue;
-      const tw = ctx.measureText(c.text).width;
-      if (right - tw < x0) continue;
+    for (const c of cands) if (c.open) this.leads++;
+    // 札は上から順に描く（縁取りで線を消す: 行が詰まっても、どの線の札か迷わない）
+    placed.sort((a, b) => a.ly - b.ly);
+    for (const c of placed) {
       ctx.strokeStyle = "rgba(7,9,13,0.9)";
       ctx.lineWidth = 3.5;
-      ctx.strokeText(c.text, right - tw, y);
+      ctx.strokeText(c.text, c.lx, c.ly);
       ctx.fillStyle = LEAD_STYLE[c.choice ? 1 : 0]!.label;
-      ctx.fillText(c.text, right - tw, y);
-      labeled = true;
-      lastY = y;
+      ctx.fillText(c.text, c.lx, c.ly);
       this.leadLabels++;
     }
+    // 札の列の下（入らなければ上）に「→ ゴール 10 億円」（机で端の札が右の上にあれば、その札が同じ役をするので出さない）。
+    // カード・ほかの札に重ねない
     const t = s.t;
-    // 札の列の下に「→ ゴール 10 億円」（上は手の名前の目印と重なりやすい。机で端の札が右の上にあれば、その札が同じ役をするので出さない）
-    const headY = lastY + 17;
-    if (labeled && t && !chipB && headY < H - 8) {
+    const col = placed.filter((c) => c.lx + c.lw > right - 1);
+    if (col.length && t && !chipB) {
       const head = `→ ゴール ${formatOku(t.T)}`;
       ctx.font = `500 10px ${CANVAS_FONT}`;
       const hw = ctx.measureText(head).width;
-      if (right - hw >= x0) {
+      const hx = right - hw;
+      // 札のすぐ下・すぐ上、入らなければ札の行の間（下から。スマホのふだんの倍率では札の横もカードなので、カードとカードの間）、
+      // それも無ければカードの下の縁の下・上の縁の上。近いときはカードの上の芽の札と右下の数の札の分も空ける
+      const lo = col[col.length - 1]!.ly;
+      const hi = col[0]!.ly;
+      const off = HALF_H * z + 20;
+      const pad = s.lod === "compact" || s.lod === "full" ? 9 : 2;
+      const ys = [lo + 17, hi - 17];
+      for (let k = col.length - 1; k > 0; k--) if (col[k]!.ly - col[k - 1]!.ly >= 40) ys.push((col[k]!.ly + col[k - 1]!.ly) / 2);
+      ys.push(lo + off, hi - off);
+      for (const hy of ys) {
+        if (hy < minY || hy > H - LEAD_BOTTOM) continue;
+        if (placed.some((q) => q.lx < right && hx < q.lx + q.lw && Math.abs(q.ly - hy) < 13)) continue;
+        if (hitsBox(boxes, hx - 4, hy - 7 - pad, right + 4, hy + 7 + pad)) continue;
         ctx.strokeStyle = "rgba(7,9,13,0.9)";
         ctx.lineWidth = 3.5;
-        ctx.strokeText(head, right - hw, headY);
+        ctx.strokeText(head, hx, hy);
         ctx.fillStyle = "rgba(150,160,178,0.95)";
-        ctx.fillText(head, right - hw, headY);
+        ctx.fillText(head, hx, hy);
+        break;
       }
     }
     ctx.textBaseline = "alphabetic";
     return strokes;
+  }
+
+  /** 直近のフレームの道しるべの行ごとの高さと、札を置く所の左の端（画面の px。確かめ用: 縦に動かしても左の端が動かないか） */
+  leadTails(): Array<{ y: number; tail: number; label: boolean }> {
+    return this.leadCands.map((c) => ({ y: c.y, tail: c.tail, label: c.lab })).sort((a, b) => a.y - b.y);
   }
 
   /** ゴールの列を描かない（3 か月ごとの地図でない・入口が見えていない）: カードも隠す */
@@ -662,8 +861,11 @@ export class GoalRail {
     this.strokes = 0;
     this.stubLabels = 0;
     this.moveTags = 0;
+    this.leadRows = 0;
     this.leads = 0;
     this.leadLabels = 0;
+    this.leadBus = false;
+    this.leadCands.length = 0;
     this.labeled = false;
     this.labelRight = null;
     this.connector = false;

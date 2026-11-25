@@ -17,7 +17,7 @@ import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, grid
 import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, labelMaxW, rectsIntersect, type EdgeGeom } from "./geometry";
 import { ImpactCards, binStroke } from "./impactCards";
 import { drawImpactNode, type PillRect } from "./impactDraw";
-import { GOAL_CARD_W, GOAL_CARD_W_NARROW, GOAL_RAIL_DX, GoalRail } from "./goalRail";
+import { GOAL_CARD_W, GOAL_CARD_W_NARROW, GOAL_RAIL_DX, GoalRail, pushCardBox, type CardBoxes } from "./goalRail";
 import { onPixelRatioChange } from "./pixelRatio";
 import { CANVAS_FONT, wrapText } from "./text";
 
@@ -163,6 +163,8 @@ export class CanvasView {
   /** 3 年の分かれ道のカード・線に書く物（計算の結果ごとに作る） */
   private readonly cards = new ImpactCards();
   private readonly pillTmp: PillRect = { x: 0, y: 0, w: 0, h: 0, font: 0 };
+  /** このフレームで描いたカードの箱（画面の px。ゴールへの道しるべを行ごとにカードに重ねないため。フレームごとに使い回す） */
+  private readonly cardBoxBuf: CardBoxes = { buf: new Float64Array(1024), n: 0 };
   /** 資産のゴールの列・行き先からゴールへの線・ゴールのカード（3 か月ごとの地図だけ: src/canvas/goalRail.ts） */
   readonly goal = new GoalRail(
     () => this.panToGoal(),
@@ -833,13 +835,16 @@ export class CanvasView {
     const pillBox = this.pillTmp;
     // 「ほかのカードも選ぶ」の間は、選んだカードに太い枠と印（どれを選んだかが縮小しても分かるように: 見直し reader-6）
     const picking = this.ui.multiPick;
-    // 描いたカードのいちばん右（世界の x。縮めたときのゴールへの道しるべを、カードに重ねずその右から引く）
-    let rightmost = -Infinity;
+    // 描いたカードの箱（画面の px。縮めたとき・スマホのふだんの倍率の、今日の手からゴールへの道しるべを、行ごとにカードに重ねず引く:
+    // 見直し reader-1・reader-3）。道しるべを描きうるときだけ集める
+    const boxes = this.cardBoxBuf;
+    boxes.n = 0;
+    const wantBoxes = quarter && (lod === "low" || lod === "dot" || (lod === "compact" && this.width < 640));
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
       const p = this.pos(id);
       if (p.x + HALF_W < view.minX || p.x - HALF_W > view.maxX || p.y + HALF_H < view.minY || p.y - HALF_H > view.maxY) continue;
-      if (p.x > rightmost) rightmost = p.x;
+      if (wantBoxes) pushCardBox(boxes, (p.x - HALF_W) * z + cam.x, (p.y - HALF_H) * z + cam.y, (p.x + HALF_W) * z + cam.x, (p.y + HALF_H) * z + cam.y);
       const nv = vm.nodes.get(id)!;
       const colors: string[] = [];
       for (const pid of n.projectIds) {
@@ -903,7 +908,7 @@ export class CanvasView {
 
     // 画面の大きさで描く文字（縮小したときのタイトル・目印）
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.drawGoal(quarter ? imp.root : null, lod, (rightmost + HALF_W) * z + cam.x);
+    this.drawGoal(quarter ? imp.root : null, lod);
     if (impLabels.length) this.drawScreenLabels(impLabels, lod === "dot" ? 6 : 80, cardBoxes);
     if (screenLabels.length) this.drawScreenLabels(screenLabels, 80, cardBoxes);
     // 年月の目盛り（3 か月ごとの地図。どの拡大率でも画面の上に固定: 作業メモ SPEC v1 §5.6・user-7・user-15）
@@ -949,7 +954,7 @@ export class CanvasView {
    * 資産のゴールの列と、見えている行き先からゴールへの線（画面の座標で。目印の文より下・目盛りより下に描く）とゴールのカードの位置。
    * root が null（3 か月ごとの地図でない）・入口が見えていなければ、どれも出さない
    */
-  private drawGoal(root: ID | null, lod: Lod, frontier: number): void {
+  private drawGoal(root: ID | null, lod: Lod): void {
     const vm = this.vm;
     const imp = vm.impact;
     if (!root || !imp.active || !vm.hasOverlay(root)) return this.goal.off();
@@ -980,7 +985,7 @@ export class CanvasView {
       selected: sel.size === 1 ? (sel.values().next().value ?? null) : null,
       t: this.cards.goal(imp, doc),
       shown: (id) => vm.nodes.get(id)?.hidden === false,
-      frontier,
+      boxes: this.cardBoxBuf,
     });
   }
 

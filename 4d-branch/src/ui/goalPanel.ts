@@ -16,7 +16,7 @@ import { fillGoalSlots, goalOverviewVM, goalSkeletonEl, goalStripEl, goalStripVM
 import { formatGoalShare, formatOku, goalAnchor, goalAnchorOfRoot, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
 import { goalCtxOf, goalFactOf, goalImpactStrip } from "../model/goalImpact";
 import { goalEditorStale, goalFieldPlaceholder, goalFields, goalFieldValue, goalFromInputs, goalViewRow, sameGoal, type GoalField } from "../model/goalForm";
-import type { GoalRailHost, GoalRailInfo } from "../canvas/goalRail";
+import type { GoalMoveTag, GoalRailHost, GoalRailInfo } from "../canvas/goalRail";
 import type { ImpactResult } from "../model/impact";
 import type { GNode, ID } from "../model/types";
 import { h, isImeKey } from "./dom";
@@ -377,10 +377,10 @@ export function goalRailHost(app: AppContext): GoalRailHost {
       // どの選び方の数か（おすすめの選び方・無ければずっと今のまま: カードの「おすすめの道」「今のまま」。見直し reader-3）
       const path: GoalRailInfo["path"] = s.pi ? "pi" : s.keep ? "keep" : null;
       // 今日の手のカードの芽の札（見取り図の「10 の手をひと目で」の芽の札と同じ言葉: 見直し reader-4）
-      const moves = new Map<ID, string>();
+      const moves = new Map<ID, GoalMoveTag>();
       for (const m of s.moves) {
         const text = m.seed > 0 ? `芽 ${formatGoalShare(m.seed)}` : m.choiceOnly ? "芽: 選び方" : null;
-        if (text) moves.set(ctx.idOf(m.node), text);
+        if (text) moves.set(ctx.idOf(m.node), { text, share: m.seed > 0 ? m.seed : 0 });
       }
       // 鍵は数そのもの（選び方の計算の入れ物が作り直されても、同じ数なら同じ鍵: カードの文字を書き直さない）
       const info: GoalRailInfo = { key: `${s.tables.T}|${s.tables.by}|${byKari ? 1 : 0}|${path ?? "-"}|${mid === null ? "-" : mid.toFixed(1)}`, T: s.tables.T, by: s.tables.by, byKari, mid, path, moves };

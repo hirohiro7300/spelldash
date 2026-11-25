@@ -855,8 +855,10 @@ const goalRail = (page) =>
       labelRight: g.labelRight,
       stubLabels: g.stubLabels,
       moveTags: g.moveTags,
+      leadRows: g.leadRows,
       leads: g.leads,
       leadLabels: g.leadLabels,
+      leadBus: g.leadBus,
       connector: g.connector,
       state: g.state,
       railSx: g.railSx,
@@ -1007,7 +1009,10 @@ async function goalChecks(page, tag, profile) {
     // 行き先が見えていなくても、今日の手のカードに芽の札（札のほかにもゴールの印がある: 見直し reader-4）
     const zNow = await page.evaluate(() => window.__fourD.app.view.camera.zoom);
     if (zNow >= 0.3) assert(g.moveTags >= 1, `今日の手のカードに芽の札が無い（拡大 ${Math.round(zNow * 100)}%）`);
-    else assert(g.leads >= 1 && g.leadLabels >= 1, `縮めた画面で今日の手からゴールへの道しるべが無い（拡大 ${Math.round(zNow * 100)}%・${JSON.stringify(g)}）`);
+    // スマホのふだんの倍率（compact）でも、芽の札のある手からゴールへの道しるべ（芽の札だけではゴールとのつながりが見えない: 見直し reader-4）
+    if (zNow < 0.3 || (narrow && zNow < 0.8)) assert(g.leadRows >= 1 && g.leads >= 1 && g.leadLabels >= 1, `今日の手からゴールへの道しるべが無い（拡大 ${Math.round(zNow * 100)}%・${JSON.stringify(g)}）`);
+    // スマホは線の右の端から目盛りの帯の札まで縦に 1 本（どの線もゴールの札へ向かう）
+    if (narrow) assert(g.leadBus, `スマホで道しるべの線が札につながっていない（${JSON.stringify(g)}）`);
     await shot(page, `${tag}-goal-04-chip`);
     // 机のふだんの 20%（スマホも同じ倍率に縮める）: 線の札・芽の札は出ないが、芽の札のある手ごとにゴールへの点線と札「芽 14%」
     // （手ごとに 1 つ・まとめて描く: ゴールの列 1 本・点の塗りと縁・点線 2 本まで）
@@ -1015,8 +1020,48 @@ async function goalChecks(page, tag, profile) {
     await settle(page, 400);
     const low = await goalRail(page);
     assert(low.stubs === 0 && low.moveTags === 0 && low.stubLabels === 0, `20% で行き先の線・札が出ている（${JSON.stringify(low)}）`);
-    assert(low.leads >= 3 && low.leadLabels >= 1 && low.leadLabels <= low.leads && low.strokes <= 5, `20% で今日の手からゴールへの道しるべが足りない（${JSON.stringify(low)}）`);
+    assert(low.leads >= 3 && low.leadLabels >= 1 && low.leadLabels <= low.leadRows && low.strokes <= 5, `20% で今日の手からゴールへの道しるべが足りない（${JSON.stringify(low)}）`);
     await shot(page, `${tag}-goal-04b-low`);
+    // 1 つの手（6 つ目）の先を 9 か月後まで開いても、ほかの手の線と札は消えない（行ごとに決める: 見直し reader-1）。縦に 1 行
+    // 動かしても、線の左の端（札を置く所）は動かない
+    const opened = await page.evaluate(() => {
+      const f = window.__fourD;
+      const vm = f.app.vm;
+      const deep = vm.deep.get();
+      const cm = deep.cm;
+      const i = cm.firstMoves[5];
+      let j = i;
+      for (let x = i; x < i + cm.size[i]; x++)
+        if (cm.month[x] === 9) {
+          j = x;
+          break;
+        }
+      vm.setImpactOpen(vm.impactChain(deep.idOf(j)));
+      return cm.month[j];
+    });
+    await settle(page, 400);
+    const path9 = await goalRail(page);
+    const tails = () => page.evaluate(() => window.__fourD.app.view.goal.leadTails());
+    const t0 = await tails();
+    assert(opened === 9 && path9.stubs === 0 && path9.leadRows >= 3 && path9.leads >= path9.leadRows - 1 && path9.leadLabels >= Math.min(2, path9.leadRows - 1), `9 か月後まで開くとほかの手の道しるべが消える（${JSON.stringify(path9)}）`);
+    await shot(page, `${tag}-goal-04c-low-path9`);
+    const rowPx = await page.evaluate(() => 128 * window.__fourD.app.view.camera.zoom);
+    await page.evaluate((dy) => {
+      const v = window.__fourD.app.view;
+      v.animateTo({ zoom: v.camera.zoom, x: v.camera.x, y: v.camera.y - dy }, 0);
+    }, rowPx);
+    await settle(page, 400);
+    const t1 = await tails();
+    let same = 0;
+    for (const a of t0) {
+      const b = t1.find((r) => Math.abs(r.y - (a.y - rowPx)) < 0.5);
+      if (!b) continue;
+      assert(Math.abs(b.tail - a.tail) < 0.5, `縦に動かすと線の左の端が動く（${JSON.stringify({ a, b })}）`);
+      same++;
+    }
+    assert(same >= 2, `縦に動かした前後で同じ手の道しるべが比べられない（${JSON.stringify({ t0, t1 })}）`);
+    await page.evaluate(() => window.__fourD.app.vm.resetImpactOpen());
+    await settle(page, 200);
     // 行き先を開いて寄る: 線が引かれる
     const { end } = await openGoalEnds(page, 40);
     await page.evaluate(([id, z]) => window.__fourD.app.view.centerOn(id, { zoom: z, animate: false }), [end, narrow ? 0.42 : 0.55]);
