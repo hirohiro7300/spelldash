@@ -1,14 +1,14 @@
 // 旧タブの証明（tests/oldtab）が使う本物の認証の部品（包みの名前は下の PACKAGE）を、検査の時に登録所から取って作る。
 // リポジトリには入れない（配布物の原文は公開の置き場に置かない）。作った物は置き場に置き、次からはそれを確かめて使う。
 //   置き場: 既定 tests/oldtab/.cache/auth-lib（.gitignore 済み）。env OLDTAB_LIB_CACHE で替えられる。CI はこの置き場を控えに残す。
-//   登録所: 既定は下の REGISTRY。env OLDTAB_REGISTRY で替えられる（固定の版は、どこから取っても下の固定の値で確かめる）。
+//   登録所: 既定は下の REGISTRY。env OLDTAB_REGISTRY で替えられる（固定の版は、どこから取っても固定の値〔2.118.0 は api/_lib/authModule.js・2.105.0 は下の PINNED〕で確かめる）。
 //
 //   node tests/oldtab/lib/authLib.mjs                  固定の版（2.118.0・2.105.0）を置き場に用意する（置き場にあれば確かめて使う）
 //   node tests/oldtab/lib/authLib.mjs --check          置き場を使わずに登録所から取り直して作り、固定の値と同じか確かめる。
 //                                                      置き場に写しがあれば、取り直した物と 1 バイトも違わないかも確かめる（置き場には書かない）
 //   node tests/oldtab/lib/authLib.mjs --version <版>   その版だけ（--version は重ねられる。--check とも使える）
 //
-// 作り方（ビルドの道具は使わない）:
+// 作り方（ビルドの道具は使わない。tarball の開き方・束の作り方・両方の木が読む版の固定の値は api/_lib/authModule.js〔配信の関数と同じ 1 か所。Batch 97〕）:
 //   1. 登録所の版の情報（<登録所>/@supabase%2fsupabase-js/<版>）を読み、dist.integrity（sha512）と dist.tarball を取る。
 //      固定の版は、版の情報の integrity が固定の値と同じか確かめる（違えば止める）
 //   2. tarball を取り、sha512 が版の情報の integrity と同じか確かめる
@@ -21,21 +21,18 @@
 // 置き場の写しは、ファイルの全部が作り方どおりか確かめてから使う（注記の 3 行を固定の値から作り直し、注記の後ろの sha256 と合わせて 1 バイトずつ比べる）。
 import fs from "fs";
 import path from "path";
-import zlib from "zlib";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
+import { AUTH_MODULE_PACKAGE, AUTH_MODULE_BUNDLE, AUTH_MODULE_PIN, readTar, moduleBody, isLicenseName } from "../../../api/_lib/authModule.js";
 
-const PACKAGE = "@supabase/supabase-js";
-// 両方の木が読む版（本番の読み先が今 @2 で返す版）
-export const VERSION = "2.118.0";
+const PACKAGE = AUTH_MODULE_PACKAGE;
+// 両方の木が読む版（本番が自分の配信 /api/auth-module から出す版。固定の値は api/_lib/authModule.js）
+export const VERSION = AUTH_MODULE_PIN.version;
 // 古い部品の回（run.mjs --old-auth-lib 2.105.0）。更新の途中で保存が変わったら結果を捨てる守りは 2.107.0 からなので、それより前の版
 export const OLD_VERSION = "2.105.0";
 // integrity = 登録所の dist.integrity（tarball の sha512）。body = 作った物の注記の後ろ（束と export の行）の sha256
 const PINNED = {
-  "2.118.0": {
-    integrity: "sha512-FxI8UXMVC2UG7IkeiI8fuQZqq2oI3JeSuN8MPIC2RLVaoEAxKS0nqE6kii9Ewpq8f9gNPM6git1Y8f0vN/QLFw==",
-    body: "9c5c59ecd5899a6c73c701400cb675ffb5bde827490a927c19ee222b5291eb91"
-  },
+  [AUTH_MODULE_PIN.version]: { integrity: AUTH_MODULE_PIN.integrity, body: AUTH_MODULE_PIN.body },
   "2.105.0": {
     integrity: "sha512-UUmh6KpStf2RdKpRUmzj0cPl6OXlo1hkRTNHdFHozbiJv2MIxR/7eWGKHAO8OgnaZt0gv52k7NL/bZXgPQbw/A==",
     body: "1d2b4aae8e67dac0aa4de150c3677de505a57244be5f652bf2a178762f3fb2a3"
@@ -79,42 +76,6 @@ async function get(url, what, headers = {}) {
   throw last;
 }
 
-// tarball（gzip の tar）を開いて、keep(名前) が真のふつうのファイルだけを返す。展開してファイルに書くことはしない
-function readTar(gz, keep) {
-  const buf = zlib.gunzipSync(gz);
-  const out = new Map();
-  let off = 0;
-  let nextName = null;
-  while (off + 512 <= buf.length) {
-    const h = buf.subarray(off, off + 512);
-    if (h.every((b) => b === 0)) break;
-    const field = (a, b) => h.subarray(a, b).toString("utf8").replace(/\0[\s\S]*$/, "");
-    if (!field(257, 263).startsWith("ustar")) throw new Error(`tarball の形が想定と違う（${off} バイト目の見出しが ustar でない）`);
-    const sum = h.reduce((s, b, i) => s + (i >= 148 && i < 156 ? 32 : b), 0);
-    if (sum !== parseInt(field(148, 156).trim(), 8)) throw new Error(`tarball の見出しの合計が合わない（${off} バイト目）`);
-    const size = parseInt(field(124, 136).trim() || "0", 8);
-    const type = h[156] === 0 ? "0" : String.fromCharCode(h[156]);
-    const prefix = field(345, 500);
-    const name = nextName ?? (prefix ? `${prefix}/${field(0, 100)}` : field(0, 100));
-    const body = buf.subarray(off + 512, off + 512 + size);
-    off += 512 + Math.ceil(size / 512) * 512;
-    if (type === "x") {
-      // pax の拡張見出し: 次の 1 件の名前（path=）だけを使う
-      const m = body.toString("utf8").match(/(?:^|\n)\d+ path=([^\n]*)\n/);
-      nextName = m ? m[1] : null;
-      continue;
-    }
-    if (type === "L") {
-      nextName = body.toString("utf8").replace(/\0[\s\S]*$/, "");
-      continue;
-    }
-    if (type === "g") continue;
-    nextName = null;
-    if (type === "0" && keep(name)) out.set(name, Buffer.from(body));
-  }
-  return out;
-}
-
 // 作った物の注記の 3 行。置き場の写しを確かめる時も、同じ値から作り直して比べる
 function makeHead({ version, integrity, umdSha, bodySha }) {
   return [
@@ -128,20 +89,12 @@ function makeHead({ version, integrity, umdSha, bodySha }) {
 const FOOT_HEAD = "\nexport const { ";
 
 // 配布物の dist/umd/supabase.js から、ブラウザ用のモジュールを作る（前に作業のブランチに置いていた写しと同じ作り方。注記の文だけが違う）
+// 束と export の行は api/_lib/authModule.js の moduleBody（配信の関数と同じ作り方）
 function makeModule({ version, integrity, umdRaw }) {
-  const umd = umdRaw.replace(/\s+$/, "");
-  if (!umd.startsWith("var supabase=(function(e){") || !umd.endsWith("})({});")) throw new Error("dist/umd/supabase.js の形が想定と違う（var supabase=(function(e){ … })({});）");
-  const tail = umd.slice(umd.lastIndexOf("e.createClient=") - 6000);
-  const names = new Set();
-  for (const m of tail.matchAll(/[,;(]e\.([A-Za-z_$][\w$]*)=/g)) names.add(m[1]);
-  for (const m of tail.matchAll(/Object\.defineProperty\(e,`([A-Za-z_$][\w$]*)`/g)) names.add(m[1]);
-  if (!names.has("createClient") || names.size < 30) throw new Error(`export の名前を読めない（${names.size} 個）`);
-  const sorted = [...names].sort();
-  const foot = [`export const { ${sorted.join(", ")} } = supabase;`, "export default supabase;"].join("\n");
-  const body = `${umd}\n${foot}\n`;
+  const { umd, body, names } = moduleBody(umdRaw);
   const bodySha = sha256(body);
   const head = makeHead({ version, integrity, umdSha: sha256(umd), bodySha });
-  return { mjs: `${head}\n${body}`, bodySha, names: sorted.length };
+  return { mjs: `${head}\n${body}`, bodySha, names };
 }
 
 // 登録所から取って作る（置き場は使わない）。戻り値: { version, integrity, tarball, mjs, license, bodySha, names, pinned }
@@ -158,12 +111,12 @@ export async function buildFromRegistry(version) {
   const tgz = await get(tarball, "tarball");
   const got = "sha512-" + crypto.createHash("sha512").update(tgz).digest("base64");
   if (got !== integrity) throw new Error(`tarball の sha512 が登録所の版の情報と違う: ${got}（版の情報 ${integrity}）`);
-  const isLicense = (n) => /^package\/licen[cs]e(\.(md|txt))?$/i.test(n);
-  const files = readTar(tgz, (n) => n === "package/package.json" || n === "package/dist/umd/supabase.js" || isLicense(n));
+  const isLicense = isLicenseName;
+  const files = readTar(tgz, (n) => n === "package/package.json" || n === AUTH_MODULE_BUNDLE || isLicense(n));
   const pkg = JSON.parse(files.get("package/package.json")?.toString("utf8") ?? "{}");
   if (pkg.name !== PACKAGE || pkg.version !== version) throw new Error(`tarball の package.json の名前か版が違う: ${pkg.name}@${pkg.version}`);
-  const umd = files.get("package/dist/umd/supabase.js");
-  if (!umd) throw new Error("tarball に package/dist/umd/supabase.js が無い");
+  const umd = files.get(AUTH_MODULE_BUNDLE);
+  if (!umd) throw new Error(`tarball に ${AUTH_MODULE_BUNDLE} が無い`);
   const { mjs, bodySha, names } = makeModule({ version, integrity, umdRaw: umd.toString("utf8") });
   if (pin && bodySha !== pin.body) throw new Error(`${version} の作った物（注記の後ろ）の sha256 が固定の値と違う: ${bodySha}（固定 ${pin.body}）`);
   // LICENSE の文は配布物にあればそのまま写す（2.105.0 の配布物には無く、package.json の license だけ）

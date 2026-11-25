@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-11-18 (Batch 97 — 認証の部品を自分の配信から)
+
+- 値段・無料期間・Pro のゲートと中身・100／1,000 語の上限・2,858 語・ランク・学習状況の数・保存の鍵と形・表と kind の 4 つ・payload・送る 15 列・答えの道・js/learnState.js・js/sync.js・js/userItemsSync.js・js/previewHost.js・Battle・キーボード・sw.js・css・ページの HTML は変えていない。SQL なし。お知らせなし。
+- **配信の関数**（`api/auth-module.js`・`api/_lib/authModule.js`。docs/SECURITY.md の Batch 97 の節）: `GET /api/auth-module?v=2.118.0&h=c1a6b90c` だけが 200（h は答えの sha256 の頭 8 字。答えのバイトが変われば URL も変わる）。関数は登録所の決まった tarball の URL（https・転送されたら行き着いた先も https か見る・5 秒・読みながら数えて 2 MB まで）から固定の版を取り、開く前に sha512 を固定の integrity と比べ、メモリの中で開いて package.json の名前と版・束の形・束と export の行の sha256・配布物の LICENSE の文を頭に付けた答えの sha256 を確かめる。どれかが違えば 503（`no-store`・`Retry-After: 10`）。インスタンスのメモリーに 1 回作った物を持ち、同時の呼び出しは同じ 1 回を待ち、作れなかった後 10 秒は作り直さない。答えは `text/javascript`・`nosniff`・1 年の immutable・`Cross-Origin-Resource-Policy: same-origin`。ほかの版・印・問いは 404、GET のほかは 405（HEAD も: 中身の無い答えに 1 年の保存の頭を付けない）。ログは理由の短い字だけ。固定の値と作り方は 1 か所で、tests/oldtab/lib/authLib.mjs もそこから読む（作る写しは前と 1 バイトも違わない）。
+- **読む側**（`js/supabase.js`）: 同じオリジンの `/api/auth-module?v=2.118.0&h=c1a6b90c` を読む。テストの口 `window.__SUPABASE_MODULE_URL` は、字で、ページの無い所か手元の名前（localhost・127.0.0.1・[::1]）のときだけ読む。前は www でも、入った HTML の要素（`<a id="__SUPABASE_MODULE_URL" href=…>`）でも口になり、偽の部品を読んだ（E2E 97.1 (4) が e37708f で再現）。Preview の止め口・オフラインの代わりはそのまま。
+- **CSP**（`vercel.json`・`scripts/lib/csp.mjs`）: script-src から外の配信元を外し、`'self'` とインラインの script のハッシュ 14 個だけにした。connect-src からも外した（締めるだけ。ほかの指示は同じ）。e37708f の CSP では、入った HTML の `<iframe srcdoc>` の中の外の配信元の script が走った（E2E 97.1 (3)）。
+- 作らなかったもの: 関数で答えを縮める（配信が縮めて届けるかを本番で見てから。docs/BACKLOG.md）・部品の先読み（Preview でも読みに行く）・アプリの包みで部品を読む道（アプリを出す回で）・版を上げること。
+- 検査: 単体 scripts/test-auth-module.mjs（新しい。偽の登録所の tarball をメモリの中で作る。e37708f のコードでは 10 件すべて落ちる〔作り方と関数が無いので、ほかの件は流れない〕。作った後は 43 件すべて通る）・`--live`（CI の oldtab のジョブ。本物の登録所から作って固定の値と同じか・旧タブの証明の写しと束が 1 バイトも違わないか・モジュールとして読めるか）・`--print <版>`（版を上げるとき）。test-site-map の 8（'self' とハッシュだけ。外の先・`https:`・`data:`・`blob:`・`*`・`'unsafe-hashes'`・`'strict-dynamic'`・connect-src に外の先を足す変異。e37708f の vercel.json で 2 件落ちる）。test-areas の U1（読み先の形）。E2E 97.1（新しい節 7 件。e37708f のコードで 4 件落ちる）・7.5 の P1 と 88.1 (3)（script-src の形）・78.8 と 86.1（Preview は自分の配信の道も呼ばない）。
+
 ## 2026-11-18 (Batch 96 — マイ単語帳の学ぶ順)
 
 - 値段・無料期間・Pro のゲートと中身・100／1,000 語の上限・2,858 語・ランク・学習状況の数・保存の鍵と形・表と kind の 4 つ・payload・送る 15 列・答えの道（`completeWord`・`acceptChar`・`recordMyAnswer`・`applyMyAnswer`・`touchItem`・`touchItems`）・js/sync.js・js/userItemsSync.js・Battle・キーボード・CSP・sw.js・css・ページの頭は変えていない。SQL なし。

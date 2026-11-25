@@ -609,7 +609,7 @@ async function runAll() {
     // 認証の新しい鍵は js/supabase.js の storageKey と同じ・部品の版は固定
     const supa = fs.readFileSync(path.join(ROOT, "js/supabase.js"), "utf8");
     ok("U1 js/supabase.js の storageKey は見張りの鍵と同じ・旧い鍵と違う", supa.includes(`AUTH_STORAGE_KEY = "${K.AUTH_KEY}"`) && /storageKey:\s*AUTH_STORAGE_KEY/.test(supa) && K.AUTH_KEY !== K.OLD_AUTH_KEY);
-    ok("U1 js/supabase.js は認証の部品の版を固定する（@2 のような幅のある版を使わない）", /supabase-js@\d+\.\d+\.\d+"/.test(supa) && !/supabase-js@2"/.test(supa));
+    ok("U1 js/supabase.js は認証の部品の版を固定する（@2 のような幅のある版を使わない。Batch 97 から読み先は自分の配信の道で、版は 3 つの数・答えの印は 8 字）", /const OWN_MODULE_URL = "\/api\/auth-module\?v=\d+\.\d+\.\d+&h=[0-9a-f]{8}";/.test(supa) && !/@\d+"/.test(supa));
     ok("U1 旧い認証の鍵は js/supabase.js の URL の ref から作る既定の名前", supa.includes(K.OLD_AUTH_KEY.replace(/^sb-/, "").replace(/-auth-token$/, "")));
     eq("U1 js/supabase.js は認証の部品にセッションの置き場を渡す（満杯でもメモリーに置かない）: 書くのも読むのも localStorage（見張りの包んだ口）を通す・書けなければ例外で、その値を覚えない・消すのも localStorage・localStorage を読めない端末では保存されたセッションは無い",
       await authStorageProbe(),
