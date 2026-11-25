@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { rememberMapDoc } from "../../src/app/futureCache";
 import { DEFAULT_PREFS, UiState } from "../../src/app/uiState";
 import { ViewModel } from "../../src/app/viewModel";
-import { goalBase, goalOf, goalViewOf, hasGoalBase } from "../../src/deepmap/core";
+import { goalBase, goalOf, goalViewOf, hasGoalBase, type Analysis } from "../../src/deepmap/core";
 import type { MapData } from "../../src/deepmap/mapData";
 import { buildQuarterDoc } from "../../src/demo/quarterDoc";
 import { DEFAULT_GOAL, goalAnchor, tablesFor } from "../../src/model/goal";
@@ -36,6 +36,16 @@ function setup() {
 }
 
 const rootOf = (store: Store, id: string): GNode => store.doc.nodes[id]!;
+
+/** node の gc（--expose-gc を後から入れて取り出す。テストの worker は node） */
+async function gcFn(): Promise<() => void> {
+  const v8Name = "node:v8";
+  const vmName = "node:vm";
+  const v8 = (await import(/* @vite-ignore */ v8Name)) as { setFlagsFromString(s: string): void };
+  const vmMod = (await import(/* @vite-ignore */ vmName)) as { runInNewContext(code: string): unknown };
+  v8.setFlagsFromString("--expose-gc");
+  return vmMod.runInNewContext("gc") as () => void;
+}
 
 describe("ctx.goal()（資産のゴールの数）", () => {
   it("前提を入れていなければ仮の値で、計算ごとの goalBase と設定ごとの goalOf と同じ物。何度読んでも同じ物", () => {
@@ -103,6 +113,32 @@ describe("ctx.goal()（資産のゴールの数）", () => {
     expect(g1).not.toBe(g);
     expect(g1.read.cfg.assets).toBe(5000);
     expect(g1.base).toBe(g!.base);
+  });
+
+  it("出どころは今の計算の物だけを読み、前の画面に渡す物を持ち続けない（前の計算を誰かが持っていても、前の文書ごと手放せる）", async () => {
+    const { store, vm } = setup();
+    // 前の画面に渡す物は、この関数の中でだけ持つ（計算 a0 はテストが持ち続ける: 概要の覚えなどが前の計算を持つのと同じ）
+    const old = (): { a0: Analysis; ref: WeakRef<object>; pick: string } => {
+      const c0 = vm.deep.get()!;
+      const a0 = c0.analysis();
+      expect(goalViewOf(a0, true)).toBe(c0.goal());
+      return { a0, ref: new WeakRef(c0), pick: c0.idOf(c0.cm.firstMoves[1]!) };
+    };
+    const { a0, ref, pick } = old();
+    store.transact("選ぶ", (tx) => tx.updateNode(pick, { status: "active" }));
+    const c1 = vm.deep.get()!;
+    const a1 = c1.analysis();
+    expect(a1).not.toBe(a0);
+    // 前の計算の出どころは、もう数を返さない（今の計算の物は今の画面に渡す物の数）
+    expect(goalViewOf(a0, true)).toBeNull();
+    expect(goalViewOf(a0, false)).toBeNull();
+    expect(goalViewOf(a1, true)).toBe(c1.goal());
+    // 前の画面に渡す物は、前の計算を持っていても集められる（前は出どころの関数が画面に渡す物の中の物をまるごと持っていた）
+    const gc = await gcFn();
+    await new Promise((r) => setTimeout(r, 0));
+    gc();
+    expect(ref.deref()).toBeUndefined();
+    expect(hasGoalBase(a0)).toBe(true);
   });
 
   it("空いた時間の先回り: 計算・見取り図の数の後に、goalBase と今の設定の数を 1 歩ずつ作る", () => {

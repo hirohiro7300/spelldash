@@ -9,7 +9,8 @@
 
 import "../styles/goal.css";
 import type { AppContext } from "../app/context";
-import { whenIdle } from "../app/idle";
+import type { DeepCtx } from "../app/deepState";
+import { whenIdleWeak } from "../app/idle";
 import { goalViewOf, type Analysis } from "../deepmap/core";
 import { fillGoalSlots, goalOverviewVM, goalSkeletonEl, goalStripEl, goalStripVM, goalViewKey } from "../deepmap/views";
 import { formatGoalShare, formatOku, goalAnchor, goalAnchorOfRoot, goalConfigOf, type GoalKey, type GoalStored } from "../model/goal";
@@ -250,36 +251,39 @@ const pending = new WeakSet<Analysis>();
 
 /**
  * 見取り図の帯・芽の札・注・今日の欄の 1 行を、今の前提の数に埋め直す（鍵が同じ物は触らない）。数ができていなければ
- * 空いた時間に 1 回作って埋める（起動の最初の絵には入れない）
+ * 空いた時間に 1 回作って埋める（起動の最初の絵には入れない）。待つ間は計算を弱く持つ（前は待つ関数が計算と画面に渡す物を
+ * 持ち、続けて選ぶと前の計算が残った）
  */
 export function refreshGoalViews(app: AppContext): void {
   if (typeof document === "undefined" || !document.querySelector(".dm-goal[data-goal-key]")) return;
   const ctx = app.vm.deep.get();
   if (!ctx) return;
   const a = ctx.analysis();
-  const fill = (compute: boolean): void => {
-    const view = goalViewOf(a, compute);
-    if (!view) return;
-    // どの場所も今の数なら何もしない（題名の 1 文字などの変更で数の形を作らない）
-    const key = goalViewKey(view);
-    let stale = false;
-    for (const el of document.querySelectorAll<HTMLElement>("[data-goal-key]")) if (el.dataset.goalKey !== key) stale = true;
-    if (!stale) return;
-    // 手の名前は見取り図の行と同じ（文書のカードの題名）
-    fillGoalSlots(document, goalOverviewVM(a, view, { name: (n) => ctx.text().title(n) }));
-  };
   if (goalViewOf(a, false)) {
-    fill(false);
+    fillGoalViews(ctx, a, false);
     return;
   }
   if (pending.has(a)) return;
   pending.add(a);
-  whenIdle(() => {
-    pending.delete(a);
+  whenIdleWeak(a, (an) => {
+    pending.delete(an);
     // その間に作り直された（別の計算）なら、次の更新に任せる
-    if (app.vm.deep.get()?.analysis() !== a) return;
-    fill(true);
+    const cur = app.vm.deep.get();
+    if (!cur || cur.analysis() !== an) return;
+    fillGoalViews(cur, an, true);
   });
+}
+
+/** 見取り図の帯などを、計算 a の今の前提の数で埋める（どの場所も今の数なら何もしない: 題名の 1 文字などの変更で数の形を作らない） */
+function fillGoalViews(ctx: DeepCtx, a: Analysis, compute: boolean): void {
+  const view = goalViewOf(a, compute);
+  if (!view) return;
+  const key = goalViewKey(view);
+  let stale = false;
+  for (const el of document.querySelectorAll<HTMLElement>("[data-goal-key]")) if (el.dataset.goalKey !== key) stale = true;
+  if (!stale) return;
+  // 手の名前は見取り図の行と同じ（文書のカードの題名）
+  fillGoalSlots(document, goalOverviewVM(a, view, { name: (n) => ctx.text().title(n) }));
 }
 
 // ---------------------------------------------------------------- 版 6 の地図の帯・詳細の欄

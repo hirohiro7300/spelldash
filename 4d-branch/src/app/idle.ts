@@ -4,6 +4,7 @@
 //                         直前の 1 歩の時間（と 5 ms）より長く、続けた時間が IDLE_SLICE_MS に収まる間だけ続け、足りなくなったら
 //                         次の空いた時間へ。ok が false になったらやめる
 //                         （画面の作り直しで要らなくなった など）。1 回の呼び出しで少なくとも 1 歩は進める
+//   whenIdleWeak(t, fn) : ms 後の空いた時間に fn(t) を 1 度呼ぶ。待つ間は t を弱く持つ（手放されていれば呼ばない）
 
 /** 空いた時間の残り（requestIdleCallback の deadline。無い環境では null） */
 export interface IdleDeadlineLike {
@@ -25,6 +26,23 @@ export function whenIdle(fn: (dl: IdleDeadlineLike | null) => void, timeout = 30
  * 50 ms を超える長い仕事になる（入力を待たせる）ので、その手前で次の空いた時間へ回す（perf-10）
  */
 export const IDLE_SLICE_MS = 30;
+
+/**
+ * ms 後（0 ならすぐ）の空いた時間に fn(target) を 1 度呼ぶ（timeout ms のうちには呼ぶ）。待つ間は target を弱く持ち、手放されて
+ * いれば呼ばない。画面に渡す物・計算（8 万枚の型付き配列: 1 つ 8 MB ほど）を待つ関数が持つと、選び直すたびに前の物が数秒ずつ
+ * 残り、使った後のヒープが机で +24 MB になっていた。fn は target を引数で受け、target をほかの所から持たないこと
+ */
+export function whenIdleWeak<T extends object>(target: T, fn: (target: T, dl: IdleDeadlineLike | null) => void, opts: { ms?: number; timeout?: number } = {}): void {
+  const ref = new WeakRef(target);
+  const timeout = opts.timeout ?? 300;
+  const idle = (): void =>
+    whenIdle((dl) => {
+      const t = ref.deref();
+      if (t) fn(t, dl);
+    }, timeout);
+  if (opts.ms) setTimeout(idle, opts.ms);
+  else idle();
+}
 
 /** 1 歩ずつ、空いた時間の内に進める（説明は上） */
 export function idleSteps(step: () => boolean, ok: () => boolean = () => true, timeout = 300): void {

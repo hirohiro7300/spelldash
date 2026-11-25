@@ -11,7 +11,7 @@
 import "../deepmap/views/views.css";
 import "../styles/deep.css";
 import type { AppContext } from "../app/context";
-import { whenIdle, type IdleDeadlineLike } from "../app/idle";
+import { whenIdle, whenIdleWeak, type IdleDeadlineLike } from "../app/idle";
 import { cardWithDocOdds, type DeepCtx } from "../app/deepState";
 import type { DeepPage } from "../app/uiState";
 import { endsFrom, goalFrom, type Analysis, type Overview } from "../deepmap/core";
@@ -624,11 +624,12 @@ function goalFromEl(app: AppContext, ctx: DeepCtx, i: number, key: () => string)
   const text = h("span", { class: "deep-goal-t" }, "この先の行き先の資産を数えています…");
   const el = h("p", { class: "deep-goal", dataset: { fk: `deep-goal:${i}` } }, h("b", { class: "deep-goal-k" }, "ゴール"), " ", text);
   const k0 = key();
-  const run = (dl: IdleDeadlineLike | null): void => {
+  // 待つ間は画面に渡す物を弱く持つ（run は引数の物だけを使う: 選び直すたびに前の計算を 2 秒ほど持ち続けない）
+  const run = (ctx: DeepCtx, dl: IdleDeadlineLike | null): void => {
     if (!el.isConnected || key() !== k0 || app.vm.deep.get() !== ctx) return;
     // 空いた時間が短ければ次の空いた時間へ（8 万枚の地図の今日の手の先は数千枚: スマホで数十 ms。選んだ直後の描画・次の操作を待たせない）
     if (dl && !dl.didTimeout && dl.timeRemaining() < 12) {
-      whenIdle(run, 2000);
+      whenIdleWeak(ctx, run, { timeout: 2000 });
       return;
     }
     const root = app.store.doc.nodes[ctx.root];
@@ -651,7 +652,7 @@ function goalFromEl(app: AppContext, ctx: DeepCtx, i: number, key: () => string)
     if (app.vm.impact.alt.has(ctx.idOf(i))) el.append(" ", h("button", { class: "imp-link goal-change", type: "button", dataset: { goalAct: "edit" }, title: "資産のゴールの前提を変える" }, "前提を変える"));
   };
   // 選んだフレームと、その直後の操作（続けて選ぶ・開く）の後に回す
-  setTimeout(() => whenIdle(run, 2000), 400);
+  whenIdleWeak(ctx, run, { ms: 400, timeout: 2000 });
   return el;
 }
 

@@ -185,6 +185,7 @@ export interface DeepCtx {
 interface Built {
   key: string;
   ctx: DeepCtx;
+  calc: Calc;
 }
 
 /** 計算（地図の版・年収・選んだ手が同じなら同じ）。シナリオ・編集の有無だけが変わったときは数え直さない */
@@ -192,6 +193,16 @@ interface Calc {
   key: string;
   a: Analysis | null;
   ov: Overview | null;
+}
+
+/**
+ * 計算 a の資産のゴールの数の出どころ（setGoalSource に置く物）。今の画面に渡す物（DeepState が持つ物）から読み、a が今の計算で
+ * なければ null。画面に渡す物の中で作ると、その関数の中の物（画面に渡す物・ID の表・前の文書の nodes など）をまるごと持ち続ける:
+ * 計算 a は概要の覚えなどが持ち続けるので、前の画面に渡す物と前の文書が手放されず、使った後のヒープがスマホで +90 MB になっていた。
+ * ここ（いちばん外）で作り、DeepState と a だけを持つ
+ */
+function goalSourceOf(state: DeepState, a: Analysis): (compute: boolean) => DeepGoal | null {
+  return (compute) => state.goalFor(a, compute);
 }
 
 /**
@@ -527,8 +538,6 @@ export class DeepState {
     let docText: DeepText | null = null;
     let goalMemo: { raw: unknown; a: Analysis; g: DeepGoal } | null = null;
     let goalSrcFor: Analysis | null = null;
-    // 作ってある物だけ（compute が false）: 設定によらない物がこの計算でできていれば、設定ごとの数を作る（覚えた設定ならそのまま）
-    const goalSrc = (compute: boolean): DeepGoal | null => (compute || hasGoalBase(ctx.analysis()) ? ctx.goal() : null);
     const store = this.store;
     const nodeOf = (i: number): GNode | undefined => {
       const id = ids[i] ?? (i >= 0 && i < map.n ? impactNodeId64(map.key(i)) : undefined);
@@ -557,7 +566,7 @@ export class DeepState {
         // 画面の形（見取り図の帯・手の詳しい画面・道の終わり）が、この計算から資産のゴールの数を読めるように（この画面に渡す物の数）
         if (goalSrcFor !== calc.a) {
           goalSrcFor = calc.a;
-          setGoalSource(calc.a, goalSrc);
+          setGoalSource(calc.a, goalSourceOf(this, calc.a));
         }
         return calc.a;
       },
@@ -646,8 +655,18 @@ export class DeepState {
         return picked;
       },
     };
-    this.built = { key, ctx };
+    this.built = { key, ctx, calc };
     return ctx;
+  }
+
+  /**
+   * 計算 a の資産のゴールの数（goalSourceOf が読む）。a が今の画面に渡す物の計算でなければ null。作ってある物だけ（compute が
+   * false）: 設定によらない物がこの計算でできていれば、設定ごとの数を作る（覚えた設定ならそのまま）
+   */
+  goalFor(a: Analysis, compute: boolean): DeepGoal | null {
+    const b = this.built;
+    if (!b || b.calc.a !== a) return null;
+    return compute || hasGoalBase(a) ? b.ctx.goal() : null;
   }
 
   /** 選んだ・見送った（地図の番号ごと）と、その版の鍵 */

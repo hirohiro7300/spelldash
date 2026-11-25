@@ -202,7 +202,7 @@ export async function runBulk(app: AppContext, ctx: DeepCtx, r: BulkRun): Promis
   // 頭が閉じた上のカードの中に隠れていれば、開いてもキャンバスには何も増えない（数を言って開いたことにしない）
   const hidden = (r.tops ?? [r.head]).filter((t) => !isDrawn(app, ctx, t));
   if (hidden.length) {
-    toast("このカードは今キャンバスで隠れています（上のカードが閉じています）。「キャンバスに出す」で出してから開いてください", { tone: "warn", ms: 6000, action: { label: "キャンバスに出す", run: () => showOnCanvas(app, ctx, hidden) } });
+    hiddenToast(app, ctx.map, hidden);
     return false;
   }
   const added = r.count - r.inside;
@@ -234,24 +234,52 @@ export async function runBulk(app: AppContext, ctx: DeepCtx, r: BulkRun): Promis
     toast(keepNum(`もう開いています（${num(r.count)} 枚）`), { ms: 2400 });
     return true;
   }
+  openedToast(app, ctx.map, r, what, added, snap);
+  return true;
+}
+
+/**
+ * お知らせの押す所（ここから下の 2 つ）は画面に渡す物を持たない: 押したときの物を引く（runBulk の中で作ると、その関数の中の物と
+ * 一緒に、開いたときの画面に渡す物と計算（1 つ 8 MB ほど）をお知らせが閉じた後も持ち続けた: 最後のお知らせは次まで残る）。
+ * 地図の番号は同じ地図なら同じカード
+ */
+function currentCtx(app: AppContext, map: DeepCtx["map"]): DeepCtx | null {
+  const c = app.vm.deep.get();
+  return c && c.map === map ? c : null;
+}
+
+/** 隠れているカードを開こうとしたときのお知らせ（「キャンバスに出す」） */
+function hiddenToast(app: AppContext, map: DeepCtx["map"], hidden: readonly number[]): void {
+  const show = (): void => {
+    const c = currentCtx(app, map);
+    if (c) showOnCanvas(app, c, hidden);
+  };
+  toast("このカードは今キャンバスで隠れています（上のカードが閉じています）。「キャンバスに出す」で出してから開いてください", { tone: "warn", ms: 6000, action: { label: "キャンバスに出す", run: show } });
+}
+
+/** 開いた後のお知らせ（何を開いたか・元に戻す・見取り図で見る／選んだカードを見る） */
+function openedToast(app: AppContext, map: DeepCtx["map"], r: BulkRun, what: string, added: number, snap: OpenSnapshot): void {
   const n = r.paths ? `${num(Math.max(0, added))} 枚増えた` : `${num(r.count)} 枚`;
   // 離れたいくつものカードから開いたときは、選んだ所を全部見る道を添える（F は選んだカードを画面に収める: 見直し reader-1）
   // スマホ（キーが無い）では F と言わず、押せる「選んだカードを見る」にする（見取り図で見るがあれば、そちらを残して文を外す: 見直し reader-6）
-  const multi = (r.tops?.length ?? 1) > 1;
+  const tops = r.tops ?? [r.head];
+  const multi = tops.length > 1;
   const touch = isNarrowScreen();
   const far = multi && !touch ? "。F で選んだカードを画面に収めます" : "";
   const fitTops = (): void => {
-    const ids = (r.tops ?? [r.head]).filter((t) => isDrawn(app, ctx, t)).map((t) => ctx.idOf(t));
+    const c = currentCtx(app, map);
+    if (!c) return;
+    const ids = tops.filter((t) => isDrawn(app, c, t)).map((t) => c.idOf(t));
     if (ids.length) app.view.fit(ids);
   };
+  const mapLink = r.mapLink;
   bulkToast(`${r.from}から${keepNum(what)}${r.paths ? "" : "の判断と手"}を開いた（${keepNum(n)}）${far}`, {
     tone: "ok",
     ms: 8000,
     action: { label: "元に戻す", run: () => undoOpen(app, snap) },
     // 見取り図で見るを押しても、お知らせの「元に戻す」は残す（見直し data-undo-toast-only）
-    action2: r.mapLink ? { label: "見取り図で見る", run: r.mapLink, keep: true } : multi && touch ? { label: "選んだカードを見る", run: fitTops, keep: true } : undefined,
+    action2: mapLink ? { label: "見取り図で見る", run: mapLink, keep: true } : multi && touch ? { label: "選んだカードを見る", run: fitTops, keep: true } : undefined,
   });
-  return true;
 }
 
 /** 隠れているカードをキャンバスに出す（上の閉じたカードを開く。見え方だけ・1 回の setImpactOpen） */
